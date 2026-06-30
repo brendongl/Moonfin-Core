@@ -8,8 +8,10 @@ import 'package:jellyfin_preference/jellyfin_preference.dart';
 import '../../../auth/repositories/server_repository.dart';
 import '../../../auth/repositories/session_repository.dart';
 import '../../../auth/store/authentication_preferences.dart';
+import '../../../auth/store/authentication_store.dart';
 import '../../../auth/store/credential_store.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../sipflix/sipflix_servers.dart';
 import '../../../util/pin_code_util.dart';
 import '../../../preference/preference_constants.dart';
 import '../../navigation/destinations.dart';
@@ -66,6 +68,12 @@ class _StartupScreenState extends State<StartupScreen>
     }
 
     await serverRepo.loadStoredServers();
+
+    // Sipflix: inject the hardcoded Emby servers (Alpha + iDuck) on first launch.
+    if (serverRepo.servers.isEmpty) {
+      await SipflixServers.injectIfEmpty(GetIt.instance<AuthenticationStore>());
+      await serverRepo.loadStoredServers();
+    }
 
     if (widget.bootstrapActiveSession && session.activeUserId != null) {
       if (mounted) context.go(Destinations.home);

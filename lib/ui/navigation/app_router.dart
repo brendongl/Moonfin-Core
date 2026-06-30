@@ -17,6 +17,7 @@ import '../screens/auth/server_screen.dart';
 import '../screens/auth/server_select_screen.dart';
 import '../screens/auth/startup_screen.dart';
 import '../screens/web_diagnostics_screen.dart';
+import '../../sipflix/sipflix_qr_login_screen.dart';
 import '../screens/browse/all_genres_screen.dart';
 import '../screens/browse/collection_screen.dart';
 import '../screens/browse/favorites_screen.dart';
@@ -100,6 +101,7 @@ const _authRoutes = {
   Destinations.webDiagnostics,
   Destinations.server,
   Destinations.login,
+  Destinations.qrLogin,
 };
 
 bool _isOfflineAllowed(String path) {
@@ -238,6 +240,12 @@ final appRouter = GoRouter(
           hasPassword: hasPassword,
         );
       },
+    ),
+    GoRoute(
+      path: Destinations.qrLogin,
+      builder: (context, state) => SipflixQrLoginScreen(
+        serverId: state.uri.queryParameters['serverId'] ?? '',
+      ),
     ),
 
     // General

@@ -69,7 +69,10 @@ android {
 
     flavorDimensions += "device"
     productFlavors {
-        val baseAppId = "org.moonfin.androidtv"
+        // Sipflix fork uses its own applicationId so it coexists with the
+        // official Moonfin (org.moonfin.androidtv) on the same device. The code
+        // namespace stays org.moonfin.androidtv (unchanged).
+        val baseAppId = "com.sipflix.moonfin"
         val baseAppName = "Moonfin"
         val mobileAbis = listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         val tvAbis = listOf("arm64-v8a", "armeabi-v7a", "x86_64")

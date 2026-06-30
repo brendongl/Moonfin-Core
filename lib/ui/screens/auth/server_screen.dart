@@ -15,6 +15,8 @@ import '../../../data/services/media_server_client_factory.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../util/pin_code_util.dart';
 import '../../../util/platform_detection.dart';
+import '../../../sipflix/sipflix_connection_manager.dart';
+import '../../../sipflix/sipflix_servers.dart';
 import '../../navigation/destinations.dart';
 import '../../widgets/login_scaffold.dart';
 import '../../widgets/pin_entry_dialog.dart';
@@ -221,6 +223,12 @@ class _ServerScreenState extends State<ServerScreen> {
     }
   }
 
+  // Sipflix: cycle the server's CDN → Direct → VN route, then reload.
+  Future<void> _toggleConnection(Server server) async {
+    await SipflixConnectionManager.toggle(server, _serverRepo, _clientFactory);
+    await _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -302,6 +310,17 @@ class _ServerScreenState extends State<ServerScreen> {
                   label: Text(l10n.selectServer),
                   style: _focusableButtonStyle(context),
                 ),
+                if (SipflixServers.isSipflixServer(server.id)) ...[
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: () => _toggleConnection(server),
+                    icon: const Icon(Icons.swap_horiz, size: 18),
+                    label: Text(
+                      'Connection: ${SipflixConnectionManager.label(SipflixConnectionManager.currentRoute(server))}',
+                    ),
+                    style: _focusableButtonStyle(context),
+                  ),
+                ],
               ],
             )
           else
@@ -332,6 +351,22 @@ class _ServerScreenState extends State<ServerScreen> {
                     style: _focusableButtonStyle(context),
                   ),
                 ),
+                if (SipflixServers.isSipflixServer(server.id)) ...[
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _toggleConnection(server),
+                      icon: const Icon(Icons.swap_horiz, size: 18),
+                      label: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          'Connection: ${SipflixConnectionManager.label(SipflixConnectionManager.currentRoute(server))}',
+                        ),
+                      ),
+                      style: _focusableButtonStyle(context),
+                    ),
+                  ),
+                ],
               ],
             ),
         ],

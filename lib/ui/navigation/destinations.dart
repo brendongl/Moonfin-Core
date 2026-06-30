@@ -61,6 +61,7 @@ class Destinations {
 
   static const server = '/server';
   static const login = '/login';
+  static const qrLogin = '/qr-login';
 
   // General
   static const home = '/home';

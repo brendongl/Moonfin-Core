@@ -22,6 +22,8 @@ import '../../../util/focus/dpad_keys.dart';
 import '../../../util/pin_code_util.dart';
 import '../../../util/platform_detection.dart';
 import '../../../util/web_diagnostics_failure.dart';
+import '../../../sipflix/sipflix_connection_manager.dart';
+import '../../../sipflix/sipflix_servers.dart';
 import '../../navigation/destinations.dart';
 import '../../widgets/login_scaffold.dart';
 import '../../widgets/pin_entry_dialog.dart';
@@ -61,6 +63,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final _backFocus = FocusNode();
   final _qcBtnFocus = FocusNode();
   final _pwBtnFocus = FocusNode();
+  final _connectionFocus = FocusNode();
+  final _qrLoginFocus = FocusNode();
 
   Server? _server;
   MediaServerClient? _client;
@@ -115,6 +119,8 @@ class _LoginScreenState extends State<LoginScreen> {
     _backFocus.dispose();
     _qcBtnFocus.dispose();
     _pwBtnFocus.dispose();
+    _connectionFocus.dispose();
+    _qrLoginFocus.dispose();
     _quickConnectTimer?.cancel();
     super.dispose();
   }
@@ -251,6 +257,15 @@ class _LoginScreenState extends State<LoginScreen> {
         });
       }
     }
+  }
+
+  // Sipflix: cycle this server's CDN → Direct → VN route, then re-resolve the
+  // client/server so the next login attempt uses the new endpoint.
+  Future<void> _toggleConnection() async {
+    final server = _server;
+    if (server == null) return;
+    await SipflixConnectionManager.toggle(server, _serverRepo, _clientFactory);
+    await _initServer();
   }
 
   void _focusCredentialEntry() {
@@ -783,6 +798,23 @@ class _LoginScreenState extends State<LoginScreen> {
               onPressed: _isLoading ? null : _login,
               isLoading: _isLoading,
             ),
+            if (_server != null && SipflixServers.isSipflixServer(_server!.id))
+              _buildActionButton(
+                label:
+                    'Connection: ${SipflixConnectionManager.label(SipflixConnectionManager.currentRoute(_server!))}',
+                focusNode: _connectionFocus,
+                onPressed: _isLoading ? null : _toggleConnection,
+              ),
+            // Sipflix: sign in by scanning a QR + typing on your phone.
+            if (_server != null)
+              _buildActionButton(
+                label: 'Sign in with phone',
+                focusNode: _qrLoginFocus,
+                onPressed: _isLoading
+                    ? null
+                    : () => context.go(
+                        '${Destinations.qrLogin}?serverId=${_server!.id}'),
+              ),
           ],
         ),
       ],

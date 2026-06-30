@@ -47,6 +47,9 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.decoder.av1.Dav1dLibrary
 import androidx.media3.decoder.av1.Libdav1dVideoRenderer
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -952,6 +955,23 @@ class Media3VideoView(
             extractorsFactory.withAssMkvSupport(assParserFactory, assHandler),
         ).apply {
             setSubtitleParserFactory(assParserFactory)
+            // Sipflix: Emby HLS transcode segments momentarily 404 (or 503) right
+            // after a seek/resume while ffmpeg is still producing them. The default
+            // policy treats that as a fatal "Source error". Retry those with backoff
+            // (~12s) so the player waits for the transcode to catch up.
+            setLoadErrorHandlingPolicy(object : DefaultLoadErrorHandlingPolicy() {
+                override fun getRetryDelayMsFor(
+                    info: LoadErrorHandlingPolicy.LoadErrorInfo,
+                ): Long {
+                    val ex = info.exception
+                    if (ex is HttpDataSource.InvalidResponseCodeException &&
+                        (ex.responseCode == 404 || ex.responseCode == 503)
+                    ) {
+                        return if (info.errorCount <= 20) 600L else C.TIME_UNSET
+                    }
+                    return super.getRetryDelayMsFor(info)
+                }
+            })
         }
 
         return ExoPlayer.Builder(context, renderersFactory.withAssSupport(assHandler))

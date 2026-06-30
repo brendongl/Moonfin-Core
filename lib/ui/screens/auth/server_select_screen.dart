@@ -29,6 +29,7 @@ import '../../navigation/destinations.dart';
 import '../../widgets/login_scaffold.dart';
 import '../../widgets/overlay_sheet.dart';
 import '../../widgets/server_type_icon.dart';
+import '../../../sipflix/sipflix_servers.dart';
 
 final _kAccent = AppColorScheme.accent;
 
@@ -547,26 +548,30 @@ class _ServerSelectScreenState extends State<ServerSelectScreen> {
               final actions = <Widget>[];
 
               if (!_isWebPluginMode) {
-                actions.add(
-                  _buildFooterActionButton(
-                    onPressed: _isConnecting ? null : _showAddServerDialog,
-                    icon: const Icon(Icons.add, size: 16),
-                    label: l10n.addServer,
-                  ),
-                );
-
-                actions.add(
-                  _buildFooterActionButton(
-                    onPressed: _isConnecting
-                        ? null
-                        : () => context.go(Destinations.embyConnect),
-                    icon: const ServerTypeIcon(
-                      serverType: ServerType.emby,
-                      size: 16,
+                // Sipflix: hide "Add Server" — customers use only the
+                // hardcoded servers injected on first launch.
+                if (!SipflixServers.hideAddServer) {
+                  actions.add(
+                    _buildFooterActionButton(
+                      onPressed: _isConnecting ? null : _showAddServerDialog,
+                      icon: const Icon(Icons.add, size: 16),
+                      label: l10n.addServer,
                     ),
-                    label: l10n.embyConnect,
-                  ),
-                );
+                  );
+
+                  actions.add(
+                    _buildFooterActionButton(
+                      onPressed: _isConnecting
+                          ? null
+                          : () => context.go(Destinations.embyConnect),
+                      icon: const ServerTypeIcon(
+                        serverType: ServerType.emby,
+                        size: 16,
+                      ),
+                      label: l10n.embyConnect,
+                    ),
+                  );
+                }
               }
 
               if (PlatformDetection.isWeb) {

@@ -695,6 +695,32 @@ class PlaybackManager implements AudioOwnable {
       return;
     }
 
+    // For transcode streams, retry transient source/IO errors (e.g., HLS manifest not ready on resume).
+    // These are often "Failed to open" on manifest/segment fetches when the transcode pipeline is catching up.
+    if (kind == 'source' && resolution?.playMethod == StreamPlayMethod.transcode) {
+      _suppressNextGenericBackendError = true;
+      const maxRetries = 3;
+      const baseDelayMs = 800;
+
+      for (int attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          await Future.delayed(Duration(milliseconds: baseDelayMs * (attempt + 1)));
+          await _reResolveAtCurrentPosition();
+          return;
+        } catch (_) {
+          if (attempt == maxRetries - 1) {
+            final message = event['message']?.toString().trim();
+            emitFailedBringupState(
+              message != null && message.isNotEmpty
+                  ? message
+                  : 'Unable to play this stream. Check your internet connection or try again.',
+            );
+          }
+        }
+      }
+      return;
+    }
+
     if (kind != 'unsupported_audio') {
       return;
     }

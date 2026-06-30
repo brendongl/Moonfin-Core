@@ -745,7 +745,9 @@ class UserPreferences extends ChangeNotifier {
 
   static final maxVideoResolution = EnumPreference(
     key: 'pref_max_video_resolution',
-    defaultValue: MaxVideoResolution.auto,
+    // Sipflix: cap to 1080p by default — the fleet's screens are 1080p and the
+    // weak Allwinner boxes can't reliably decode 4K. Server downscales 4K -> 1080p.
+    defaultValue: MaxVideoResolution.res1080p,
     values: MaxVideoResolution.values,
   );
 
@@ -1207,7 +1209,9 @@ class UserPreferences extends ChangeNotifier {
 
   static final mediaBarTrailerPreview = Preference(
     key: 'mediaBarTrailerPreview',
-    defaultValue: true,
+    // Sipflix: off by default — auto-playing trailers keep the flaky Allwinner
+    // video decoder under constant load while just browsing the home screen.
+    defaultValue: false,
   );
 
   static final mediaBarTrailerAudio = Preference(

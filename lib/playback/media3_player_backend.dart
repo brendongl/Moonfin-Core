@@ -7,6 +7,7 @@ import 'package:playback_core/playback_core.dart';
 import '../data/services/log_service.dart';
 import '../preference/preference_constants.dart';
 import '../preference/user_preferences.dart';
+import '../sipflix/sipflix_servers.dart';
 import '../util/platform_detection.dart';
 import 'audio_capability_profile.dart';
 import 'device_profile_builder.dart';
@@ -616,14 +617,21 @@ class Media3PlayerBackend extends PlayerBackend {
       supportsAvcHigh10: PlatformDetection.supportsAvcHigh10,
       avcMainLevel: PlatformDetection.avcMainLevel,
       avcHigh10Level: PlatformDetection.avcHigh10Level,
-      supportsHevc: PlatformDetection.supportsHevc,
-      supportsHevcMain10: PlatformDetection.supportsHevcMain10,
+      // Sipflix: force H.264 — advertise no HEVC/AV1 so the server transcodes
+      // them, keeping the crash-prone Allwinner libOmxVdec off the HEVC path.
+      supportsHevc: PlatformDetection.supportsHevc && !SipflixServers.forceH264,
+      supportsHevcMain10:
+          PlatformDetection.supportsHevcMain10 && !SipflixServers.forceH264,
       hevcMainLevel: PlatformDetection.hevcMainLevel,
-      supportsHevcDolbyVision: PlatformDetection.supportsHevcDolbyVision,
-      supportsHevcDolbyVisionEl: PlatformDetection.supportsHevcDolbyVisionEl,
-      supportsHevcHdr10: PlatformDetection.supportsHevcHdr10,
-      supportsHevcHdr10Plus: PlatformDetection.supportsHevcHdr10Plus,
-      supportsAv1: PlatformDetection.supportsAv1,
+      supportsHevcDolbyVision: PlatformDetection.supportsHevcDolbyVision &&
+          !SipflixServers.forceH264,
+      supportsHevcDolbyVisionEl: PlatformDetection.supportsHevcDolbyVisionEl &&
+          !SipflixServers.forceH264,
+      supportsHevcHdr10:
+          PlatformDetection.supportsHevcHdr10 && !SipflixServers.forceH264,
+      supportsHevcHdr10Plus:
+          PlatformDetection.supportsHevcHdr10Plus && !SipflixServers.forceH264,
+      supportsAv1: PlatformDetection.supportsAv1 && !SipflixServers.forceH264,
       supportsAv1Main10: PlatformDetection.supportsAv1Main10,
       supportsAv1DolbyVision: PlatformDetection.supportsAv1DolbyVision,
       supportsAv1Hdr10: PlatformDetection.supportsAv1Hdr10,

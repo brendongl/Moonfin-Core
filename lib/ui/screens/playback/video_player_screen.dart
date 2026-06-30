@@ -59,6 +59,7 @@ import '../../widgets/playback/still_watching_dialog.dart';
 import '../../widgets/playback/stream_info_dialog.dart';
 import '../../widgets/syncplay/syncplay_player_button.dart';
 import '../../../syncplay/syncplay_manager.dart';
+import '../../../sipflix/sipflix_bitrate_watchdog.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../playback/media3_player_backend.dart';
 import '../../../playback/tizen_player_backend.dart';
@@ -184,6 +185,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   StreamSubscription? _pipActionSub;
   StreamSubscription? _playingSub;
   StreamSubscription? _bufferingSub;
+  // Sipflix: auto-suggest a lower bitrate when playback keeps buffering.
+  final _bitrateWatchdog = SipflixBitrateWatchdog();
+  StreamSubscription<bool>? _sipflixBufferingSub;
+  bool _bitrateDialogShowing = false;
   StreamSubscription<Map<String, dynamic>>? _castEventsSub;
   StreamSubscription<Map<String, dynamic>>? _dlnaEventsSub;
   StreamSubscription<Map<String, dynamic>>? _airPlayEventsSub;
@@ -747,10 +752,71 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     );
   }
 
+  // Sipflix: current effective max bitrate cap in Mbps (session override, else
+  // the user preference; 'auto'/unparseable is treated as above the top tier).
+  int _sipflixCurrentMaxBitrateMbps() {
+    final override = _manager.maxBitrateOverrideMbps;
+    if (override != null) return override;
+    final pref = _prefs.get(UserPreferences.maxBitrate);
+    return int.tryParse(pref) ?? 200;
+  }
+
+  // Sipflix: called on every buffering event; offers the adaptation dialog once
+  // repeated stalls cross the threshold.
+  void _onSipflixBuffering(bool buffering) {
+    if (!buffering || _bitrateDialogShowing) return;
+    if (_bitrateWatchdog.recordAndShouldOffer()) {
+      unawaited(_showBitrateAdaptationDialog());
+    }
+  }
+
+  // Sipflix: prompt to lower the bitrate; on accept, apply the override and
+  // restart the current stream at its current position.
+  Future<void> _showBitrateAdaptationDialog() async {
+    if (_bitrateDialogShowing || !mounted) return;
+    final current = _sipflixCurrentMaxBitrateMbps();
+    final target = SipflixBitrateWatchdog.suggestLowerBitrate(current);
+    if (target >= current) return;
+    _bitrateDialogShowing = true;
+    Timer? autoDismiss;
+    final lower = await showStyledPlayerDialog<bool>(
+      context,
+      title: 'Playback is buffering',
+      subtitle: 'Stream is $current Mbps. Lower to $target Mbps?',
+      builder: (ctx) {
+        autoDismiss ??= Timer(const Duration(seconds: 12), () {
+          if (Navigator.of(ctx).canPop()) Navigator.of(ctx).pop(false);
+        });
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            FilledButton(
+              autofocus: true,
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text('Lower to $target Mbps'),
+            ),
+            const SizedBox(width: 12),
+            OutlinedButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Keep'),
+            ),
+          ],
+        );
+      },
+    );
+    autoDismiss?.cancel();
+    _bitrateDialogShowing = false;
+    if (!mounted || lower != true) return;
+    _manager.setBitrateOverride(target);
+    await _manager.startQueuedPlayback(startPosition: _state.position);
+  }
+
   @override
   void initState() {
     super.initState();
     _screensaverController.setPlaybackActive(true);
+    // Sipflix: watch for repeated buffering to offer a lower bitrate.
+    _sipflixBufferingSub = _state.bufferingStream.listen(_onSipflixBuffering);
     _screensaverPlayingSub = _state.playingStream.listen(
       _screensaverController.setPlaybackActive,
     );
@@ -846,6 +912,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       }
     }
     _queueSub = _queue.queueChangedStream.listen((_) {
+      _bitrateWatchdog.reset(); // Sipflix: fresh buffering tracking per item.
       _loadSegmentsForCurrentItem();
       _manager.suppressAutoNext = false;
       _consecutiveEpisodes++;
@@ -965,6 +1032,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     _pipActionSub?.cancel();
     _playingSub?.cancel();
     _bufferingSub?.cancel();
+    _sipflixBufferingSub?.cancel();
     _castEventsSub?.cancel();
     _dlnaEventsSub?.cancel();
     _airPlayEventsSub?.cancel();
