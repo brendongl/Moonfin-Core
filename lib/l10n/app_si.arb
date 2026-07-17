@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "ප්‍රියතම ගීත මෙහි දිස් වනු ඇත",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "පූරණය කිරීමට අසමත් විය",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "විශේෂිත පරිශීලක",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "සැමවිටම සත්‍යාපනය කරන්න",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "දුරස්ථ පුද්ගලයා සොයන්න",
     "adminNoRemoteMatches": "දුරස්ථ ගැළපීමක් හමු නොවීය",
     "adminRemoteResults": "දුරස්ථ ප්රතිඵල",
     "adminRemoteMetadataApplied": "දුරස්ථ පාරදත්ත යොදන ලදී",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "සුසරකය එක් කරන්න",
     "adminTunerType": "සුසරක වර්ගය",
-    "adminTunerTypeHint": "HDHomeRun, M3U, වෙනත්",
-    "adminUrlPath": "URL / මාර්ගය",
-    "adminNameOptional": "නම (විකල්ප)",
     "adminTunerAdded": "සුසරකය එකතු කරන ලදී",
     "adminTunerAddFailed": "Failed to add tuner: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "මාර්ගෝපදේශ සපයන්නා එක් කරන්න",
     "adminProviderType": "සැපයුම්කරු වර්ගය",
-    "adminProviderTypeHint": "SchedulesDirect හෝ XMLTV",
-    "adminUsernameOptional": "පරිශීලක නාමය (විකල්ප)",
-    "adminRefreshInterval": "නැවුම් කාල පරතරය (පැය)",
     "adminProviderAdded": "සපයන්නා එකතු කරන ලදී",
     "adminProviderAddFailed": "Failed to add provider: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "ගැළපෙන රේඛා නැත",
     "adminMetadataEditorTitle": "පාරදත්ත සංස්කාරකය",
-    "adminMetadataRemote": "දුරස්ථ",
     "adminMetadataType": "ටයිප් කරන්න",
     "adminMetadataDetails": "විස්තර",
     "adminMetadataExternalIds": "බාහිර හැඳුනුම්පත්",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "මගේ තේරීම මතක තබා ගන්න",
     "playHdr10Fallback": "HDR10 පසුබැසීම වාදනය කරන්න",
     "requestTranscode": "ට්‍රාන්ස්කෝඩ් ඉල්ලන්න",
-    "homeScreenSectionsIntegrationDescription": "IAmParadox27 හි \"Home Screen Sections\" ප්ලගිනය මගින් නිරාවරණය වන පේළි හඳුනා ගන්න. පේළි සක්‍රීය කර පහතින් නැවත ඇණවුම් කළ හැක.",
-    "homeScreenSectionsIntegrationNoServers": "Jellyfin සේවාදායකයන් තවමත් ප්ලගිනය වාර්තා නොකරයි.",
-    "integrationOpenHomeSections": "මුල් පිටුව කොටස් විවෘත කරන්න",
-    "integrationOpenHomeSectionsSubtitle": "පේළි සබල කරන්න, අබල කරන්න, සහ නැවත ඇණවුම් කරන්න",
-    "integrationInstalledButDisabled": "ස්ථාපනය කර ඇති නමුත් අබල කර ඇත",
-    "integrationNotInstalled": "ස්ථාපනය කර නැත",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "සියල්ල බලන්න",
     "noItems": "අයිතම නැත",
     "switchUser": "පරිශීලක මාරු කරන්න",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "AAC Stereo",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Passthrough (Advanced)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Delete saved theme",
     "savedThemesManageSubtitle": "Manage downloaded plugin themes on this device",
-    "homeScreenSectionsTitle": "Home Screen Sections",
     "themeEditor": "Theme Editor",
     "themeEditorSubtitle": "Open the Moonfin Theme Editor in your browser",
     "homeScreen": "Home Screen",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "Automatically enable HDR for HDR video playback and restore display mode on exit.",
     "whenFullscreen": "When fullscreen",
     "transcodingLimits": "Transcoding Limits",
-    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer"
+    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer",
+    "reportDownloadsActivity": "සේවාදායකයේ බාගැනීම් පෙන්වන්න",
+    "reportDownloadsActivitySubtitle": "ඔබේ ට්‍රාන්ස්කෝඩ් කළ බාගැනීම් උපකරණ පුවරුවේ බැලීමට සේවාදායක පරිපාලකයාට ඉඩ දෙන්න",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "රූප හැඹිලි සීමාව",
+    "clearImageCache": "රූප හැඹිලිය හිස් කරන්න",
+    "imageCacheCleared": "රූප හැඹිලිය හිස් කරන ලදී"
 }

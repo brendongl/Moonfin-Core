@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "Những bản nhạc yêu thích sẽ xuất hiện ở đây",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "Không tải được",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "Người dùng cụ thể",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "Luôn xác thực",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "Tìm kiếm người ở xa",
     "adminNoRemoteMatches": "Không tìm thấy kết quả phù hợp từ xa",
     "adminRemoteResults": "Kết quả từ xa",
     "adminRemoteMetadataApplied": "Đã áp dụng siêu dữ liệu từ xa",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "Thêm bộ chỉnh",
     "adminTunerType": "Loại bộ chỉnh",
-    "adminTunerTypeHint": "HDHomeRun, M3U, Khác",
-    "adminUrlPath": "URL/Đường dẫn",
-    "adminNameOptional": "Tên (tùy chọn)",
     "adminTunerAdded": "Đã thêm bộ chỉnh",
     "adminTunerAddFailed": "Không thể thêm bộ điều chỉnh: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "Thêm nhà cung cấp hướng dẫn",
     "adminProviderType": "Loại nhà cung cấp",
-    "adminProviderTypeHint": "Lịch trìnhDirect hoặc XMLTV",
-    "adminUsernameOptional": "Tên người dùng (tùy chọn)",
-    "adminRefreshInterval": "Khoảng thời gian làm mới (giờ)",
     "adminProviderAdded": "Đã thêm nhà cung cấp",
     "adminProviderAddFailed": "Không thể thêm nhà cung cấp: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "Không có dòng phù hợp",
     "adminMetadataEditorTitle": "Trình chỉnh sửa siêu dữ liệu",
-    "adminMetadataRemote": "Xa",
     "adminMetadataType": "Kiểu",
     "adminMetadataDetails": "Chi tiết",
     "adminMetadataExternalIds": "ID bên ngoài",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "Hãy nhớ sự lựa chọn của tôi",
     "playHdr10Fallback": "Phát dự phòng HDR10",
     "requestTranscode": "Yêu cầu chuyển mã",
-    "homeScreenSectionsIntegrationDescription": "Phát hiện các hàng được hiển thị bởi plugin \"Phần màn hình chính\" của IAmParadox27. Các hàng có thể được kích hoạt và sắp xếp lại bên dưới.",
-    "homeScreenSectionsIntegrationNoServers": "Chưa có máy chủ Jellyfin nào báo cáo plugin.",
-    "integrationOpenHomeSections": "Mở phần trang chủ",
-    "integrationOpenHomeSectionsSubtitle": "Bật, tắt và sắp xếp lại các hàng",
-    "integrationInstalledButDisabled": "Đã cài nhưng bị tắt",
-    "integrationNotInstalled": "Chưa được cài đặt",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "Xem Tất Cả",
     "noItems": "Không có mục nào",
     "switchUser": "Chuyển đổi người dùng",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "Âm thanh nổi AAC",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Truyền qua (Nâng cao)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Xóa chủ đề đã lưu",
     "savedThemesManageSubtitle": "Quản lý các chủ đề plugin đã tải xuống trên thiết bị này",
-    "homeScreenSectionsTitle": "Phần màn hình chính",
     "themeEditor": "Trình chỉnh sửa chủ đề",
     "themeEditorSubtitle": "Mở Trình chỉnh sửa chủ đề Moonfin trong trình duyệt của bạn",
     "homeScreen": "Màn hình chính",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "Tự động bật HDR để phát lại video HDR và ​​khôi phục chế độ hiển thị khi thoát.",
     "whenFullscreen": "Khi toàn màn hình",
     "transcodingLimits": "Giới hạn chuyển mã",
-    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer"
+    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer",
+    "reportDownloadsActivity": "Hiển thị lượt tải xuống trên máy chủ",
+    "reportDownloadsActivitySubtitle": "Cho phép quản trị viên máy chủ xem các lượt tải xuống đã chuyển mã của bạn trong bảng điều khiển",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "Giới hạn bộ nhớ đệm hình ảnh",
+    "clearImageCache": "Xóa bộ nhớ đệm hình ảnh",
+    "imageCacheCleared": "Đã xóa bộ nhớ đệm hình ảnh"
 }

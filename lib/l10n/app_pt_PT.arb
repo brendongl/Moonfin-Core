@@ -959,10 +959,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "As faixas favoritas aparecerão aqui",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "Falha ao carregar",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3114,18 +3110,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "Estéreo AAC",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Passagem (avançado)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -4460,7 +4444,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5782,7 +5766,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "Pesquisar Pessoa Remota",
     "adminNoRemoteMatches": "Nenhuma correspondência remota encontrada",
     "adminRemoteResults": "Resultados remotos",
     "adminRemoteMetadataApplied": "Metadados remotos aplicados",
@@ -5878,9 +5861,6 @@
     },
     "adminAddTuner": "Adicionar sintonizador",
     "adminTunerType": "Tipo de sintonizador",
-    "adminTunerTypeHint": "HDHomeRun, M3U, Outro",
-    "adminUrlPath": "URL/Caminho",
-    "adminNameOptional": "Nome (opcional)",
     "adminTunerAdded": "Sintonizador adicionado",
     "adminTunerAddFailed": "Falha ao adicionar sintonizador: {error}",
     "@adminTunerAddFailed": {
@@ -5892,9 +5872,6 @@
     },
     "adminAddGuideProvider": "Adicionar fornecedor de guia",
     "adminProviderType": "Tipo de fornecedor",
-    "adminProviderTypeHint": "Horários Direct ou XMLTV",
-    "adminUsernameOptional": "Nome de utilizador (opcional)",
-    "adminRefreshInterval": "Intervalo de atualização (horas)",
     "adminProviderAdded": "Fornecedor adicionado",
     "adminProviderAddFailed": "Falha ao adicionar fornecedor: {error}",
     "@adminProviderAddFailed": {
@@ -6064,7 +6041,6 @@
     },
     "adminLogViewerNoMatches": "Nenhuma linha correspondente",
     "adminMetadataEditorTitle": "Editor de metadados",
-    "adminMetadataRemote": "Remoto",
     "adminMetadataType": "Tipo",
     "adminMetadataDetails": "Detalhes",
     "adminMetadataExternalIds": "IDs externos",
@@ -6598,21 +6574,6 @@
     "rememberMyChoice": "Lembrar a minha escolha",
     "playHdr10Fallback": "Reproduzir substituto HDR10",
     "requestTranscode": "Pedir transcodificação",
-    "homeScreenSectionsIntegrationDescription": "Deteta linhas expostas pelo plugin \"Home Screen Sections\" do IAmParadox27. As linhas podem ser ativadas e reordenadas abaixo.",
-    "homeScreenSectionsIntegrationNoServers": "Nenhum servidor Jellyfin a reportar o plugin ainda.",
-    "integrationOpenHomeSections": "Abrir secções iniciais",
-    "integrationOpenHomeSectionsSubtitle": "Ativar, desativar e reordenar linhas",
-    "integrationInstalledButDisabled": "Instalado, mas desativado",
-    "integrationNotInstalled": "Não instalado",
-    "integrationSectionsCount": "{count, plural, one {# secção} other {# secções}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# linha descoberta} other {# linhas descobertas}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6622,7 +6583,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "Ver tudo",
     "noItems": "Nenhum item",
     "switchUser": "Trocar utilizador",
@@ -7186,7 +7146,6 @@
     },
     "savedThemesDeleteTooltip": "Eliminar tema guardado",
     "savedThemesManageSubtitle": "Gerir temas de plugins baixados neste dispositivo",
-    "homeScreenSectionsTitle": "Secções do ecrã inicial",
     "themeEditor": "Editor de Tema",
     "themeEditorSubtitle": "Abre o Editor de Tema Moonfin no teu navegador",
     "homeScreen": "Ecrã inicial",
@@ -7219,8 +7178,6 @@
     "displayPlaylistsRowsSubtitle": "Mostrar linhas de listas de reprodução nas Secções Iniciais.",
     "playlistsRowSorting": "Classificação de linhas de listas de reprodução",
     "playlistsRowSortingDescription": "Classificar linhas de listas de reprodução por data de adição, data de lançamento, ordem alfabética e muito mais.",
-    "displaySeerrRows": "Mostrar linhas de descoberta Seerr",
-    "displaySeerrRowsSubtitle": "Mostrar linhas de descoberta Seerr nas Secções Iniciais.",
     "appearance": "Aparência",
     "cardSize": "Tamanho do cartão",
     "externalPlayerApp": "Reprodutor externo",
@@ -7458,5 +7415,19 @@
     "autoHdrSwitching": "Troca automática de HDR",
     "autoHdrSwitchingDescription": "Ativa automaticamente o HDR para reprodução de vídeo HDR e restaura o modo de apresentação ao sair.",
     "whenFullscreen": "Quando em ecrã inteiro",
-    "transcodingLimits": "Limites de transcodificação"
+    "transcodingLimits": "Limites de transcodificação",
+    "reportDownloadsActivity": "Mostrar transferências no servidor",
+    "reportDownloadsActivitySubtitle": "Permitir que o administrador do servidor veja as tuas transferências transcodificadas no painel",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "Limite da cache de imagens",
+    "clearImageCache": "Limpar a cache de imagens",
+    "imageCacheCleared": "Cache de imagens limpa"
 }

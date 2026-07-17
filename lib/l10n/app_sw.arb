@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "Nyimbo unazozipenda zaidi zitaonekana hapa",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "Imeshindwa kupakia",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "Mtumiaji Maalum",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "Thibitisha kila wakati",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "Tafuta Mtu wa Mbali",
     "adminNoRemoteMatches": "Hakuna zinazolingana za mbali zilizopatikana",
     "adminRemoteResults": "Matokeo ya Mbali",
     "adminRemoteMetadataApplied": "Metadata ya mbali imetumika",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "Ongeza Tuner",
     "adminTunerType": "Aina ya Kitafuta njia",
-    "adminTunerTypeHint": "HDHomeRun, M3U, Nyingine",
-    "adminUrlPath": "URL / Njia",
-    "adminNameOptional": "Jina (si lazima)",
     "adminTunerAdded": "Kitafuta sauti kimeongezwa",
     "adminTunerAddFailed": "Failed to add tuner: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "Ongeza Mtoa Mwongozo",
     "adminProviderType": "Aina ya Mtoa huduma",
-    "adminProviderTypeHint": "RatibaDirect au XMLTV",
-    "adminUsernameOptional": "Jina la mtumiaji (si lazima)",
-    "adminRefreshInterval": "Kipindi cha kuonyesha upya (saa)",
     "adminProviderAdded": "Mtoa huduma ameongezwa",
     "adminProviderAddFailed": "Failed to add provider: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "Hakuna mistari inayolingana",
     "adminMetadataEditorTitle": "Mhariri wa Metadata",
-    "adminMetadataRemote": "Mbali",
     "adminMetadataType": "Aina",
     "adminMetadataDetails": "Maelezo",
     "adminMetadataExternalIds": "Vitambulisho vya nje",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "Kumbuka chaguo langu",
     "playHdr10Fallback": "Cheza njia mbadala ya HDR10",
     "requestTranscode": "Omba transcode",
-    "homeScreenSectionsIntegrationDescription": "Tambua safu mlalo zilizofichuliwa na programu-jalizi ya \"Sehemu za Skrini ya Nyumbani\" ya IAmParadox27. Safu mlalo zinaweza kuwashwa na kupangwa upya hapa chini.",
-    "homeScreenSectionsIntegrationNoServers": "Bado hakuna seva za Jellyfin zinazoripoti programu-jalizi.",
-    "integrationOpenHomeSections": "Fungua Sehemu za Nyumbani",
-    "integrationOpenHomeSectionsSubtitle": "Washa, zima na upange upya safu mlalo",
-    "integrationInstalledButDisabled": "Imesakinishwa lakini imezimwa",
-    "integrationNotInstalled": "Haijasakinishwa",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "Tazama Yote",
     "noItems": "Hakuna vitu",
     "switchUser": "Badilisha Mtumiaji",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "AAC Stereo",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Passthrough (Advanced)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Delete saved theme",
     "savedThemesManageSubtitle": "Manage downloaded plugin themes on this device",
-    "homeScreenSectionsTitle": "Home Screen Sections",
     "themeEditor": "Theme Editor",
     "themeEditorSubtitle": "Open the Moonfin Theme Editor in your browser",
     "homeScreen": "Home Screen",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "Automatically enable HDR for HDR video playback and restore display mode on exit.",
     "whenFullscreen": "When fullscreen",
     "transcodingLimits": "Transcoding Limits",
-    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer"
+    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer",
+    "reportDownloadsActivity": "Onyesha vipakuliwa kwenye seva",
+    "reportDownloadsActivitySubtitle": "Ruhusu msimamizi wa seva aone vipakuliwa vyako vilivyobadilishwa msimbo kwenye dashibodi",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "Kikomo cha akiba ya picha",
+    "clearImageCache": "Futa akiba ya picha",
+    "imageCacheCleared": "Akiba ya picha imefutwa"
 }

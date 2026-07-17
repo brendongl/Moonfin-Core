@@ -15,6 +15,7 @@ enum TextFieldType {
 }
 
 class CustomTVTextField extends StatefulWidget {
+  static final ValueNotifier<bool> isKeyboardVisibleNotifier = ValueNotifier<bool>(false);
   final TextEditingController controller;
   final bool isFocused;
   final String hint;
@@ -111,6 +112,7 @@ class CustomTVTextFieldState extends State<CustomTVTextField>
   final FocusNode _keyboardFocusNode = FocusNode();
   final FocusNode _systemInputFocusNode = FocusNode();
   FocusNode? _focusToRestoreAfterOverlay;
+  BuildContext? _keyboardOverlayContext;
 
   bool _useSystemImeSession = false;
 
@@ -177,6 +179,7 @@ class CustomTVTextFieldState extends State<CustomTVTextField>
     _initAnimation();
     widget.controller.addListener(_onTextChanged);
     _systemInputFocusNode.addListener(_onSystemInputFocusChanged);
+    _systemInputFocusNode.canRequestFocus = false;
   }
 
   void _onTextChanged() {
@@ -229,11 +232,28 @@ class CustomTVTextFieldState extends State<CustomTVTextField>
   void _onKeyboardStateChanged() {
     if (!_keyboardController.isVisible && _isOverlayOpen.value) {
       _isOverlayOpen.value = false;
+      if (widget.popParentOnKeyboardClose &&
+          mounted &&
+          Navigator.canPop(context)) {
+        Navigator.pop(context);
+      } else {
+        _dismissKeyboardOverlay();
+      }
     }
     if (mounted) {
       setState(() {});
     }
     _notifyVisibilityChanged();
+  }
+
+  void _dismissKeyboardOverlay() {
+    final overlayContext = _keyboardOverlayContext;
+    _keyboardOverlayContext = null;
+    if (overlayContext != null &&
+        overlayContext.mounted &&
+        Navigator.canPop(overlayContext)) {
+      Navigator.pop(overlayContext);
+    }
   }
 
   void _onSystemInputFocusChanged() {
@@ -244,7 +264,9 @@ class CustomTVTextFieldState extends State<CustomTVTextField>
   }
 
   void _notifyVisibilityChanged() {
-    widget.onVisibilityChanged?.call(isKeyboardVisible);
+    final visible = isKeyboardVisible;
+    CustomTVTextField.isKeyboardVisibleNotifier.value = visible;
+    widget.onVisibilityChanged?.call(visible);
   }
 
   @override
@@ -274,9 +296,19 @@ class CustomTVTextFieldState extends State<CustomTVTextField>
     }
 
     if (!_isOverlayOpen.value) {
-      final previousFocus = FocusManager.instance.primaryFocus;
-      _focusToRestoreAfterOverlay =
-          identical(previousFocus, _keyboardFocusNode) ? null : previousFocus;
+      if (widget.popParentOnKeyboardClose) {
+        // Normal case: restore the previously-focused node after the keyboard closes.
+        final previousFocus = FocusManager.instance.primaryFocus;
+        _focusToRestoreAfterOverlay =
+            identical(previousFocus, _keyboardFocusNode) ? null : previousFocus;
+      } else {
+        // Keyboard is inside a parent dialog that manages its own focus.
+        // Do NOT capture primaryFocus here — it may not have updated yet
+        // (Flutter schedules focus changes for the next frame, but openKeyboard()
+        // runs on the event queue before that frame fires). Setting null prevents
+        // whenComplete() from overriding the parent's own requestFocus() call.
+        _focusToRestoreAfterOverlay = null;
+      }
     }
 
     _keyboardController.setText(widget.controller.text);
@@ -308,6 +340,8 @@ class CustomTVTextFieldState extends State<CustomTVTextField>
       _keyboardController.hide(false);
     }
 
+    _systemInputFocusNode.canRequestFocus = true;
+
     if (!_useSystemImeSession) {
       setState(() {
         _useSystemImeSession = true;
@@ -325,11 +359,21 @@ class CustomTVTextFieldState extends State<CustomTVTextField>
       _useSystemImeSession = false;
     });
     _notifyVisibilityChanged();
+
+    _systemInputFocusNode.unfocus();
+    _systemInputFocusNode.canRequestFocus = false;
+
+    try {
+      final parentFocus = Focus.of(context);
+      if (parentFocus.canRequestFocus) {
+        parentFocus.requestFocus();
+      }
+    } catch (_) {}
   }
 
   void _requestSystemInputFocus() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
+      if (!mounted || !_useSystemImeSession) return;
       _systemInputFocusNode.requestFocus();
       SystemChannels.textInput.invokeMethod<void>('TextInput.show');
       Scrollable.ensureVisible(
@@ -338,6 +382,13 @@ class CustomTVTextFieldState extends State<CustomTVTextField>
         duration: const Duration(milliseconds: 160),
         curve: Curves.easeOut,
       );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_useSystemImeSession) return;
+        if (!_systemInputFocusNode.hasFocus) {
+          _systemInputFocusNode.requestFocus();
+        }
+        SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+      });
     });
   }
 
@@ -358,20 +409,27 @@ class CustomTVTextFieldState extends State<CustomTVTextField>
       context: context,
       barrierDismissible: false,
       barrierColor: Colors.black.withValues(alpha: 0.01),
-      builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: EdgeInsets.zero,
-        child: CustomKeyboard(
-          keyboardController: _keyboardController,
-          focusNode: _keyboardFocusNode,
-          keyboardType: widget.keyboardType,
-          inputPurpose: widget.inputPurpose,
-          suggestionsBuilder: widget.suggestionsBuilder,
-          recentSuggestions: widget.recentSuggestions,
-        ),
-      ),
+      builder: (dialogContext) {
+        _keyboardOverlayContext = dialogContext;
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: EdgeInsets.zero,
+          child: CustomKeyboard(
+            keyboardController: _keyboardController,
+            focusNode: _keyboardFocusNode,
+            keyboardType: widget.keyboardType,
+            inputPurpose: widget.inputPurpose,
+            suggestionsBuilder: widget.suggestionsBuilder,
+            recentSuggestions: widget.recentSuggestions,
+          ),
+        );
+      },
     ).whenComplete(() {
+      _keyboardOverlayContext = null;
       _isOverlayOpen.value = false;
+      if (_keyboardController.isVisible) {
+        _keyboardController.hide(false);
+      }
 
       final focusToRestore = _focusToRestoreAfterOverlay;
       _focusToRestoreAfterOverlay = null;
@@ -385,6 +443,9 @@ class CustomTVTextFieldState extends State<CustomTVTextField>
 
   @override
   void dispose() {
+    if (isKeyboardVisible) {
+      CustomTVTextField.isKeyboardVisibleNotifier.value = false;
+    }
     widget.controller.removeListener(_onTextChanged);
     _systemInputFocusNode.removeListener(_onSystemInputFocusChanged);
     _keyboardController.removeListener(_onKeyboardStateChanged);
@@ -414,27 +475,30 @@ class CustomTVTextFieldState extends State<CustomTVTextField>
               child: Stack(
                 children: [
                   Positioned.fill(
-                    child: IgnorePointer(
-                      ignoring: !_isSystemImeActive,
-                      child: Opacity(
-                        opacity: _isSystemImeActive ? 0.01 : 0.0,
-                        child: TextField(
-                          controller: widget.controller,
-                          focusNode: _systemInputFocusNode,
-                          readOnly: !_isSystemImeActive,
-                          showCursor: _isSystemImeActive,
-                          keyboardType: _systemKeyboardType(),
-                          textInputAction: TextInputAction.done,
-                          obscureText: widget.obscureText,
-                          decoration: const InputDecoration(
-                            border: InputBorder.none,
-                            isDense: true,
-                            contentPadding: EdgeInsets.zero,
+                    child: ExcludeFocus(
+                      excluding: !_isSystemImeActive,
+                      child: IgnorePointer(
+                        ignoring: !_isSystemImeActive,
+                        child: Opacity(
+                          opacity: _isSystemImeActive ? 0.01 : 0.0,
+                          child: TextField(
+                            controller: widget.controller,
+                            focusNode: _systemInputFocusNode,
+                            readOnly: !_isSystemImeActive,
+                            showCursor: _isSystemImeActive,
+                            keyboardType: _systemKeyboardType(),
+                            textInputAction: TextInputAction.done,
+                            obscureText: widget.obscureText,
+                            decoration: const InputDecoration(
+                              border: InputBorder.none,
+                              isDense: true,
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                            onSubmitted: (value) {
+                              widget.onFieldSubmitted?.call(value);
+                              _deactivateSystemIme();
+                            },
                           ),
-                          onSubmitted: (value) {
-                            widget.onFieldSubmitted?.call(value);
-                            _deactivateSystemIme();
-                          },
                         ),
                       ),
                     ),
@@ -447,6 +511,7 @@ class CustomTVTextFieldState extends State<CustomTVTextField>
                           widget.isFocused ||
                           _keyboardController.isVisible ||
                           _isSystemImeActive,
+                      showCursor: _keyboardController.isVisible || _isSystemImeActive,
                       blinkAnimation: _blinkAnimation,
                       hasError: error != null,
                       scrollController: _scrollController,
@@ -481,6 +546,7 @@ class CustomTVTextFieldState extends State<CustomTVTextField>
 class _FieldDisplay extends StatelessWidget {
   final CustomTVTextField widget;
   final bool hasFocus;
+  final bool showCursor;
   final Animation<double> blinkAnimation;
   final bool hasError;
   final ScrollController scrollController;
@@ -488,6 +554,7 @@ class _FieldDisplay extends StatelessWidget {
   const _FieldDisplay({
     required this.widget,
     required this.hasFocus,
+    required this.showCursor,
     required this.blinkAnimation,
     required this.scrollController,
     this.hasError = false,
@@ -498,9 +565,9 @@ class _FieldDisplay extends StatelessWidget {
     final borderColor = hasError
         ? Colors.redAccent
         : (widget.borderColor ?? theme.canvasColor);
-    final focusedColor =
-        widget.focusedBorderColor ??
-        (hasFocus ? (hasError ? Colors.redAccent : Colors.white) : borderColor);
+    final focusedColor = hasFocus
+        ? (widget.focusedBorderColor ?? (hasError ? Colors.redAccent : Colors.white))
+        : borderColor;
 
     return BoxDecoration(
       color: widget.fillColor ?? widget.backgroundColor,
@@ -567,7 +634,7 @@ class _FieldDisplay extends StatelessWidget {
                     WidgetSpan(
                       alignment: PlaceholderAlignment.middle,
                       child: Visibility(
-                        visible: hasFocus,
+                        visible: showCursor,
                         maintainSize: true,
                         maintainAnimation: true,
                         maintainState: true,

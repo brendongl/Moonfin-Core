@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_tvos/flutter_tvos.dart'
+    show TvRemoteController, TvRemoteTouchEvent, TvRemoteTouchPhase;
 import 'package:moonfin_design/moonfin_design.dart';
 
 import '../../preference/preference_constants.dart';
+import '../../util/platform_detection.dart';
 import '../../util/focus/dpad_keys.dart';
 import '../../util/focus/key_event_utils.dart';
 import 'bounded_network_image.dart';
+import 'focus/glass_focus_halo.dart';
 import 'marquee_text.dart';
 import '../mixins/focus_state_mixin.dart';
 
@@ -42,6 +46,15 @@ class MediaCard extends StatefulWidget {
   final bool suppressFocusGlow;
   final Color? titleColor;
   final Color? subtitleColor;
+  final bool isGenreFallback;
+
+  /// Extra widgets layered over the poster image (inside its clip), e.g.
+  /// format badges. Position each with [Positioned].
+  final List<Widget> imageOverlays;
+
+  /// Set when an [imageOverlays] entry occupies the top-left corner so the
+  /// favorite heart shifts down, like it does for the Seerr badge.
+  final bool overlayOccupiesTopLeft;
 
   const MediaCard({
     super.key,
@@ -77,6 +90,9 @@ class MediaCard extends StatefulWidget {
     this.suppressFocusGlow = false,
     this.titleColor,
     this.subtitleColor,
+    this.imageOverlays = const [],
+    this.overlayOccupiesTopLeft = false,
+    this.isGenreFallback = false,
   });
 
   static IconData iconForType(String? type) {
@@ -112,6 +128,10 @@ class MediaCard extends StatefulWidget {
         return Icons.playlist_play;
       case 'Book':
         return Icons.book;
+      case 'AudioBook':
+        return Icons.headphones;
+      case 'BookSeries':
+        return Icons.collections_bookmark;
       default:
         return Icons.movie;
     }
@@ -155,11 +175,22 @@ class _MediaCardState extends State<MediaCard> with FocusStateMixin {
     final baseTextStyle =
         Theme.of(context).textTheme.bodySmall ?? const TextStyle(fontSize: 12);
     final subtitleColor =
-        widget.subtitleColor ?? Theme.of(context).colorScheme.onSurface.withAlpha(153);
+        widget.subtitleColor ??
+        (isNeon
+            ? AppColorScheme.onSurface
+            : Theme.of(context).colorScheme.onSurface.withAlpha(153));
     final titleStyle = baseTextStyle.copyWith(
-      color: widget.titleColor ?? (isNeon ? AppColorScheme.accent : baseTextStyle.color),
+      color:
+          widget.titleColor ??
+          (isNeon ? AppColorScheme.accent : baseTextStyle.color),
+      fontWeight: FontWeight.bold,
+      fontSize: (baseTextStyle.fontSize ?? 12) + 1.0,
+      shadows: const [Shadow(blurRadius: 4, color: Colors.black54)],
     );
-    final subtitleStyle = baseTextStyle.copyWith(color: subtitleColor);
+    final subtitleStyle = baseTextStyle.copyWith(
+      color: subtitleColor,
+      shadows: const [Shadow(blurRadius: 4, color: Colors.black54)],
+    );
     final textScaler = MediaQuery.textScalerOf(context);
 
     double lineHeightFor(TextStyle style) {
@@ -176,6 +207,9 @@ class _MediaCardState extends State<MediaCard> with FocusStateMixin {
         ? (widget.externalIsFocused! || hovered)
         : (focused || hasNodeFocus);
     final showMarquee = hovered || effectiveFocused;
+    final cardActive =
+        widget.cardFocusExpansion &&
+        (externallyDriven ? effectiveFocused : showFocusBorder);
     final inner = GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapDown: (_) => widget.onPressStart?.call(),
@@ -190,73 +224,78 @@ class _MediaCardState extends State<MediaCard> with FocusStateMixin {
           ? null
           : () => widget.onLongPress!(),
       child: RepaintBoundary(
-        child: AnimatedScale(
-        scale:
-            widget.cardFocusExpansion &&
-                (externallyDriven ? effectiveFocused : showFocusBorder)
-            ? 1.05
-            : 1.0,
-        duration: const Duration(milliseconds: 150),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _CardImage(
-              imageUrl: widget.imageUrl,
-              title: widget.title,
-              aspectRatio: widget.aspectRatio,
-              isFavorite: widget.isFavorite,
-              isPlayed: widget.isPlayed,
-              unplayedCount: widget.unplayedCount,
-              playedPercentage: widget.playedPercentage,
-              watchedBehavior: widget.watchedBehavior,
-              focused: effectiveFocused,
-              hovered: hovered,
-              focusColor: widget.focusColor,
-              suppressFocusBorder: widget.suppressImageFocusBorder,
-              suppressFocusGlow: widget.suppressFocusGlow,
-              isCircular: widget.itemType == 'Person',
-              itemType: widget.itemType,
-              seerrMediaType: widget.seerrMediaType,
-              seerrStatus: widget.seerrStatus,
+        child: _withTvParallax(
+          active: cardActive,
+          child: AnimatedScale(
+            scale: cardActive
+                ? (PlatformDetection.isAppleTV ? 1.12 : 1.05)
+                : 1.0,
+            duration: const Duration(milliseconds: 150),
+            curve: PlatformDetection.isAppleTV
+                ? Curves.easeOutCubic
+                : Curves.linear,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _CardImage(
+                  imageUrl: widget.imageUrl,
+                  title: widget.title,
+                  aspectRatio: widget.aspectRatio,
+                  isFavorite: widget.isFavorite,
+                  isPlayed: widget.isPlayed,
+                  unplayedCount: widget.unplayedCount,
+                  playedPercentage: widget.playedPercentage,
+                  watchedBehavior: widget.watchedBehavior,
+                  focused: effectiveFocused,
+                  hovered: hovered,
+                  focusColor: widget.focusColor,
+                  suppressFocusBorder: widget.suppressImageFocusBorder,
+                  suppressFocusGlow: widget.suppressFocusGlow,
+                  isCircular: widget.itemType == 'Person',
+                  itemType: widget.itemType,
+                  seerrMediaType: widget.seerrMediaType,
+                  seerrStatus: widget.seerrStatus,
+                  imageOverlays: widget.imageOverlays,
+                  overlayOccupiesTopLeft: widget.overlayOccupiesTopLeft,
+                  isGenreFallback: widget.isGenreFallback,
+                ),
+                if (widget.title != null) ...[
+                  const SizedBox(height: 6),
+                  SizedBox(
+                    height: titleLineHeight,
+                    child: showMarquee
+                        ? MarqueeText(text: widget.title!, style: titleStyle)
+                        : Text(
+                            widget.title!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: titleStyle,
+                          ),
+                  ),
+                ],
+                if (widget.subtitleWidget != null) ...[
+                  SizedBox(height: widget.title != null ? 2 : 6),
+                  widget.subtitleWidget!,
+                ] else if (widget.subtitle != null &&
+                    widget.subtitle!.isNotEmpty)
+                  SizedBox(
+                    height: subtitleLineHeight,
+                    child: showMarquee
+                        ? MarqueeText(
+                            text: widget.subtitle!,
+                            style: subtitleStyle,
+                          )
+                        : Text(
+                            widget.subtitle!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: subtitleStyle,
+                          ),
+                  ),
+              ],
             ),
-            if (widget.title != null) ...[
-              const SizedBox(height: 6),
-              SizedBox(
-                height: titleLineHeight,
-                child: showMarquee
-                    ? MarqueeText(
-                        text: widget.title!,
-                        style: titleStyle,
-                      )
-                    : Text(
-                        widget.title!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: titleStyle,
-                      ),
-              ),
-            ],
-            if (widget.subtitleWidget != null) ...[
-              SizedBox(height: widget.title != null ? 2 : 6),
-              widget.subtitleWidget!,
-            ] else if (widget.subtitle != null && widget.subtitle!.isNotEmpty)
-              SizedBox(
-                height: subtitleLineHeight,
-                child: showMarquee
-                    ? MarqueeText(
-                        text: widget.subtitle!,
-                        style: subtitleStyle,
-                      )
-                    : Text(
-                        widget.subtitle!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: subtitleStyle,
-                      ),
-              ),
-          ],
-        ),
+          ),
         ),
       ),
     );
@@ -286,7 +325,8 @@ class _MediaCardState extends State<MediaCard> with FocusStateMixin {
                   if (handlerResult != KeyEventResult.ignored) {
                     return handlerResult;
                   }
-                } else if (event is KeyDownEvent && event.logicalKey.isSelectKey) {
+                } else if (event is KeyDownEvent &&
+                    event.logicalKey.isSelectKey) {
                   widget.onTap?.call();
                   return KeyEventResult.handled;
                 }
@@ -306,6 +346,122 @@ class _MediaCardState extends State<MediaCard> with FocusStateMixin {
     );
 
     return SizedBox(width: widget.width, child: mouseRegion);
+  }
+
+  Widget _withTvParallax({required bool active, required Widget child}) {
+    if (!PlatformDetection.isAppleTV) return child;
+    return _TvFocusParallax(active: active, child: child);
+  }
+}
+
+class _TvFocusParallax extends StatefulWidget {
+  final bool active;
+  final Widget child;
+
+  const _TvFocusParallax({required this.active, required this.child});
+
+  @override
+  State<_TvFocusParallax> createState() => _TvFocusParallaxState();
+}
+
+class _TvFocusParallaxState extends State<_TvFocusParallax>
+    with SingleTickerProviderStateMixin {
+  static const double _maxAngle = 0.10;
+  static const double _ease = 0.18;
+
+  late final _ticker = createTicker(_onTick);
+  final ValueNotifier<Offset> _tilt = ValueNotifier<Offset>(Offset.zero);
+  Offset _target = Offset.zero;
+  bool _listening = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.active) _attach();
+  }
+
+  @override
+  void didUpdateWidget(_TvFocusParallax oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !oldWidget.active) {
+      _attach();
+    } else if (!widget.active && oldWidget.active) {
+      _detach();
+    }
+  }
+
+  @override
+  void dispose() {
+    _detach();
+    _ticker.dispose();
+    _tilt.dispose();
+    super.dispose();
+  }
+
+  void _attach() {
+    if (_listening) return;
+    _listening = true;
+    TvRemoteController.instance.addRawListener(_onTouch);
+  }
+
+  void _detach() {
+    if (_listening) {
+      TvRemoteController.instance.removeRawListener(_onTouch);
+      _listening = false;
+    }
+    _target = Offset.zero;
+    _startTicker();
+  }
+
+  void _onTouch(TvRemoteTouchEvent event) {
+    if (!widget.active) return;
+    switch (event.phase) {
+      case TvRemoteTouchPhase.started:
+      case TvRemoteTouchPhase.move:
+      case TvRemoteTouchPhase.loc:
+        _target = Offset(event.x.clamp(-1.0, 1.0), event.y.clamp(-1.0, 1.0));
+        _startTicker();
+      case TvRemoteTouchPhase.ended:
+      case TvRemoteTouchPhase.cancelled:
+        _target = Offset.zero;
+        _startTicker();
+      case TvRemoteTouchPhase.clickStart:
+      case TvRemoteTouchPhase.clickEnd:
+        break;
+    }
+  }
+
+  void _startTicker() {
+    if (!_ticker.isActive) _ticker.start();
+  }
+
+  void _onTick(Duration _) {
+    final next = Offset.lerp(_tilt.value, _target, _ease)!;
+    if (_target == Offset.zero && next.distance < 0.002) {
+      _tilt.value = Offset.zero;
+      _ticker.stop();
+      return;
+    }
+    _tilt.value = next;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<Offset>(
+      valueListenable: _tilt,
+      child: widget.child,
+      builder: (context, tilt, child) {
+        if (tilt == Offset.zero) return child!;
+        return Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.identity()
+            ..setEntry(3, 2, 0.0012)
+            ..rotateY(tilt.dx * _maxAngle)
+            ..rotateX(-tilt.dy * _maxAngle),
+          child: child,
+        );
+      },
+    );
   }
 }
 
@@ -327,6 +483,9 @@ class _CardImage extends StatelessWidget {
   final String? itemType;
   final String? seerrMediaType;
   final int? seerrStatus;
+  final List<Widget> imageOverlays;
+  final bool overlayOccupiesTopLeft;
+  final bool isGenreFallback;
 
   const _CardImage({
     this.imageUrl,
@@ -346,15 +505,22 @@ class _CardImage extends StatelessWidget {
     this.itemType,
     this.seerrMediaType,
     this.seerrStatus,
+    this.imageOverlays = const [],
+    this.overlayOccupiesTopLeft = false,
+    this.isGenreFallback = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final radius = isCircular ? 999.0 : 8.0;
     final showBorder = !suppressFocusBorder && (focused || hovered);
-    final borderColor = focusColor ?? Theme.of(context).colorScheme.primary;
+    final borderColor = focusColor ??
+        (GlassFocusHalo.appleStyleActive
+            ? Colors.white
+            : Theme.of(context).colorScheme.primary);
     final borders = ThemeRegistry.active.borders;
-    final showGlow = showBorder && !suppressFocusGlow && borders.focusGlow.isNotEmpty;
+    final showGlow =
+        showBorder && !suppressFocusGlow && borders.focusGlow.isNotEmpty;
 
     return AspectRatio(
       aspectRatio: aspectRatio,
@@ -364,16 +530,16 @@ class _CardImage extends StatelessWidget {
         children: [
           if (showGlow)
             Positioned(
-              top: -1.0,
-              bottom: -1.0,
-              left: -1.0,
-              right: -1.0,
+              top: -3.5,
+              bottom: -3.5,
+              left: -3.5,
+              right: -3.5,
               child: IgnorePointer(
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius: isCircular
-                        ? BorderRadius.circular(radius + 1.0)
-                        : borders.cardRadius + BorderRadius.circular(1.0),
+                        ? AppRadius.circular(radius + 3.5)
+                        : borders.cardRadius + AppRadius.circular(3.5),
                     boxShadow: borders.focusGlow,
                   ),
                 ),
@@ -381,7 +547,7 @@ class _CardImage extends StatelessWidget {
             ),
           ClipRRect(
             borderRadius: isCircular
-                ? BorderRadius.circular(radius)
+                ? AppRadius.circular(radius)
                 : borders.cardRadius,
             child: Stack(
               fit: StackFit.expand,
@@ -390,28 +556,67 @@ class _CardImage extends StatelessWidget {
                   color: (itemType == 'Network' || itemType == 'Studio')
                       ? Theme.of(context).colorScheme.surfaceContainerHighest
                       : (imageUrl != null
-                          ? Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.2)
-                          : Colors.transparent),
+                            ? Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainerHighest
+                                  .withValues(alpha: 0.2)
+                            : Colors.transparent),
                   padding: (itemType == 'Network' || itemType == 'Studio')
                       ? const EdgeInsets.all(8.0)
                       : EdgeInsets.zero,
                   child: imageUrl != null
-                      ? BoundedNetworkImage(
-                          imageUrl: imageUrl!,
-                          fit: (itemType == 'Network' || itemType == 'Studio')
-                              ? BoxFit.contain
-                              : BoxFit.cover,
-                          fadeInDuration: Duration.zero,
-                          scale: isCircular ? 0.8 : 0.9,
-                          maxWidth: aspectRatio > 1.2 ? 960 : 640,
-                          errorBuilder: (_, _, _) =>
-                              _PlaceholderIcon(itemType: itemType, title: title),
+                      ? Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            BoundedNetworkImage(
+                              imageUrl: imageUrl!,
+                              fit: (itemType == 'Network' || itemType == 'Studio')
+                                  ? BoxFit.contain
+                                  : BoxFit.cover,
+                              fadeInDuration: Duration.zero,
+                              scale: isCircular ? 0.8 : 0.9,
+                              maxWidth: aspectRatio > 1.2 ? 960 : 640,
+                              errorBuilder: (_, _, _) => _PlaceholderIcon(
+                                itemType: itemType,
+                                title: title,
+                              ),
+                            ),
+                            if (isGenreFallback) ...[
+                              Container(
+                                color: Colors.black.withValues(alpha: 0.45),
+                              ),
+                              if (title != null && title!.isNotEmpty)
+                                Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12.0),
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Text(
+                                        title!.toUpperCase(),
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: 2.5,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurface
+                                              .withValues(alpha: 0.9),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ],
                         )
                       : _PlaceholderIcon(itemType: itemType, title: title),
                 ),
                 if (isFavorite)
                   Positioned(
-                    top: _showSeerrMediaTypeBadge ? 28 : 4,
+                    top: (_showSeerrMediaTypeBadge || overlayOccupiesTopLeft)
+                        ? 28
+                        : 4,
                     left: 4,
                     child: Icon(
                       Icons.favorite,
@@ -439,34 +644,40 @@ class _CardImage extends StatelessWidget {
                     right: 6,
                     bottom: 6,
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(3),
+                      borderRadius: AppRadius.circular(3),
                       child: LinearProgressIndicator(
                         value: playedPercentage! / 100,
                         minHeight: 6,
-                        backgroundColor: AppColorScheme.scrim.withValues(alpha: 0.54),
+                        backgroundColor: AppColorScheme.scrim.withValues(
+                          alpha: 0.54,
+                        ),
                         valueColor: AlwaysStoppedAnimation<Color>(
                           AppColorScheme.accent,
                         ),
                       ),
                     ),
                   ),
+                ...imageOverlays,
               ],
             ),
           ),
           if (showBorder)
             Positioned(
-              top: -1.0,
-              bottom: -1.0,
-              left: -1.0,
-              right: -1.0,
+              top: -3.5,
+              bottom: -3.5,
+              left: -3.5,
+              right: -3.5,
               child: IgnorePointer(
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius: isCircular
-                        ? BorderRadius.circular(radius + 1.0)
-                        : borders.cardRadius + BorderRadius.circular(1.0),
+                        ? AppRadius.circular(radius + 3.5)
+                        : borders.cardRadius + AppRadius.circular(3.5),
                     border: Border.fromBorderSide(
-                      borders.focusBorder.copyWith(color: borderColor),
+                      borders.focusBorder.copyWith(
+                        color: borderColor,
+                        width: 3.0,
+                      ),
                     ),
                   ),
                 ),
@@ -511,7 +722,7 @@ class _CardImage extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: badgeColor.withValues(alpha: 0.85),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: AppRadius.circular(4),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -543,7 +754,11 @@ class _CardImage extends StatelessWidget {
     if (seerrStatus == 4) {
       return _buildStatusCircle(
         fillColor: AppColorScheme.statusAvailable,
-        icon: Icon(Icons.remove_rounded, size: 13, color: AppColorScheme.onBadge),
+        icon: Icon(
+          Icons.remove_rounded,
+          size: 13,
+          color: AppColorScheme.onBadge,
+        ),
       );
     }
 
@@ -610,7 +825,7 @@ class _CardImage extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
         decoration: BoxDecoration(
           color: AppColorScheme.badgeUnplayed,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: AppRadius.circular(8),
         ),
         child: Text(
           '$unplayedCount',
@@ -652,16 +867,19 @@ class _PlaceholderIcon extends StatelessWidget {
             ? Center(
                 child: Padding(
                   padding: const EdgeInsets.all(12.0),
-                  child: Text(
-                    title!.toUpperCase(),
-                    textAlign: TextAlign.center,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 2.5,
-                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      title!.toUpperCase(),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 2.5,
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withValues(alpha: 0.5),
+                      ),
                     ),
                   ),
                 ),

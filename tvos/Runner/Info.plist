@@ -3,6 +3,8 @@
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <key>ITSAppUsesNonExemptEncryption</key>
+  <false/>
   <key>CFBundleDevelopmentRegion</key>
   <string>$(DEVELOPMENT_LANGUAGE)</string>
   <key>CFBundleDisplayName</key>
@@ -50,6 +52,19 @@
   <key>UIRequiredDeviceCapabilities</key>
   <array>
     <string>arm64</string>
+  </array>
+  <key>GCSupportsControllerUserInteraction</key>
+  <true/>
+  <key>GCSupportedGameControllers</key>
+  <array>
+    <dict>
+      <key>ProfileName</key>
+      <string>ExtendedGamepad</string>
+    </dict>
+    <dict>
+      <key>ProfileName</key>
+      <string>MicroGamepad</string>
+    </dict>
   </array>
 </dict>
 </plist>

@@ -48,7 +48,8 @@ class PluginSyncService extends ChangeNotifier {
   String? get seerrUrl => _seerrUrl;
   bool _seerrEnabled = false;
   bool get seerrEnabled => _seerrEnabled;
-  bool get seerrAvailable => _pluginAvailable && _seerrEnabled;
+  bool get seerrAvailable =>
+      _pluginAvailable && _seerrEnabled && _prefs.get(UserPreferences.seerrEnabled);
   bool _seerrInfoAvailable = false;
   bool get seerrInfoAvailable => _seerrInfoAvailable;
 
@@ -58,6 +59,14 @@ class PluginSyncService extends ChangeNotifier {
   bool get tmdbAvailable => _tmdbAvailable;
   String? _activeThemeCacheServerId;
   void Function(String message)? onAdminMessage;
+  void Function(
+    String title,
+    String body,
+    String route, {
+    String? requestId,
+    bool isRequest,
+  })?
+  onSeerrNotification;
   CancelToken? _settingsStreamCancelToken;
   StreamSubscription<String>? _settingsStreamSubscription;
   bool _settingsStreamReconnectPending = false;
@@ -170,6 +179,7 @@ class PluginSyncService extends ChangeNotifier {
       _prefs.getEffectivePreference(UserPreferences.seerrEnabled),
       enabled,
     );
+    _seerrPrefs.setEnabled(enabled);
     _prefs.notifyPreferenceChanged();
   }
 
@@ -205,19 +215,23 @@ class PluginSyncService extends ChangeNotifier {
 
       _pluginAvailable = true;
       _pluginVersion = _readString(pingResult, 'version');
-      _seerrUrl = _readString(pingResult, 'jellyseerrUrl');
-      _seerrEnabled = _readBool(pingResult, 'jellyseerrEnabled') ?? false;
+      _seerrUrl = _readString(pingResult, 'seerrUrl');
+      _seerrEnabled = _readBool(pingResult, 'seerrEnabled') ?? false;
       _mdblistAvailable = _readBool(pingResult, 'mdblistAvailable') ?? false;
       _tmdbAvailable = _readBool(pingResult, 'tmdbAvailable') ?? false;
 
-      final seerrConfig = await _fetchJellyseerrConfig(client);
+      final seerrConfig = await _fetchSeerrConfig(client);
       if (seerrConfig != null) {
         _seerrInfoAvailable = true;
         _seerrUrl = _readString(seerrConfig, 'url') ?? _seerrUrl;
 
         final enabled = _readBool(seerrConfig, 'enabled');
         final userEnabled = _readBool(seerrConfig, 'userEnabled');
-        _seerrEnabled = (enabled ?? _seerrEnabled) && (userEnabled ?? true);
+        _seerrEnabled = enabled ?? _seerrEnabled;
+
+        if (userEnabled != null) {
+          _setLocalSeerrEnabled(userEnabled);
+        }
 
         final variant = _readString(seerrConfig, 'variant');
         if (variant != null && variant.trim().isNotEmpty) {
@@ -228,9 +242,9 @@ class PluginSyncService extends ChangeNotifier {
         if (displayName != null && displayName.trim().isNotEmpty) {
           await _seerrPrefs.setMoonfinDisplayName(displayName);
         }
+      } else {
+        _setLocalSeerrEnabled(_seerrEnabled);
       }
-
-      _setLocalSeerrEnabled(_seerrEnabled);
 
       notifyListeners();
       return _PluginAvailabilityStatus.available;
@@ -312,7 +326,6 @@ class PluginSyncService extends ChangeNotifier {
 
       final resolved = await _fetchResolvedProfile(client, _profileName);
       if (resolved == null) {
-        // Keep initialization pending so a later login can retry profile pull.
         return;
       }
 
@@ -386,39 +399,88 @@ class PluginSyncService extends ChangeNotifier {
       if (parsed is! Map<String, dynamic>) {
         return;
       }
-
-      if (parsed['type'] == 'adminMessage') {
-        final text = parsed['text'];
-        if (text is String) {
-          final trimmed = text.trim();
-          if (trimmed.isNotEmpty) {
-            onAdminMessage?.call(trimmed);
-          }
-        }
-        return;
-      }
-
-      if (parsed['type'] == 'themesChanged') {
-        await _refreshCustomThemes(client);
-        notifyListeners();
-        return;
-      }
-
-      if (parsed['type'] != 'settingsUpdated') {
-        return;
-      }
-
-      final resolved = await _fetchResolvedProfile(client, _profileName);
-      if (resolved == null) {
-        return;
-      }
-
-      await _applyServerSettings(resolved);
-      notifyListeners();
+      await _dispatchServerEvent(client, parsed);
     } catch (_) {}
   }
 
+  // Entry point for plugin events delivered over the session websocket
+  // (Emby servers, where the SSE stream is unavailable).
+  Future<void> handleServerEvent(
+    MediaServerClient client,
+    Map<String, dynamic> payload,
+  ) async {
+    try {
+      await _dispatchServerEvent(client, payload);
+    } catch (_) {}
+  }
+
+  // Reads a key tolerating PascalCase, since the websocket path may
+  // re-serialize the payload with capitalized keys.
+  static dynamic _eventValue(Map<String, dynamic> map, String key) =>
+      map[key] ?? map[key[0].toUpperCase() + key.substring(1)];
+
+  Future<void> _dispatchServerEvent(
+    MediaServerClient client,
+    Map<String, dynamic> parsed,
+  ) async {
+    final type = _eventValue(parsed, 'type');
+
+    if (type == 'adminMessage') {
+      final text = _eventValue(parsed, 'text');
+      if (text is String) {
+        final trimmed = text.trim();
+        if (trimmed.isNotEmpty) {
+          onAdminMessage?.call(trimmed);
+        }
+      }
+      return;
+    }
+
+    if (type == 'seerrNotification') {
+      final title = _eventValue(parsed, 'title');
+      final body = _eventValue(parsed, 'body');
+      final route = _eventValue(parsed, 'route');
+      final kind = _eventValue(parsed, 'kind');
+      final requestIdRaw = _eventValue(parsed, 'requestId');
+      final requestId = requestIdRaw is String ? requestIdRaw : null;
+      if (route is String && route.trim().isNotEmpty) {
+        onSeerrNotification?.call(
+          title is String ? title : '',
+          body is String ? body : '',
+          route.trim(),
+          requestId: requestId,
+          isRequest: kind == 'request',
+        );
+      }
+      return;
+    }
+
+    if (type == 'themesChanged') {
+      await _refreshCustomThemes(client);
+      notifyListeners();
+      return;
+    }
+
+    if (type != 'settingsUpdated') {
+      return;
+    }
+
+    final resolved = await _fetchResolvedProfile(client, _profileName);
+    if (resolved == null) {
+      return;
+    }
+
+    await _applyServerSettings(resolved);
+    notifyListeners();
+  }
+
   Future<void> _startSettingsStream(MediaServerClient client) async {
+    // Emby servers have no SSE endpoint, so plugin events arrive over the
+    // session websocket instead. Don't loop on 501 reconnects here.
+    if (client.serverType == ServerType.emby) {
+      return;
+    }
+
     if (!_pluginAvailable || !_prefs.get(UserPreferences.pluginSyncEnabled)) {
       return;
     }
@@ -486,15 +548,15 @@ class PluginSyncService extends ChangeNotifier {
     }
   }
 
-  Future<void> configureSeerr(
+  Future<bool> configureSeerr(
     MediaServerClient client, {
     String? username,
     String? password,
   }) async {
-    if (!_pluginAvailable) return;
+    if (!_pluginAvailable) return false;
 
     final token = client.accessToken;
-    if (token == null || token.isEmpty) return;
+    if (token == null || token.isEmpty) return false;
 
     try {
       final seerrRepo = await GetIt.instance.getAsync<SeerrRepository>();
@@ -504,7 +566,11 @@ class PluginSyncService extends ChangeNotifier {
         username: username,
         password: password,
       );
-    } catch (_) {}
+      await _refreshAvailabilityStatus(client);
+      return seerrAvailable;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> pushSettings(MediaServerClient client) async {
@@ -535,22 +601,147 @@ class PluginSyncService extends ChangeNotifier {
     } catch (_) {}
   }
 
+  Future<void> pushNotificationPrefs(MediaServerClient client) async {
+    if (!_pluginAvailable) {
+      debugPrint('PluginSync: skip pushNotificationPrefs, plugin unavailable');
+      return;
+    }
+
+    try {
+      final headers = _authHeaders(client);
+      if (headers == null) {
+        debugPrint('PluginSync: skip pushNotificationPrefs, no auth headers');
+        return;
+      }
+
+      await _dio.post(
+        '${client.baseUrl}/Moonfin/Notifications/Prefs',
+        data: {
+          'notifyOnNewRequests': _seerrPrefs.notifyOnNewRequests,
+          'notifyOnLibraryAdded': _seerrPrefs.notifyOnLibraryAdded,
+          'notifyOnIssues': _seerrPrefs.notifyOnIssues,
+        },
+        options: Options(
+          headers: {...headers, 'Content-Type': 'application/json'},
+        ),
+      );
+    } catch (_) {}
+  }
+
+  Future<void> registerPushDevice(
+    MediaServerClient client, {
+    required String token,
+    required String platform,
+    required String deviceId,
+  }) async {
+    if (!_pluginAvailable) {
+      debugPrint('PluginSync: skip registerPushDevice, plugin unavailable');
+      return;
+    }
+
+    try {
+      final headers = _authHeaders(client);
+      if (headers == null) {
+        debugPrint('PluginSync: skip registerPushDevice, no auth headers');
+        return;
+      }
+
+      await _dio.post(
+        '${client.baseUrl}/Moonfin/Notifications/Register',
+        data: {
+          'token': token,
+          'platform': platform,
+          'deviceId': deviceId,
+        },
+        options: Options(
+          headers: {...headers, 'Content-Type': 'application/json'},
+        ),
+      );
+    } catch (_) {}
+  }
+
+  Future<void> unregisterPushDevice(
+    MediaServerClient client, {
+    required String deviceId,
+  }) async {
+    if (!_pluginAvailable) return;
+
+    try {
+      final headers = _authHeaders(client);
+      if (headers == null) return;
+
+      await _dio.delete(
+        '${client.baseUrl}/Moonfin/Notifications/Register',
+        data: {'deviceId': deviceId},
+        options: Options(
+          headers: {...headers, 'Content-Type': 'application/json'},
+        ),
+      );
+    } catch (_) {}
+  }
+
+  Future<List<String>?> fetchCustomCollectionOrder(
+    MediaServerClient client,
+    String collectionId,
+  ) async {
+    if (!_pluginAvailable) return null;
+    final headers = _authHeaders(client);
+    if (headers == null) return null;
+
+    try {
+      final response = await _dio.get(
+        '${client.baseUrl}/Moonfin/Collections/$collectionId/Order',
+        options: Options(headers: headers),
+      );
+      if (response.statusCode == 200 && response.data is List) {
+        return List<String>.from(response.data as List);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<bool> saveCustomCollectionOrder(
+    MediaServerClient client,
+    String collectionId,
+    List<String> itemIds,
+  ) async {
+    if (!_pluginAvailable) return false;
+    final headers = _authHeaders(client);
+    if (headers == null) return false;
+
+    try {
+      final response = await _dio.post(
+        '${client.baseUrl}/Moonfin/Collections/$collectionId/Order',
+        data: itemIds,
+        options: Options(
+          headers: {...headers, 'Content-Type': 'application/json'},
+        ),
+      );
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (_) {}
+    return false;
+  }
+
   Future<bool> pullSettingsForProfile(
     MediaServerClient client, {
     required String profile,
   }) async {
-    if (!supportedProfiles.contains(profile)) return false;
-    if (!_pluginAvailable) return false;
+    try {
+      if (!supportedProfiles.contains(profile)) return false;
+      if (!_pluginAvailable) return false;
 
-    await _refreshCustomThemes(client);
+      await _refreshCustomThemes(client);
 
-    final resolved = await _fetchResolvedProfile(client, profile);
-    if (resolved == null) {
+      final resolved = await _fetchResolvedProfile(client, profile);
+      if (resolved == null) {
+        return false;
+      }
+      await _applyServerSettings(resolved);
+
+      return true;
+    } catch (_) {
       return false;
     }
-
-    _applyServerSettings(resolved);
-    return true;
   }
 
   Future<Map<String, dynamic>?> _ping(MediaServerClient client) async {
@@ -569,7 +760,7 @@ class PluginSyncService extends ChangeNotifier {
     return null;
   }
 
-  Future<Map<String, dynamic>?> _fetchJellyseerrConfig(
+  Future<Map<String, dynamic>?> _fetchSeerrConfig(
     MediaServerClient client,
   ) async {
     final headers = _authHeaders(client);
@@ -577,7 +768,7 @@ class PluginSyncService extends ChangeNotifier {
 
     try {
       final response = await _dio.get(
-        '${client.baseUrl}/Moonfin/Jellyseerr/Config',
+        '${client.baseUrl}/Moonfin/Seerr/Config',
         options: Options(headers: headers),
       );
       if (response.data is Map<String, dynamic>) {
@@ -805,6 +996,36 @@ class PluginSyncService extends ChangeNotifier {
   Future<void> _applyServerSettings(Map<String, dynamic> resolved) async {
     _isSyncingFromServer = true;
     try {
+      final serverId = (_store.getString('pref_last_server_id') ?? '').trim();
+      if (serverId.isNotEmpty) {
+        var tmdbVal = resolved['tmdbApiKey'] as String?;
+        if (tmdbVal == null || tmdbVal.isEmpty || tmdbVal == 'null') {
+          final localTmdbVal = _store.get(_prefs.getEffectivePreference(UserPreferences.tmdbApiKey));
+          if (localTmdbVal.isNotEmpty && localTmdbVal != 'null') {
+            resolved['tmdbApiKey'] = localTmdbVal;
+          }
+        }
+
+        var mdblistVal = resolved['mdblistApiKey'] as String?;
+        if (mdblistVal == null || mdblistVal.isEmpty || mdblistVal == 'null') {
+          final localMdblistVal = _store.get(_prefs.getEffectivePreference(UserPreferences.mdblistApiKey));
+          if (localMdblistVal.isNotEmpty && localMdblistVal != 'null') {
+            resolved['mdblistApiKey'] = localMdblistVal;
+          }
+        }
+      }
+
+      _applyString(
+        resolved,
+        'hiddenContinueWatchingItems',
+        UserPreferences.hiddenContinueWatchingItems,
+      );
+      _applyString(
+        resolved,
+        'hiddenNextUpSeries',
+        UserPreferences.hiddenNextUpSeries,
+      );
+
       _applyString(
         resolved,
         'visualTheme',
@@ -841,6 +1062,28 @@ class PluginSyncService extends ChangeNotifier {
         UserPreferences.homeRowsStyle,
         enumValues: prefs.HomeRowsStyle.values,
       );
+      _applyString(
+        resolved,
+        'recommendationSystemSource',
+        UserPreferences.recommendationSystemSource,
+        enumValues: prefs.RecommendationSystemSource.values,
+      );
+      _applyString(
+        resolved,
+        'detailScreenStyle',
+        UserPreferences.detailScreenStyle,
+        enumValues: prefs.DetailScreenStyle.values,
+      );
+      _applyBool(
+        resolved,
+        'detailExpandedTabs',
+        UserPreferences.detailExpandedTabs,
+      );
+      _applyBool(
+        resolved,
+        'detailShowTechnicalDetails',
+        UserPreferences.detailShowTechnicalDetails,
+      );
       _applyBool(
         resolved,
         'fullScreenRows',
@@ -875,8 +1118,68 @@ class PluginSyncService extends ChangeNotifier {
       );
       _applyBool(
         resolved,
-        'displaySeerrRows',
-        UserPreferences.displaySeerrRows,
+        'displayAudioRows',
+        UserPreferences.displayAudioRows,
+      );
+      _applyBool(
+        resolved,
+        'displaySinceYouWatchedRows',
+        UserPreferences.displaySinceYouWatchedRows,
+      );
+      _applyString(
+        resolved,
+        'sinceYouWatchedSource',
+        UserPreferences.sinceYouWatchedSource,
+        enumValues: prefs.SinceYouWatchedSource.values,
+      );
+      _applySinceYouWatchedNumRows(resolved);
+      _applyString(
+        resolved,
+        'sinceYouWatchedSourceType',
+        UserPreferences.sinceYouWatchedSourceType,
+        enumValues: prefs.SinceYouWatchedSourceType.values,
+      );
+      _applyString(
+        resolved,
+        'sinceYouWatchedSourceItem',
+        UserPreferences.sinceYouWatchedSourceItem,
+        enumValues: prefs.SinceYouWatchedSourceItem.values,
+      );
+      _applyBool(
+        resolved,
+        'sinceYouWatchedIncludeWatched',
+        UserPreferences.sinceYouWatchedIncludeWatched,
+      );
+      _applyBool(
+        resolved,
+        'displayPlaylistsRows',
+        UserPreferences.displayPlaylistsRows,
+      );
+      _applyBool(
+        resolved,
+        'displayRewatchRow',
+        UserPreferences.displayRewatchRow,
+      );
+      _applyString(
+        resolved,
+        'rewatchSortBy',
+        UserPreferences.rewatchSortBy,
+        enumValues: prefs.RewatchSortBy.values,
+      );
+      _applyBool(
+        resolved,
+        'rewatchIncludeMovies',
+        UserPreferences.rewatchIncludeMovies,
+      );
+      _applyBool(
+        resolved,
+        'rewatchIncludeShows',
+        UserPreferences.rewatchIncludeShows,
+      );
+      _applyBool(
+        resolved,
+        'rewatchIncludeCollections',
+        UserPreferences.rewatchIncludeCollections,
       );
       _applyBool(
         resolved,
@@ -981,6 +1284,7 @@ class PluginSyncService extends ChangeNotifier {
       );
       _applyInt(resolved, 'navbarOpacity', UserPreferences.navbarOpacity);
       _applyString(resolved, 'navbarColor', UserPreferences.navbarColor);
+      _applyBool(resolved, 'navbarAlwaysExpanded', UserPreferences.navbarAlwaysExpanded);
       _applyBool(
         resolved,
         'mediaBarAutoAdvance',
@@ -1039,6 +1343,7 @@ class PluginSyncService extends ChangeNotifier {
         'themeMusicOnHomeRows',
         UserPreferences.themeMusicOnHomeRows,
       );
+      _applyBool(resolved, 'themeMusicLoop', UserPreferences.themeMusicLoop);
 
       _applyBool(
         resolved,
@@ -1094,16 +1399,17 @@ class PluginSyncService extends ChangeNotifier {
       );
       _applyString(resolved, 'tmdbApiKey', UserPreferences.tmdbApiKey);
 
-      _applyBool(resolved, 'jellyseerrEnabled', UserPreferences.seerrEnabled);
+      _applyBool(resolved, 'seerrEnabled', UserPreferences.seerrEnabled);
       _applyBool(
         resolved,
-        'jellyseerrBlockNsfw',
-        UserPreferences.jellyseerrBlockNsfw,
+        'seerrBlockNsfw',
+        UserPreferences.seerrBlockNsfw,
       );
 
       if (resolved['mdblistRatingSources'] is List) {
         final sources = (resolved['mdblistRatingSources'] as List)
             .cast<String>()
+            .map((s) => _serverToClientRatingSource[s] ?? s)
             .join(',');
         _store.set(
           _prefs.getEffectivePreference(UserPreferences.enabledRatings),
@@ -1111,7 +1417,32 @@ class PluginSyncService extends ChangeNotifier {
         );
       }
 
-      if (resolved['homeRowOrder'] is List) {
+      // Prefer the full homeSections layout when present which unlike homeRowOrder it
+      // carries dynamic and disabled rows. home_sections_config is per-server
+      // scoped, so the payload is applied as-is.
+      final homeSectionsRaw = resolved['homeSections'];
+      var appliedHomeSections = false;
+
+      if (homeSectionsRaw is List) {
+        final parsed = <HomeSectionConfig>[
+          for (final e in homeSectionsRaw)
+            if (e is Map && HomeSectionConfig.isSupportedJson(Map<String, dynamic>.from(e)))
+              HomeSectionConfig.fromJson(Map<String, dynamic>.from(e)),
+        ];
+        if (parsed.isNotEmpty) {
+          parsed.sort((a, b) => a.order.compareTo(b.order));
+          final sections = <HomeSectionConfig>[];
+          var order = 0;
+          for (final c in parsed) {
+            sections.add(c.copyWith(order: order++));
+          }
+          _appendDisabledBuiltinSections(sections, order);
+          await _prefs.setHomeSectionsConfig(sections);
+          appliedHomeSections = true;
+        }
+      }
+
+      if (!appliedHomeSections && resolved['homeRowOrder'] is List) {
         final serverOrder = (resolved['homeRowOrder'] as List).cast<String>();
         // Preserve any plugin-discovered dynamic sections so they survive a
         // server-driven preference sync.
@@ -1136,6 +1467,42 @@ class PluginSyncService extends ChangeNotifier {
             final enabledTypes = sections.map((s) => s.type).toSet();
             for (final type in prefs.HomeSectionType.values) {
               if (type == prefs.HomeSectionType.none) continue;
+              if (_isTmdbSectionType(type)) {
+                final localEnabled = _prefs.get(_tmdbPrefForType(type));
+                final idx = sections.indexWhere((s) => s.type == type);
+                if (idx >= 0) {
+                  sections[idx] = sections[idx].copyWith(enabled: localEnabled);
+                } else {
+                  sections.add(
+                    HomeSectionConfig(type: type, enabled: localEnabled, order: order++),
+                  );
+                }
+                continue;
+              }
+              if (type == prefs.HomeSectionType.radarrCalendar) {
+                final localEnabled = _prefs.get(UserPreferences.enableRadarrCalendar);
+                final idx = sections.indexWhere((s) => s.type == type);
+                if (idx >= 0) {
+                  sections[idx] = sections[idx].copyWith(enabled: localEnabled);
+                } else {
+                  sections.add(
+                    HomeSectionConfig(type: type, enabled: localEnabled, order: order++),
+                  );
+                }
+                continue;
+              }
+              if (type == prefs.HomeSectionType.sonarrCalendar) {
+                final localEnabled = _prefs.get(UserPreferences.enableSonarrCalendar);
+                final idx = sections.indexWhere((s) => s.type == type);
+                if (idx >= 0) {
+                  sections[idx] = sections[idx].copyWith(enabled: localEnabled);
+                } else {
+                  sections.add(
+                    HomeSectionConfig(type: type, enabled: localEnabled, order: order++),
+                  );
+                }
+                continue;
+              }
               if (!enabledTypes.contains(type)) {
                 sections.add(
                   HomeSectionConfig(type: type, enabled: false, order: order++),
@@ -1150,8 +1517,8 @@ class PluginSyncService extends ChangeNotifier {
         }
       }
 
-      if (resolved['jellyseerrRows'] is Map<String, dynamic>) {
-        final rowsData = resolved['jellyseerrRows'] as Map<String, dynamic>;
+      if (resolved['seerrRows'] is Map<String, dynamic>) {
+        final rowsData = resolved['seerrRows'] as Map<String, dynamic>;
         if (rowsData['rowOrder'] is List) {
           final serverOrder = (rowsData['rowOrder'] as List).cast<String>();
           if (serverOrder.isNotEmpty) {
@@ -1216,6 +1583,27 @@ class PluginSyncService extends ChangeNotifier {
           fallbackEnabled.contains(type)) {
         continue;
       }
+      if (_isTmdbSectionType(type)) {
+        final localEnabled = _prefs.get(_tmdbPrefForType(type));
+        sections.add(
+          HomeSectionConfig(type: type, enabled: localEnabled, order: order++),
+        );
+        continue;
+      }
+      if (type == prefs.HomeSectionType.radarrCalendar) {
+        final localEnabled = _prefs.get(UserPreferences.enableRadarrCalendar);
+        sections.add(
+          HomeSectionConfig(type: type, enabled: localEnabled, order: order++),
+        );
+        continue;
+      }
+      if (type == prefs.HomeSectionType.sonarrCalendar) {
+        final localEnabled = _prefs.get(UserPreferences.enableSonarrCalendar);
+        sections.add(
+          HomeSectionConfig(type: type, enabled: localEnabled, order: order++),
+        );
+        continue;
+      }
       sections.add(
         HomeSectionConfig(type: type, enabled: false, order: order++),
       );
@@ -1228,6 +1616,44 @@ class PluginSyncService extends ChangeNotifier {
     await _prefs.setHomeSectionsConfig(sections);
   }
 
+  /// Appends a disabled entry for every built-in HomeSectionType not already in
+  /// [sections] so the settings UI shows every toggle. Returns the next order.
+  int _appendDisabledBuiltinSections(
+    List<HomeSectionConfig> sections,
+    int order,
+  ) {
+    final present = sections.map((s) => s.type).toSet();
+    for (final type in prefs.HomeSectionType.values) {
+      if (type == prefs.HomeSectionType.none || present.contains(type)) {
+        continue;
+      }
+      
+      var isEnabled = false;
+      if (type == prefs.HomeSectionType.rewatch) {
+        isEnabled = _prefs.get(UserPreferences.displayRewatchRow);
+      } else if (type == prefs.HomeSectionType.sinceYouWatched1 ||
+          type == prefs.HomeSectionType.sinceYouWatched2 ||
+          type == prefs.HomeSectionType.sinceYouWatched3 ||
+          type == prefs.HomeSectionType.sinceYouWatched4 ||
+          type == prefs.HomeSectionType.sinceYouWatched5) {
+        final localPref = switch (type) {
+          prefs.HomeSectionType.sinceYouWatched1 => UserPreferences.sinceYouWatched1Enabled,
+          prefs.HomeSectionType.sinceYouWatched2 => UserPreferences.sinceYouWatched2Enabled,
+          prefs.HomeSectionType.sinceYouWatched3 => UserPreferences.sinceYouWatched3Enabled,
+          prefs.HomeSectionType.sinceYouWatched4 => UserPreferences.sinceYouWatched4Enabled,
+          prefs.HomeSectionType.sinceYouWatched5 => UserPreferences.sinceYouWatched5Enabled,
+          _ => throw StateError('Invalid type'),
+        };
+        isEnabled = _prefs.get(localPref);
+      }
+      
+      sections.add(
+        HomeSectionConfig(type: type, enabled: isEnabled, order: order++),
+      );
+    }
+    return order;
+  }
+
   void _applyBool(
     Map<String, dynamic> data,
     String serverKey,
@@ -1236,6 +1662,9 @@ class PluginSyncService extends ChangeNotifier {
     final value = data[serverKey];
     if (value is bool) {
       _store.set(_prefs.getEffectivePreference(pref), value);
+      if (pref == UserPreferences.seerrEnabled) {
+        _seerrPrefs.setEnabled(value);
+      }
     }
   }
 
@@ -1253,6 +1682,22 @@ class PluginSyncService extends ChangeNotifier {
         _store.set(effective as Preference<int>, value);
       }
     }
+  }
+
+  // The server stores this as an int row count, so map it back onto the enum by value.
+  void _applySinceYouWatchedNumRows(Map<String, dynamic> data) {
+    final value = data['sinceYouWatchedNumRows'];
+    if (value is! int) return;
+
+    final match = prefs.SinceYouWatchedNumRows.values.where(
+      (e) => e.value == value,
+    );
+    if (match.isEmpty) return;
+
+    final effective = _prefs.getEffectivePreference(
+      UserPreferences.sinceYouWatchedNumRows,
+    );
+    _store.set(effective, match.first);
   }
 
   void _applyString<T>(
@@ -1336,6 +1781,19 @@ class PluginSyncService extends ChangeNotifier {
     }
   }
 
+  // The Moonbase dashboard stores a few rating source keys in camelCase while
+  // the client uses lowercase. Keep one canonical map and derive its inverse so
+  // the two directions can never drift.
+  static const Map<String, String> _serverToClientRatingSource = {
+    'metacriticUser': 'metacriticuser',
+    'myAnimeList': 'myanimelist',
+    'aniList': 'anilist',
+  };
+  static final Map<String, String> _clientToServerRatingSource = {
+    for (final entry in _serverToClientRatingSource.entries)
+      entry.value: entry.key,
+  };
+
   List<String> _csvToList(Preference<String> pref) {
     return _prefs.get(pref).split(',').where((s) => s.isNotEmpty).toList();
   }
@@ -1345,7 +1803,7 @@ class PluginSyncService extends ChangeNotifier {
       _prefs.get(UserPreferences.mediaBarMode),
     );
     final mediaBarEnabled = UserPreferences.isMediaBarModeEnabled(mediaBarMode);
-    return {
+    final payload = <String, dynamic>{
       'visualTheme': _prefs.get(UserPreferences.visualTheme).name,
       'customThemeId': _prefs.get(UserPreferences.customThemeId),
       'navbarPosition': _prefs.get(UserPreferences.navbarPosition).name,
@@ -1355,6 +1813,13 @@ class PluginSyncService extends ChangeNotifier {
           .name,
       'cardFocusExpansion': _prefs.get(UserPreferences.cardFocusExpansion),
       'homeRowsStyle': _prefs.get(UserPreferences.homeRowsStyle).name,
+      'recommendationSystemSource':
+          _prefs.get(UserPreferences.recommendationSystemSource).name,
+      'detailScreenStyle': _prefs.get(UserPreferences.detailScreenStyle).name,
+      'detailExpandedTabs': _prefs.get(UserPreferences.detailExpandedTabs),
+      'detailShowTechnicalDetails': _prefs.get(
+        UserPreferences.detailShowTechnicalDetails,
+      ),
       'homeImageTypeContinueWatching': _prefs
           .get(UserPreferences.homeRowImageType(prefs.HomeSectionType.resume))
           .name,
@@ -1364,8 +1829,20 @@ class PluginSyncService extends ChangeNotifier {
         UserPreferences.displayCollectionsRows,
       ),
       'displayGenresRows': _prefs.get(UserPreferences.displayGenresRows),
+      'displayAudioRows': _prefs.get(UserPreferences.displayAudioRows),
+      'displaySinceYouWatchedRows': _prefs.get(UserPreferences.displaySinceYouWatchedRows),
+      'sinceYouWatchedSource': _prefs.get(UserPreferences.sinceYouWatchedSource).name,
+      'sinceYouWatchedNumRows': _prefs.get(UserPreferences.sinceYouWatchedNumRows).value,
+      'sinceYouWatchedSourceType': _prefs.get(UserPreferences.sinceYouWatchedSourceType).name,
+      'sinceYouWatchedSourceItem': _prefs.get(UserPreferences.sinceYouWatchedSourceItem).name,
+      'sinceYouWatchedIncludeWatched': _prefs.get(UserPreferences.sinceYouWatchedIncludeWatched),
+      'displayPlaylistsRows': _prefs.get(UserPreferences.displayPlaylistsRows),
+      'displayRewatchRow': _prefs.get(UserPreferences.displayRewatchRow),
+      'rewatchSortBy': _prefs.get(UserPreferences.rewatchSortBy).name,
+      'rewatchIncludeMovies': _prefs.get(UserPreferences.rewatchIncludeMovies),
+      'rewatchIncludeShows': _prefs.get(UserPreferences.rewatchIncludeShows),
+      'rewatchIncludeCollections': _prefs.get(UserPreferences.rewatchIncludeCollections),
       'fullScreenRows': _prefs.get(UserPreferences.fullScreenRows),
-      'displaySeerrRows': _prefs.get(UserPreferences.displaySeerrRows),
       'useDetailedSubHeadings': _prefs.get(
         UserPreferences.useDetailedSubHeadings,
       ),
@@ -1402,6 +1879,7 @@ class PluginSyncService extends ChangeNotifier {
       'mediaBarOverlayColor': _prefs.get(UserPreferences.mediaBarOverlayColor),
       'navbarOpacity': _prefs.get(UserPreferences.navbarOpacity),
       'navbarColor': _prefs.get(UserPreferences.navbarColor),
+      'navbarAlwaysExpanded': _prefs.get(UserPreferences.navbarAlwaysExpanded),
       'mediaBarAutoAdvance': _prefs.get(UserPreferences.mediaBarAutoAdvance),
       'mediaBarIntervalMs': _prefs.get(UserPreferences.mediaBarIntervalMs),
       'mediaBarTrailerPreview': _prefs.get(
@@ -1422,6 +1900,7 @@ class PluginSyncService extends ChangeNotifier {
       'themeMusicEnabled': _prefs.get(UserPreferences.themeMusicEnabled),
       'themeMusicVolume': _prefs.get(UserPreferences.themeMusicVolume),
       'themeMusicOnHomeRows': _prefs.get(UserPreferences.themeMusicOnHomeRows),
+      'themeMusicLoop': _prefs.get(UserPreferences.themeMusicLoop),
       'homeRowsImageTypeOverride': _prefs.get(
         UserPreferences.homeRowsUniversalOverride,
       ),
@@ -1439,26 +1918,38 @@ class PluginSyncService extends ChangeNotifier {
           .get(UserPreferences.browsingBackgroundBlurAmount)
           .toString(),
       'mdblistEnabled': _prefs.get(UserPreferences.enableAdditionalRatings),
-      'mdblistApiKey': _prefs.get(UserPreferences.mdblistApiKey),
       'mdblistShowRatingNames': _prefs.get(UserPreferences.showRatingLabels),
       'mdblistShowRatingBadges': _prefs.get(UserPreferences.showRatingBadges),
       'tmdbEpisodeRatingsEnabled': _prefs.get(
         UserPreferences.enableEpisodeRatings,
       ),
-      'tmdbApiKey': _prefs.get(UserPreferences.tmdbApiKey),
-      'jellyseerrEnabled': _prefs.get(UserPreferences.seerrEnabled),
-      'jellyseerrBlockNsfw': _prefs.get(UserPreferences.jellyseerrBlockNsfw),
-      'mdblistRatingSources': _csvToList(UserPreferences.enabledRatings),
+      'seerrEnabled': _prefs.get(UserPreferences.seerrEnabled),
+      'seerrBlockNsfw': _prefs.get(UserPreferences.seerrBlockNsfw),
+      'mdblistRatingSources': _csvToList(UserPreferences.enabledRatings)
+          .map((s) => _clientToServerRatingSource[s] ?? s)
+          .toList(),
       'homeRowOrder': _prefs.homeSectionsConfig
           .where((c) => c.enabled)
           .map((c) => c.type.serializedName)
           .toList(),
-      'jellyseerrRows': {
+      'homeSections':
+          _prefs.homeSectionsConfig.map((c) => c.toJson()).toList(),
+      'seerrRows': {
         'rowOrder': _seerrPrefs.activeRows
             .map((t) => t.serializedName)
             .toList(),
       },
+      'hiddenContinueWatchingItems': _prefs.get(UserPreferences.hiddenContinueWatchingItems),
+      'hiddenNextUpSeries': _prefs.get(UserPreferences.hiddenNextUpSeries),
     };
+
+    final mdblistKey = _prefs.get(UserPreferences.mdblistApiKey);
+    payload['mdblistApiKey'] = (mdblistKey.isNotEmpty && mdblistKey != 'null') ? mdblistKey : null;
+
+    final tmdbKey = _prefs.get(UserPreferences.tmdbApiKey);
+    payload['tmdbApiKey'] = (tmdbKey.isNotEmpty && tmdbKey != 'null') ? tmdbKey : null;
+
+    return payload;
   }
 
   void _onPrefsChanged() {
@@ -1477,6 +1968,57 @@ class PluginSyncService extends ChangeNotifier {
         pushSettings(client);
       }
     });
+  }
+
+
+
+  bool _isTmdbSectionType(prefs.HomeSectionType type) {
+    return type == prefs.HomeSectionType.tmdbPopularMovies ||
+        type == prefs.HomeSectionType.tmdbTopRatedMovies ||
+        type == prefs.HomeSectionType.tmdbNowPlayingMovies ||
+        type == prefs.HomeSectionType.tmdbUpcomingMovies ||
+        type == prefs.HomeSectionType.tmdbPopularTv ||
+        type == prefs.HomeSectionType.tmdbTopRatedTv ||
+        type == prefs.HomeSectionType.tmdbAiringTodayTv ||
+        type == prefs.HomeSectionType.tmdbOnTheAirTv ||
+        type == prefs.HomeSectionType.tmdbTrendingMovieDaily ||
+        type == prefs.HomeSectionType.tmdbTrendingMovieWeekly ||
+        type == prefs.HomeSectionType.tmdbTrendingTvDaily ||
+        type == prefs.HomeSectionType.tmdbTrendingTvWeekly ||
+        type == prefs.HomeSectionType.tmdbTrendingAllWeekly;
+  }
+
+  Preference<bool> _tmdbPrefForType(prefs.HomeSectionType type) {
+    switch (type) {
+      case prefs.HomeSectionType.tmdbPopularMovies:
+        return UserPreferences.tmdbPopularMoviesEnabled;
+      case prefs.HomeSectionType.tmdbTopRatedMovies:
+        return UserPreferences.tmdbTopRatedMoviesEnabled;
+      case prefs.HomeSectionType.tmdbNowPlayingMovies:
+        return UserPreferences.tmdbNowPlayingMoviesEnabled;
+      case prefs.HomeSectionType.tmdbUpcomingMovies:
+        return UserPreferences.tmdbUpcomingMoviesEnabled;
+      case prefs.HomeSectionType.tmdbPopularTv:
+        return UserPreferences.tmdbPopularTvEnabled;
+      case prefs.HomeSectionType.tmdbTopRatedTv:
+        return UserPreferences.tmdbTopRatedTvEnabled;
+      case prefs.HomeSectionType.tmdbAiringTodayTv:
+        return UserPreferences.tmdbAiringTodayTvEnabled;
+      case prefs.HomeSectionType.tmdbOnTheAirTv:
+        return UserPreferences.tmdbOnTheAirTvEnabled;
+      case prefs.HomeSectionType.tmdbTrendingMovieDaily:
+        return UserPreferences.tmdbTrendingMovieDailyEnabled;
+      case prefs.HomeSectionType.tmdbTrendingMovieWeekly:
+        return UserPreferences.tmdbTrendingMovieWeeklyEnabled;
+      case prefs.HomeSectionType.tmdbTrendingTvDaily:
+        return UserPreferences.tmdbTrendingTvDailyEnabled;
+      case prefs.HomeSectionType.tmdbTrendingTvWeekly:
+        return UserPreferences.tmdbTrendingTvWeeklyEnabled;
+      case prefs.HomeSectionType.tmdbTrendingAllWeekly:
+        return UserPreferences.tmdbTrendingAllWeeklyEnabled;
+      default:
+        throw ArgumentError('Not a TMDB section type: $type');
+    }
   }
 
   @override

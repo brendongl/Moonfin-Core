@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "Šeit tiks parādīti iecienītākie ieraksti",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "Neizdevās ielādēt",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "Konkrēts lietotājs",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "Vienmēr autentificēt",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "Meklēt attālo personu",
     "adminNoRemoteMatches": "Nav atrasta neviena attālināta atbilstība",
     "adminRemoteResults": "Attālinātie rezultāti",
     "adminRemoteMetadataApplied": "Lietoti attālie metadati",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "Pievienojiet uztvērēju",
     "adminTunerType": "Uztvērēja tips",
-    "adminTunerTypeHint": "HDHomeRun, M3U, cits",
-    "adminUrlPath": "URL/ceļš",
-    "adminNameOptional": "Vārds (neobligāti)",
     "adminTunerAdded": "Pievienots uztvērējs",
     "adminTunerAddFailed": "Neizdevās pievienot uztvērēju: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "Pievienot ceļveža nodrošinātāju",
     "adminProviderType": "Pakalpojumu sniedzēja veids",
-    "adminProviderTypeHint": "SchedulesDirect vai XMLTV",
-    "adminUsernameOptional": "Lietotājvārds (pēc izvēles)",
-    "adminRefreshInterval": "Atsvaidzināšanas intervāls (stundas)",
     "adminProviderAdded": "Pakalpojumu sniedzējs ir pievienots",
     "adminProviderAddFailed": "Neizdevās pievienot pakalpojumu sniedzēju: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "Nav atbilstošu līniju",
     "adminMetadataEditorTitle": "Metadatu redaktors",
-    "adminMetadataRemote": "Tālvadības pults",
     "adminMetadataType": "Tips",
     "adminMetadataDetails": "Sīkāka informācija",
     "adminMetadataExternalIds": "Ārējie ID",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "Atcerieties manu izvēli",
     "playHdr10Fallback": "Atskaņojiet HDR10 atkāpšanos",
     "requestTranscode": "Pieprasīt pārkodēšanu",
-    "homeScreenSectionsIntegrationDescription": "Noteikt rindas, ko atklāj IAmParadox27 spraudnis Home Screen Sections. Rindas var iespējot un pārkārtot tālāk.",
-    "homeScreenSectionsIntegrationNoServers": "Pagaidām neviens Jellyfin serveris neziņo par spraudni.",
-    "integrationOpenHomeSections": "Atveriet sākuma sadaļas",
-    "integrationOpenHomeSectionsSubtitle": "Iespējot, atspējot un pārkārtot rindas",
-    "integrationInstalledButDisabled": "Uzstādīts, bet atspējots",
-    "integrationNotInstalled": "Nav instalēts",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "Skatīt visu",
     "noItems": "Nav vienumu",
     "switchUser": "Pārslēgt lietotāju",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "AAC stereo",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Passthrough (papildu)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Dzēst saglabāto motīvu",
     "savedThemesManageSubtitle": "Pārvaldiet šajā ierīcē lejupielādētos spraudņu motīvus",
-    "homeScreenSectionsTitle": "Sākuma ekrāna sadaļas",
     "themeEditor": "Tēmas redaktors",
     "themeEditorSubtitle": "Pārlūkprogrammā atveriet Moonfin motīvu redaktoru",
     "homeScreen": "Sākuma ekrāns",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "Automatically enable HDR for HDR video playback and restore display mode on exit.",
     "whenFullscreen": "When fullscreen",
     "transcodingLimits": "Transcoding Limits",
-    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer"
+    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer",
+    "reportDownloadsActivity": "Rādīt lejupielādes serverī",
+    "reportDownloadsActivitySubtitle": "Ļaut servera administratoram redzēt jūsu pārkodētās lejupielādes vadības panelī",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "Attēlu kešatmiņas ierobežojums",
+    "clearImageCache": "Notīrīt attēlu kešatmiņu",
+    "imageCacheCleared": "Attēlu kešatmiņa notīrīta"
 }

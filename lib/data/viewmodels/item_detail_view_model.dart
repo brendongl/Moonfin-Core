@@ -1,14 +1,36 @@
 import 'package:flutter/foundation.dart';
+import 'package:get_it/get_it.dart';
 import 'package:server_core/server_core.dart';
 
+import '../../preference/preference_constants.dart';
+import '../../preference/user_preferences.dart';
 import '../models/aggregated_item.dart';
 import '../models/lyrics.dart';
+import '../services/row_data_source.dart';
 import '../repositories/item_mutation_repository.dart';
 import '../repositories/mdblist_repository.dart';
+import '../repositories/tmdb_repository.dart';
+import '../repositories/seerr_repository.dart';
 import '../utils/playlist_utils.dart';
 import '../../util/episode_playability.dart';
+import '../services/plugin_sync_service.dart';
+
+enum CollectionSortOption {
+  alphabetical,
+  releaseAscending,
+  releaseDescending,
+  custom,
+}
 
 enum ItemDetailState { loading, ready, error }
+
+class ParentCollection {
+  final String id;
+  final String name;
+  final List<AggregatedItem> items;
+
+  ParentCollection({required this.id, required this.name, required this.items});
+}
 
 class ItemDetailViewModel extends ChangeNotifier {
   static const _episodeOverviewFields =
@@ -17,6 +39,7 @@ class ItemDetailViewModel extends ChangeNotifier {
   final MediaServerClient _client;
   final ItemMutationRepository _mutations;
   final MdbListRepository _mdbListRepository;
+  final TmdbRepository _tmdbRepository;
 
   final String itemId;
 
@@ -26,11 +49,15 @@ class ItemDetailViewModel extends ChangeNotifier {
   AggregatedItem? _item;
   AggregatedItem? get item => _item;
 
+  String? _localPersonId;
+  String? get localPersonId => _localPersonId;
+
   int? _selectedAudioIndex;
   int? get selectedAudioIndex => _selectedAudioIndex;
   set selectedAudioIndex(int? value) {
     if (_selectedAudioIndex != value) {
       _selectedAudioIndex = value;
+      GetIt.instance<UserPreferences>().setItemAudioStreamIndex(itemId, value);
       notifyListeners();
     }
   }
@@ -40,6 +67,7 @@ class ItemDetailViewModel extends ChangeNotifier {
   set selectedSubtitleIndex(int? value) {
     if (_selectedSubtitleIndex != value) {
       _selectedSubtitleIndex = value;
+      GetIt.instance<UserPreferences>().setItemSubtitleStreamIndex(itemId, value);
       notifyListeners();
     }
   }
@@ -56,6 +84,13 @@ class ItemDetailViewModel extends ChangeNotifier {
   List<AggregatedItem> _episodes = const [];
   List<AggregatedItem> get episodes => _episodes;
 
+  List<AggregatedItem> _seriesEpisodes = const [];
+  bool _seriesEpisodesRequested = false;
+
+  /// All episodes of a Series across every season, in the server's
+  /// season/episode order. Empty until [loadAllSeriesEpisodes] completes.
+  List<AggregatedItem> get seriesEpisodes => _seriesEpisodes;
+
   AggregatedItem? _nextUp;
   AggregatedItem? get nextUp => _nextUp;
 
@@ -71,11 +106,74 @@ class ItemDetailViewModel extends ChangeNotifier {
   List<AggregatedItem> _collectionItems = const [];
   List<AggregatedItem> get collectionItems => _collectionItems;
 
+  // Cached BoxSet cast/crew, rebuilt only when _collectionItems changes.
+  List<AggregatedItem>? _boxSetPeopleSource;
+  List<Map<String, dynamic>> _boxSetDirectors = const [];
+  List<Map<String, dynamic>> _boxSetWriters = const [];
+  List<Map<String, dynamic>> _boxSetActors = const [];
+
+  void _ensureBoxSetPeople() {
+    if (identical(_boxSetPeopleSource, _collectionItems)) return;
+    _boxSetPeopleSource = _collectionItems;
+
+    final directors = <Map<String, dynamic>>[];
+    final writers = <Map<String, dynamic>>[];
+    final actors = <Map<String, dynamic>>[];
+    final dirNames = <String>{};
+    final writNames = <String>{};
+    final actorNames = <String>{};
+
+    for (final child in _collectionItems) {
+      final people = child.rawData['People'] as List?;
+      if (people == null) continue;
+      for (final person in people.cast<Map<String, dynamic>>()) {
+        final name = person['Name'] as String?;
+        if (name == null) continue;
+        switch (person['Type']) {
+          case 'Director':
+            if (dirNames.add(name)) directors.add(person);
+          case 'Writer':
+            if (writNames.add(name)) writers.add(person);
+        }
+      }
+    }
+    for (final child in _collectionItems) {
+      final people = child.rawData['People'] as List?;
+      if (people == null) continue;
+      for (final person in people.cast<Map<String, dynamic>>()) {
+        final type = person['Type'] as String?;
+        if (type != 'Actor' && type != 'GuestStar') continue;
+        final name = person['Name'] as String?;
+        if (name == null ||
+            dirNames.contains(name) ||
+            writNames.contains(name)) {
+          continue;
+        }
+        if (actorNames.add(name)) actors.add(person);
+      }
+    }
+
+    _boxSetDirectors = directors;
+    _boxSetWriters = writers;
+    _boxSetActors = actors;
+  }
+
+  List<AggregatedItem> _playlistItems = const [];
+  List<AggregatedItem> get playlistItems => _playlistItems;
+
+  CollectionSortOption _collectionSort = CollectionSortOption.releaseAscending;
+  CollectionSortOption get collectionSort => _collectionSort;
+
+  List<AggregatedItem> _customPlaylistItems = const [];
+
   String? _parentCollectionName;
   String? get parentCollectionName => _parentCollectionName;
 
   List<AggregatedItem> _parentCollectionItems = const [];
   List<AggregatedItem> get parentCollectionItems => _parentCollectionItems;
+
+  List<ParentCollection> _parentCollections = const [];
+  List<ParentCollection> get parentCollections => _parentCollections;
 
   List<AggregatedItem> _features = const [];
   List<AggregatedItem> get features => _features;
@@ -103,26 +201,96 @@ class ItemDetailViewModel extends ChangeNotifier {
     required MediaServerClient client,
     required ItemMutationRepository mutations,
     required MdbListRepository mdbListRepository,
+    required TmdbRepository tmdbRepository,
   }) : _serverId = serverId,
        _client = client,
        _mutations = mutations,
-       _mdbListRepository = mdbListRepository;
+       _mdbListRepository = mdbListRepository,
+       _tmdbRepository = tmdbRepository;
 
-  Future<void> load() async {
+  Future<void> load({String? mediaSourceId}) async {
     _state = ItemDetailState.loading;
     _collectionItems = const [];
     _parentCollectionItems = const [];
     _parentCollectionName = null;
+    _parentCollections = const [];
     notifyListeners();
 
     try {
-      final data = await _client.itemsApi.getItem(itemId);
-      _item = AggregatedItem(
-        id: itemId,
-        serverId: _serverId ?? _client.baseUrl,
-        rawData: data,
-      );
+      if (itemId.startsWith('tmdb:')) {
+        final tmdbId = itemId.substring(5);
+        final seerrRepo = await GetIt.instance.getAsync<SeerrRepository>();
+        await seerrRepo.ensureInitialized();
+        final tmdbIdInt = int.tryParse(tmdbId);
+        if (tmdbIdInt == null) throw Exception('Invalid TMDB ID');
+        final seerrPerson = await seerrRepo.getPersonDetails(tmdbIdInt);
+
+        final rawData = {
+          'Name': seerrPerson.name,
+          'Overview': seerrPerson.biography,
+          'ProviderIds': {'Tmdb': tmdbId},
+          'Type': 'Person',
+          'PrimaryImageTag': seerrPerson.profilePath,
+          'ProfilePath': seerrPerson.profilePath,
+          'PremiereDate': seerrPerson.birthday,
+          'EndDate': seerrPerson.deathday,
+        };
+
+        _item = AggregatedItem(
+          id: itemId,
+          serverId: _serverId ?? _client.baseUrl,
+          rawData: rawData,
+        );
+
+        try {
+          final localPeople = await _client.itemsApi.getPersons(
+            searchTerm: seerrPerson.name,
+            limit: 20,
+            fields: 'ProviderIds',
+          );
+          final itemsList = (localPeople['Items'] as List? ?? [])
+              .map((e) => e is Map ? Map<String, dynamic>.from(e) : null)
+              .whereType<Map<String, dynamic>>()
+              .toList();
+          for (final localItem in itemsList) {
+            final localPIds = localItem['ProviderIds'] as Map?;
+            if (localPIds?['Tmdb']?.toString() == tmdbId) {
+              _localPersonId = localItem['Id']?.toString();
+              break;
+            }
+          }
+        } catch (_) {}
+
+        if (_localPersonId != null) {
+          try {
+            final localData = await _client.itemsApi.getItem(_localPersonId!);
+            final mergedData = Map<String, dynamic>.from(localData);
+            if (mergedData['Overview'] == null ||
+                (mergedData['Overview'] as String).isEmpty) {
+              mergedData['Overview'] = seerrPerson.biography;
+            }
+            mergedData['ProfilePath'] = seerrPerson.profilePath;
+            _item = AggregatedItem(
+              id: _localPersonId!,
+              serverId: _serverId ?? _client.baseUrl,
+              rawData: mergedData,
+            );
+          } catch (_) {}
+        }
+      } else {
+        final data = await _client.itemsApi.getItem(itemId, mediaSourceId: mediaSourceId);
+        _item = AggregatedItem(
+          id: itemId,
+          serverId: _serverId ?? _client.baseUrl,
+          rawData: data,
+        );
+      }
       _lyrics = LyricsData.empty;
+      final prefs = GetIt.instance<UserPreferences>();
+      final savedSubIndex = prefs.getItemSubtitleStreamIndex(itemId);
+      _selectedSubtitleIndex = savedSubIndex == -2 ? null : savedSubIndex;
+      final savedAudioIndex = prefs.getItemAudioStreamIndex(itemId);
+      _selectedAudioIndex = savedAudioIndex == -2 ? null : savedAudioIndex;
       _state = ItemDetailState.ready;
       notifyListeners();
 
@@ -144,9 +312,12 @@ class ItemDetailViewModel extends ChangeNotifier {
       futures.add(_loadSeasons());
       futures.add(_loadNextUp());
       futures.add(_loadSimilar());
+      futures.add(_loadFeatures());
+      futures.add(_loadParentCollection());
     } else if (type == 'Season') {
       futures.add(_loadRatings());
       futures.add(_loadEpisodes());
+      futures.add(_loadFeatures());
     } else if (type == 'Episode') {
       futures.add(_loadRatings());
       futures.add(_loadEpisodes());
@@ -205,6 +376,27 @@ class ItemDetailViewModel extends ChangeNotifier {
       _episodes = _mapItems(items);
       notifyListeners();
     } catch (_) {}
+  }
+
+  /// Loads every episode of the current Series (all seasons) on demand. Used by
+  /// the Modern detail layout's Episodes tab and accurate season counts. No-op
+  /// for non-Series items or once already loaded.
+  Future<void> loadAllSeriesEpisodes() async {
+    final item = _item;
+    if (item == null || item.type != 'Series') return;
+    if (_seriesEpisodesRequested) return;
+    _seriesEpisodesRequested = true;
+    try {
+      final data = await _client.itemsApi.getEpisodes(
+        itemId,
+        fields: _episodeOverviewFields,
+      );
+      final items = (data['Items'] as List?) ?? [];
+      _seriesEpisodes = _mapItems(items);
+      notifyListeners();
+    } catch (_) {
+      _seriesEpisodesRequested = false;
+    }
   }
 
   Future<void> _loadNextUp() async {
@@ -395,15 +587,172 @@ class ItemDetailViewModel extends ChangeNotifier {
     }
   }
 
+  void setCollectionSort(CollectionSortOption option) {
+    _collectionSort = option;
+    _applyCollectionSort();
+  }
+
+  void _applyCollectionSort() {
+    int releaseSortAscending(AggregatedItem a, AggregatedItem b) {
+      final aDate =
+          a.premiereDate ??
+          (a.productionYear != null ? DateTime(a.productionYear!) : null);
+      final bDate =
+          b.premiereDate ??
+          (b.productionYear != null ? DateTime(b.productionYear!) : null);
+      if (aDate == null && bDate == null) {
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      }
+      if (aDate == null) return 1;
+      if (bDate == null) return -1;
+      final byDate = aDate.compareTo(bDate);
+      if (byDate != 0) return byDate;
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    }
+
+    switch (_collectionSort) {
+      case CollectionSortOption.alphabetical:
+        _playlistItems = List<AggregatedItem>.from(_playlistItems)
+          ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+        break;
+      case CollectionSortOption.releaseAscending:
+        _playlistItems = List<AggregatedItem>.from(_playlistItems)
+          ..sort(releaseSortAscending);
+        break;
+      case CollectionSortOption.releaseDescending:
+        _playlistItems = List<AggregatedItem>.from(_playlistItems)
+          ..sort((a, b) => releaseSortAscending(b, a));
+        break;
+      case CollectionSortOption.custom:
+        _playlistItems = List<AggregatedItem>.from(_customPlaylistItems);
+        break;
+    }
+    notifyListeners();
+  }
+
+  Future<void> reorderCollectionPlaylistItem(int oldIndex, int newIndex) async {
+    if (oldIndex < 0 || oldIndex >= _playlistItems.length) return;
+    if (newIndex < 0 || newIndex >= _playlistItems.length) return;
+    
+    final reordered = List<AggregatedItem>.from(_playlistItems);
+    final item = reordered.removeAt(oldIndex);
+    reordered.insert(newIndex, item);
+    _playlistItems = reordered;
+    _customPlaylistItems = reordered;
+    _collectionSort = CollectionSortOption.custom;
+    notifyListeners();
+
+    try {
+      final syncService = GetIt.instance<PluginSyncService>();
+      if (syncService.pluginAvailable) {
+        final itemIds = reordered.map((i) => i.id).toList();
+        await syncService.saveCustomCollectionOrder(_client, itemId, itemIds);
+      }
+    } catch (_) {}
+  }
+
   Future<void> _loadCollectionItems() async {
     try {
+      // No sortBy: keep the collection's native order instead of forcing alphabetical s
       final data = await _client.itemsApi.getItems(
         parentId: itemId,
-        sortBy: 'SortName',
-        fields: 'PrimaryImageAspectRatio,BasicSyncInfo',
+        fields: 'PrimaryImageAspectRatio,BasicSyncInfo,People',
       );
       final items = (data['Items'] as List?) ?? [];
       _collectionItems = _mapItems(items);
+      // Render the Movies/Shows/Cast tabs as soon as the top-level items are in.
+      // The per-series episode fetch below only feeds the flattened Playlist tab
+      // and Next Up, so it should not block the collection from showing.
+      notifyListeners();
+
+      // Fetch each series' episodes in parallel. The list is release sorted
+      // below, so fetch order does not affect the result.
+      final list = <AggregatedItem>[];
+      final seriesChildren = <AggregatedItem>[];
+      for (final item in _collectionItems) {
+        if (item.type == 'Series') {
+          seriesChildren.add(item);
+        } else if (item.type == 'Movie' ||
+            item.type == 'Audio' ||
+            item.type == 'Video' ||
+            item.type == 'MusicVideo') {
+          list.add(item);
+        }
+      }
+      final episodeLists = await Future.wait(
+        seriesChildren.map((series) async {
+          try {
+            final epData = await _client.itemsApi.getEpisodes(series.id);
+            return _mapItems((epData['Items'] as List?) ?? []);
+          } catch (_) {
+            return const <AggregatedItem>[];
+          }
+        }),
+      );
+      for (final episodes in episodeLists) {
+        list.addAll(episodes);
+      }
+      
+      // Default to release order (ascending) sorting
+      int releaseSortAscending(AggregatedItem a, AggregatedItem b) {
+        final aDate =
+            a.premiereDate ??
+            (a.productionYear != null ? DateTime(a.productionYear!) : null);
+        final bDate =
+            b.premiereDate ??
+            (b.productionYear != null ? DateTime(b.productionYear!) : null);
+        if (aDate == null && bDate == null) {
+          return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+        }
+        if (aDate == null) return 1;
+        if (bDate == null) return -1;
+        final byDate = aDate.compareTo(bDate);
+        if (byDate != 0) return byDate;
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      }
+      
+      list.sort(releaseSortAscending);
+      
+      _playlistItems = list;
+      _customPlaylistItems = List<AggregatedItem>.from(list);
+      _collectionSort = CollectionSortOption.releaseAscending;
+
+      try {
+        final syncService = GetIt.instance<PluginSyncService>();
+        if (syncService.pluginAvailable) {
+          final customOrder = await syncService.fetchCustomCollectionOrder(_client, itemId);
+          if (customOrder != null && customOrder.isNotEmpty) {
+            final orderMap = {for (var i = 0; i < customOrder.length; i++) customOrder[i]: i};
+            list.sort((a, b) {
+              final aIndex = orderMap[a.id];
+              final bIndex = orderMap[b.id];
+              if (aIndex == null && bIndex == null) return releaseSortAscending(a, b);
+              if (aIndex == null) return 1;
+              if (bIndex == null) return -1;
+              return aIndex.compareTo(bIndex);
+            });
+            _playlistItems = list;
+            _customPlaylistItems = List<AggregatedItem>.from(list);
+            _collectionSort = CollectionSortOption.custom;
+          }
+        }
+      } catch (_) {}
+      
+      // Resolve Next Up item
+      if (_playlistItems.isNotEmpty) {
+        final playedAll = _playlistItems.every((item) => item.rawData['UserData']?['Played'] == true);
+        if (playedAll) {
+          _nextUp = _playlistItems.first;
+        } else {
+          _nextUp = _playlistItems.firstWhere(
+            (item) => item.rawData['UserData']?['Played'] != true,
+            orElse: () => _playlistItems.first,
+          );
+        }
+      } else {
+        _nextUp = null;
+      }
+      
       notifyListeners();
     } catch (_) {}
   }
@@ -415,60 +764,72 @@ class ItemDetailViewModel extends ChangeNotifier {
     }
 
     try {
+      final Map<String, String> boxSetIds = {};
+
       final ancestors = await _client.itemsApi.getAncestors(item.id);
-      var boxSet = ancestors.firstWhere(
-        (ancestor) => ancestor['Type'] == 'BoxSet',
-        orElse: () => const <String, dynamic>{},
-      );
-
-      if (boxSet.isEmpty) {
-        final collapsed = await _client.itemsApi.getItems(
-          ids: [item.id],
-          includeItemTypes: ['Movie', 'Series', 'BoxSet'],
-          recursive: true,
-          collapseBoxSetItems: true,
-          fields: 'BasicSyncInfo',
-        );
-        final collapsedItems = (collapsed['Items'] as List?) ?? const [];
-        boxSet = collapsedItems
-            .whereType<Map>()
-            .map((entry) => entry.cast<String, dynamic>())
-            .firstWhere(
-              (entry) => entry['Type'] == 'BoxSet',
-              orElse: () => const <String, dynamic>{},
-            );
-      }
-
-      final boxSetId = boxSet['Id']?.toString();
-      String? resolvedBoxSetId;
-      if (boxSetId != null && boxSetId.isNotEmpty) {
-        final isMember = await _boxSetContainsItem(boxSetId, item.id);
-        if (isMember) {
-          resolvedBoxSetId = boxSetId;
+      for (final ancestor in ancestors) {
+        if (ancestor['Type'] == 'BoxSet') {
+          final boxSetId = ancestor['Id']?.toString();
+          final name = ancestor['Name']?.toString();
+          if (boxSetId != null && boxSetId.isNotEmpty && name != null) {
+            final isMember = await _boxSetContainsItem(boxSetId, item.id);
+            if (isMember && !boxSetIds.containsKey(boxSetId)) {
+              boxSetIds[boxSetId] = name;
+            }
+          }
         }
       }
-      resolvedBoxSetId ??= await _findParentCollectionByScanningBoxSets(
-        item.id,
-      );
-      if (resolvedBoxSetId == null || resolvedBoxSetId.isEmpty) {
+
+      final scannedCollections = await _findParentCollectionsByScanningBoxSets(item.id);
+      boxSetIds.addAll(scannedCollections);
+
+      if (boxSetIds.isEmpty) {
+        _parentCollections = const [];
+        _parentCollectionItems = const [];
+        _parentCollectionName = null;
+        notifyListeners();
         return;
       }
 
-      final data = await _client.itemsApi.getItems(
-        parentId: resolvedBoxSetId,
-        sortBy: 'PremiereDate,SortName',
-        sortOrder: 'Ascending',
-        fields: 'PrimaryImageAspectRatio,BasicSyncInfo',
-      );
+      // Keep collections in a stable order so the rows and the legacy
+      // single-collection fields don't shuffle around between opens.
+      final entries = boxSetIds.entries.toList();
+      final ordered = List<ParentCollection?>.filled(entries.length, null);
+      final fetchFutures = <Future<void>>[];
 
-      final items = (data['Items'] as List?) ?? [];
-      final resolvedName = (boxSetId != null && boxSetId == resolvedBoxSetId)
-          ? boxSet['Name'] as String?
-          : null;
-      _parentCollectionName =
-          resolvedName ??
-          (await _client.itemsApi.getItem(resolvedBoxSetId))['Name'] as String?;
-      _parentCollectionItems = _sortCollectionByReleaseOrder(_mapItems(items));
+      for (var i = 0; i < entries.length; i++) {
+        final index = i;
+        final boxSetId = entries[i].key;
+        final name = entries[i].value;
+
+        fetchFutures.add(() async {
+          final data = await _client.itemsApi.getItems(
+            parentId: boxSetId,
+            sortBy: 'PremiereDate,SortName',
+            sortOrder: 'Ascending',
+            fields: 'PrimaryImageAspectRatio,BasicSyncInfo',
+          );
+
+          final items = (data['Items'] as List?) ?? [];
+          ordered[index] = ParentCollection(
+            id: boxSetId,
+            name: name,
+            items: _sortCollectionByReleaseOrder(_mapItems(items)),
+          );
+        }());
+      }
+      await Future.wait(fetchFutures);
+
+      final collections = ordered.whereType<ParentCollection>().toList();
+      _parentCollections = collections;
+      if (collections.isNotEmpty) {
+        _parentCollectionName = collections.first.name;
+        _parentCollectionItems = collections.first.items;
+      } else {
+        _parentCollectionName = null;
+        _parentCollectionItems = const [];
+      }
+
       notifyListeners();
     } catch (_) {}
   }
@@ -489,7 +850,8 @@ class ItemDetailViewModel extends ChangeNotifier {
     }
   }
 
-  Future<String?> _findParentCollectionByScanningBoxSets(String itemId) async {
+  Future<Map<String, String>> _findParentCollectionsByScanningBoxSets(String itemId) async {
+    final Map<String, String> result = {};
     try {
       const pageSize = 200;
       var startIndex = 0;
@@ -509,25 +871,36 @@ class ItemDetailViewModel extends ChangeNotifier {
           break;
         }
 
+        final candidates = <MapEntry<String, String>>[];
         for (final raw in boxSets.whereType<Map>()) {
           final boxSet = raw.cast<String, dynamic>();
           final boxSetId = boxSet['Id']?.toString();
-          if (boxSetId == null || boxSetId.isEmpty) {
+          final boxSetName = boxSet['Name']?.toString();
+          if (boxSetId == null || boxSetId.isEmpty || boxSetName == null) {
             continue;
           }
+          candidates.add(MapEntry(boxSetId, boxSetName));
+        }
 
-          final membership = await _client.itemsApi.getItems(
-            parentId: boxSetId,
-            fields: 'BasicSyncInfo',
-          );
-          final members = (membership['Items'] as List?) ?? const [];
-          final hasItem = members.whereType<Map>().any((entry) {
-            final map = entry.cast<String, dynamic>();
-            return map['Id'] == itemId;
-          });
-          if (hasItem) {
-            return boxSetId;
-          }
+        // Cap how many membership lookups run at once so a large library
+        // doesn't fire a whole page of requests in one burst.
+        const maxConcurrent = 12;
+        for (var i = 0; i < candidates.length; i += maxConcurrent) {
+          final batch = candidates.skip(i).take(maxConcurrent);
+          await Future.wait(batch.map((candidate) async {
+            final membership = await _client.itemsApi.getItems(
+              parentId: candidate.key,
+              fields: 'BasicSyncInfo',
+            );
+            final members = (membership['Items'] as List?) ?? const [];
+            final hasItem = members.whereType<Map>().any((entry) {
+              final map = entry.cast<String, dynamic>();
+              return map['Id'] == itemId;
+            });
+            if (hasItem) {
+              result[candidate.key] = candidate.value;
+            }
+          }));
         }
 
         if (boxSets.length < pageSize) {
@@ -537,7 +910,7 @@ class ItemDetailViewModel extends ChangeNotifier {
       }
     } catch (_) {}
 
-    return null;
+    return result;
   }
 
   List<AggregatedItem> _sortCollectionByReleaseOrder(
@@ -591,8 +964,14 @@ class ItemDetailViewModel extends ChangeNotifier {
 
   Future<void> _loadFilmography() async {
     try {
+      final localId = _localPersonId ?? (itemId.startsWith('tmdb:') ? null : itemId);
+      if (localId == null) {
+        _filmography = const [];
+        notifyListeners();
+        return;
+      }
       final data = await _client.itemsApi.getItems(
-        personIds: [itemId],
+        personIds: [localId],
         includeItemTypes: ['Movie', 'Series', 'MusicVideo', 'Episode'],
         sortBy: 'PremiereDate',
         sortOrder: 'Descending',
@@ -607,8 +986,37 @@ class ItemDetailViewModel extends ChangeNotifier {
   }
 
   Future<void> _loadSimilar() async {
+    final item = _item;
+    if (item != null && (item.type == 'Movie' || item.type == 'Series')) {
+      try {
+        final prefs = GetIt.instance<UserPreferences>();
+        final sourceSetting = prefs.get(UserPreferences.recommendationSystemSource);
+        final isLocal = sourceSetting == RecommendationSystemSource.local;
+        final serverId = _serverId ?? _client.baseUrl;
+        final dataSource = GetIt.instance<RowDataSource>();
+
+        final recommended = await dataSource.getRecommendations(
+          serverId: serverId,
+          baseItem: item,
+          isLocal: isLocal,
+          limit: 15,
+          includeWatched: true,
+        );
+        // Only short-circuit when we actually have results. An empty list (e.g.
+        // the online source without Seerr configured, or no local matches)
+        // falls through to Jellyfin's similar-items below.
+        if (recommended.isNotEmpty) {
+          _similar = recommended;
+          notifyListeners();
+          return;
+        }
+      } catch (e) {
+        debugPrint('[ItemDetailViewModel] Custom recommendation system failed: $e');
+      }
+    }
+
     try {
-      final data = await _client.itemsApi.getSimilarItems(itemId, limit: 12);
+      final data = await _client.itemsApi.getSimilarItems(itemId, limit: 15);
       final items = (data['Items'] as List?) ?? [];
       _similar = _mapItems(items);
       notifyListeners();
@@ -618,6 +1026,35 @@ class ItemDetailViewModel extends ChangeNotifier {
   Future<void> _loadRatings() async {
     final item = _item;
     if (item == null) return;
+
+    if (item.type == 'Episode') {
+      final enableEpisodeRatings = GetIt.instance<UserPreferences>().get(UserPreferences.enableEpisodeRatings);
+      if (!enableEpisodeRatings) return;
+
+      final seriesId = item.seriesId;
+      final season = item.parentIndexNumber;
+      final episode = item.indexNumber;
+
+      if (seriesId != null && season != null && episode != null) {
+        try {
+          final seriesData = await _client.itemsApi.getItem(seriesId);
+          final seriesTmdbId = (seriesData['ProviderIds'] as Map?)?['Tmdb']?.toString();
+          if (seriesTmdbId != null && seriesTmdbId.isNotEmpty) {
+            final rating = await _tmdbRepository.getEpisodeRating(
+              tmdbId: seriesTmdbId,
+              season: season,
+              episode: episode,
+            );
+            if (rating != null && rating > 0) {
+              _ratings = {'stars': rating};
+              notifyListeners();
+            }
+          }
+        } catch (_) {}
+      }
+      return;
+    }
+
     final tmdbId = item.tmdbId;
     if (tmdbId == null) return;
     final mediaType = item.type ?? 'Movie';
@@ -689,13 +1126,27 @@ class ItemDetailViewModel extends ChangeNotifier {
     } catch (_) {}
   }
 
-  List<Map<String, dynamic>> get directors =>
-      _item?.people.where((p) => p['Type'] == 'Director').toList() ?? const [];
+  List<Map<String, dynamic>> get directors {
+    if (_item?.type == 'BoxSet') {
+      _ensureBoxSetPeople();
+      return _boxSetDirectors;
+    }
+    return _item?.people.where((p) => p['Type'] == 'Director').toList() ?? const [];
+  }
 
-  List<Map<String, dynamic>> get writers =>
-      _item?.people.where((p) => p['Type'] == 'Writer').toList() ?? const [];
+  List<Map<String, dynamic>> get writers {
+    if (_item?.type == 'BoxSet') {
+      _ensureBoxSetPeople();
+      return _boxSetWriters;
+    }
+    return _item?.people.where((p) => p['Type'] == 'Writer').toList() ?? const [];
+  }
 
   List<Map<String, dynamic>> get actors {
+    if (_item?.type == 'BoxSet') {
+      _ensureBoxSetPeople();
+      return _boxSetActors;
+    }
     final list = _item?.people ?? const [];
     final dirNames = directors.map((d) => d['Name'] as String?).toSet();
     final writNames = writers.map((w) => w['Name'] as String?).toSet();

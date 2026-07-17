@@ -9,6 +9,7 @@ import '../../../data/viewmodels/schedule_view_model.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../preference/user_preferences.dart';
 import '../../../ui/mixins/focus_state_mixin.dart';
+import '../../widgets/adaptive/adaptive_dialog.dart';
 import '../../widgets/overlay_sheet.dart';
 import '../../widgets/focus/request_initial_focus.dart';
 import 'widgets/live_tv_section_header.dart';
@@ -116,7 +117,7 @@ class _LiveTvScheduleScreenState extends State<LiveTvScheduleScreen> {
     final l10n = AppLocalizations.of(context);
     final confirmed = await showFocusRestoringDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => AlertDialog.adaptive(
         backgroundColor: const Color(0xFF1A1A2E),
         title: Text(
           l10n.cancelRecording,
@@ -127,7 +128,7 @@ class _LiveTvScheduleScreenState extends State<LiveTvScheduleScreen> {
           style: TextStyle(color: Colors.white.withValues(alpha: 0.8)),
         ),
         actions: [
-          TextButton(
+          adaptiveDialogAction(
             onPressed:
                 () => Navigator.of(ctx, rootNavigator: true).pop(false),
             child: Text(l10n.no),
@@ -304,7 +305,7 @@ class _ScheduleCardState extends State<_ScheduleCard> with FocusStateMixin {
                       height: 112,
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(4),
+                        borderRadius: AppRadius.circular(4),
                         border: showFocusBorder
                             ? Border.fromBorderSide(
                                 ThemeRegistry.active.borders.focusBorder.copyWith(

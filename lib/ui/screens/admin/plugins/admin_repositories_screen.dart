@@ -1,10 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get_it/get_it.dart';
+import 'package:moonfin_design/moonfin_design.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../../../l10n/app_localizations.dart';
+import '../../../widgets/adaptive/adaptive_dialog.dart';
 import '../providers/admin_user_providers.dart';
+import '../widgets/admin_form_styles.dart';
+
+enum RepoSortOption {
+  dateAddedOldest,
+  dateAddedNewest,
+  alphabeticalAsc,
+  alphabeticalDesc,
+}
 
 class AdminRepositoriesScreen extends ConsumerStatefulWidget {
   const AdminRepositoriesScreen({super.key});
@@ -17,6 +27,7 @@ class AdminRepositoriesScreen extends ConsumerStatefulWidget {
 class _AdminRepositoriesScreenState
     extends ConsumerState<AdminRepositoriesScreen> {
   bool _saving = false;
+  RepoSortOption _sortOption = RepoSortOption.dateAddedOldest;
 
   AdminPluginsApi get _api =>
       GetIt.instance<MediaServerClient>().adminPluginsApi;
@@ -52,13 +63,13 @@ class _AdminRepositoriesScreenState
     final confirmed = await showDialog<bool>(
       context: context,
       builder:
-          (context) => AlertDialog(
+          (context) => AlertDialog.adaptive(
             title: Text(l10n.adminRemoveRepository),
             content: Text(
               l10n.adminRemoveRepositoryConfirm(repo.name.isNotEmpty ? repo.name : repo.url),
             ),
             actions: [
-              TextButton(
+              adaptiveDialogAction(
                 onPressed: () => Navigator.pop(context, false),
                 child: Text(l10n.cancel),
               ),
@@ -138,46 +149,68 @@ class _AdminRepositoriesScreenState
     final listBottomPadding = bottomSafe + 96;
     final fabBottom = bottomSafe + 16;
 
+    final l10n = AppLocalizations.of(context);
+
+    final sortedRepos = List.generate(repos.length, (i) => (originalIndex: i, repo: repos[i]));
+    switch (_sortOption) {
+      case RepoSortOption.dateAddedOldest:
+        break;
+      case RepoSortOption.dateAddedNewest:
+        sortedRepos.sort((a, b) => b.originalIndex.compareTo(a.originalIndex));
+        break;
+      case RepoSortOption.alphabeticalAsc:
+        sortedRepos.sort((a, b) => _compareAlphabetical(a.repo, b.repo));
+        break;
+      case RepoSortOption.alphabeticalDesc:
+        sortedRepos.sort((a, b) => _compareAlphabetical(b.repo, a.repo));
+        break;
+    }
+
     return Stack(
       children: [
         if (repos.isEmpty)
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
+          ListView(
+            padding: EdgeInsets.fromLTRB(16, 20, 16, listBottomPadding),
+            children: [
+              adminScreenHeader(
+                context,
+                title: l10n.adminDrawerRepositories,
+                subtitle: l10n.adminReposEmptySubtitle,
+                icon: Icons.source_outlined,
+              ),
+              const SizedBox(height: AppSpacing.spaceXl),
+              Center(
+                child: Icon(
                   Icons.source,
                   size: 48,
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  AppLocalizations.of(context).adminReposEmpty,
-                  style: theme.textTheme.titleMedium,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  AppLocalizations.of(context).adminReposEmptySubtitle,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           )
         else
-          ListView.builder(
-            padding: EdgeInsets.only(bottom: listBottomPadding),
-            itemCount: repos.length,
-            itemBuilder: (context, index) {
-              final repo = repos[index];
-              return _RepositoryTile(
-                repo: repo,
-                onEdit: () => _editRepository(index, repo),
-                onRemove: () => _removeRepository(index, repo),
-                onToggle: () => _toggleRepository(index),
-              );
-            },
+          ListView(
+            padding: EdgeInsets.fromLTRB(16, 20, 16, listBottomPadding),
+            children: [
+              adminScreenHeader(
+                context,
+                title: l10n.adminDrawerRepositories,
+                icon: Icons.source_outlined,
+              ),
+              _buildSortDropdown(),
+              adminGlassGroup(
+                context,
+                children: [
+                  for (var index = 0; index < sortedRepos.length; index++)
+                    _RepositoryTile(
+                      repo: sortedRepos[index].repo,
+                      onEdit: () => _editRepository(sortedRepos[index].originalIndex, sortedRepos[index].repo),
+                      onRemove: () => _removeRepository(sortedRepos[index].originalIndex, sortedRepos[index].repo),
+                      onToggle: () => _toggleRepository(sortedRepos[index].originalIndex),
+                    ),
+                ],
+              ),
+            ],
           ),
         if (_saving) const Center(child: CircularProgressIndicator()),
         Positioned(
@@ -189,6 +222,59 @@ class _AdminRepositoriesScreenState
           ),
         ),
       ],
+    );
+  }
+
+  int _compareAlphabetical(RepositoryInfo a, RepositoryInfo b) {
+    final nameA = (a.name.isNotEmpty ? a.name : a.url).toLowerCase();
+    final nameB = (b.name.isNotEmpty ? b.name : b.url).toLowerCase();
+    return nameA.compareTo(nameB);
+  }
+
+  Widget _buildSortDropdown() {
+    final l10n = AppLocalizations.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.spaceMd),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Icon(Icons.sort, size: 18, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(width: 8),
+          DropdownButton<RepoSortOption>(
+            value: _sortOption,
+            underline: const SizedBox(),
+            style: TextStyle(
+              fontSize: 14,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+            dropdownColor: Theme.of(context).colorScheme.surface,
+            borderRadius: AppRadius.circular(8),
+            items: [
+              DropdownMenuItem(
+                value: RepoSortOption.dateAddedOldest,
+                child: Text(l10n.adminRepoSortDateOldest),
+              ),
+              DropdownMenuItem(
+                value: RepoSortOption.dateAddedNewest,
+                child: Text(l10n.adminRepoSortDateNewest),
+              ),
+              DropdownMenuItem(
+                value: RepoSortOption.alphabeticalAsc,
+                child: Text(l10n.adminRepoSortNameAsc),
+              ),
+              DropdownMenuItem(
+                value: RepoSortOption.alphabeticalDesc,
+                child: Text(l10n.adminRepoSortNameDesc),
+              ),
+            ],
+            onChanged: (value) {
+              if (value != null) {
+                setState(() => _sortOption = value);
+              }
+            },
+          ),
+        ],
+      ),
     );
   }
 }
@@ -237,7 +323,7 @@ class _RepositoryTile extends StatelessWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Switch(value: repo.enabled, onChanged: (_) => onToggle()),
+          Switch.adaptive(value: repo.enabled, onChanged: (_) => onToggle()),
           PopupMenuButton<String>(
             onSelected: (value) {
               switch (value) {
@@ -305,7 +391,7 @@ class _RepositoryDialogState extends State<_RepositoryDialog> {
       280.0,
       400.0,
     );
-    return AlertDialog(
+    return AlertDialog.adaptive(
       title: Text(isEdit ? AppLocalizations.of(context).adminReposEditTitle : AppLocalizations.of(context).adminReposAddTitle),
       content: SizedBox(
         width: dialogWidth,
@@ -314,25 +400,22 @@ class _RepositoryDialogState extends State<_RepositoryDialog> {
           children: [
             TextField(
               controller: _nameController,
-              decoration: InputDecoration(
-                labelText: AppLocalizations.of(context).name,
-                hintText: AppLocalizations.of(context).adminRepositoryNameHint,
-                border: OutlineInputBorder(),
+              decoration: adminInputDecoration(
+                label: AppLocalizations.of(context).name,
+                hint: AppLocalizations.of(context).adminRepositoryNameHint,
               ),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _urlController,
-              decoration: InputDecoration(
-                labelText: AppLocalizations.of(context).adminRepositoryUrl,
-                hintText:
-                    'https://repo.jellyfin.org/files/plugin/manifest.json',
-                border: OutlineInputBorder(),
+              decoration: adminInputDecoration(
+                label: AppLocalizations.of(context).adminRepositoryUrl,
+                hint: 'https://repo.jellyfin.org/files/plugin/manifest.json',
               ),
               keyboardType: TextInputType.url,
             ),
             const SizedBox(height: 12),
-            SwitchListTile(
+            SwitchListTile.adaptive(
               contentPadding: EdgeInsets.zero,
               title: Text(AppLocalizations.of(context).enabled),
               value: _enabled,
@@ -342,7 +425,7 @@ class _RepositoryDialogState extends State<_RepositoryDialog> {
         ),
       ),
       actions: [
-        TextButton(
+        adaptiveDialogAction(
           onPressed: () => Navigator.pop(context),
           child: Text(AppLocalizations.of(context).cancel),
         ),

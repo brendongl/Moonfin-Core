@@ -1,4 +1,4 @@
-import 'package:cached_network_image/cached_network_image.dart';
+import '../../widgets/offline_aware_image.dart';
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
@@ -383,7 +383,7 @@ class _FolderGridCard extends StatelessWidget {
     final ar = isFolder ? 16 / 9 : MediaCard.aspectRatioForType(item.type);
 
     return InkWell(
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: AppRadius.circular(10),
       onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -391,7 +391,7 @@ class _FolderGridCard extends StatelessWidget {
           AspectRatio(
             aspectRatio: ar,
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: AppRadius.circular(10),
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   color: AppColorScheme.onSurface.withAlpha(20),
@@ -403,7 +403,7 @@ class _FolderGridCard extends StatelessWidget {
                   fit: StackFit.expand,
                   children: [
                     if (imageUrl != null)
-                      CachedNetworkImage(
+                      OfflineAwareImage(
                         imageUrl: imageUrl!,
                         fit: BoxFit.cover,
                         errorWidget: (_, _, _) => Center(

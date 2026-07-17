@@ -417,7 +417,7 @@ class _EmbyConnectScreenState extends State<EmbyConnectScreen> {
             filled: true,
             fillColor: focused
                 ? AppColorScheme.buttonFocused
-                : AppColorScheme.surfaceVariant.withValues(alpha: 0.6),
+                : AppColorScheme.surfaceVariant.scaleAlpha(0.6),
             borderRadius: 12,
             borderColor: AppColorScheme.onSurface.withValues(alpha: 0.1),
             focusedBorderColor: AppColorScheme.buttonFocused,
@@ -502,9 +502,9 @@ class _EmbyConnectScreenState extends State<EmbyConnectScreen> {
       padding: const EdgeInsets.only(bottom: 6),
       child: Material(
         color: AppColorScheme.surface.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppRadius.circular(12),
         child: InkWell(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadius.circular(12),
           onTap: () => _connectToServer(server),
           focusColor: AppColorScheme.accent,
           hoverColor: AppColorScheme.onSurface.withValues(alpha: 0.08),
@@ -577,21 +577,21 @@ class _EmbyConnectScreenState extends State<EmbyConnectScreen> {
         color: AppColorScheme.onSurface.withValues(alpha: 0.5),
       ),
       filled: true,
-      fillColor: AppColorScheme.surfaceVariant.withValues(alpha: 0.6),
+      fillColor: AppColorScheme.surfaceVariant.scaleAlpha(0.6),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppRadius.circular(12),
         borderSide: BorderSide(
           color: AppColorScheme.onSurface.withValues(alpha: 0.1),
         ),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppRadius.circular(12),
         borderSide: BorderSide(
           color: AppColorScheme.onSurface.withValues(alpha: 0.1),
         ),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppRadius.circular(12),
         borderSide: BorderSide(color: AppColorScheme.accent, width: 2),
       ),
     );

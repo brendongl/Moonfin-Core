@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:server_core/server_core.dart';
 
 class MdbListRepository {
@@ -141,4 +142,100 @@ class MdbListRepository {
       _cache.remove(_cache.keys.first);
     }
   }
+
+  Future<List<MdbListItem>?> getListItems(String slug, {String? mediaType}) async {
+    try {
+      final baseUrl = _client.baseUrl;
+      final token = _client.accessToken;
+      if (token == null) return null;
+
+      final queryParams = <String, dynamic>{};
+      if (mediaType != null && mediaType.isNotEmpty) {
+        queryParams['mediatype'] = mediaType;
+      }
+
+      final response = await _dio.get(
+        '$baseUrl/Moonfin/MdbList/Lists/$slug/Items',
+        queryParameters: queryParams,
+        options: Options(
+          headers: {'Authorization': 'MediaBrowser Token="$token"'},
+        ),
+      );
+
+      final data = response.data;
+      if (data is! Map<String, dynamic>) return null;
+
+      final success = data['success'] as bool? ?? false;
+      if (!success || data['error'] != null) return null;
+
+      final itemsList = data['items'] as List?;
+      if (itemsList == null) return null;
+
+      return itemsList
+          .map((item) => MdbListItem.fromJson(item as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      debugPrint('[MdbListRepository] Failed to get list items for $slug: $e');
+      return null;
+    }
+  }
 }
+
+class MdbListItem {
+  final int? id;
+  final String name;
+  final String type;
+  final int? productionYear;
+  final int? rank;
+  final String? poster;
+  final MdbListItemProviderIds providerIds;
+
+  MdbListItem({
+    this.id,
+    required this.name,
+    required this.type,
+    this.productionYear,
+    this.rank,
+    this.poster,
+    required this.providerIds,
+  });
+
+  factory MdbListItem.fromJson(Map<String, dynamic> json) {
+    final rawId = json['id'] ?? json['Id'];
+    final parsedId = rawId is int 
+        ? rawId 
+        : int.tryParse(rawId?.toString() ?? '');
+    final providerIdsMap = (json['providerIds'] ?? json['ProviderIds']) as Map<String, dynamic>? ?? {};
+    final pIds = MdbListItemProviderIds.fromJson(providerIdsMap);
+    return MdbListItem(
+      id: parsedId,
+      name: (json['name'] ?? json['Name']) as String? ?? '',
+      type: (json['type'] ?? json['Type']) as String? ?? '',
+      productionYear: (json['productionYear'] ?? json['ProductionYear']) as int?,
+      rank: (json['rank'] ?? json['Rank']) as int?,
+      poster: (json['poster'] ?? json['Poster'] ?? json['posterUrl'] ?? json['poster_path']) as String?,
+      providerIds: pIds,
+    );
+  }
+}
+
+class MdbListItemProviderIds {
+  final String? imdb;
+  final String? tmdb;
+  final String? tvdb;
+
+  MdbListItemProviderIds({
+    this.imdb,
+    this.tmdb,
+    this.tvdb,
+  });
+
+  factory MdbListItemProviderIds.fromJson(Map<String, dynamic> json) {
+    return MdbListItemProviderIds(
+      imdb: (json['Imdb'] ?? json['imdb'] ?? json['IMDB'])?.toString(),
+      tmdb: (json['Tmdb'] ?? json['tmdb'] ?? json['TMDB'])?.toString(),
+      tvdb: (json['Tvdb'] ?? json['tvdb'] ?? json['TVDB'])?.toString(),
+    );
+  }
+}
+

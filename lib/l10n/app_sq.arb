@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "Këngët e preferuara do të shfaqen këtu",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "Ngarkimi dështoi",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "Përdorues specifik",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "Autentifiko gjithmonë",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "Kërkoni personin në distancë",
     "adminNoRemoteMatches": "Nuk u gjet asnjë përputhje në distancë",
     "adminRemoteResults": "Rezultatet në distancë",
     "adminRemoteMetadataApplied": "U aplikuan të dhënat meta në distancë",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "Shto sintonizues",
     "adminTunerType": "Lloji i sintonizuesit",
-    "adminTunerTypeHint": "HDHomeRun, M3U, Të tjera",
-    "adminUrlPath": "URL / Shtegu",
-    "adminNameOptional": "Emri (opsionale)",
     "adminTunerAdded": "Akorduesi u shtua",
     "adminTunerAddFailed": "Failed to add tuner: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "Shto ofruesin e udhëzuesit",
     "adminProviderType": "Lloji i ofruesit",
-    "adminProviderTypeHint": "SchedulesDirect ose XMLTV",
-    "adminUsernameOptional": "Emri i përdoruesit (opsionale)",
-    "adminRefreshInterval": "Intervali i rifreskimit (orë)",
     "adminProviderAdded": "Ofruesi u shtua",
     "adminProviderAddFailed": "Failed to add provider: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "Nuk ka rreshta që përputhen",
     "adminMetadataEditorTitle": "Redaktori i meta të dhënave",
-    "adminMetadataRemote": "Telekomanda",
     "adminMetadataType": "Lloji",
     "adminMetadataDetails": "Detajet",
     "adminMetadataExternalIds": "ID e jashtme",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "Mbani mend zgjedhjen time",
     "playHdr10Fallback": "Luaj HDR10 rikthim",
     "requestTranscode": "Kërko transkod",
-    "homeScreenSectionsIntegrationDescription": "Zbuloni rreshtat e ekspozuar nga shtojca \"Seksionet e ekranit bazë\" të IAmParadox27. Rreshtat mund të aktivizohen dhe të rirenditen më poshtë.",
-    "homeScreenSectionsIntegrationNoServers": "Nuk ka ende serverë Jellyfin që raportojnë shtesën.",
-    "integrationOpenHomeSections": "Hapni seksionet kryesore",
-    "integrationOpenHomeSectionsSubtitle": "Aktivizo, çaktivizo dhe rirendit rreshtat",
-    "integrationInstalledButDisabled": "I instaluar por i çaktivizuar",
-    "integrationNotInstalled": "Nuk është instaluar",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "Shih të gjitha",
     "noItems": "Nuk ka artikuj",
     "switchUser": "Ndërro përdorues",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "AAC Stereo",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Passthrough (Advanced)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Delete saved theme",
     "savedThemesManageSubtitle": "Manage downloaded plugin themes on this device",
-    "homeScreenSectionsTitle": "Home Screen Sections",
     "themeEditor": "Theme Editor",
     "themeEditorSubtitle": "Open the Moonfin Theme Editor in your browser",
     "homeScreen": "Home Screen",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "Automatically enable HDR for HDR video playback and restore display mode on exit.",
     "whenFullscreen": "When fullscreen",
     "transcodingLimits": "Transcoding Limits",
-    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer"
+    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer",
+    "reportDownloadsActivity": "Shfaq shkarkimet në server",
+    "reportDownloadsActivitySubtitle": "Lejo administratorin e serverit të shohë shkarkimet tuaja të transkoduara në panel",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "Kufiri i memories së fshehtë të imazheve",
+    "clearImageCache": "Pastro memorien e fshehtë të imazheve",
+    "imageCacheCleared": "Memoria e fshehtë e imazheve u pastrua"
 }

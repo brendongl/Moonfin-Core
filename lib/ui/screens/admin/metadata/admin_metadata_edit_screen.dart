@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:moonfin_design/moonfin_design.dart';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +7,11 @@ import 'package:get_it/get_it.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../../../l10n/app_localizations.dart';
+import '../../../../util/image_mime.dart';
+import '../../../../util/platform_detection.dart';
+import '../../../widgets/adaptive/adaptive_dialog.dart';
+import '../../detail/modern/widgets/details_tab_bar.dart';
+import '../widgets/admin_form_styles.dart';
 
 class AdminMetadataEditScreen extends StatefulWidget {
   final String itemId;
@@ -17,9 +23,9 @@ class AdminMetadataEditScreen extends StatefulWidget {
       _AdminMetadataEditScreenState();
 }
 
-class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabController;
+class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
+  int _selectedTab = 0;
+  final _tabFocusNodes = <int, FocusNode>{};
   late final ItemsApi _itemsApi;
   late final AdminItemsApi _api;
   late final ImageApi _imageApi;
@@ -58,13 +64,17 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
     _itemsApi = GetIt.instance<MediaServerClient>().itemsApi;
     _api = GetIt.instance<MediaServerClient>().adminItemsApi;
     _imageApi = GetIt.instance<MediaServerClient>().imageApi;
-    _tabController = TabController(length: 4, vsync: this);
     _load();
   }
 
+  FocusNode _tabNode(int index) => _tabFocusNodes.putIfAbsent(
+      index, () => FocusNode(debugLabel: 'admin_metadata_tab_$index'));
+
   @override
   void dispose() {
-    _tabController.dispose();
+    for (final node in _tabFocusNodes.values) {
+      node.dispose();
+    }
     _nameController.dispose();
     _sortNameController.dispose();
     _originalTitleController.dispose();
@@ -335,18 +345,6 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
     return null;
   }
 
-  String? _contentTypeForFileName(String fileName) {
-    final dot = fileName.lastIndexOf('.');
-    final ext = dot == -1 ? '' : fileName.substring(dot + 1).toLowerCase();
-    return switch (ext) {
-      'jpg' || 'jpeg' => 'image/jpeg',
-      'png' => 'image/png',
-      'webp' => 'image/webp',
-      'gif' => 'image/gif',
-      'bmp' => 'image/bmp',
-      _ => null,
-    };
-  }
 
   Future<void> _runImageAction(
     ImageType type,
@@ -363,13 +361,41 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
     }
   }
 
+  static const _preservedItemFields = <String>[
+    'Id',
+    'IndexNumber',
+    'ParentIndexNumber',
+    'AirsBeforeSeasonNumber',
+    'AirsAfterSeasonNumber',
+    'AirsBeforeEpisodeNumber',
+    'Album',
+    'AlbumArtists',
+    'ArtistItems',
+    'Status',
+    'AirDays',
+    'AirTime',
+    'DateCreated',
+    'Height',
+    'AspectRatio',
+    'Video3DFormat',
+    'CustomRating',
+    'LockData',
+    'LockedFields',
+    'PreferredMetadataLanguage',
+    'PreferredMetadataCountryCode',
+    'RunTimeTicks',
+    'ProductionLocations',
+    'DisplayOrder',
+  ];
+
   Future<void> _save() async {
     final l10n = AppLocalizations.of(context);
     final sortName = _sortNameController.text.trim();
     final tagline = _taglineController.text.trim();
 
     final update = <String, dynamic>{
-      ..._raw,
+      for (final key in _preservedItemFields)
+        if (_raw.containsKey(key)) key: _raw[key],
       'Name': _nameController.text.trim(),
       'ForcedSortName': _nullIfEmpty(sortName),
       'OriginalTitle': _originalTitleController.text.trim(),
@@ -404,7 +430,7 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
       await _api.updateItem(widget.itemId, update);
       if (!mounted) return;
       setState(() {
-        _raw = update;
+        _raw = {..._raw, ...update};
         _saving = false;
       });
       ScaffoldMessenger.of(
@@ -430,7 +456,7 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
       builder:
           (ctx) => StatefulBuilder(
             builder:
-                (ctx, setStateDialog) => AlertDialog(
+                (ctx, setStateDialog) => AlertDialog.adaptive(
                   title: Text(l10n.adminRefreshMetadata),
                   content: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -463,7 +489,7 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
                     ],
                   ),
                   actions: [
-                    TextButton(
+                    adaptiveDialogAction(
                       onPressed: () => Navigator.pop(ctx, false),
                       child: Text(l10n.cancel),
                     ),
@@ -499,41 +525,48 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
 
   Future<void> _searchAndApplyRemote() async {
     final l10n = AppLocalizations.of(context);
-    final queryController = TextEditingController();
+    final searchType = (_raw['Type'] ?? '').toString();
+    if (searchType.isEmpty) return;
+
+    final queryController =
+        TextEditingController(text: (_raw['Name'] ?? '').toString());
     final query = await showDialog<String>(
       context: context,
-      builder:
-          (ctx) => AlertDialog(
-            title: Text(l10n.adminSearchRemotePerson),
-            content: TextField(
-              controller: queryController,
-              autofocus: true,
-              decoration: InputDecoration(
-                labelText: l10n.name,
-                border: const OutlineInputBorder(),
-              ),
-              onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text(l10n.cancel),
-              ),
-              FilledButton(
-                onPressed:
-                    () => Navigator.pop(ctx, queryController.text.trim()),
-                child: Text(l10n.search),
-              ),
-            ],
+      builder: (ctx) => AlertDialog.adaptive(
+        title: Text(l10n.adminMetadataIdentify),
+        content: TextField(
+          controller: queryController,
+          autofocus: true,
+          decoration: adminInputDecoration(label: l10n.name),
+          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+        ),
+        actions: [
+          adaptiveDialogAction(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(l10n.cancel),
           ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, queryController.text.trim()),
+            child: Text(l10n.search),
+          ),
+        ],
+      ),
     );
     queryController.dispose();
 
     if (query == null || query.isEmpty || !mounted) return;
 
+    final searchInfo = <String, dynamic>{'Name': query};
+    final year = int.tryParse((_raw['ProductionYear'] ?? '').toString());
+    if (year != null) searchInfo['Year'] = year;
+    final providerIds = _raw['ProviderIds'];
+    if (providerIds is Map && providerIds.isNotEmpty) {
+      searchInfo['ProviderIds'] = Map<String, dynamic>.from(providerIds);
+    }
+
     try {
-      final results = await _api.searchRemotePerson({
-        'SearchInfo': {'Name': query},
+      final results = await _api.searchRemote(searchType, {
+        'SearchInfo': searchInfo,
         'ItemId': widget.itemId,
       });
 
@@ -547,37 +580,58 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
 
       final selected = await showDialog<Map<String, dynamic>>(
         context: context,
-        builder:
-            (ctx) => AlertDialog(
-              title: Text(l10n.adminRemoteResults),
-              content: SizedBox(
-                width: (MediaQuery.sizeOf(ctx).width - 32).clamp(280.0, 560.0),
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: results.length,
-                  itemBuilder: (context, index) {
-                    final item = results[index];
-                    final name =
-                      (item['Name'] ?? item['SearchHint'] ?? l10n.unknown)
-                            .toString();
-                    final provider =
-                        (item['ProviderName'] ?? item['Provider'] ?? '')
-                            .toString();
-                    return ListTile(
-                      title: Text(name),
-                      subtitle: provider.isEmpty ? null : Text(provider),
-                      onTap: () => Navigator.pop(ctx, item),
-                    );
-                  },
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: Text(l10n.cancel),
-                ),
-              ],
+        builder: (ctx) => AlertDialog.adaptive(
+          title: Text(l10n.adminRemoteResults),
+          content: SizedBox(
+            width: (MediaQuery.sizeOf(ctx).width - 32).clamp(280.0, 560.0),
+            height: (MediaQuery.sizeOf(ctx).height * 0.6).clamp(240.0, 520.0),
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: results.length,
+              itemBuilder: (context, index) {
+                final item = results[index];
+                final name = (item['Name'] ?? l10n.unknown).toString();
+                final resultYear = item['ProductionYear']?.toString();
+                final overview = (item['Overview'] ?? '').toString();
+                final provider =
+                    (item['SearchProviderName'] ?? item['ProviderName'] ?? '')
+                        .toString();
+                final imageUrl = item['ImageUrl']?.toString();
+                final subtitle = overview.isNotEmpty ? overview : provider;
+                return ListTile(
+                  leading: imageUrl != null && imageUrl.isNotEmpty
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: Image.network(
+                            imageUrl,
+                            width: 40,
+                            height: 60,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) =>
+                                const Icon(Icons.movie_outlined),
+                          ),
+                        )
+                      : const Icon(Icons.movie_outlined),
+                  title: Text(resultYear != null && resultYear.isNotEmpty
+                      ? '$name ($resultYear)'
+                      : name),
+                  subtitle: subtitle.isEmpty
+                      ? null
+                      : Text(subtitle,
+                          maxLines: 2, overflow: TextOverflow.ellipsis),
+                  isThreeLine: overview.isNotEmpty,
+                  onTap: () => Navigator.pop(ctx, item),
+                );
+              },
             ),
+          ),
+          actions: [
+            adaptiveDialogAction(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(l10n.cancel),
+            ),
+          ],
+        ),
       );
 
       if (selected == null || !mounted) return;
@@ -601,16 +655,16 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
     final value = await showDialog<String>(
       context: context,
       builder:
-          (ctx) => AlertDialog(
+          (ctx) => AlertDialog.adaptive(
             title: Text(title),
             content: TextField(
               controller: controller,
               autofocus: true,
-              decoration: const InputDecoration(border: OutlineInputBorder()),
+              decoration: adminInputDecoration(),
               onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
             ),
             actions: [
-              TextButton(
+              adaptiveDialogAction(
                 onPressed: () => Navigator.pop(ctx),
                 child: Text(l10n.cancel),
               ),
@@ -643,7 +697,7 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
     final person = await showDialog<Map<String, String>>(
       context: context,
       builder:
-          (ctx) => AlertDialog(
+          (ctx) => AlertDialog.adaptive(
             title: Text(index == null ? l10n.adminMetadataAddPerson : l10n.adminMetadataEditPerson),
             content: SingleChildScrollView(
               child: Column(
@@ -651,32 +705,25 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
                 children: [
                   TextField(
                     controller: nameController,
-                    decoration: InputDecoration(
-                      labelText: l10n.name,
-                      border: const OutlineInputBorder(),
-                    ),
+                    decoration: adminInputDecoration(label: l10n.name),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: roleController,
-                    decoration: InputDecoration(
-                      labelText: l10n.adminMetadataRole,
-                      border: const OutlineInputBorder(),
-                    ),
+                    decoration:
+                        adminInputDecoration(label: l10n.adminMetadataRole),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: typeController,
-                    decoration: InputDecoration(
-                      labelText: l10n.adminMetadataType,
-                      border: const OutlineInputBorder(),
-                    ),
+                    decoration:
+                        adminInputDecoration(label: l10n.adminMetadataType),
                   ),
                 ],
               ),
             ),
             actions: [
-              TextButton(
+              adaptiveDialogAction(
                 onPressed: () => Navigator.pop(ctx),
                 child: Text(l10n.cancel),
               ),
@@ -730,14 +777,12 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
       builder:
           (ctx) => StatefulBuilder(
             builder:
-                (ctx, setStateDialog) => AlertDialog(
+                (ctx, setStateDialog) => AlertDialog.adaptive(
                   title: Text(l10n.adminUpdateContentType),
                   content: DropdownButtonFormField<String>(
                     initialValue: selectedValue,
-                    decoration: InputDecoration(
-                      labelText: l10n.adminContentType,
-                      border: const OutlineInputBorder(),
-                    ),
+                    decoration:
+                        adminInputDecoration(label: l10n.adminContentType),
                     items:
                         options.map((option) {
                           final optionValue = option['Value'] ?? '';
@@ -754,7 +799,7 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
                     },
                   ),
                   actions: [
-                    TextButton(
+                    adaptiveDialogAction(
                       onPressed: () => Navigator.pop(ctx),
                       child: Text(l10n.cancel),
                     ),
@@ -814,11 +859,11 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
                   ? Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        l10n.adminMetadataEditorTitle,
-                        style: Theme.of(context).textTheme.headlineSmall,
+                      adminScreenHeader(
+                        context,
+                        title: l10n.adminMetadataEditorTitle,
+                        icon: Icons.edit_note_outlined,
                       ),
-                      const SizedBox(height: 12),
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
@@ -831,7 +876,7 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
                           FilledButton.tonalIcon(
                             onPressed: _searchAndApplyRemote,
                             icon: const Icon(Icons.travel_explore),
-                            label: Text(l10n.adminMetadataRemote),
+                            label: Text(l10n.adminMetadataIdentify),
                           ),
                           FilledButton.tonalIcon(
                             onPressed: _changeContentType,
@@ -849,10 +894,18 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
                   )
                   : Row(
                     children: [
+                      Icon(Icons.edit_note_outlined,
+                          color: AppColorScheme.accent, size: 26),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           l10n.adminMetadataEditorTitle,
-                          style: Theme.of(context).textTheme.headlineSmall,
+                          style: TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.5,
+                            color: AppColorScheme.onSurface,
+                          ),
                         ),
                       ),
                       FilledButton.tonalIcon(
@@ -864,7 +917,7 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
                       FilledButton.tonalIcon(
                         onPressed: _searchAndApplyRemote,
                         icon: const Icon(Icons.travel_explore),
-                        label: Text(l10n.adminMetadataRemote),
+                        label: Text(l10n.adminMetadataIdentify),
                       ),
                       const SizedBox(width: 8),
                       FilledButton.tonalIcon(
@@ -881,18 +934,25 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
                     ],
                   ),
         ),
-        TabBar(
-          controller: _tabController,
-          tabs: [
-            Tab(text: l10n.general),
-            Tab(text: l10n.adminMetadataDetails),
-            Tab(text: l10n.adminMetadataExternalIds),
-            Tab(text: l10n.adminMetadataImages),
-          ],
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+          child: DetailsTabBar(
+            segmented: true,
+            wrap: PlatformDetection.useMobileUi,
+            labels: [
+              l10n.general,
+              l10n.adminMetadataDetails,
+              l10n.adminMetadataExternalIds,
+              l10n.adminMetadataImages,
+            ],
+            selectedIndex: _selectedTab,
+            onSelect: (i) => setState(() => _selectedTab = i),
+            focusNodeFor: _tabNode,
+          ),
         ),
         Expanded(
-          child: TabBarView(
-            controller: _tabController,
+          child: IndexedStack(
+            index: _selectedTab,
             children: [
               _buildGeneralTab(),
               _buildDetailsTab(),
@@ -992,14 +1052,12 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
           _studios,
           () => _addChip(l10n.adminMetadataAddStudio, _studios),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
-              child: Text(
-                l10n.adminMetadataPeople,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
+              child: adminSectionLabel(context, l10n.adminMetadataPeople,
+                  icon: Icons.people_outline),
             ),
             FilledButton.tonalIcon(
               onPressed: () => _editPerson(),
@@ -1143,9 +1201,11 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
     final l10n = AppLocalizations.of(context);
     final busy = _busyImageType == imageType;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
+    return adminGlassGroup(
+      context,
+      children: [
+      Padding(
+        padding: const EdgeInsets.all(AppSpacing.spaceLg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1165,7 +1225,7 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
                               Theme.of(
                                 context,
                               ).colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(4),
+                          borderRadius: AppRadius.circular(4),
                         ),
                         child: const Center(
                           child: Icon(
@@ -1208,6 +1268,7 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
           ],
         ),
       ),
+      ],
     );
   }
 
@@ -1264,7 +1325,7 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
     final messenger = ScaffoldMessenger.of(context);
 
     final file = result.files.single;
-    final contentType = _contentTypeForFileName(file.name);
+    final contentType = imageContentTypeForFileName(file.name);
     if (contentType == null) {
       messenger.showSnackBar(
         SnackBar(content: Text(l10n.adminUnsupportedImageFormat)),
@@ -1312,13 +1373,13 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
     final confirmed = await showDialog<bool>(
       context: context,
       builder:
-          (ctx) => AlertDialog(
+          (ctx) => AlertDialog.adaptive(
             title: Text(l10n.adminMetadataDeleteImageTitle(imageType.toServerString())),
             content: Text(
               l10n.adminMetadataDeleteImageContent,
             ),
             actions: [
-              TextButton(
+              adaptiveDialogAction(
                 onPressed: () => Navigator.pop(ctx, false),
                 child: Text(l10n.cancel),
               ),
@@ -1360,18 +1421,17 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
       controller: controller,
       keyboardType: keyboardType,
       maxLines: maxLines,
-      decoration: InputDecoration(
-        labelText: label,
-        border: const OutlineInputBorder(),
-      ),
+      decoration: adminInputDecoration(label: label),
     );
   }
 
   Widget _chipEditor(String label, List<String> values, VoidCallback onAdd) {
     final l10n = AppLocalizations.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
+    return adminGlassGroup(
+      context,
+      children: [
+      Padding(
+        padding: const EdgeInsets.all(AppSpacing.spaceLg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1414,6 +1474,7 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
           ],
         ),
       ),
+      ],
     );
   }
 }
@@ -1595,10 +1656,8 @@ class _RemoteImagePickerDialogState extends State<_RemoteImagePickerDialog> {
                       children: [
                         DropdownButtonFormField<String>(
                           initialValue: _providerName,
-                          decoration: InputDecoration(
-                            labelText: l10n.adminMetadataProvider,
-                            border: const OutlineInputBorder(),
-                          ),
+                          decoration: adminInputDecoration(
+                              label: l10n.adminMetadataProvider),
                           items: [
                             DropdownMenuItem<String>(
                               value: '',
@@ -1630,10 +1689,8 @@ class _RemoteImagePickerDialogState extends State<_RemoteImagePickerDialog> {
                       Expanded(
                         child: DropdownButtonFormField<String>(
                           initialValue: _providerName,
-                          decoration: InputDecoration(
-                            labelText: l10n.adminMetadataProvider,
-                            border: const OutlineInputBorder(),
-                          ),
+                          decoration: adminInputDecoration(
+                              label: l10n.adminMetadataProvider),
                           items: [
                             DropdownMenuItem<String>(
                               value: '',
@@ -1721,7 +1778,7 @@ class _RemoteImagePickerDialogState extends State<_RemoteImagePickerDialog> {
 
                                 return InkWell(
                                   onTap: () => Navigator.pop(context, image),
-                                  borderRadius: BorderRadius.circular(12),
+                                  borderRadius: AppRadius.circular(12),
                                   child: Card(
                                     clipBehavior: Clip.antiAlias,
                                     child: Column(

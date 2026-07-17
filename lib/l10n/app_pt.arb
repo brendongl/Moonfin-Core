@@ -923,10 +923,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "As faixas favoritas aparecerão aqui",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "Falha ao carregar",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3675,10 +3671,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "Usuário Específico",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "Sempre Autenticar",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -5286,7 +5278,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "Pesquisar Pessoa Remota",
     "adminNoRemoteMatches": "Nenhuma correspondência remota encontrada",
     "adminRemoteResults": "Resultados Remotos",
     "adminRemoteMetadataApplied": "Metadados remotos aplicados",
@@ -5382,9 +5373,6 @@
     },
     "adminAddTuner": "Adicionar Sintonizador",
     "adminTunerType": "Tipo de Sintonizador",
-    "adminTunerTypeHint": "HDHomeRun, M3U, Outro",
-    "adminUrlPath": "URL / Caminho",
-    "adminNameOptional": "Nome (opcional)",
     "adminTunerAdded": "Sintonizador adicionado",
     "adminTunerAddFailed": "Falha ao adicionar sintonizador: {error}",
     "@adminTunerAddFailed": {
@@ -5396,9 +5384,6 @@
     },
     "adminAddGuideProvider": "Adicionar Provedor de Guia",
     "adminProviderType": "Tipo de Provedor",
-    "adminProviderTypeHint": "SchedulesDirect ou XMLTV",
-    "adminUsernameOptional": "Nome de usuário (opcional)",
-    "adminRefreshInterval": "Intervalo de atualização (horas)",
     "adminProviderAdded": "Provedor adicionado",
     "adminProviderAddFailed": "Falha ao adicionar provedor: {error}",
     "@adminProviderAddFailed": {
@@ -5567,7 +5552,6 @@
     },
     "adminLogViewerNoMatches": "Nenhuma linha correspondente",
     "adminMetadataEditorTitle": "Editor de Metadados",
-    "adminMetadataRemote": "Remoto",
     "adminMetadataType": "Tipo",
     "adminMetadataDetails": "Detalhes",
     "adminMetadataExternalIds": "IDs Externos",
@@ -6014,7 +5998,6 @@
     "folders": "Pastas",
     "libraries": "Bibliotecas",
     "syncPlay": "SyncPlay",
-    "jellyseerr": "Seerr",
     "seeAll": "Ver Tudo",
     "noItems": "Nenhum item",
     "switchUser": "Trocar Usuário",
@@ -6328,7 +6311,7 @@
     "@libraryVisibilityDescription": {
         "description": "Explanation shown on the library visibility settings screen"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -6523,21 +6506,6 @@
     "rememberMyChoice": "Lembre-se da minha escolha",
     "playHdr10Fallback": "Reproduzir substituto HDR10",
     "requestTranscode": "Solicitar transcodificação",
-    "homeScreenSectionsIntegrationDescription": "Detecte linhas expostas pelo plugin \"Home Screen Sections\" do IAmParadox27. As linhas podem ser habilitadas e reordenadas abaixo.",
-    "homeScreenSectionsIntegrationNoServers": "Nenhum servidor Jellyfin reportando o plugin ainda.",
-    "integrationOpenHomeSections": "Abrir seções iniciais",
-    "integrationOpenHomeSectionsSubtitle": "Ativar, desativar e reordenar linhas",
-    "integrationInstalledButDisabled": "Instalado, mas desativado",
-    "integrationNotInstalled": "Não instalado",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "Estéreo AAC",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Passagem (avançado)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Excluir tema salvo",
     "savedThemesManageSubtitle": "Gerenciar temas de plug-ins baixados neste dispositivo",
-    "homeScreenSectionsTitle": "Seções da tela inicial",
     "themeEditor": "Editor de Tema",
     "themeEditorSubtitle": "Abra o Editor de Tema Moonfin em seu navegador",
     "homeScreen": "Tela inicial",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "Ative automaticamente o HDR para reprodução de vídeo HDR e restaure o modo de exibição ao sair.",
     "whenFullscreen": "Quando em tela cheia",
     "transcodingLimits": "Limites de transcodificação",
-    "settingsSupportMoonfinSubtitle": "Doe um café para o desenvolvedor"
+    "settingsSupportMoonfinSubtitle": "Doe um café para o desenvolvedor",
+    "reportDownloadsActivity": "Mostrar downloads no servidor",
+    "reportDownloadsActivitySubtitle": "Permitir que o administrador do servidor veja seus downloads transcodificados no painel",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "Limite do cache de imagens",
+    "clearImageCache": "Limpar cache de imagens",
+    "imageCacheCleared": "Cache de imagens limpo"
 }

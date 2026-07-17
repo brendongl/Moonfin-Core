@@ -62,7 +62,9 @@ class EmbyPlaySessionService implements PlayerService {
     Object? reportError;
     StackTrace? reportStackTrace;
     try {
-      await _client.playbackApi.reportPlaybackStopped(report.toJson());
+      if (!_isAudiobook(mediaItem)) {
+        await _client.playbackApi.reportPlaybackStopped(report.toJson());
+      }
     } catch (error, stackTrace) {
       reportError = error;
       reportStackTrace = stackTrace;
@@ -88,11 +90,38 @@ class EmbyPlaySessionService implements PlayerService {
     } catch (_) {}
   }
 
+  @override
+  Future<void> stopTranscoding(StreamResolutionResult resolution) async {
+    final playSessionId = resolution.playSessionId;
+    if (playSessionId == null || playSessionId.isEmpty) return;
+    try {
+      await _client.playbackApi.stopActiveEncodings(
+        deviceId: _client.deviceInfo.id,
+        playSessionId: playSessionId,
+      );
+    } catch (_) {}
+  }
+
   static PlayMethod _toPlayMethod(StreamPlayMethod method) => switch (method) {
     StreamPlayMethod.directPlay => PlayMethod.directPlay,
     StreamPlayMethod.directStream => PlayMethod.directStream,
     StreamPlayMethod.transcode => PlayMethod.transcode,
   };
+
+  bool _isAudiobook(dynamic mediaItem) {
+    if (mediaItem is Map) {
+      final type = mediaItem['Type']?.toString().toLowerCase();
+      final mediaType = mediaItem['MediaType']?.toString().toLowerCase();
+      return type == 'audiobook' || type == 'audio_book' || mediaType == 'audiobook';
+    }
+    try {
+      final type = mediaItem.type?.toString().toLowerCase();
+      final mediaType = mediaItem.mediaType?.toString().toLowerCase();
+      return type == 'audiobook' || type == 'audio_book' || mediaType == 'audiobook';
+    } catch (_) {
+      return false;
+    }
+  }
 
   @override
   void dispose() {}

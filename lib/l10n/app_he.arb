@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "רצועות אהובות יופיעו כאן",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "הטעינה נכשלה",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "משתמש ספציפי",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "אימות תמיד",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "חפש אדם מרוחק",
     "adminNoRemoteMatches": "לא נמצאו התאמות מרחוק",
     "adminRemoteResults": "תוצאות מרחוק",
     "adminRemoteMetadataApplied": "הוחלו מטא נתונים מרוחקים",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "הוסף טיונר",
     "adminTunerType": "סוג טיונר",
-    "adminTunerTypeHint": "HDHomeRun, M3U, אחר",
-    "adminUrlPath": "כתובת URL / נתיב",
-    "adminNameOptional": "שם (אופציונלי)",
     "adminTunerAdded": "טיונר נוסף",
     "adminTunerAddFailed": "Failed to add tuner: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "הוסף ספק מדריך",
     "adminProviderType": "סוג ספק",
-    "adminProviderTypeHint": "SchedulesDirect או XMLTV",
-    "adminUsernameOptional": "שם משתמש (אופציונלי)",
-    "adminRefreshInterval": "מרווח רענון (שעות)",
     "adminProviderAdded": "ספק נוסף",
     "adminProviderAddFailed": "Failed to add provider: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "אין קווים תואמים",
     "adminMetadataEditorTitle": "עורך מטא נתונים",
-    "adminMetadataRemote": "מְרוּחָק",
     "adminMetadataType": "סוּג",
     "adminMetadataDetails": "פרטים",
     "adminMetadataExternalIds": "תעודות זהות חיצוניות",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "זכור את הבחירה שלי",
     "playHdr10Fallback": "הפעל HDR10 חזרה",
     "requestTranscode": "בקש טרנסקוד",
-    "homeScreenSectionsIntegrationDescription": "זיהוי שורות שנחשפו על ידי התוסף \"חלקי מסך הבית\" של IAmParadox27. ניתן להפעיל שורות ולסדר מחדש למטה.",
-    "homeScreenSectionsIntegrationNoServers": "עדיין אין שרתי Jellyfin שדיווחו על התוסף.",
-    "integrationOpenHomeSections": "פתח את מדור הבית",
-    "integrationOpenHomeSectionsSubtitle": "הפעל, השבת וסדר מחדש שורות",
-    "integrationInstalledButDisabled": "מותקן אך מושבת",
-    "integrationNotInstalled": "לא מותקן",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "ראה הכל",
     "noItems": "אין פריטים",
     "switchUser": "החלף משתמש",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "AAC Stereo",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Passthrough (Advanced)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Delete saved theme",
     "savedThemesManageSubtitle": "Manage downloaded plugin themes on this device",
-    "homeScreenSectionsTitle": "Home Screen Sections",
     "themeEditor": "Theme Editor",
     "themeEditorSubtitle": "Open the Moonfin Theme Editor in your browser",
     "homeScreen": "Home Screen",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "Automatically enable HDR for HDR video playback and restore display mode on exit.",
     "whenFullscreen": "When fullscreen",
     "transcodingLimits": "Transcoding Limits",
-    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer"
+    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer",
+    "reportDownloadsActivity": "הצג הורדות בשרת",
+    "reportDownloadsActivitySubtitle": "אפשר למנהל השרת לראות את ההורדות המומרות שלך בלוח הבקרה",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "מגבלת מטמון תמונות",
+    "clearImageCache": "נקה מטמון תמונות",
+    "imageCacheCleared": "מטמון התמונות נוקה"
 }

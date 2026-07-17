@@ -1,4 +1,5 @@
-import 'package:cached_network_image/cached_network_image.dart';
+import '../offline_aware_image.dart';
+import 'package:moonfin_design/moonfin_design.dart';
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
 import 'package:server_core/server_core.dart';
@@ -277,7 +278,8 @@ class BookshelfLayout extends StatelessWidget {
   }) {
     final baseColor = glowColorForGenres(item.genres);
     final imageApi = GetIt.instance<MediaServerClient>().imageApi;
-    final posterUrl = item.posterUrl ?? imageApi.getPrimaryImageUrl(item.itemId);
+    final posterUrl =
+        item.posterUrl ?? imageApi.getPrimaryImageUrl(item.itemId, maxWidth: 600);
 
     // Adjusted centering alignment: center within the cover face area (crease to right edge)
     final creaseWidth = width * 0.12;
@@ -297,10 +299,9 @@ class BookshelfLayout extends StatelessWidget {
     final dpr = MediaQuery.devicePixelRatioOf(context);
     final cacheW = (width * 0.88 * dpr).round().clamp(150, 400);
 
-    return CachedNetworkImage(
+    return OfflineAwareImage(
       imageUrl: posterUrl,
       memCacheWidth: cacheW,
-      maxWidthDiskCache: cacheW,
       fadeInDuration: const Duration(milliseconds: 250),
       fadeOutDuration: Duration.zero,
       placeholder: (context, url) => const SizedBox.shrink(),
@@ -481,7 +482,7 @@ class BookshelfLayout extends StatelessWidget {
           height: height,
           decoration: BoxDecoration(
             color: baseColor,
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: AppRadius.circular(6),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.55),
@@ -496,7 +497,7 @@ class BookshelfLayout extends StatelessWidget {
               // Cylindrical vertical lighting overlay for 3D spine effect
               DecoratedBox(
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: AppRadius.circular(6),
                   gradient: LinearGradient(
                     colors: [
                       Colors.black.withValues(alpha: 0.35),

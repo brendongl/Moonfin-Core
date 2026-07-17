@@ -57,6 +57,9 @@ class NativeVideoView(
 
     init {
         surfaceView.setZOrderMediaOverlay(true)
+        // Hold the screen awake while the video surface is attached so the OS
+        // screensaver cannot interrupt playback if the wakelock lapses.
+        surfaceView.keepScreenOn = true
         surfaceView.holder.addCallback(this)
         channel.setMethodCallHandler(this)
     }

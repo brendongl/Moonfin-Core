@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "Ovdje će se pojaviti omiljene pjesme",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "Učitavanje nije uspjelo",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "Određeni korisnik",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "Uvijek provjeri autentičnost",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "Traži udaljenu osobu",
     "adminNoRemoteMatches": "Nije pronađeno udaljeno podudaranje",
     "adminRemoteResults": "Rezultati na daljinu",
     "adminRemoteMetadataApplied": "Primijenjeni udaljeni metapodaci",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "Dodaj tuner",
     "adminTunerType": "Vrsta tunera",
-    "adminTunerTypeHint": "HDHomeRun, M3U, ostalo",
-    "adminUrlPath": "URL / Put",
-    "adminNameOptional": "Ime (nije obavezno)",
     "adminTunerAdded": "Tuner dodan",
     "adminTunerAddFailed": "Failed to add tuner: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "Dodaj pružatelja vodiča",
     "adminProviderType": "Vrsta pružatelja usluga",
-    "adminProviderTypeHint": "SchedulesDirect ili XMLTV",
-    "adminUsernameOptional": "korisničko ime (nije obavezno)",
-    "adminRefreshInterval": "Interval osvježavanja (sati)",
     "adminProviderAdded": "Pružatelj je dodan",
     "adminProviderAddFailed": "Failed to add provider: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "Nema odgovarajućih linija",
     "adminMetadataEditorTitle": "Uređivač metapodataka",
-    "adminMetadataRemote": "Daljinski",
     "adminMetadataType": "Tip",
     "adminMetadataDetails": "pojedinosti",
     "adminMetadataExternalIds": "Vanjski ID-ovi",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "Upamti moj izbor",
     "playHdr10Fallback": "Igrajte HDR10 zamjenu",
     "requestTranscode": "Zahtjev za prekodiranje",
-    "homeScreenSectionsIntegrationDescription": "Otkrijte retke koje otkriva IAmParadox27 dodatak \"Odjeljci početnog zaslona\". Redovi se mogu omogućiti i promijeniti redoslijed ispod.",
-    "homeScreenSectionsIntegrationNoServers": "Još nijedan Jellyfin poslužitelj nije prijavio dodatak.",
-    "integrationOpenHomeSections": "Otvorite početne odjeljke",
-    "integrationOpenHomeSectionsSubtitle": "Omogućite, onemogućite i promijenite redoslijed redaka",
-    "integrationInstalledButDisabled": "Instalirano, ali onemogućeno",
-    "integrationNotInstalled": "Nije instaliran",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "Vidi sve",
     "noItems": "Nema predmeta",
     "switchUser": "Promjena korisnika",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "AAC Stereo",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Passthrough (Advanced)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Delete saved theme",
     "savedThemesManageSubtitle": "Manage downloaded plugin themes on this device",
-    "homeScreenSectionsTitle": "Home Screen Sections",
     "themeEditor": "Theme Editor",
     "themeEditorSubtitle": "Open the Moonfin Theme Editor in your browser",
     "homeScreen": "Home Screen",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "Automatically enable HDR for HDR video playback and restore display mode on exit.",
     "whenFullscreen": "When fullscreen",
     "transcodingLimits": "Transcoding Limits",
-    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer"
+    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer",
+    "reportDownloadsActivity": "Prikaži preuzimanja na poslužitelju",
+    "reportDownloadsActivitySubtitle": "Dopustite administratoru poslužitelja da na nadzornoj ploči vidi vaša transkodirana preuzimanja",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "Ograničenje predmemorije slika",
+    "clearImageCache": "Očisti predmemoriju slika",
+    "imageCacheCleared": "Predmemorija slika je očišćena"
 }

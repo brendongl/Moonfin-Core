@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "Mėgstamiausi takeliai bus rodomi čia",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "Nepavyko įkelti",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "Konkretus vartotojas",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "Visada autentifikuoti",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "Ieškoti nuotolinio asmens",
     "adminNoRemoteMatches": "Nuotolinių atitikmenų nerasta",
     "adminRemoteResults": "Nuotoliniai rezultatai",
     "adminRemoteMetadataApplied": "Taikyti nuotoliniai metaduomenys",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "Pridėti imtuvą",
     "adminTunerType": "Tunerio tipas",
-    "adminTunerTypeHint": "HDHomeRun, M3U, kita",
-    "adminUrlPath": "URL / kelias",
-    "adminNameOptional": "Vardas (neprivaloma)",
     "adminTunerAdded": "Pridėtas derintuvas",
     "adminTunerAddFailed": "Nepavyko pridėti imtuvo: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "Pridėti vadovo teikėją",
     "adminProviderType": "Teikėjo tipas",
-    "adminProviderTypeHint": "SchedulesDirect arba XMLTV",
-    "adminUsernameOptional": "Vartotojo vardas (neprivaloma)",
-    "adminRefreshInterval": "Atnaujinimo intervalas (valandomis)",
     "adminProviderAdded": "Teikėjas pridėtas",
     "adminProviderAddFailed": "Nepavyko pridėti teikėjo: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "Nėra atitinkančių eilučių",
     "adminMetadataEditorTitle": "Metaduomenų redaktorius",
-    "adminMetadataRemote": "Nuotolinis",
     "adminMetadataType": "Tipas",
     "adminMetadataDetails": "Detalės",
     "adminMetadataExternalIds": "Išoriniai ID",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "Prisimink mano pasirinkimą",
     "playHdr10Fallback": "Leiskite atsarginę HDR10 versiją",
     "requestTranscode": "Prašyti perkoduoti",
-    "homeScreenSectionsIntegrationDescription": "Aptikti eilutes, kurias atskleidžia „IAmParadox27“ papildinys „Pagrindinio ekrano skyriai“. Toliau eilutes galima įjungti ir pertvarkyti.",
-    "homeScreenSectionsIntegrationNoServers": "Dar nė vienas Jellyfin serveris nepraneša apie papildinį.",
-    "integrationOpenHomeSections": "Atidarykite pagrindinius skyrius",
-    "integrationOpenHomeSectionsSubtitle": "Įgalinti, išjungti ir pertvarkyti eilutes",
-    "integrationInstalledButDisabled": "Įdiegta, bet išjungta",
-    "integrationNotInstalled": "Neįdiegta",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "Žiūrėti viską",
     "noItems": "Nėra elementų",
     "switchUser": "Perjungti vartotoją",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "AAC Stereo",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Passthrough (Advanced)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Ištrinti išsaugotą temą",
     "savedThemesManageSubtitle": "Tvarkykite atsisiųstų papildinių temas šiame įrenginyje",
-    "homeScreenSectionsTitle": "Pagrindinio ekrano skyriai",
     "themeEditor": "Temos redaktorius",
     "themeEditorSubtitle": "Naršyklėje atidarykite Moonfin temų rengyklę",
     "homeScreen": "Pagrindinis ekranas",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "Automatiškai įgalinkite HDR HDR vaizdo įrašams atkurti ir atkurkite rodymo režimą išėjus.",
     "whenFullscreen": "Kai per visą ekraną",
     "transcodingLimits": "Perkodavimo ribos",
-    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer"
+    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer",
+    "reportDownloadsActivity": "Rodyti atsisiuntimus serveryje",
+    "reportDownloadsActivitySubtitle": "Leisti serverio administratoriui matyti jūsų perkoduotus atsisiuntimus valdymo skydelyje",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "Vaizdų talpyklos limitas",
+    "clearImageCache": "Išvalyti vaizdų talpyklą",
+    "imageCacheCleared": "Vaizdų talpykla išvalyta"
 }

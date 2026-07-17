@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:moonfin_design/moonfin_design.dart';
 
+import 'glass_focus_halo.dart';
+
 class FocusTheme {
   static const double scale = 1.02;
   static const double defaultBorderRadius = 8.0;
@@ -16,9 +18,10 @@ class FocusTheme {
     bool suppressFocusGlow = false,
   }) {
     final borders = ThemeRegistry.active.borders;
+    final effectiveRadius = AppColorScheme.isPixel ? 0.0 : radius;
     return BoxDecoration(
       color: backgroundColor,
-      borderRadius: BorderRadius.circular(radius),
+      borderRadius: AppRadius.circular(effectiveRadius),
       border: isFocused && color != null
           ? Border.fromBorderSide(
               borders.focusBorder.copyWith(color: color),
@@ -31,5 +34,8 @@ class FocusTheme {
   }
 
   static Color resolveColor(BuildContext context, Color? override) =>
-      override ?? Theme.of(context).colorScheme.primary;
+      override ??
+      (GlassFocusHalo.appleStyleActive
+          ? Colors.white
+          : Theme.of(context).colorScheme.primary);
 }

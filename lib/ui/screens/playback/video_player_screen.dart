@@ -18,6 +18,7 @@ import 'package:window_manager/window_manager.dart';
 
 import '../../../util/fullscreen_helper.dart';
 import '../../widgets/playback/seek_icons.dart';
+import '../../widgets/playback/trickplay_tile_image.dart';
 
 import '../../../playback/html_video_backend.dart';
 import '../../../playback/media_kit_player_backend.dart';
@@ -41,6 +42,7 @@ import '../../../platform/pip_service.dart';
 import '../../../preference/preference_constants.dart';
 import '../../../preference/user_preferences.dart';
 import '../../../util/audio_labels.dart';
+import '../../../util/subtitle_track_logic.dart';
 import '../../../util/auto_hdr_switcher.dart';
 import '../../../util/clock_format.dart';
 import '../../../util/episode_playability.dart';
@@ -48,6 +50,7 @@ import '../../../util/focus/dpad_keys.dart';
 import '../../../util/play_method_label.dart';
 import '../../../util/platform_detection.dart';
 import '../../navigation/destinations.dart';
+import '../../widgets/adaptive/sf_symbol.dart';
 import '../../widgets/subtitle_preview.dart';
 import '../../screensaver/screensaver_controller.dart';
 import '../../widgets/remote_play_to_session_dialog.dart';
@@ -125,6 +128,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   Timer? _hideTimer;
   bool _displayPlaying = false;
   Timer? _displayPlayingDebounce;
+  Timer? _endsAtTicker;
   bool _isSeeking = false;
   double _seekValue = 0;
   Timer? _scrubSeekDebounceTimer;
@@ -147,6 +151,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   DateTime? _lastPlaybackErrorAt;
   String? _lastPlaybackErrorMessage;
   bool _isInPiP = false;
+  final GlobalKey _videoSurfaceKey = GlobalKey();
   bool _forcedLandscape = false;
   double _playerVolume = 100.0;
   double _volumeBeforeMute = 1.0;
@@ -236,6 +241,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   bool _showVolumeOverlay = false;
   bool _showBrightnessOverlay = false;
   Timer? _volumeOverlayTimer;
+  Timer? _persistVolumeTimer;
   Timer? _brightnessOverlayTimer;
   Timer? _zoomModeToastTimer;
   OverlayEntry? _zoomModeToastOverlay;
@@ -246,6 +252,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   double _verticalDragStartY = 0.0;
   double _verticalDragStartValue = 0.0;
   bool _verticalDragIsVolume = false;
+  bool _verticalDragIgnored = false;
   Offset? _doubleTapDownPosition;
   DateTime? _lastSeekTime;
   bool _showSkipForward = false;
@@ -839,6 +846,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     _syncMediaQueuingPreference();
     _applySubtitleStyle();
     _scheduleHide();
+    _startEndsAtTicker();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     if (PlatformDetection.isMobile) {
       _forcedLandscape = true;
@@ -870,6 +878,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         _syncMedia3VolumeBoostLevel();
       } else {
         _syncMedia3VolumeBoostLevel(resetWhenUnavailable: true);
+      }
+      // Re-apply the desktop player volume whenever the backend (re)appears.
+      if (PlatformDetection.isDesktop) {
+        unawaited(backend.setVolume(_playerVolume));
       }
       if (!mounted) return;
       setState(() {});
@@ -980,6 +992,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     }
     if (_useSystemVolume) {
       _initSystemVolume();
+    } else if (PlatformDetection.isDesktop) {
+      _initDesktopVolume();
     }
   }
 
@@ -999,6 +1013,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     _cancelTvTemporarySpeedHold();
     _hideTimer?.cancel();
     _displayPlayingDebounce?.cancel();
+    _endsAtTicker?.cancel();
     _scrubSeekDebounceTimer?.cancel();
     _scrubSeekDebounceTimer = null;
     _volumeOverlayTimer?.cancel();
@@ -1007,6 +1022,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     _removeZoomModeToastOverlay();
     _skipForwardTimer?.cancel();
     _skipBackwardTimer?.cancel();
+    _persistVolumeTimer?.cancel();
+    if (PlatformDetection.isDesktop) {
+      unawaited(_prefs.set(UserPreferences.playerVolume, _playerVolume));
+    }
     if (_useSystemVolume) {
       _volumeListenerSub?.cancel();
       VolumeController.instance.removeListener();
@@ -1320,7 +1339,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           if (_isTvLifecycleExitSuppressed()) return;
           if (_didHandleBackgroundSuspend) return;
           _didHandleBackgroundSuspend = true;
-          if (_state.isPlaying) {
+          if (_state.isPlaying && _activeMedia3Backend == null) {
             _scheduleTvBackgroundExit();
           }
           return;
@@ -1470,6 +1489,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         return;
       case 'pause':
         _manager.pause();
+        return;
+      case 'skipForward':
+        _seekRelative(
+          _prefs.get(UserPreferences.skipForwardLength),
+          showControls: false,
+        );
+        return;
+      case 'skipBackward':
+        _seekRelative(
+          -_prefs.get(UserPreferences.skipForwardLength),
+          showControls: false,
+        );
         return;
       case 'dismissed':
         final lifecycle = WidgetsBinding.instance.lifecycleState;
@@ -2121,6 +2152,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     }
     _refreshTrickplayIfNeeded();
     _syncAirPlayPlaybackState(position: position);
+    if (PlatformDetection.isIOS) {
+      _pipService.updateIosTimeline(
+        positionMs: position.inMilliseconds,
+        durationMs: _state.duration.inMilliseconds,
+        isPlaying: _state.isPlaying,
+      );
+    }
     _checkSegments(position);
     _checkNextUp(position);
   }
@@ -2496,7 +2534,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       });
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          Navigator.of(context).pop();
+          if (context.canPop()) {
+            context.pop();
+          } else {
+            Navigator.of(context).pop();
+          }
         }
       });
     }
@@ -2526,6 +2568,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       if (mounted && !_state.isPlaying) {
         setState(() => _displayPlaying = false);
       }
+    });
+  }
+
+  void _startEndsAtTicker() {
+    _endsAtTicker?.cancel();
+    _endsAtTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted ||
+          !_controlsVisible ||
+          _isOsdLocked ||
+          _isCurrentPreroll ||
+          _state.duration <= Duration.zero) {
+        return;
+      }
+      setState(() {});
     });
   }
 
@@ -2886,8 +2942,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
 
     final strokeShadows = subtitleStrokeShadows(strokeColor, fontSize);
 
+    final activeIndex = _manager.subtitleStreamIndex;
+    bool isAssOrPgs = false;
+    if (activeIndex != null && activeIndex >= 0) {
+      final mediaStreams = _manager.currentResolution?.mediaStreams;
+      if (mediaStreams != null) {
+        final activeStream = mediaStreams.firstWhere(
+          (s) => s['Index'] == activeIndex,
+          orElse: () => const <String, dynamic>{},
+        );
+        final codec = activeStream['Codec'] as String?;
+        isAssOrPgs = shouldRenderSubtitleNatively(codec);
+      }
+    }
+
     return SubtitleViewConfiguration(
-      visible: true,
+      visible: PlatformDetection.isDesktop ? false : !isAssOrPgs,
       style: TextStyle(
         inherit: false,
         height: 1.4,
@@ -3446,7 +3516,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                     if (_showNextUp && _nextUpItem != null)
                       NextUpOverlay(
                         nextItem: _nextUpItem!,
-                        imageUrl: _nextUpItem!.primaryImageTag != null
+                        isMinimal:
+                            _prefs.get(UserPreferences.nextUpBehavior) ==
+                            NextUpBehavior.minimal,
+                        imageUrl:
+                            _nextUpItem!.primaryImageTag != null &&
+                                _prefs.get(UserPreferences.nextUpBehavior) !=
+                                    NextUpBehavior.minimal
                             ? _clientForItem(
                                 _nextUpItem!,
                               ).imageApi.getPrimaryImageUrl(
@@ -3527,7 +3603,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         PlaybackEnginePreference.media3;
     final prewarmMedia3 = _activeBackend == null && prefersMedia3;
     if (_activeMedia3Backend != null || prewarmMedia3) {
-      return const Positioned.fill(child: Media3VideoView(fill: Colors.black));
+      return Positioned.fill(
+        child: Media3VideoView(key: _videoSurfaceKey, fill: Colors.black),
+      );
     }
 
     final htmlBackend = _activeHtmlVideoBackend;
@@ -3564,6 +3642,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
             return const ColoredBox(color: Colors.black);
           }
           return Video(
+            key: _videoSurfaceKey,
             controller: controller,
             controls: NoVideoControls,
             width: constraints.maxWidth,
@@ -3719,7 +3798,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                         child: DecoratedBox(
                           decoration: BoxDecoration(
                             color: const Color(0xCC111111),
-                            borderRadius: BorderRadius.circular(18),
+                            borderRadius: AppRadius.circular(18),
                             border: Border.fromBorderSide(
                               ThemeRegistry.active.borders.cardBorder.copyWith(
                                 color: Colors.white.withValues(alpha: 0.18),
@@ -3851,7 +3930,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                 tooltip: PlatformDetection.useDesktopUi
                     ? _tooltipMessage(l10n.back, shortcut: 'Esc')
                     : null,
-                icon: const Icon(
+                icon: const AdaptiveIcon(
                   Icons.arrow_back,
                   color: Colors.white,
                   size: 24,
@@ -3869,7 +3948,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                     _isOsdLocked = true;
                   });
                 },
-                icon: const Icon(
+                icon: const AdaptiveIcon(
                   Icons.lock_outline,
                   color: Colors.white,
                   size: 22,
@@ -3982,9 +4061,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     required Duration duration,
   }) {
     if (duration <= Duration.zero) return '';
-    final remaining = duration - position;
-    if (remaining <= Duration.zero) return '';
-    final end = DateTime.now().add(remaining);
+    final remainingMedia = duration - position;
+    if (remainingMedia <= Duration.zero) return '';
+    final speed = _state.playbackSpeed > 0 ? _state.playbackSpeed : 1.0;
+    final remainingWall = Duration(
+      milliseconds: (remainingMedia.inMilliseconds / speed).round(),
+    );
+    if (remainingWall <= Duration.zero) return '';
+    final end = DateTime.now().add(remainingWall);
     final time = formatClockTime(
       end,
       use24Hour: _prefs.get(UserPreferences.use24HourClock),
@@ -4370,7 +4454,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     required int tileWidth,
     required int tileHeight,
   }) {
-    final displayWidth = 220.0;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final displayWidth = (screenWidth * 0.4).clamp(240.0, 520.0).toDouble();
     final displayHeight = displayWidth * (thumbHeight / thumbWidth);
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -4380,46 +4465,23 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           height: displayHeight,
           decoration: BoxDecoration(
             color: Colors.black,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: AppRadius.circular(10),
             border: Border.fromBorderSide(
               ThemeRegistry.active.borders.cardBorder,
             ),
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(9),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final tileW = thumbWidth * tileWidth;
-                final tileH = thumbHeight * tileHeight;
-                final scaleX = constraints.maxWidth / thumbWidth;
-                final scaleY = constraints.maxHeight / thumbHeight;
-                return OverflowBox(
-                  maxWidth: tileW * scaleX,
-                  maxHeight: tileH * scaleY,
-                  alignment: Alignment(
-                    tileWidth <= 1
-                        ? 0.0
-                        : -1.0 + 2.0 * sourceRect.left / (tileW - thumbWidth),
-                    tileHeight <= 1
-                        ? 0.0
-                        : -1.0 + 2.0 * sourceRect.top / (tileH - thumbHeight),
-                  ),
-                  child: Image.network(
-                    imageUrl,
-                    headers: headers.isEmpty ? null : headers,
-                    fit: BoxFit.fill,
-                    filterQuality: FilterQuality.medium,
-                    errorBuilder: (_, _, _) => Container(
-                      color: Colors.white.withValues(alpha: 0.08),
-                      alignment: Alignment.center,
-                      child: Icon(
-                        Icons.movie,
-                        color: Colors.white.withValues(alpha: 0.45),
-                      ),
-                    ),
-                  ),
-                );
-              },
+            borderRadius: AppRadius.circular(9),
+            child: TrickplayTileImage(
+              sheet: NetworkImage(
+                imageUrl,
+                headers: headers.isEmpty ? null : headers,
+              ),
+              sourceRect: sourceRect,
+              thumbWidth: thumbWidth,
+              thumbHeight: thumbHeight,
+              tileWidth: tileWidth,
+              tileHeight: tileHeight,
             ),
           ),
         ),
@@ -4984,8 +5046,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     await backend.setVolumeBoostLevel(clampedLevel);
   }
 
-  bool get _useSystemVolume =>
-      PlatformDetection.isMobile || PlatformDetection.isDesktop;
+  // Desktop drives the player's own (mpv) volume, independent of the OS volume
+  // like mpv/vlc; only mobile attenuates the system volume.
+  bool get _useSystemVolume => PlatformDetection.isMobile;
 
   Future<void> _changeVolumeBy(double delta) async {
     final castKind = _castService.activeKind;
@@ -5027,6 +5090,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     final next = (_playerVolume + (delta * 100.0)).clamp(0.0, 100.0);
     _playerVolume = next;
     await backend.setVolume(next);
+    _persistPlayerVolume();
     _showVolumeIndicator();
   }
 
@@ -5117,6 +5181,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         unawaited(_setMedia3VolumeBoostLevel(0));
       }
     }, fetchInitialVolume: true);
+  }
+
+  void _initDesktopVolume() {
+    _playerVolume = _prefs
+        .get(UserPreferences.playerVolume)
+        .clamp(0.0, 100.0)
+        .toDouble();
+    unawaited(_manager.backend?.setVolume(_playerVolume));
+  }
+
+  void _persistPlayerVolume() {
+    if (!PlatformDetection.isDesktop) return;
+    _persistVolumeTimer?.cancel();
+    _persistVolumeTimer = Timer(const Duration(milliseconds: 400), () {
+      unawaited(_prefs.set(UserPreferences.playerVolume, _playerVolume));
+    });
   }
 
   Future<void> _setMobileSystemVolume(
@@ -5248,8 +5328,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
 
   void _onVerticalDragStart(DragStartDetails details) {
     final screenWidth = MediaQuery.sizeOf(context).width;
-    _verticalDragIsVolume = details.localPosition.dx > screenWidth / 2;
     _verticalDragStartY = details.localPosition.dy;
+    // Ignore drags that begin in the top edge strip so a swipe there pulls
+    // down the system notification shade instead of changing brightness or
+    // volume. Falls back to a fixed strip when the status bar is hidden.
+    final topInset = MediaQuery.paddingOf(context).top;
+    final topDeadZone = topInset > 48.0 ? topInset : 48.0;
+    _verticalDragIgnored = _verticalDragStartY < topDeadZone;
+    if (_verticalDragIgnored) return;
+    _verticalDragIsVolume = details.localPosition.dx > screenWidth / 2;
     if (_verticalDragIsVolume) {
       final baseVolume = PlatformDetection.isMobile
           ? _systemVolume
@@ -5265,6 +5352,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   }
 
   void _onVerticalDragUpdate(DragUpdateDetails details) {
+    if (_verticalDragIgnored) return;
     final screenHeight = MediaQuery.sizeOf(context).height;
     final deltaY = _verticalDragStartY - details.localPosition.dy;
     final deltaValue = deltaY / (screenHeight * 0.7);
@@ -5294,6 +5382,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
             .toDouble();
         _playerVolume = newVolume * 100.0;
         _manager.backend?.setVolume(_playerVolume);
+        _persistPlayerVolume();
       }
       _showVolumeIndicator();
     } else {
@@ -5308,12 +5397,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   }
 
   void _onVerticalDragEnd(DragEndDetails details) {
+    if (_verticalDragIgnored) return;
     if (_verticalDragIsVolume && PlatformDetection.isMobile) {
       unawaited(_setMobileSystemVolume(_systemVolume, syncFromSystem: true));
     }
   }
 
   void _onVerticalDragCancel() {
+    if (_verticalDragIgnored) return;
     if (_verticalDragIsVolume && PlatformDetection.isMobile) {
       unawaited(_setMobileSystemVolume(_systemVolume, syncFromSystem: true));
     }
@@ -5391,18 +5482,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: AppRadius.circular(14),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: Colors.white, size: 24),
+          AdaptiveIcon(icon, color: Colors.white, size: 24),
           const SizedBox(height: 10),
           SizedBox(
             height: barHeight,
             width: 4,
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(2),
+              borderRadius: AppRadius.circular(2),
               child: Stack(
                 children: [
                   const Positioned.fill(
@@ -5453,12 +5544,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(40),
+              borderRadius: AppRadius.circular(40),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
+                AdaptiveIcon(
                   isForward
                       ? Icons.fast_forward_rounded
                       : Icons.fast_rewind_rounded,
@@ -5506,7 +5597,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                   ),
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.72),
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: AppRadius.circular(20),
                     border: Border.fromBorderSide(
                       ThemeRegistry.active.borders.cardBorder.copyWith(
                         color: Colors.white.withValues(alpha: 0.18),
@@ -5516,7 +5607,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.lock, color: Colors.white70, size: 18),
+                      const AdaptiveIcon(
+                        Icons.lock,
+                        color: Colors.white70,
+                        size: 18,
+                      ),
                       const SizedBox(width: 8),
                       Text(
                         AppLocalizations.of(context).longPressToUnlock,
@@ -5537,6 +5632,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   }
 
   Widget _buildCenterTransportControls() {
+    // Hide the center controls while scrubbing with a trickplay preview so the
+    // preview is not covered by the play and pause buttons.
+    final hasTrickplay = _trickplayInfo != null && _trickplayInfo!.isValid;
+    if (_isSeeking && hasTrickplay) {
+      return const SizedBox.shrink();
+    }
     return StreamBuilder<bool>(
       stream: _state.playingStream,
       initialData: _state.isPlaying,
@@ -5545,26 +5646,35 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         final isPlaying = _displayPlaying;
 
         return Row(
-          mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            if (_queue.hasPrevious)
-              _controlButton(
-                Icons.skip_previous_rounded,
-                onPressed: _manager.previous,
-                size: 40,
-                extent: 72,
-                tooltip: l10n.playerTooltipPrevious,
-              ),
-            _controlButton(
-              seekBackIcon(_prefs.get(UserPreferences.skipBackLength)),
-              onPressed: () =>
-                  _seekRelative(-_prefs.get(UserPreferences.skipBackLength)),
-              size: 46,
-              extent: 78,
-              tooltip: _tooltipMessage(
-                l10n.playerTooltipSeekBack,
-                shortcut: 'Left',
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_queue.hasPrevious)
+                      _controlButton(
+                        Icons.skip_previous_rounded,
+                        onPressed: _manager.previous,
+                        size: 40,
+                        extent: 72,
+                        tooltip: l10n.playerTooltipPrevious,
+                      ),
+                    _controlButton(
+                      seekBackIcon(_prefs.get(UserPreferences.skipBackLength)),
+                      onPressed: () =>
+                          _seekRelative(-_prefs.get(UserPreferences.skipBackLength)),
+                      size: 46,
+                      extent: 78,
+                      tooltip: _tooltipMessage(
+                        l10n.playerTooltipSeekBack,
+                        shortcut: 'Left',
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
             _controlButton(
@@ -5578,25 +5688,35 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                 shortcut: 'Space',
               ),
             ),
-            _controlButton(
-              seekForwardIcon(_prefs.get(UserPreferences.skipForwardLength)),
-              onPressed: () =>
-                  _seekRelative(_prefs.get(UserPreferences.skipForwardLength)),
-              size: 46,
-              extent: 78,
-              tooltip: _tooltipMessage(
-                l10n.playerTooltipSeekForward,
-                shortcut: 'Right',
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _controlButton(
+                      seekForwardIcon(_prefs.get(UserPreferences.skipForwardLength)),
+                      onPressed: () =>
+                          _seekRelative(_prefs.get(UserPreferences.skipForwardLength)),
+                      size: 46,
+                      extent: 78,
+                      tooltip: _tooltipMessage(
+                        l10n.playerTooltipSeekForward,
+                        shortcut: 'Right',
+                      ),
+                    ),
+                    if (_queue.hasNext)
+                      _controlButton(
+                        Icons.skip_next_rounded,
+                        onPressed: _manager.next,
+                        size: 40,
+                        extent: 72,
+                        tooltip: l10n.next,
+                      ),
+                  ],
+                ),
               ),
             ),
-            if (_queue.hasNext)
-              _controlButton(
-                Icons.skip_next_rounded,
-                onPressed: _manager.next,
-                size: 40,
-                extent: 72,
-                tooltip: l10n.next,
-              ),
           ],
         );
       },
@@ -5620,7 +5740,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         tooltip: tooltip,
         onPressed: () => _handleControlButtonPress(onPressed),
         onRightBoundary: onRightBoundary,
-        child: Icon(icon, color: iconColor, size: size),
+        child: AdaptiveIcon(icon, color: iconColor, size: size),
       );
     }
     return SizedBox(
@@ -5630,7 +5750,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         focusNode: focusNode,
         onPressed: () => _handleControlButtonPress(onPressed),
         tooltip: PlatformDetection.useDesktopUi ? tooltip : null,
-        icon: Icon(icon, color: iconColor, size: size),
+        icon: AdaptiveIcon(icon, color: iconColor, size: size),
         padding: EdgeInsets.zero,
         constraints: const BoxConstraints(),
       ),
@@ -5653,6 +5773,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     } else {
       setState(() => _playerVolume = clamped * 100.0);
       _manager.backend?.setVolume(_playerVolume);
+      _persistPlayerVolume();
     }
     _showControls();
   }
@@ -5677,7 +5798,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           Colors.black.withValues(alpha: 0.85),
         ),
         shape: WidgetStatePropertyAll(
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          RoundedRectangleBorder(borderRadius: AppRadius.circular(12)),
         ),
         padding: const WidgetStatePropertyAll(EdgeInsets.zero),
       ),
@@ -5696,7 +5817,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                 controller.open();
               }
             },
-            icon: Icon(
+            icon: AdaptiveIcon(
               _volumeIcon(_osdVolume),
               color: Colors.white,
               size: iconSize,
@@ -5731,7 +5852,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                     setMenuState(() {});
                     _toggleMute();
                   },
-                  icon: Icon(
+                  icon: AdaptiveIcon(
                     _volumeIcon(_osdVolume),
                     color: Colors.white,
                     size: 20,
@@ -5780,7 +5901,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       child: Tooltip(
         message: PlatformDetection.useDesktopUi ? (tooltip ?? '') : '',
         child: InkWell(
-          borderRadius: BorderRadius.circular(extent / 2),
+          borderRadius: AppRadius.circular(extent / 2),
           onTap: () {
             _showControls();
             _showSpeedSelector();
@@ -5815,11 +5936,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       _suppressBackNavigation();
       if (result == null || !mounted) return;
       final speed = speedOptions[result];
-      await _runSinglePlayerMutation(
+      final changed = await _runSinglePlayerMutation(
         'speed_$speed',
         () async => _manager.setPlaybackSpeed(speed),
         suppressBackFor: const Duration(seconds: 3),
       );
+      if (changed && mounted) {
+        setState(() {});
+      }
     }());
     _showControls();
   }
@@ -6092,7 +6216,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                 margin: const EdgeInsets.symmetric(horizontal: 16),
                 decoration: BoxDecoration(
                   color: const Color(0xD91A2230),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: AppRadius.circular(10),
                   border: Border.all(color: const Color(0x668FA8CC), width: 1),
                   boxShadow: const [
                     BoxShadow(
@@ -6218,6 +6342,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     final imageApi = _clientForItem(item).imageApi;
 
     void openPersonDetails(BuildContext routeContext, String personId) {
+      if (_state.isPlaying) {
+        _manager.pause();
+      }
       Navigator.of(routeContext).pop();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -6353,7 +6480,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                     ),
                     child: Row(
                       children: [
-                        Icon(
+                        AdaptiveIcon(
                           icon,
                           color: Colors.white.withValues(alpha: 0.8),
                           size: 20,
@@ -6382,7 +6509,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                         padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
                         child: Row(
                           children: [
-                            const Icon(
+                            const AdaptiveIcon(
                               Icons.volume_up_rounded,
                               color: Colors.white,
                               size: 18,
@@ -6750,7 +6877,7 @@ class _TvFocusButtonState extends State<_TvFocusButton> {
             child: DecoratedBox(
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.78),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: AppRadius.circular(8),
                 border: Border.fromBorderSide(
                   ThemeRegistry.active.borders.focusBorder.copyWith(
                     color: Colors.white.withValues(alpha: 0.45),
@@ -6849,7 +6976,7 @@ class _CastPersonTileState extends State<_CastPersonTile> {
                         ? NetworkImage(widget.imageUrl!)
                         : null,
                     child: widget.imageUrl == null
-                        ? const Icon(
+                        ? const AdaptiveIcon(
                             Icons.person,
                             color: Colors.white54,
                             size: 32,
@@ -6955,7 +7082,7 @@ class _DelayFooterState extends State<_DelayFooter> {
             children: [
               IconButton(
                 onPressed: () => _adjust(-0.1),
-                icon: const Icon(
+                icon: const AdaptiveIcon(
                   Icons.remove_circle_outline,
                   color: Colors.white,
                   size: 28,
@@ -6993,7 +7120,7 @@ class _DelayFooterState extends State<_DelayFooter> {
               ),
               IconButton(
                 onPressed: () => _adjust(0.1),
-                icon: const Icon(
+                icon: const AdaptiveIcon(
                   Icons.add_circle_outline,
                   color: Colors.white,
                   size: 28,

@@ -38,12 +38,10 @@ final class AppleTvAudioChannel: NSObject {
         }
     }
 
-    /// Reads the current output capabilities. Deliberately does NOT mutate the
-    /// audio session (category/active) so it can't disturb in-progress mpv
-    /// playback; it only reads `maximumOutputNumberOfChannels` and the route.
+    /// Reads the current output capabilities, focused on the output channel count.
     static func currentCapabilities() -> [String: Any] {
         let session = AVAudioSession.sharedInstance()
-        let maxChannels = max(2, session.maximumOutputNumberOfChannels)
+        let maxChannels = max(2, resolvedMaxOutputChannels(session))
         return [
             "maxPcmChannels": maxChannels,
             "activeRouteType": resolveRouteType(session),
@@ -64,6 +62,24 @@ final class AppleTvAudioChannel: NSObject {
             "canPassthroughTrueHd": false,
             "canPassthroughTrueHdJoc": false,
         ]
+    }
+
+    private static func resolvedMaxOutputChannels(_ session: AVAudioSession) -> Int {
+        let current = session.maximumOutputNumberOfChannels
+        if current > 2 {
+            return current
+        }
+        do {
+            try session.setCategory(.playback, mode: .moviePlayback, policy: .longFormAudio)
+            try session.setActive(true)
+            let negotiated = session.maximumOutputNumberOfChannels
+            if negotiated > 2 {
+                try? session.setPreferredOutputNumberOfChannels(negotiated)
+            }
+            return negotiated
+        } catch {
+            return current
+        }
     }
 
     private static func resolveRouteType(_ session: AVAudioSession) -> String {

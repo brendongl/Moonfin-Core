@@ -23,6 +23,7 @@ class AggregatedItem {
   }
 
   String get name => rawData['Name'] as String? ?? '';
+  String? get sortName => rawData['SortName'] as String?;
   String? get type => rawData['Type'] as String?;
 
   /// Whether this item is music/audio content (track, audiobook, or any item
@@ -51,8 +52,7 @@ class AggregatedItem {
   Duration? get runtime =>
       runTimeTicks != null ? Duration(microseconds: runTimeTicks! ~/ 10) : null;
 
-  List<String> get genres =>
-      (rawData['Genres'] as List?)?.cast<String>() ?? const [];
+  List<String> get genres => _toListOfStrings(rawData['Genres']);
 
   String? get primaryImageTag =>
       (rawData['ImageTags'] as Map?)?['Primary'] as String?;
@@ -64,17 +64,20 @@ class AggregatedItem {
 
   String? get primaryImageItemId => rawData['PrimaryImageItemId']?.toString();
 
-  List<String> get backdropImageTags =>
-      (rawData['BackdropImageTags'] as List?)?.cast<String>() ?? const [];
+  List<String> get backdropImageTags => _toListOfStrings(rawData['BackdropImageTags']);
 
   String? get parentBackdropItemId =>
       rawData['ParentBackdropItemId']?.toString();
 
   List<String> get parentBackdropImageTags =>
-      (rawData['ParentBackdropImageTags'] as List?)?.cast<String>() ?? const [];
+      _toListOfStrings(rawData['ParentBackdropImageTags']);
 
   String? get logoImageTag =>
       (rawData['ImageTags'] as Map?)?['Logo'] as String?;
+
+  // Series logo is delivered as the parent logo; servers send no SeriesLogoImageTag.
+  String? get seriesLogoImageTag =>
+      rawData['ParentLogoImageTag'] as String?;
 
   Map? get _userData => rawData['UserData'] as Map?;
 
@@ -103,6 +106,10 @@ class AggregatedItem {
   }
 
   String? get subtitle {
+    final customSubtitle = rawData['Subtitle'] as String?;
+    if (customSubtitle != null && customSubtitle.isNotEmpty) {
+      return customSubtitle;
+    }
     if (type == 'Episode') {
       final s = parentIndexNumber;
       final e = indexNumber;
@@ -177,49 +184,79 @@ class AggregatedItem {
   }
 
   List<String> get productionLocations =>
-      (rawData['ProductionLocations'] as List?)?.cast<String>() ?? const [];
+      _toListOfStrings(rawData['ProductionLocations']);
 
   String? get albumArtist => rawData['AlbumArtist'] as String?;
   String? get album => rawData['Album'] as String?;
   String? get albumId => rawData['AlbumId']?.toString();
   String? get albumPrimaryImageTag =>
       rawData['AlbumPrimaryImageTag'] as String?;
-  List<String> get artists =>
-      (rawData['Artists'] as List?)?.cast<String>() ?? const [];
+  List<String> get artists => _toListOfStrings(rawData['Artists']);
   String? get parentId => rawData['ParentId']?.toString();
   int? get recursiveItemCount => _toInt(rawData['RecursiveItemCount']);
   List<Map<String, dynamic>> get albumArtists =>
-      (rawData['AlbumArtists'] as List?)?.cast<Map<String, dynamic>>() ??
-      const [];
+      _toListOfMaps(rawData['AlbumArtists']);
 
   Map<String, String> get providerIds {
     final ids = rawData['ProviderIds'] as Map?;
-    return ids?.cast<String, String>() ?? const {};
+    if (ids == null) return const {};
+    final result = <String, String>{};
+    ids.forEach((k, v) {
+      if (k != null && v != null) {
+        result[k.toString()] = v.toString();
+      }
+    });
+    return result;
   }
 
-  String? get tmdbId => providerIds['Tmdb'];
-  String? get imdbId => providerIds['Imdb'];
+  String? get tmdbId => providerIds['Tmdb'] ?? providerIds['tmdb'] ?? providerIds['TMDB'];
+  String? get imdbId => providerIds['Imdb'] ?? providerIds['imdb'] ?? providerIds['IMDB'];
 
-  List<Map<String, dynamic>> get people =>
-      (rawData['People'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+  List<Map<String, dynamic>> get people => _toListOfMaps(rawData['People']);
 
-  List<Map<String, dynamic>> get studios =>
-      (rawData['Studios'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+  List<Map<String, dynamic>> get studios => _toListOfMaps(rawData['Studios']);
 
   List<Map<String, dynamic>> get mediaSources =>
-      (rawData['MediaSources'] as List?)?.cast<Map<String, dynamic>>() ??
-      const [];
+      _toListOfMaps(rawData['MediaSources']);
 
   List<Map<String, dynamic>> get mediaStreams =>
-      (rawData['MediaStreams'] as List?)?.cast<Map<String, dynamic>>() ??
-      const [];
+      _toListOfMaps(rawData['MediaStreams']);
 
   List<Map<String, dynamic>> get remoteTrailers =>
-      (rawData['RemoteTrailers'] as List?)?.cast<Map<String, dynamic>>() ??
-      const [];
+      _toListOfMaps(rawData['RemoteTrailers']);
 
-  List<Map<String, dynamic>> get chapters =>
-      (rawData['Chapters'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+  List<Map<String, dynamic>> get chapters => _toListOfMaps(rawData['Chapters']);
+
+  /// Whether this item should use the audiobook player experience.
+  ///
+  /// Jellyfin marks audiobook collections with Type "AudioBook" and audiobook
+  /// children with MediaType "Audio" inside an AudioBook parent collection.
+  /// We treat anything reporting a top-level AudioBook type, or an audio item
+  /// whose collection type / parent indicates audiobooks, as an audiobook.
+  bool get isAudiobook {
+    final t = (type ?? '').toLowerCase();
+    if (t == 'audiobook') return true;
+    final collectionType =
+        (rawData['CollectionType'] as String? ?? '').toLowerCase();
+    if (collectionType == 'audiobooks' || collectionType == 'books') {
+      return true;
+    }
+    final parentCollectionType =
+        (rawData['ParentCollectionType'] as String? ?? '').toLowerCase();
+    if (parentCollectionType == 'audiobooks' || parentCollectionType == 'books') {
+      return true;
+    }
+    final mediaType = (rawData['MediaType'] as String? ?? '').toLowerCase();
+    if (mediaType == 'audio' && (rawData['Chapters'] as List?)?.isNotEmpty == true) {
+      // Audio items with chapter metadata are very likely audiobooks.
+      final runtimeTicks = runTimeTicks ?? 0;
+      // Treat anything over 30 minutes with chapters as an audiobook.
+      if (runtimeTicks > Duration(minutes: 30).inMicroseconds * 10) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   String? get videoResolution {
     for (final stream in mediaStreams) {
@@ -309,6 +346,35 @@ class AggregatedItem {
     };
   }
 
+  int? get audioSampleRateHz => _toInt(_defaultAudioStream?['SampleRate']);
+
+  int? get audioBitDepth => _toInt(_defaultAudioStream?['BitDepth']);
+
+  int? get audioBitRate {
+    final streamRate = _toInt(_defaultAudioStream?['BitRate']);
+    if (streamRate != null && streamRate > 0) return streamRate;
+    for (final source in mediaSources) {
+      final rate = _toInt(source['Bitrate']);
+      if (rate != null && rate > 0) return rate;
+    }
+    return null;
+  }
+
+  String? get audioContainer => mediaSources.isNotEmpty
+      ? mediaSources.first['Container'] as String?
+      : null;
+
+  static const _losslessCodecs = {
+    'flac', 'alac', 'wav', 'ape', 'wavpack', 'wv', 'tak', 'tta',
+    'dsd', 'dsf', 'mlp', 'truehd', 'pcm',
+  };
+
+  bool get isLosslessAudio {
+    final codec = (audioCodec ?? audioContainer)?.toLowerCase();
+    if (codec == null) return false;
+    return _losslessCodecs.contains(codec);
+  }
+
   String? endsAt({bool use24Hour = false}) {
     final ticks = runTimeTicks;
     if (ticks == null) return null;
@@ -344,5 +410,21 @@ class AggregatedItem {
       }
     }
     return name;
+  }
+
+  static List<Map<String, dynamic>> _toListOfMaps(dynamic value) {
+    if (value is! List) return const [];
+    return value
+        .map((e) {
+          if (e is Map) return Map<String, dynamic>.from(e);
+          return null;
+        })
+        .whereType<Map<String, dynamic>>()
+        .toList();
+  }
+
+  static List<String> _toListOfStrings(dynamic value) {
+    if (value is! List) return const [];
+    return value.map((e) => e?.toString()).whereType<String>().toList();
   }
 }

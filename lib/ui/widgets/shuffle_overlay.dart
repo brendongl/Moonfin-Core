@@ -39,18 +39,15 @@ Future<void> showShuffleOverlay(BuildContext context) {
     useSafeArea: false,
     barrierColor: AppColorScheme.scrim.withValues(alpha: 0.7),
     builder: (_) => _ShuffleOverlay(
-      launcherContext: context,
       initialContentType: contentType,
     ),
   );
 }
 
 class _ShuffleOverlay extends StatefulWidget {
-  final BuildContext launcherContext;
   final String initialContentType;
 
   const _ShuffleOverlay({
-    required this.launcherContext,
     required this.initialContentType,
   });
 
@@ -83,6 +80,7 @@ class _ShuffleOverlayState extends State<_ShuffleOverlay> {
   final Map<String, String?> _tmdbIdCache = <String, String?>{};
   final Map<String, Map<String, double>> _ratingsCache =
       <String, Map<String, double>>{};
+  final Map<String, String?> _cardImageUrlCache = <String, String?>{};
   String? _activeLibraryId;
   String? _activeGenreName;
   bool _loading = true;
@@ -474,11 +472,10 @@ class _ShuffleOverlayState extends State<_ShuffleOverlay> {
       serverId: item.serverId,
       type: item.type,
     );
+    final router = GoRouter.of(context);
     Navigator.of(context, rootNavigator: true).pop();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (widget.launcherContext.mounted) {
-        widget.launcherContext.push(destination);
-      }
+      router.push(destination);
     });
   }
 
@@ -510,6 +507,21 @@ class _ShuffleOverlayState extends State<_ShuffleOverlay> {
   }
 
   String? _resolveCardImageUrl(
+    AggregatedItem item,
+    double cardWidth,
+    double aspectRatio,
+  ) {
+    final cacheKey = '${item.serverId}:${item.id}:'
+        '${cardWidth.round()}:${aspectRatio.toStringAsFixed(2)}';
+    if (_cardImageUrlCache.containsKey(cacheKey)) {
+      return _cardImageUrlCache[cacheKey];
+    }
+    final resolved = _computeCardImageUrl(item, cardWidth, aspectRatio);
+    _cardImageUrlCache[cacheKey] = resolved;
+    return resolved;
+  }
+
+  String? _computeCardImageUrl(
     AggregatedItem item,
     double cardWidth,
     double aspectRatio,
@@ -792,7 +804,7 @@ class _ShuffleOverlayState extends State<_ShuffleOverlay> {
               node: _focusScopeNode,
               autofocus: true,
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(isMobile ? 22 : 28),
+                borderRadius: AppRadius.circular(isMobile ? 22 : 28),
                 child: Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -803,7 +815,7 @@ class _ShuffleOverlayState extends State<_ShuffleOverlay> {
                         AppColorScheme.surface.withValues(alpha: 0.96),
                       ],
                     ),
-                    borderRadius: BorderRadius.circular(isMobile ? 22 : 28),
+                    borderRadius: AppRadius.circular(isMobile ? 22 : 28),
                     border: Border.fromBorderSide(
                       ThemeRegistry.active.borders.chipBorder.copyWith(
                         color: AppColorScheme.onSurface.withValues(alpha: 0.22),
@@ -854,7 +866,7 @@ class _ShuffleOverlayState extends State<_ShuffleOverlay> {
                             SizedBox(height: isMobile ? 8 : 10),
                             _buildFocusHeader(l10n),
                             SizedBox(height: isMobile ? 6 : 8),
-                            _buildInfoPanel(l10n),
+                            RepaintBoundary(child: _buildInfoPanel(l10n)),
                             SizedBox(height: isMobile ? 10 : 12),
                             _buildActionButtons(l10n),
                           ],
@@ -971,7 +983,7 @@ class _ShuffleOverlayState extends State<_ShuffleOverlay> {
     return LayoutBuilder(
       builder: (context, constraints) {
         const posterAspectRatio = 2 / 3;
-        const centerScale = 1.18;
+        final centerScale = isTv ? 1.34 : 1.18;
         final cardExpansionScale = cardFocusExpansion == true ? 1.05 : 1.0;
         final selectedScale = centerScale * cardExpansionScale;
         final textBlockHeight = isTv ? 8.0 : 6.0;
@@ -1018,18 +1030,31 @@ class _ShuffleOverlayState extends State<_ShuffleOverlay> {
                         curve: Curves.easeOut,
                         alignment: Alignment.topCenter,
                         scale: index == _selectedIndex ? centerScale : 0.9,
-                        child: AnimatedOpacity(
-                          duration: const Duration(milliseconds: 180),
-                          opacity: disablePosterOpacity
-                              ? 1.0
-                              : (index == _selectedIndex ? 1.0 : 0.55),
-                          child: _buildCarouselCard(
-                            index: index,
-                            cardWidth: cardWidth,
-                            focusColor: focusColor,
-                            cardFocusExpansion: cardFocusExpansion,
-                            watchedBehavior: watchedBehavior,
-                          ),
+                        child: Stack(
+                          children: [
+                            _buildCarouselCard(
+                              index: index,
+                              cardWidth: cardWidth,
+                              focusColor: focusColor,
+                              cardFocusExpansion: cardFocusExpansion,
+                              watchedBehavior: watchedBehavior,
+                            ),
+                            if (!disablePosterOpacity)
+                              Positioned.fill(
+                                child: IgnorePointer(
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 180),
+                                    decoration: BoxDecoration(
+                                      color: AppColorScheme.background.withValues(
+                                        alpha: index == _selectedIndex ? 0.0 : 0.5,
+                                      ),
+                                      borderRadius:
+                                          ThemeRegistry.active.borders.cardRadius,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                     ],
@@ -1088,20 +1113,36 @@ class _ShuffleOverlayState extends State<_ShuffleOverlay> {
 
                       final distance = (page - index).abs().clamp(0.0, 1.0);
                       final scale = 1.0 - (distance * 0.18);
-                      final opacity = disablePosterOpacity
-                          ? 1.0
-                          : (1.0 - (distance * 0.45));
+                      final scrimAlpha = disablePosterOpacity
+                          ? 0.0
+                          : (distance * 0.5);
                       final yOffset = distance * 12;
 
                       return Center(
-                        child: Opacity(
-                          opacity: opacity,
-                          child: Transform.translate(
-                            offset: Offset(0, yOffset),
-                            child: Transform.scale(
-                              scale: scale,
-                              alignment: Alignment.topCenter,
-                              child: child,
+                        child: Transform.translate(
+                          offset: Offset(0, yOffset),
+                          child: Transform.scale(
+                            scale: scale,
+                            alignment: Alignment.topCenter,
+                            child: Stack(
+                              children: [
+                                ?child,
+                                if (scrimAlpha > 0)
+                                  Positioned.fill(
+                                    child: IgnorePointer(
+                                      child: DecoratedBox(
+                                        decoration: BoxDecoration(
+                                          color: AppColorScheme.background
+                                              .withValues(alpha: scrimAlpha),
+                                          borderRadius: ThemeRegistry
+                                              .active
+                                              .borders
+                                              .cardRadius,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
                         ),
@@ -1165,7 +1206,7 @@ class _ShuffleOverlayState extends State<_ShuffleOverlay> {
       padding: EdgeInsets.all(isMobile ? 8 : (tvDense ? 6 : 10)),
       decoration: BoxDecoration(
         color: AppColorScheme.scrim.withValues(alpha: 0.28),
-        borderRadius: BorderRadius.circular(isMobile ? 20 : (tvDense ? 18 : 24)),
+        borderRadius: AppRadius.circular(isMobile ? 20 : (tvDense ? 18 : 24)),
         border: Border.fromBorderSide(
           ThemeRegistry.active.borders.cardBorder.copyWith(
             color: AppColorScheme.onSurface.withValues(alpha: 0.15),
@@ -1299,7 +1340,7 @@ class _ShuffleOverlayState extends State<_ShuffleOverlay> {
           ),
           decoration: BoxDecoration(
             color: AppColorScheme.scrim.withValues(alpha: 0.34),
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: AppRadius.circular(999),
             border: Border.fromBorderSide(
               ThemeRegistry.active.borders.cardBorder.copyWith(
                 color: AppColorScheme.onSurface.withValues(alpha: 0.22),
@@ -1381,7 +1422,7 @@ class _ShuffleOverlayState extends State<_ShuffleOverlay> {
       ),
       decoration: BoxDecoration(
         color: AppColorScheme.scrim.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: AppRadius.circular(16),
         border: Border.fromBorderSide(
           ThemeRegistry.active.borders.cardBorder.copyWith(
             color: AppColorScheme.onSurface.withValues(alpha: 0.18),
@@ -1636,7 +1677,7 @@ class _ShuffleActionCardState extends State<_ShuffleActionCard> {
                 AppColorScheme.scrim.withValues(alpha: active ? 0.42 : 0.34),
               ],
       ),
-      borderRadius: BorderRadius.circular(widget.compact ? 18 : (widget.dense ? 16 : 20)),
+      borderRadius: AppRadius.circular(widget.compact ? 18 : (widget.dense ? 16 : 20)),
       border: Border.fromBorderSide(
         ThemeRegistry.active.borders.cardBorder.copyWith(
           color: active
@@ -1826,7 +1867,7 @@ class _ShufflePickerDialogState<T> extends State<_ShufflePickerDialog<T>> {
         constraints: const BoxConstraints(minWidth: 340, maxWidth: 440),
         decoration: BoxDecoration(
           color: AppColorScheme.surface.withValues(alpha: 0.9),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: AppRadius.circular(20),
           border: Border.fromBorderSide(
             ThemeRegistry.active.borders.chipBorder,
           ),

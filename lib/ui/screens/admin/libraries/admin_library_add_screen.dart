@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:moonfin_design/moonfin_design.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +7,7 @@ import 'package:server_core/server_core.dart';
 
 import '../../../../l10n/app_localizations.dart';
 import '../providers/admin_user_providers.dart';
+import '../widgets/admin_form_styles.dart';
 import '../widgets/filesystem_browser.dart';
 
 class AdminLibraryAddScreen extends ConsumerStatefulWidget {
@@ -123,13 +125,15 @@ class _AdminLibraryAddScreenState
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(l10n.adminAddLibrary,
-              style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 4),
+          adminScreenHeader(
+            context,
+            title: l10n.adminAddLibrary,
+            icon: Icons.create_new_folder_outlined,
+          ),
           _buildStepper(),
           const SizedBox(height: 16),
           Expanded(child: _buildStepContent()),
@@ -203,20 +207,43 @@ class _AdminLibraryAddScreenState
       children: _collectionTypes.entries.map((entry) {
         final isSelected = _collectionType == entry.key;
         final l10n = AppLocalizations.of(context);
-        return Card(
-          color: isSelected
-              ? Theme.of(context).colorScheme.primaryContainer
-              : null,
+        final accent = AppColorScheme.accent;
+        final onSurface = AppColorScheme.onSurface;
+        return Material(
+          color: Colors.transparent,
           child: InkWell(
             onTap: () => _selectType(entry.key),
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+            borderRadius: AppRadius.circular(14),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: AppRadius.circular(14),
+                color: isSelected
+                    ? accent.withValues(alpha: 0.16)
+                    : onSurface.withValues(alpha: 0.04),
+                border: Border.all(
+                  color: isSelected
+                      ? accent.withValues(alpha: 0.55)
+                      : onSurface.withValues(alpha: 0.08),
+                  width: isSelected ? 1.4 : 1,
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
               child: Row(
                 children: [
-                  Icon(entry.value, size: 28),
+                  Icon(entry.value,
+                      size: 26, color: isSelected ? accent : onSurface),
                   const SizedBox(width: 12),
-                  Flexible(child: Text(_collectionTypeLabel(entry.key, l10n))),
+                  Flexible(
+                    child: Text(
+                      _collectionTypeLabel(entry.key, l10n),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight:
+                            isSelected ? FontWeight.w600 : FontWeight.w500,
+                        color: isSelected ? accent : onSurface,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -233,10 +260,7 @@ class _AdminLibraryAddScreenState
       children: [
         TextFormField(
           controller: _nameController,
-          decoration: InputDecoration(
-            labelText: l10n.adminLibraryName,
-            border: const OutlineInputBorder(),
-          ),
+          decoration: adminInputDecoration(label: l10n.adminLibraryName),
           textInputAction: TextInputAction.next,
         ),
         const SizedBox(height: 24),
@@ -311,39 +335,42 @@ class _AdminLibraryAddScreenState
     final l10n = AppLocalizations.of(context);
     return ListView(
       children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _summaryRow(
-                  l10n.type,
-                  _collectionType != null
-                      ? _collectionTypeLabel(_collectionType!, l10n)
-                      : l10n.mixedContent,
-                ),
-                const SizedBox(height: 8),
-                _summaryRow(l10n.name, _nameController.text.trim()),
-                const SizedBox(height: 8),
-                Text(l10n.paths,
-                    style: Theme.of(context).textTheme.titleSmall),
-                if (_paths.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(l10n.adminNoPathsAdded,
-                        style: const TextStyle(fontStyle: FontStyle.italic)),
-                  )
-                else
-                  ...(_paths).map((p) => Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(p,
-                            style: const TextStyle(
-                                fontFamily: 'monospace', fontSize: 13)),
-                      )),
-              ],
+        adminGlassGroup(
+          context,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(AppSpacing.spaceLg),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _summaryRow(
+                    l10n.type,
+                    _collectionType != null
+                        ? _collectionTypeLabel(_collectionType!, l10n)
+                        : l10n.mixedContent,
+                  ),
+                  const SizedBox(height: 8),
+                  _summaryRow(l10n.name, _nameController.text.trim()),
+                  const SizedBox(height: 8),
+                  Text(l10n.paths,
+                      style: Theme.of(context).textTheme.titleSmall),
+                  if (_paths.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(l10n.adminNoPathsAdded,
+                          style: const TextStyle(fontStyle: FontStyle.italic)),
+                    )
+                  else
+                    ...(_paths).map((p) => Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(p,
+                              style: const TextStyle(
+                                  fontFamily: 'monospace', fontSize: 13)),
+                        )),
+                ],
+              ),
             ),
-          ),
+          ],
         ),
         const SizedBox(height: 24),
         Row(
@@ -352,16 +379,13 @@ class _AdminLibraryAddScreenState
               onPressed: _saving ? null : () => setState(() => _step = 2),
               child: Text(l10n.back),
             ),
-            const SizedBox(width: 8),
-            FilledButton(
-              onPressed: _saving ? null : _create,
-              child: _saving
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(l10n.adminCreateLibrary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: adminSaveButton(
+                label: l10n.adminCreateLibrary,
+                saving: _saving,
+                onPressed: _create,
+              ),
             ),
           ],
         ),

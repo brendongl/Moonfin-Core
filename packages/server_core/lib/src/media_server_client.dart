@@ -23,9 +23,9 @@ import 'api/admin_api_keys_api.dart';
 import 'api/admin_backup_api.dart';
 import 'api/admin_live_tv_api.dart';
 import 'api/admin_items_api.dart';
-import 'api/home_screen_sections_api.dart';
 import 'api/client_log_api.dart';
 import 'api/syncplay_api.dart';
+import 'api/games_api.dart';
 
 abstract class MediaServerClient {
   ServerType get serverType;
@@ -66,15 +66,16 @@ abstract class MediaServerClient {
 
   SyncPlayApi? get syncPlayApi => null;
 
-  /// Optional client for the third-party "Home Screen Sections" Jellyfin
-  /// plugin. Returns null on servers that don't expose the plugin (Emby,
-  /// older Jellyfin, etc.).
-  HomeScreenSectionsApi? get homeScreenSectionsApi => null;
+
 
   /// Optional endpoint for uploading client-side diagnostic logs to the server
   /// as reports. Returns null on servers that don't support it (Emby, or
   /// Jellyfin with client log upload disabled).
   ClientLogApi? get clientLogApi => null;
+
+  /// Optional client for the Moonbase plugin retro-games (EmulatorJS) API.
+  /// Returns null on servers without the plugin.
+  GamesApi? get gamesApi => null;
 
   void dispose();
 }

@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "Melodiile preferate vor apărea aici",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "Nu s-a putut încărca",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "Utilizator specific",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "Autentificați-vă întotdeauna",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "Căutați Persoană de la distanță",
     "adminNoRemoteMatches": "Nu s-au găsit potriviri la distanță",
     "adminRemoteResults": "Rezultate de la distanță",
     "adminRemoteMetadataApplied": "S-au aplicat metadatele de la distanță",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "Adăugați tuner",
     "adminTunerType": "Tip tuner",
-    "adminTunerTypeHint": "HDHomeRun, M3U, Altele",
-    "adminUrlPath": "URL/Cale",
-    "adminNameOptional": "Nume (opțional)",
     "adminTunerAdded": "A adăugat tuner",
     "adminTunerAddFailed": "Nu s-a putut adăuga tuner: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "Adăugați furnizorul de ghid",
     "adminProviderType": "Tip de furnizor",
-    "adminProviderTypeHint": "SchedulesDirect sau XMLTV",
-    "adminUsernameOptional": "Nume de utilizator (opțional)",
-    "adminRefreshInterval": "Interval de reîmprospătare (ore)",
     "adminProviderAdded": "Furnizorul a fost adăugat",
     "adminProviderAddFailed": "Nu s-a putut adăuga furnizorul: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "Fără linii care se potrivesc",
     "adminMetadataEditorTitle": "Editor de metadate",
-    "adminMetadataRemote": "Telecomanda",
     "adminMetadataType": "Tip",
     "adminMetadataDetails": "Detalii",
     "adminMetadataExternalIds": "ID-uri externe",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "Ține minte alegerea mea",
     "playHdr10Fallback": "Redați HDR10 alternativ",
     "requestTranscode": "Solicitați transcodare",
-    "homeScreenSectionsIntegrationDescription": "Detectați rândurile expuse de pluginul „Secțiuni ecran de pornire” de la IAmParadox27. Rândurile pot fi activate și reordonate mai jos.",
-    "homeScreenSectionsIntegrationNoServers": "Niciun server Jellyfin nu raportează încă pluginul.",
-    "integrationOpenHomeSections": "Deschideți secțiunile de pornire",
-    "integrationOpenHomeSectionsSubtitle": "Activați, dezactivați și reordonați rândurile",
-    "integrationInstalledButDisabled": "Instalat dar dezactivat",
-    "integrationNotInstalled": "Nu este instalat",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "Vezi toate",
     "noItems": "Fără articole",
     "switchUser": "Schimbați utilizator",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "Stereo AAC",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Passthrough (avansat)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Ștergeți tema salvată",
     "savedThemesManageSubtitle": "Gestionați temele de plugin descărcate pe acest dispozitiv",
-    "homeScreenSectionsTitle": "Secțiunile ecranului de pornire",
     "themeEditor": "Theme Editor",
     "themeEditorSubtitle": "Open the Moonfin Theme Editor in your browser",
     "homeScreen": "Home Screen",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "Automatically enable HDR for HDR video playback and restore display mode on exit.",
     "whenFullscreen": "When fullscreen",
     "transcodingLimits": "Transcoding Limits",
-    "settingsSupportMoonfinSubtitle": "Donează o cafea dezvoltatorului"
+    "settingsSupportMoonfinSubtitle": "Donează o cafea dezvoltatorului",
+    "reportDownloadsActivity": "Afișează descărcările pe server",
+    "reportDownloadsActivitySubtitle": "Permiteți administratorului serverului să vă vadă descărcările transcodate în panoul de control",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "Limita memoriei cache pentru imagini",
+    "clearImageCache": "Golește memoria cache pentru imagini",
+    "imageCacheCleared": "Memoria cache pentru imagini a fost golită"
 }

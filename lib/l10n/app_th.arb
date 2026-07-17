@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "เพลงโปรดจะปรากฏที่นี่",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "โหลดไม่สำเร็จ",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "ผู้ใช้เฉพาะ",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "ตรวจสอบสิทธิ์เสมอ",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "ค้นหาบุคคลระยะไกล",
     "adminNoRemoteMatches": "ไม่พบการแข่งขันระยะไกล",
     "adminRemoteResults": "ผลลัพธ์ระยะไกล",
     "adminRemoteMetadataApplied": "ใช้ข้อมูลเมตาระยะไกลแล้ว",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "เพิ่มจูนเนอร์",
     "adminTunerType": "ประเภทจูนเนอร์",
-    "adminTunerTypeHint": "HDHomeRun, M3U, อื่นๆ",
-    "adminUrlPath": "URL / เส้นทาง",
-    "adminNameOptional": "ชื่อ (ไม่บังคับ)",
     "adminTunerAdded": "เพิ่มจูนเนอร์แล้ว",
     "adminTunerAddFailed": "ไม่สามารถเพิ่มจูนเนอร์: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "เพิ่มผู้ให้บริการไกด์",
     "adminProviderType": "ประเภทผู้ให้บริการ",
-    "adminProviderTypeHint": "SchedulesDirect หรือ XMLTV",
-    "adminUsernameOptional": "ชื่อผู้ใช้ (ไม่บังคับ)",
-    "adminRefreshInterval": "ช่วงเวลารีเฟรช (ชั่วโมง)",
     "adminProviderAdded": "เพิ่มผู้ให้บริการแล้ว",
     "adminProviderAddFailed": "ไม่สามารถเพิ่มผู้ให้บริการ: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "ไม่มีบรรทัดที่ตรงกัน",
     "adminMetadataEditorTitle": "ตัวแก้ไขข้อมูลเมตา",
-    "adminMetadataRemote": "ระยะไกล",
     "adminMetadataType": "พิมพ์",
     "adminMetadataDetails": "รายละเอียด",
     "adminMetadataExternalIds": "รหัสภายนอก",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "จำตัวเลือกของฉันไว้",
     "playHdr10Fallback": "เล่นทางเลือก HDR10",
     "requestTranscode": "ขอแปลงรหัส",
-    "homeScreenSectionsIntegrationDescription": "ตรวจหาแถวที่ถูกเปิดเผยโดยปลั๊กอิน \"ส่วนหน้าจอหลัก\" ของ IAmParadox27 สามารถเปิดใช้งานและเรียงลำดับแถวใหม่ได้ด้านล่าง",
-    "homeScreenSectionsIntegrationNoServers": "ยังไม่มีเซิร์ฟเวอร์ Jellyfin รายงานปลั๊กอิน",
-    "integrationOpenHomeSections": "เปิดส่วนหน้าแรก",
-    "integrationOpenHomeSectionsSubtitle": "เปิดใช้งาน ปิดใช้งาน และเรียงลำดับแถวใหม่",
-    "integrationInstalledButDisabled": "ติดตั้งแล้ว แต่ปิดการใช้งาน",
-    "integrationNotInstalled": "ไม่ได้ติดตั้ง",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "ดูทั้งหมด",
     "noItems": "ไม่มีรายการ",
     "switchUser": "สลับผู้ใช้",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "เอเอซี สเตอริโอ",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "ส่งผ่าน (ขั้นสูง)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "ลบธีมที่บันทึกไว้",
     "savedThemesManageSubtitle": "จัดการธีมปลั๊กอินที่ดาวน์โหลดบนอุปกรณ์นี้",
-    "homeScreenSectionsTitle": "ส่วนหน้าจอหลัก",
     "themeEditor": "ตัวแก้ไขธีม",
     "themeEditorSubtitle": "เปิด Moonfin Theme Editor ในเบราว์เซอร์ของคุณ",
     "homeScreen": "หน้าจอหลัก",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "เปิดใช้งาน HDR โดยอัตโนมัติสำหรับการเล่นวิดีโอ HDR และคืนค่าโหมดการแสดงผลเมื่อออก",
     "whenFullscreen": "เมื่อเปิดเต็มจอ",
     "transcodingLimits": "ขีดจำกัดการแปลงรหัส",
-    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer"
+    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer",
+    "reportDownloadsActivity": "แสดงการดาวน์โหลดบนเซิร์ฟเวอร์",
+    "reportDownloadsActivitySubtitle": "อนุญาตให้ผู้ดูแลเซิร์ฟเวอร์เห็นการดาวน์โหลดที่แปลงสัญญาณของคุณในแดชบอร์ด",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "ขีดจำกัดแคชรูปภาพ",
+    "clearImageCache": "ล้างแคชรูปภาพ",
+    "imageCacheCleared": "ล้างแคชรูปภาพแล้ว"
 }

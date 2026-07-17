@@ -12,6 +12,7 @@ import '../../../l10n/app_localizations.dart';
 import '../../../preference/user_preferences.dart';
 import '../../../ui/mixins/focus_state_mixin.dart';
 import '../../navigation/destinations.dart';
+import '../../widgets/adaptive/adaptive_dialog.dart';
 import '../../widgets/focus/request_initial_focus.dart';
 import '../../widgets/overlay_sheet.dart';
 
@@ -258,7 +259,7 @@ class _LiveTvRecordingsScreenState extends State<LiveTvRecordingsScreen> {
     final l10n = AppLocalizations.of(context);
     final confirmed = await showFocusRestoringDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => AlertDialog.adaptive(
         backgroundColor: const Color(0xFF1A1A2E),
         title: Text(l10n.cancelRecording, style: const TextStyle(color: Colors.white)),
         content: Text(
@@ -266,7 +267,7 @@ class _LiveTvRecordingsScreenState extends State<LiveTvRecordingsScreen> {
           style: TextStyle(color: Colors.white.withValues(alpha: 0.8)),
         ),
         actions: [
-          TextButton(
+          adaptiveDialogAction(
             onPressed: () => Navigator.of(ctx, rootNavigator: true).pop(false),
             child: Text(l10n.no),
           ),
@@ -295,7 +296,7 @@ class _LiveTvRecordingsScreenState extends State<LiveTvRecordingsScreen> {
     final l10n = AppLocalizations.of(context);
     final confirmed = await showFocusRestoringDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => AlertDialog.adaptive(
         backgroundColor: const Color(0xFF1A1A2E),
         title: Text(l10n.cancelSeriesRecordingQuestion, style: const TextStyle(color: Colors.white)),
         content: Text(
@@ -303,7 +304,7 @@ class _LiveTvRecordingsScreenState extends State<LiveTvRecordingsScreen> {
           style: TextStyle(color: Colors.white.withValues(alpha: 0.8)),
         ),
         actions: [
-          TextButton(
+          adaptiveDialogAction(
             onPressed: () => Navigator.of(ctx, rootNavigator: true).pop(false),
             child: Text(l10n.no),
           ),
@@ -421,7 +422,7 @@ class _SeriesTimerCardState extends State<_SeriesTimerCard> with FocusStateMixin
                       height: 112,
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(4),
+                        borderRadius: AppRadius.circular(4),
                         border: showFocusBorder
                             ? Border.fromBorderSide(
                                 ThemeRegistry.active.borders.focusBorder.copyWith(
@@ -497,10 +498,10 @@ class _RecordingsPillButtonState extends State<_RecordingsPillButton> {
     final active = _focused || widget.isActive;
     return Material(
       color: Colors.transparent,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: AppRadius.circular(20),
       child: InkWell(
         onTap: widget.onPressed,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: AppRadius.circular(20),
         focusColor: Colors.transparent,
         hoverColor: Colors.white.withValues(alpha: 0.05),
         splashColor: Colors.white24,
@@ -515,7 +516,7 @@ class _RecordingsPillButtonState extends State<_RecordingsPillButton> {
             color: active
                 ? AppColorScheme.accent.withValues(alpha: _focused ? 1.0 : 0.7)
                 : Colors.white.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: AppRadius.circular(20),
           ),
           child: widget.icon != null
               ? Icon(widget.icon, color: Colors.white.withValues(alpha: active ? 1.0 : 0.8), size: 18)
@@ -644,7 +645,7 @@ class _RecordingCardState extends State<_RecordingCard> with FocusStateMixin {
                       height: 112,
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(4),
+                        borderRadius: AppRadius.circular(4),
                         border: showFocusBorder
                             ? Border.fromBorderSide(
                                 ThemeRegistry.active.borders.focusBorder.copyWith(

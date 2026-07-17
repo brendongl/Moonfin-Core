@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 import '../auth/store/authentication_store.dart';
 import '../data/database/database_connection.dart';
 import '../data/database/offline_database.dart';
+import '../data/offline/offline_catalog.dart';
 import '../data/repositories/offline_repository.dart';
 import '../data/services/connectivity_service.dart';
 import '../data/services/log_service.dart';
@@ -355,6 +356,32 @@ Future<void> migrateAudioPreferenceSplit(PreferenceStore store) async {
   await store.setBool(migrationKey, true);
 }
 
+// Minimal DI for background isolates like the Watch Next worker. This must not
+// call registerPlaybackModule: constructing Media3PlayerBackend subscribes to
+// the process-global moonfin/media3_video_events channel and would hijack the
+// foreground engine's event sink, freezing the player OSD mid-playback.
+Future<void> configureBackgroundDependencies() async {
+  if (getIt.isRegistered<DeviceInfo>()) return;
+
+  final preferenceStore = PreferenceStore();
+  await preferenceStore.init();
+
+  final deviceId = preferenceStore.getString('device_id') ?? const Uuid().v4();
+  getIt.registerSingleton<DeviceInfo>(
+    DeviceInfo(
+      id: deviceId,
+      name: await _resolveDeviceName(),
+      appName: _clientName(),
+      appVersion: await _resolveAppVersion(),
+    ),
+  );
+
+  registerPreferenceModule(preferenceStore);
+  registerServerModule();
+  registerAuthModule();
+  await getIt<AuthenticationStore>().init();
+}
+
 Future<void> configureDependencies() async {
   final preferenceStore = PreferenceStore();
   await preferenceStore.init();
@@ -394,6 +421,10 @@ Future<void> configureDependencies() async {
   final offlineRepo = OfflineRepository(getIt<OfflineDatabase>());
   getIt.registerSingleton<OfflineRepository>(offlineRepo);
   await _migrateIosPaths(offlineRepo);
+
+  final offlineCatalog = OfflineCatalog(offlineRepo);
+  getIt.registerSingleton<OfflineCatalog>(offlineCatalog);
+  await offlineCatalog.warm();
 
   final connectivityService = ConnectivityService();
   connectivityService.initialize();

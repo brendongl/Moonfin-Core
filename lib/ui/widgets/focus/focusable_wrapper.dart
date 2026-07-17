@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import 'package:moonfin_design/moonfin_design.dart';
+
 import '../../../util/focus/dpad_keys.dart';
 import '../../../util/focus/key_event_utils.dart';
 import 'focus_theme.dart';
@@ -216,15 +218,47 @@ class _FocusableWrapperState extends State<FocusableWrapper>
         : FocusTheme.focusDecoration(
             isFocused: _focused,
             radius: widget.borderRadius,
-            color: color,
+            color: null,
             suppressFocusGlow: widget.suppressFocusGlow,
           );
+
+    // Keep the child inside a stable Stack whether or not it is focused, and
+    // only add or remove the border overlay. Rebuilding the Stack around the
+    // child on every focus change would give the child a fresh element and
+    // restart things like image fade-ins each time it gains or loses focus.
+    final borders = ThemeRegistry.active.borders;
+    final effectiveRadius = AppColorScheme.isPixel ? 0.0 : widget.borderRadius;
+    final borderWidth = FocusTheme.borderWidth;
+    final showOverlayBorder = _focused && !widget.useBackgroundFocus;
+    final childWithOverlay = Stack(
+      clipBehavior: Clip.none,
+      fit: StackFit.passthrough,
+      children: [
+        widget.child,
+        if (showOverlayBorder)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: AppRadius.circular(effectiveRadius),
+                  border: Border.fromBorderSide(
+                    borders.focusBorder.copyWith(
+                      color: color,
+                      width: borderWidth,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
 
     Widget content = AnimatedContainer(
       duration: FocusTheme.animationDuration,
       curve: Curves.easeOut,
       decoration: decoration,
-      child: widget.child,
+      child: childWithOverlay,
     );
 
     if (!widget.disableScale) {

@@ -88,7 +88,13 @@ final class AppleTvVideoChannel: NSObject, FlutterStreamHandler {
         case "setAudioTrack":
             player?.setAudioTrack((args["index"] as? NSNumber)?.int32Value ?? -1)
         case "setSubtitleTrack":
-            player?.setSubtitleTrack((args["index"] as? NSNumber)?.int32Value ?? -1)
+            let isExternal = (args["isExternalSubtitle"] as? Bool) == true
+            player?.selectSubtitleTrack(
+                (args["index"] as? NSNumber)?.int32Value ?? -1,
+                externalUrl: isExternal ? args["externalSubtitleUrl"] as? String : nil
+            )
+        case "addExternalSubtitle":
+            addExternalSubtitle(args["url"])
         case "disableSubtitleTrack":
             player?.disableSubtitles()
         case "setVolume":
@@ -104,6 +110,15 @@ final class AppleTvVideoChannel: NSObject, FlutterStreamHandler {
 
     private func ms(_ value: Any?) -> TimeInterval {
         ((value as? NSNumber)?.doubleValue ?? 0) / 1000.0
+    }
+
+    @discardableResult
+    private func addExternalSubtitle(_ value: Any?) -> Bool {
+        guard let urlString = value as? String, let url = URL(string: urlString) else {
+            return false
+        }
+        player?.addSubtitle(url: url)
+        return true
     }
 
     private func applySubtitleStyle(_ args: [String: Any]) {
@@ -207,6 +222,9 @@ final class AppleTvVideoChannel: NSObject, FlutterStreamHandler {
         }
         vc.onSyncplayIgnoreWait = { [weak self] value in
             self?.send(["event": "syncplayIgnoreWait", "value": value])
+        }
+        vc.onOpenCastPerson = { [weak self] personId in
+            self?.send(["event": "openCastPerson", "personId": personId])
         }
         if let meta = lastMetadata {
             vc.applyUiMetadata(meta)

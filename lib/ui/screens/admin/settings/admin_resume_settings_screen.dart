@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
+import 'package:moonfin_design/moonfin_design.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../../../l10n/app_localizations.dart';
+import '../../../widgets/adaptive/adaptive_slider.dart';
+import '../widgets/admin_form_styles.dart';
 
 class AdminResumeSettingsScreen extends StatefulWidget {
   const AdminResumeSettingsScreen({super.key});
@@ -94,17 +97,17 @@ class _AdminResumeSettingsScreenState extends State<AdminResumeSettingsScreen> {
       );
     }
 
+    final bottomSafe = MediaQuery.of(context).padding.bottom;
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.fromLTRB(16, 20, 16, bottomSafe + 40),
       children: [
-        Text(l10n.adminDrawerResume, style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 8),
-        Text(
-          l10n.adminResumeDescription,
-          style: Theme.of(context).textTheme.bodyMedium,
+        adminScreenHeader(
+          context,
+          title: l10n.adminDrawerResume,
+          subtitle: l10n.adminResumeDescription,
+          icon: Icons.play_circle_outline,
         ),
-        const SizedBox(height: 24),
-        _sectionHeader(l10n.adminResumeVideo),
+        adminSectionLabel(context, l10n.adminResumeVideo, icon: Icons.movie_outlined),
         _sliderField(
           'MinResumePct',
           l10n.adminMinResumePercentage,
@@ -126,8 +129,8 @@ class _AdminResumeSettingsScreenState extends State<AdminResumeSettingsScreen> {
           l10n.adminMinResumeDuration,
           subtitle: l10n.adminMinResumeDurationSubtitle,
         ),
-        const Divider(height: 32),
-        _sectionHeader(l10n.adminResumeAudiobooks),
+        adminSectionLabel(context, l10n.adminResumeAudiobooks,
+            icon: Icons.headphones_outlined),
         _sliderField(
           'MinAudiobookResume',
           l10n.adminResumeMinAudiobookPct,
@@ -141,28 +144,9 @@ class _AdminResumeSettingsScreenState extends State<AdminResumeSettingsScreen> {
           min: 1,
           max: 100,
         ),
-        const SizedBox(height: 24),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: FilledButton(
-            onPressed: _saving ? null : _save,
-            child: _saving
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Text(l10n.save),
-          ),
-        ),
+        const SizedBox(height: AppSpacing.spaceXl),
+        adminSaveButton(label: l10n.save, saving: _saving, onPressed: _save),
       ],
-    );
-  }
-
-  Widget _sectionHeader(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Text(text, style: Theme.of(context).textTheme.titleMedium),
     );
   }
 
@@ -183,7 +167,7 @@ class _AdminResumeSettingsScreenState extends State<AdminResumeSettingsScreen> {
         Row(
           children: [
             Expanded(
-              child: Slider(
+              child: adaptiveSlider(
                 value: value,
                 min: min,
                 max: max,
@@ -208,11 +192,7 @@ class _AdminResumeSettingsScreenState extends State<AdminResumeSettingsScreen> {
   Widget _intField(String key, String label, {String? subtitle}) {
     return TextFormField(
       initialValue: _intVal(key).toString(),
-      decoration: InputDecoration(
-        labelText: label,
-        helperText: subtitle,
-        border: const OutlineInputBorder(),
-      ),
+      decoration: adminInputDecoration(label: label, helper: subtitle),
       keyboardType: TextInputType.number,
       onChanged: (v) => _config![key] = int.tryParse(v) ?? 0,
     );

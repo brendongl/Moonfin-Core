@@ -16,13 +16,24 @@ class LibraryBrowseViewModel extends ChangeNotifier {
   final MdbListRepository _mdbListRepository;
   final String libraryId;
   final String? genreId;
+  final String? studioName;
   final String? overrideName;
   final List<String>? includeItemTypes;
 
+  /// Pins the browse to favorites for routes that only ever show those. The
+  /// filter stays out of the saved preference so it cannot follow the user back
+  /// to the ordinary browse of the same library.
+  final bool favoritesOnly;
+
   static const _pageSize = 48;
   static const _firstPageSize = 75;
+  // Name and CollectionType come back as default fields, so the library lookup
+  // needs none. Asking for the full set makes the server recursively count the
+  // whole library before the first item can render.
+  static const _libraryMetaFields = '';
+
   static const _browseFields =
-      'PrimaryImageAspectRatio,SortName,Type,IsFolder,UserData,CommunityRating,OfficialRating,RunTimeTicks,ProductionYear,ImageTags,BackdropImageTags,ParentBackdropItemId,ParentBackdropImageTags,ParentThumbItemId,ParentThumbImageTag,SeriesId,SeriesPrimaryImageTag';
+      'PrimaryImageAspectRatio,SortName,Type,IsFolder,UserData,CommunityRating,OfficialRating,RunTimeTicks,ProductionYear,ProviderIds,ImageTags,BackdropImageTags,ParentBackdropItemId,ParentBackdropImageTags,ParentThumbItemId,ParentThumbImageTag,SeriesId,SeriesPrimaryImageTag';
   // Cap image tags to one per type (server returns all by default)
   static const _imageTypes = 'Primary,Backdrop,Thumb';
   static const _imageTypeLimit = 1;
@@ -50,6 +61,7 @@ class LibraryBrowseViewModel extends ChangeNotifier {
   String? _collectionType;
   bool _initialLibraryFilterSet = false;
   bool _imageTypeSynced = false;
+  bool _libraryMetaResolved = false;
 
   bool _loadingMore = false;
   bool get loadingMore => _loadingMore;
@@ -79,6 +91,8 @@ class LibraryBrowseViewModel extends ChangeNotifier {
   List<Map<String, dynamic>> get libraries => _libraries;
 
   bool get isGenreBrowse => genreId != null;
+  bool get isStudioBrowse => studioName != null;
+  bool get isFilterBrowse => isGenreBrowse || isStudioBrowse;
 
   late ImageType _imageType;
   ImageType get imageType => _imageType;
@@ -88,6 +102,8 @@ class LibraryBrowseViewModel extends ChangeNotifier {
 
   String? _errorMessage;
   String? get errorMessage => _errorMessage;
+
+  bool? _lastGroupCollectionsValue;
 
   AggregatedItem? _focusedItem;
   AggregatedItem? get focusedItem => _focusedItem;
@@ -127,7 +143,8 @@ class LibraryBrowseViewModel extends ChangeNotifier {
         tmdbId = _tmdbIdByItemId[item.id];
       } else {
         try {
-          final details = await _client.itemsApi.getItem(item.id);
+          final details =
+              await _client.itemsApi.getItem(item.id, fields: 'ProviderIds');
           tmdbId = (details['ProviderIds'] as Map?)?['Tmdb'] as String?;
         } catch (_) {
           tmdbId = null;
@@ -155,8 +172,10 @@ class LibraryBrowseViewModel extends ChangeNotifier {
     required UserPreferences prefs,
     required MdbListRepository mdbListRepository,
     this.genreId,
+    this.studioName,
     this.overrideName,
     this.includeItemTypes,
+    this.favoritesOnly = false,
   }) : _client = client,
        _prefs = prefs,
        _mdbListRepository = mdbListRepository {
@@ -164,15 +183,25 @@ class LibraryBrowseViewModel extends ChangeNotifier {
     _sortDirection = _prefs.get(UserPreferences.librarySortDirection(_prefKey));
     _playedFilter = _prefs.get(UserPreferences.libraryPlayedFilter(_prefKey));
     _seriesFilter = _prefs.get(UserPreferences.librarySeriesFilter(_prefKey));
-    _favoriteFilter = _prefs.get(
-      UserPreferences.libraryFavoriteFilter(_prefKey),
-    );
+    _favoriteFilter =
+        favoritesOnly ||
+        _prefs.get(UserPreferences.libraryFavoriteFilter(_prefKey));
     _letterFilter = '';
     _imageType = _prefs.get(UserPreferences.libraryImageType(_imagePrefKey));
     _posterSize = _readScopedPosterSize();
+    _lastGroupCollectionsValue = _prefs.get(UserPreferences.groupItemsIntoCollections);
+    _prefs.addListener(_onPrefsChanged);
   }
 
-  String get _prefKey => genreId ?? libraryId;
+  void _onPrefsChanged() {
+    final newValue = _prefs.get(UserPreferences.groupItemsIntoCollections);
+    if (_lastGroupCollectionsValue != newValue) {
+      _lastGroupCollectionsValue = newValue;
+      load();
+    }
+  }
+
+  String get _prefKey => genreId ?? studioName ?? libraryId;
 
   String get _imagePrefKey {
     if (genreId != null && libraryId.isNotEmpty) {
@@ -200,7 +229,13 @@ class LibraryBrowseViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      if (genreId != null) {
+      // Independent of the library lookup, so let it run alongside instead of
+      // adding a third round trip before the first item can render.
+      final imageTypeSync = _imageTypeSynced
+          ? Future<void>.value()
+          : _syncImageTypeFromServer().then((_) => _imageTypeSynced = true);
+
+      if (isFilterBrowse) {
         _libraryName = overrideName ?? '';
         if (!_initialLibraryFilterSet) {
           _libraryFilter = libraryId.isEmpty ? null : libraryId;
@@ -209,16 +244,19 @@ class LibraryBrowseViewModel extends ChangeNotifier {
         if (_libraries.isEmpty) _loadLibraries();
         if (libraryId.isNotEmpty) {
           try {
-            final parentData = await _client.itemsApi.getItem(libraryId);
+            final parentData = await _client.itemsApi
+                .getItem(libraryId, fields: _libraryMetaFields);
             _collectionType = (parentData['CollectionType'] as String?)
                 ?.toLowerCase();
           } catch (_) {}
         }
-      } else {
-        final parentData = await _client.itemsApi.getItem(libraryId);
+      } else if (!_libraryMetaResolved) {
+        final parentData = await _client.itemsApi
+            .getItem(libraryId, fields: _libraryMetaFields);
         _libraryName = parentData['Name'] as String? ?? '';
         _collectionType = (parentData['CollectionType'] as String?)
             ?.toLowerCase();
+        _libraryMetaResolved = true;
       }
 
       if (isHomeVideosLibrary || isMixedContentLibrary) {
@@ -235,10 +273,7 @@ class LibraryBrowseViewModel extends ChangeNotifier {
 
       _refreshPosterSizeFromScope();
 
-      if (!_imageTypeSynced) {
-        await _syncImageTypeFromServer();
-        _imageTypeSynced = true;
-      }
+      await imageTypeSync;
       await _fetchPage(0);
       _state = LibraryBrowseState.ready;
     } catch (e) {
@@ -295,18 +330,35 @@ class LibraryBrowseViewModel extends ChangeNotifier {
         includeItemTypes != null &&
         includeItemTypes!.length == 1 &&
         includeItemTypes!.first == 'MusicArtist';
+    final groupCollections = _prefs.get(UserPreferences.groupItemsIntoCollections);
     if (includeItemTypes != null) {
-      includeTypes = includeItemTypes;
+      includeTypes = List<String>.from(includeItemTypes!);
+      if (groupCollections &&
+          (includeTypes.contains('Movie') ||
+              includeTypes.contains('Series'))) {
+        collapseBoxSets = true;
+      }
     } else {
       switch (_collectionType) {
         case 'movies':
-          includeTypes = ['Movie'];
-          excludeTypes = ['BoxSet'];
-          collapseBoxSets = false;
+          if (groupCollections) {
+            includeTypes = ['Movie'];
+            excludeTypes = null;
+            collapseBoxSets = true;
+          } else {
+            includeTypes = ['Movie'];
+            excludeTypes = ['BoxSet'];
+            collapseBoxSets = false;
+          }
           break;
         case 'tvshows':
-          includeTypes = ['Series'];
-          collapseBoxSets = false;
+          if (groupCollections) {
+            includeTypes = ['Series'];
+            collapseBoxSets = true;
+          } else {
+            includeTypes = ['Series'];
+            collapseBoxSets = false;
+          }
           break;
         case 'playlists':
           includeTypes = ['Playlist'];
@@ -336,7 +388,7 @@ class LibraryBrowseViewModel extends ChangeNotifier {
       includeTypes = ['MusicAlbum'];
     }
 
-    if (genreId != null && includeItemTypes == null) {
+    if (isFilterBrowse && includeItemTypes == null) {
       final currentExclude = excludeTypes ?? const <String>[];
       if (!currentExclude.contains('Episode')) {
         excludeTypes = [...currentExclude, 'Episode'];
@@ -393,6 +445,7 @@ class LibraryBrowseViewModel extends ChangeNotifier {
       response = await _fetchItemsWithFallback(
         parentId: _effectiveParentId,
         genreIds: genreId != null ? [genreId!] : null,
+        studios: studioName != null ? [studioName!] : null,
         includeItemTypes: includeTypes,
         excludeItemTypes: excludeTypes,
         collapseBoxSetItems: collapseBoxSets,
@@ -456,6 +509,7 @@ class LibraryBrowseViewModel extends ChangeNotifier {
   Future<Map<String, dynamic>> _fetchItemsWithFallback({
     String? parentId,
     List<String>? genreIds,
+    List<String>? studios,
     List<String>? includeItemTypes,
     List<String>? excludeItemTypes,
     bool? collapseBoxSetItems,
@@ -475,6 +529,7 @@ class LibraryBrowseViewModel extends ChangeNotifier {
       return await _client.itemsApi.getItems(
         parentId: parentId,
         genreIds: genreIds,
+        studios: studios,
         includeItemTypes: includeItemTypes,
         excludeItemTypes: excludeItemTypes,
         collapseBoxSetItems: collapseBoxSetItems,
@@ -506,6 +561,7 @@ class LibraryBrowseViewModel extends ChangeNotifier {
       return _client.itemsApi.getItems(
         parentId: parentId,
         genreIds: genreIds,
+        studios: studios,
         includeItemTypes: includeItemTypes,
         excludeItemTypes: excludeItemTypes,
         collapseBoxSetItems: collapseBoxSetItems,
@@ -528,7 +584,7 @@ class LibraryBrowseViewModel extends ChangeNotifier {
   }
 
   String? get _effectiveParentId {
-    if (genreId != null) return _libraryFilter;
+    if (isFilterBrowse) return _libraryFilter;
     return libraryId.isEmpty ? null : libraryId;
   }
 
@@ -550,7 +606,8 @@ class LibraryBrowseViewModel extends ChangeNotifier {
     _collectionType = null;
     if (value != null) {
       try {
-        final parentData = await _client.itemsApi.getItem(value);
+        final parentData = await _client.itemsApi
+            .getItem(value, fields: _libraryMetaFields);
         _collectionType = (parentData['CollectionType'] as String?)
             ?.toLowerCase();
       } catch (_) {}
@@ -593,7 +650,7 @@ class LibraryBrowseViewModel extends ChangeNotifier {
   }
 
   Future<void> setFavoriteFilter(bool value) async {
-    if (_favoriteFilter == value) return;
+    if (favoritesOnly || _favoriteFilter == value) return;
     _favoriteFilter = value;
     await _prefs.set(UserPreferences.libraryFavoriteFilter(_prefKey), value);
     await load();
@@ -693,12 +750,12 @@ class LibraryBrowseViewModel extends ChangeNotifier {
       (includeItemTypes != null && includeItemTypes!.contains('Book'));
 
   bool get isHomeVideosLibrary =>
-      !isGenreBrowse &&
+      !isFilterBrowse &&
       includeItemTypes == null &&
       _collectionType == 'homevideos';
 
   bool get isMixedContentLibrary =>
-      !isGenreBrowse &&
+      !isFilterBrowse &&
       includeItemTypes == null &&
       (_collectionType == null ||
           _collectionType!.isEmpty ||
@@ -706,7 +763,12 @@ class LibraryBrowseViewModel extends ChangeNotifier {
 
   bool isNavigableFolder(AggregatedItem item) {
     final type = item.type;
-    if (type == 'Series' || type == 'BoxSet' || type == 'Playlist') {
+    if (type == 'Series' ||
+        type == 'BoxSet' ||
+        type == 'Playlist' ||
+        type == 'MusicArtist' ||
+        type == 'MusicAlbum' ||
+        type == 'AlbumArtist') {
       return false;
     }
 
@@ -736,4 +798,10 @@ class LibraryBrowseViewModel extends ChangeNotifier {
   }
 
   String get counterText => '${_items.length} | $_totalCount';
+
+  @override
+  void dispose() {
+    _prefs.removeListener(_onPrefsChanged);
+    super.dispose();
+  }
 }

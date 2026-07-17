@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import '../../ui/navigation/app_router.dart';
 import '../../ui/navigation/destinations.dart';
+import '../../ui/navigation/home_refresh_bus.dart';
 
 import 'package:get_it/get_it.dart';
 import 'package:logger/logger.dart';
@@ -10,15 +11,23 @@ import 'package:playback_core/playback_core.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../data/models/aggregated_item.dart';
+import '../../data/services/carplay_service.dart';
 import '../../data/services/download_notification_service.dart';
+import '../../data/services/watch_next_service.dart';
 import '../../data/services/media_server_client_factory.dart';
 import '../../data/services/plugin_sync_service.dart';
+import '../../data/services/push_messaging_service.dart';
 import '../../data/services/socket_handler.dart';
 import '../../di/modules/app_module.dart';
 import '../../di/modules/playback_module.dart';
 import '../../di/modules/server_module.dart';
+import '../../playback/audio_handler.dart';
+import '../../playback/headless_session_bootstrap.dart';
+import '../../playback/last_playback_session_store.dart';
+import '../../playback/media_browse_service.dart';
 import '../../preference/preference_constants.dart';
 import '../../preference/user_preferences.dart';
+import '../../util/platform_detection.dart';
 import '../store/authentication_preferences.dart';
 import '../store/authentication_store.dart';
 import '../store/credential_store.dart';
@@ -56,8 +65,10 @@ class SessionRepository {
   String? _activeUserId;
   SessionState _state = SessionState.ready;
   StreamSubscription<ServerWebSocketMessage>? _remoteCommandSubscription;
+  StreamSubscription<ServerWebSocketMessage>? _pluginEventSubscription;
   double _lastUnmutedVolume = 100;
   bool _remoteMuted = false;
+  bool _hasCheckedWriteAccess = false;
 
   final _stateController = StreamController<SessionState>.broadcast();
 
@@ -105,6 +116,9 @@ class SessionRepository {
 
   SessionState get state => _state;
   Stream<SessionState> get stateStream => _stateController.stream;
+
+  bool get hasCheckedWriteAccess => _hasCheckedWriteAccess;
+  set hasCheckedWriteAccess(bool value) => _hasCheckedWriteAccess = value;
 
   Future<bool> restoreSession() async {
     _setState(SessionState.restoring);
@@ -183,6 +197,8 @@ class SessionRepository {
     setActiveStreamResolver(client);
     _socketHandler.connectTo(client);
     _bindRemoteCommandHandling();
+    _bindPluginEventHandling(client);
+    _refreshCarBrowseTree(signedIn: true);
 
     _activeServerId = serverId;
     _activeUserId = userId;
@@ -268,16 +284,43 @@ class SessionRepository {
 
     await _pluginSyncService.syncOnLogin(client, serverId: serverId);
 
-    await _pluginSyncService.configureSeerr(
+    // Register the FCM token now that a session exists, and push the current
+    // notification prefs so defaults reach the plugin. Startup registration
+    // bails before login, so this is where closed-app push actually enrolls.
+    if (PlatformDetection.isMobile) {
+      try {
+        if (GetIt.instance.isRegistered<PushMessagingService>()) {
+          await GetIt.instance<PushMessagingService>()
+              .registerWithCurrentToken();
+        }
+        await _pluginSyncService.pushNotificationPrefs(client);
+      } catch (_) {}
+    }
+
+    final seerrAvailable = await _pluginSyncService.configureSeerr(
       client,
       username: username ?? user.name,
       password: password,
     );
+    if (seerrAvailable) {
+      homeRefreshBus.requestNowOrAfterNavigation();
+    }
   }
 
   Future<void> destroyCurrentSession() async {
     final serverId = _activeServerId;
     final userId = _activeUserId;
+
+    // Drop this device's push registration while the session/token is still
+    // live, otherwise the plugin keeps sending closed-app pushes after logout.
+    if (PlatformDetection.isMobile) {
+      try {
+        if (GetIt.instance.isRegistered<PushMessagingService>()) {
+          await GetIt.instance<PushMessagingService>().unregister();
+        }
+      } catch (_) {}
+    }
+
     _pluginSyncService.resetState();
 
     if (serverId != null) {
@@ -289,6 +332,8 @@ class SessionRepository {
 
     _remoteCommandSubscription?.cancel();
     _remoteCommandSubscription = null;
+    _pluginEventSubscription?.cancel();
+    _pluginEventSubscription = null;
     _socketHandler.disconnect();
 
     if (serverId != null) {
@@ -308,8 +353,33 @@ class SessionRepository {
 
     _activeServerId = null;
     _activeUserId = null;
+    _hasCheckedWriteAccess = false;
     _userRepository.setCurrentUser(null);
+    _refreshCarBrowseTree(signedIn: false);
     _setState(SessionState.ready);
+  }
+
+  // Keep car clients (Android Auto / CarPlay) in sync with sign-in changes:
+  // drop cached browse data and make the car re-query its root. On sign-out
+  // the persisted resumption queue is cleared too.
+  void _refreshCarBrowseTree({required bool signedIn}) {
+    try {
+      GetIt.instance<HeadlessSessionBootstrap>().invalidate();
+      GetIt.instance<MediaBrowseService>().clearCache();
+      if (signedIn) {
+        WatchNextService().schedulePeriodicRefresh();
+      } else {
+        unawaited(GetIt.instance<LastPlaybackSessionStore>().clear());
+        WatchNextService().clear();
+        WatchNextService().cancelPeriodicRefresh();
+      }
+      if (GetIt.instance.isRegistered<MoonfinAudioHandler>()) {
+        GetIt.instance<MoonfinAudioHandler>().notifyChildrenChanged();
+      }
+      if (GetIt.instance.isRegistered<CarPlayService>()) {
+        GetIt.instance<CarPlayService>().notifySignInChanged(signedIn: signedIn);
+      }
+    } catch (_) {}
   }
 
   void _setState(SessionState state) {
@@ -322,6 +392,24 @@ class SessionRepository {
     _remoteCommandSubscription = _socketHandler.events.listen(
       (event) => unawaited(_handleRemoteCommand(event)),
     );
+  }
+
+  // Plugin events pushed over the session websocket (Emby transport) get
+  // forwarded to the same dispatch the SSE stream uses.
+  void _bindPluginEventHandling(MediaServerClient client) {
+    _pluginEventSubscription?.cancel();
+    _pluginEventSubscription = _socketHandler.events.listen((event) {
+      if (event is! ServerEventMessage || event.type != 'MoonfinEvent') {
+        return;
+      }
+      try {
+        unawaited(
+          _pluginSyncService
+              .handleServerEvent(client, event.data)
+              .catchError((_) {}),
+        );
+      } catch (_) {}
+    });
   }
 
   Future<void> _reportRemoteCapabilities(MediaServerClient client) async {
@@ -602,6 +690,7 @@ class SessionRepository {
 
   void dispose() {
     _remoteCommandSubscription?.cancel();
+    _pluginEventSubscription?.cancel();
     _stateController.close();
   }
 }

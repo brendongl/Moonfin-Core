@@ -24,7 +24,7 @@ class JellyfinMediaStreamResolver implements MediaStreamResolver {
   bool _isAudioMediaItem(dynamic mediaItem) {
     bool isAudioType(String? rawType) {
       final type = rawType?.trim().toLowerCase();
-      return type == 'audio';
+      return type == 'audio' || type == 'audiobook';
     }
 
     try {
@@ -72,20 +72,32 @@ class JellyfinMediaStreamResolver implements MediaStreamResolver {
       enableTranscoding: enableTranscoding,
     );
 
-    final rawInfo = await _client.playbackApi.getPlaybackInfo(
-      itemId,
-      requestBody: request.toJson(),
-      userId: _client.userId,
-      startTimeTicks: startTimeTicks,
-    );
-
-    final info = PlaybackInfoResult.fromJson(rawInfo);
-
-    if (info.errorCode != null) {
-      throw Exception('Playback error: ${info.errorCode}');
-    }
-    if (info.mediaSources.isEmpty) {
-      throw Exception('No media sources available for item $itemId');
+    final PlaybackInfoResult info;
+    try {
+      final rawInfo = await _client.playbackApi.getPlaybackInfo(
+        itemId,
+        requestBody: request.toJson(),
+        userId: _client.userId,
+        startTimeTicks: startTimeTicks,
+      );
+      final parsed = PlaybackInfoResult.fromJson(rawInfo);
+      if (parsed.errorCode != null) {
+        throw Exception('Playback error: ${parsed.errorCode}');
+      }
+      if (parsed.mediaSources.isEmpty) {
+        throw Exception('No media sources available for item $itemId');
+      }
+      info = parsed;
+    } catch (e) {
+      if (_isAudioMediaItem(mediaItem)) {
+        return _buildAudioUniversalFallback(
+          itemId,
+          resolvedMediaSourceId,
+          maxStreamingBitrate,
+          startTimeTicks,
+        );
+      }
+      rethrow;
     }
 
     final source = _selectBestSource(info.mediaSources, preferredId: resolvedMediaSourceId);
@@ -98,7 +110,22 @@ class JellyfinMediaStreamResolver implements MediaStreamResolver {
       source,
       isAudio: isAudio,
       enableDirectPlay: enableDirectPlay,
+      maxStreamingBitrate: maxStreamingBitrate,
     );
+
+    final reasons = List<String>.from(source.transcodingReasons);
+    if (playMethod == StreamPlayMethod.transcode) {
+      final mediaBitrate = source.bitrate;
+      if (maxStreamingBitrate != null &&
+          mediaBitrate != null &&
+          mediaBitrate > maxStreamingBitrate) {
+        final lowerReasons = reasons.map((r) => r.toLowerCase()).toSet();
+        if (!lowerReasons.contains('videobitratenotsupported') &&
+            !lowerReasons.contains('containerbitrateexceedslimit')) {
+          reasons.add('VideoBitrateNotSupported');
+        }
+      }
+    }
 
     if (playMethod == StreamPlayMethod.transcode || playMethod == StreamPlayMethod.directStream) {
       url = MediaStreamResolver.applyStreamIndices(url, audioStreamIndex, subtitleStreamIndex);
@@ -161,7 +188,8 @@ class JellyfinMediaStreamResolver implements MediaStreamResolver {
       externalSubtitles: authedSubs,
       mediaStreams: source.mediaStreams,
       selectedAudioStreamIndex: source.defaultAudioStreamIndex,
-      transcodingReasons: source.transcodingReasons,
+      selectedSubtitleStreamIndex: source.defaultSubtitleStreamIndex,
+      transcodingReasons: reasons,
       hybridAudioUrl: hybridAudioUrl,
     );
   }
@@ -221,7 +249,43 @@ class JellyfinMediaStreamResolver implements MediaStreamResolver {
     final lowerUrl = url.toLowerCase();
     if (lowerUrl.contains('api_key=') || lowerUrl.contains('apikey=')) return url;
     final separator = url.contains('?') ? '&' : '?';
-    return '$url${separator}api_key=${Uri.encodeComponent(token)}';
+    return '$url${separator}ApiKey=${Uri.encodeComponent(token)}';
+  }
+
+  StreamResolutionResult _buildAudioUniversalFallback(
+    String itemId,
+    String? mediaSourceId,
+    int? maxStreamingBitrate,
+    int? startTimeTicks,
+  ) {
+    final msid = (mediaSourceId != null && mediaSourceId.isNotEmpty)
+        ? mediaSourceId
+        : itemId;
+    final params = <String, String>{
+      if (_client.userId != null && _client.userId!.isNotEmpty)
+        'UserId': _client.userId!,
+      if (_client.deviceInfo.id.isNotEmpty) 'DeviceId': _client.deviceInfo.id,
+      'MaxStreamingBitrate': '${maxStreamingBitrate ?? 320000000}',
+      'Container':
+          'mp3,aac,m4a,m4b,flac,alac,ogg,oga,opus,wav,wma,ape,mka,webma',
+      'TranscodingContainer': 'ts',
+      'TranscodingProtocol': 'hls',
+      'AudioCodec': 'aac',
+      'StartTimeTicks': '${startTimeTicks ?? 0}',
+      'EnableRedirection': 'true',
+      'MediaSourceId': msid,
+    };
+    final query = params.entries
+        .map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}')
+        .join('&');
+    final url = _appendAuth('${_client.baseUrl}/Audio/$itemId/universal?$query');
+    return StreamResolutionResult(
+      streamUrl: url,
+      mediaSourceId: msid,
+      playMethod: StreamPlayMethod.directStream,
+      requestHeaders: _buildRequestHeaders(),
+      mediaType: 'audio',
+    );
   }
 
   String _buildDirectPlayAudioUrl(String itemId, PlaybackMediaSource source) {
@@ -246,6 +310,7 @@ class JellyfinMediaStreamResolver implements MediaStreamResolver {
     PlaybackMediaSource source, {
     bool isAudio = false,
     bool enableDirectPlay = true,
+    int? maxStreamingBitrate,
   }) {
     final remotePath = source.path;
     final isManagedLiveStream =
@@ -268,10 +333,68 @@ class JellyfinMediaStreamResolver implements MediaStreamResolver {
       isManagedLiveStream: isManagedLiveStream,
       path: remotePath,
     )) {
-      final method = _isServerUrl(remotePath!)
+      final resolvedPath =
+          MediaStreamResolver.rebaseLiveServerPath(remotePath!, _client.baseUrl);
+      final method = _isServerUrl(resolvedPath)
           ? StreamPlayMethod.directStream
           : StreamPlayMethod.directPlay;
-      return (remotePath, method);
+      return (resolvedPath, method);
+    }
+
+    final serverPlayMethod = source.defaultPlayMethod;
+    if (serverPlayMethod != null) {
+      if (serverPlayMethod == PlayMethod.directPlay && source.supportsDirectPlay) {
+        if (isAudio) {
+          return (
+            _buildDirectPlayAudioUrl(itemId, source),
+            StreamPlayMethod.directPlay,
+          );
+        }
+        return (
+          _client.playbackApi.getStreamUrl(itemId, mediaSourceId: source.id, liveStreamId: source.liveStreamId),
+          StreamPlayMethod.directPlay,
+        );
+      }
+      if (serverPlayMethod == PlayMethod.directStream && source.supportsDirectStream && source.directStreamUrl != null) {
+        var dsUrl = '${_client.baseUrl}${source.directStreamUrl}';
+        if (source.liveStreamId != null) {
+          dsUrl = '$dsUrl${dsUrl.contains('?') ? '&' : '?'}LiveStreamId=${Uri.encodeComponent(source.liveStreamId!)}';
+        }
+        return (dsUrl, StreamPlayMethod.directStream);
+      }
+      if (serverPlayMethod == PlayMethod.transcode && source.supportsTranscoding && source.transcodingUrl != null) {
+        var tcUrl = '${_client.baseUrl}${source.transcodingUrl}';
+        if (source.liveStreamId != null) {
+          tcUrl = '$tcUrl${tcUrl.contains('?') ? '&' : '?'}LiveStreamId=${Uri.encodeComponent(source.liveStreamId!)}';
+        }
+        return (tcUrl, StreamPlayMethod.transcode);
+      }
+    }
+
+    const videoReEncodeReasons = <String>{
+      'videocodecnotsupported',
+      'videoprofilenotsupported',
+      'videolevelnotsupported',
+      'videoresolutionnotsupported',
+      'videobitratenotsupported',
+      'videoframeratenotsupported',
+      'videorangenotsupported',
+      'videorangetypenotsupported',
+      'videobitdepthnotsupported',
+      'anamorphicvideonotsupported',
+      'interlacedvideonotsupported',
+      'refframesnotsupported',
+      'containerbitrateexceedslimit',
+      'videobitrateexceedslimit',
+      'bitratelimitexceeded',
+      'containerbitratenotsupported',
+      'resolutionnotsupported',
+    };
+    final lowerReasons = source.transcodingReasons.map((e) => e.toLowerCase()).toSet();
+    var requiresVideoTranscode = lowerReasons.any(videoReEncodeReasons.contains);
+    final mediaBitrate = source.bitrate;
+    if (maxStreamingBitrate != null && mediaBitrate != null && mediaBitrate > maxStreamingBitrate) {
+      requiresVideoTranscode = true;
     }
 
     if (source.supportsDirectPlay && isAudio) {
@@ -287,7 +410,7 @@ class JellyfinMediaStreamResolver implements MediaStreamResolver {
         StreamPlayMethod.directPlay,
       );
     }
-    if (source.supportsDirectStream && source.directStreamUrl != null) {
+    if (source.supportsDirectStream && source.directStreamUrl != null && !requiresVideoTranscode) {
       var dsUrl = '${_client.baseUrl}${source.directStreamUrl}';
       if (source.liveStreamId != null) {
         dsUrl = '$dsUrl${dsUrl.contains('?') ? '&' : '?'}LiveStreamId=${Uri.encodeComponent(source.liveStreamId!)}';

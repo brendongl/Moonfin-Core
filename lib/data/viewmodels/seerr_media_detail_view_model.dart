@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../preference/seerr_preferences.dart';
 import '../repositories/seerr_repository.dart';
 import '../services/seerr/seerr_api_models.dart';
+import '../services/seerr/seerr_download_progress.dart';
+import '../services/seerr/seerr_error.dart';
 
 class SeerrMediaDetailState {
   final bool isLoading;
@@ -14,7 +18,9 @@ class SeerrMediaDetailState {
   final SeerrUser? currentUser;
   final bool isRequesting;
   final String? requestError;
+  final SeerrRequestErrorKind? requestErrorKind;
   final String? requestSuccess;
+  final SeerrQuota? quota;
 
   const SeerrMediaDetailState({
     this.isLoading = false,
@@ -26,7 +32,9 @@ class SeerrMediaDetailState {
     this.currentUser,
     this.isRequesting = false,
     this.requestError,
+    this.requestErrorKind,
     this.requestSuccess,
+    this.quota,
   });
 
   bool get isMovie => movie != null;
@@ -98,6 +106,15 @@ class SeerrMediaDetailState {
   bool get isBlacklisted => mediaStatus == 6;
   bool get isDeleted => mediaStatus == 7;
 
+  SeerrDownloadSummary? get hdDownload => SeerrDownloadSummary.forMedia(
+        status: mediaInfo?.status,
+        items: mediaInfo?.downloadStatus,
+      );
+  SeerrDownloadSummary? get download4k => SeerrDownloadSummary.forMedia(
+        status: mediaInfo?.status4k,
+        items: mediaInfo?.downloadStatus4k,
+      );
+
   List<SeerrRequest> get pendingRequests {
     final requests = mediaInfo?.requests;
     if (requests == null) return [];
@@ -129,7 +146,10 @@ class SeerrMediaDetailState {
     if (requests == null) return {};
     final seasons = <int>{};
     for (final r in requests) {
-      if (r.status == SeerrRequest.statusDeclined) continue;
+      if (r.status == SeerrRequest.statusDeclined ||
+          r.status == SeerrRequest.statusFailed) {
+        continue;
+      }
       if (r.seasons != null) {
         for (final s in r.seasons!) {
           seasons.add(s.seasonNumber);
@@ -137,17 +157,6 @@ class SeerrMediaDetailState {
       }
     }
     return seasons;
-  }
-
-  String get requestStatusText {
-    if (isFullyAvailable) return 'Available';
-    if (isPartiallyAvailable) return 'Partially Available';
-    if (isProcessing) return 'Requested';
-    if (isPending) return 'Pending';
-    if (isBlacklisted) return 'Blocklisted';
-    if (isDeleted) return 'Deleted';
-    if (hasExistingRequest) return 'Requested';
-    return 'Not Requested';
   }
 
   SeerrMediaDetailState copyWith({
@@ -160,7 +169,9 @@ class SeerrMediaDetailState {
     SeerrUser? currentUser,
     bool? isRequesting,
     String? requestError,
+    SeerrRequestErrorKind? requestErrorKind,
     String? requestSuccess,
+    SeerrQuota? quota,
   }) =>
       SeerrMediaDetailState(
         isLoading: isLoading ?? this.isLoading,
@@ -172,7 +183,9 @@ class SeerrMediaDetailState {
         currentUser: currentUser ?? this.currentUser,
         isRequesting: isRequesting ?? this.isRequesting,
         requestError: requestError,
+        requestErrorKind: requestErrorKind,
         requestSuccess: requestSuccess,
+        quota: quota ?? this.quota,
       );
 }
 
@@ -183,13 +196,57 @@ class SeerrMediaDetailViewModel extends ChangeNotifier {
   SeerrMediaDetailState _state = const SeerrMediaDetailState();
   SeerrMediaDetailState get state => _state;
 
+  Timer? _downloadPollTimer;
+
   SeerrMediaDetailViewModel(this._repo, this._prefs);
+
+  @override
+  void dispose() {
+    _downloadPollTimer?.cancel();
+    super.dispose();
+  }
+
+  /// Keep a refresh timer running only while a download is active, so the
+  /// progress bars advance without leaving and reopening the screen.
+  void _syncDownloadPolling() {
+    if (_state.hdDownload != null || _state.download4k != null) {
+      _downloadPollTimer ??= Timer.periodic(
+        const Duration(seconds: 15),
+        (_) => _pollDownloadStatus(),
+      );
+    } else {
+      _downloadPollTimer?.cancel();
+      _downloadPollTimer = null;
+    }
+  }
+
+  /// Quiet details refetch that only swaps the media payload. It never touches
+  /// isRequesting or requestSuccess, so no snackbar fires, and failures are
+  /// ignored so a flaky tick never surfaces error UI.
+  Future<void> _pollDownloadStatus() async {
+    if (_state.isLoading || _state.isRequesting || _state.tmdbId == 0) return;
+    try {
+      if (_state.isTv) {
+        final details = await _repo.getTvDetails(_state.tmdbId);
+        _state = _state.copyWith(tv: details);
+      } else if (_state.isMovie) {
+        final details = await _repo.getMovieDetails(_state.tmdbId);
+        _state = _state.copyWith(movie: details);
+      } else {
+        return;
+      }
+      notifyListeners();
+    } catch (_) {
+      // Leave the details as-is and let the next tick retry.
+    }
+    _syncDownloadPolling();
+  }
 
   void clearFeedback() {
     _state = _state.copyWith(requestSuccess: null, requestError: null);
   }
 
-  Future<void> load(int tmdbId, String mediaType) async {
+  Future<void> load(String itemId, String mediaType, {String? title}) async {
     _state = const SeerrMediaDetailState(isLoading: true);
     notifyListeners();
 
@@ -201,21 +258,77 @@ class SeerrMediaDetailViewModel extends ChangeNotifier {
         user = await _repo.getCurrentUser();
       } catch (_) {}
 
-      if (mediaType == 'tv') {
-        final details = await _repo.getTvDetails(tmdbId);
-        _state = SeerrMediaDetailState(tv: details, currentUser: user);
-        notifyListeners();
-        _loadRelated(tmdbId, 'tv');
+      int tmdbId;
+      String resolvedMediaType = mediaType;
+
+      if (itemId.startsWith('tt')) {
+        SeerrDiscoverPage? searchPage;
+        if (title != null && title.isNotEmpty) {
+          try {
+            searchPage = await _repo.search(title);
+          } catch (e) {
+            debugPrint('[SeerrDetail] Search by title failed: $e');
+          }
+        }
+        if (searchPage == null || searchPage.results.isEmpty) {
+          try {
+            searchPage = await _repo.search(itemId);
+          } catch (e) {
+            debugPrint('[SeerrDetail] Search by IMDb ID failed: $e');
+          }
+        }
+        if (searchPage == null || searchPage.results.isEmpty) {
+          throw Exception('Media not found on Seerr');
+        }
+        final firstResult = searchPage.results.first;
+        tmdbId = firstResult.id;
+        resolvedMediaType = firstResult.mediaType ?? mediaType;
       } else {
-        final details = await _repo.getMovieDetails(tmdbId);
-        _state = SeerrMediaDetailState(movie: details, currentUser: user);
-        notifyListeners();
-        _loadRelated(tmdbId, 'movie');
+        final parsed = int.tryParse(itemId);
+        if (parsed == null) {
+          throw Exception('Invalid media ID');
+        }
+        tmdbId = parsed;
+      }
+
+      if (resolvedMediaType == 'tv') {
+        try {
+          final details = await _repo.getTvDetails(tmdbId);
+          _state = SeerrMediaDetailState(tv: details, currentUser: user);
+          notifyListeners();
+          _loadRelated(tmdbId, 'tv');
+        } catch (e) {
+          debugPrint('[SeerrDetail] getTvDetails failed: $e. Attempting fallback to search...');
+          final fallbackDetails = await _trySearchFallbackTv(tmdbId, title);
+          if (fallbackDetails != null) {
+            _state = SeerrMediaDetailState(tv: fallbackDetails, currentUser: user);
+            notifyListeners();
+          } else {
+            rethrow;
+          }
+        }
+      } else {
+        try {
+          final details = await _repo.getMovieDetails(tmdbId);
+          _state = SeerrMediaDetailState(movie: details, currentUser: user);
+          notifyListeners();
+          _loadRelated(tmdbId, 'movie');
+        } catch (e) {
+          debugPrint('[SeerrDetail] getMovieDetails failed: $e. Attempting fallback to search...');
+          final fallbackDetails = await _trySearchFallbackMovie(tmdbId, title);
+          if (fallbackDetails != null) {
+            _state = SeerrMediaDetailState(movie: fallbackDetails, currentUser: user);
+            notifyListeners();
+          } else {
+            rethrow;
+          }
+        }
       }
     } catch (e) {
       _state = SeerrMediaDetailState(error: e.toString());
     }
     notifyListeners();
+    _syncDownloadPolling();
   }
 
   Future<void> _loadRelated(int tmdbId, String mediaType) async {
@@ -267,6 +380,12 @@ class SeerrMediaDetailViewModel extends ChangeNotifier {
       );
 
       await _reloadDetails('Request submitted');
+    } on SeerrRequestException catch (e) {
+      _state = _state.copyWith(
+        isRequesting: false,
+        requestError: e.serverMessage ?? e.kind.name,
+        requestErrorKind: e.kind,
+      );
     } catch (e) {
       _state = _state.copyWith(
         isRequesting: false,
@@ -274,6 +393,56 @@ class SeerrMediaDetailViewModel extends ChangeNotifier {
       );
     }
     notifyListeners();
+  }
+
+  Future<void> loadQuota() async {
+    final user = _state.currentUser;
+    if (user == null || _state.quota != null) return;
+    try {
+      final quota = await _repo.getUserQuota(user.id);
+      _state = _state.copyWith(quota: quota);
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<bool> submitIssue({
+    required int issueType,
+    required String message,
+    int problemSeason = 0,
+    int problemEpisode = 0,
+  }) async {
+    final mediaId = _state.mediaInfo?.id;
+    if (mediaId == null || _state.isRequesting) return false;
+
+    _state = _state.copyWith(
+      isRequesting: true,
+      requestError: null,
+      requestSuccess: null,
+    );
+    notifyListeners();
+
+    try {
+      await _repo.createIssue(
+        issueType: issueType,
+        message: message,
+        mediaId: mediaId,
+        problemSeason: problemSeason,
+        problemEpisode: problemEpisode,
+      );
+      _state = _state.copyWith(
+        isRequesting: false,
+        requestSuccess: 'Issue reported',
+      );
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _state = _state.copyWith(
+        isRequesting: false,
+        requestError: e.toString(),
+      );
+      notifyListeners();
+      return false;
+    }
   }
 
   Future<void> cancelRequests(List<int> requestIds) async {
@@ -356,6 +525,7 @@ class SeerrMediaDetailViewModel extends ChangeNotifier {
         requestSuccess: successMessage,
       );
     }
+    _syncDownloadPolling();
   }
 
   bool get canManageRequests {
@@ -382,6 +552,14 @@ class SeerrMediaDetailViewModel extends ChangeNotifier {
     final user = _state.currentUser;
     if (user == null) return false;
     return user.hasAdvancedRequestPermission;
+  }
+
+  bool get canReportIssue {
+    final user = _state.currentUser;
+    if (user == null || !user.canCreateIssues) return false;
+    // Issues need the seerr media id, so the media has to exist on the server.
+    if (_state.mediaInfo?.id == null) return false;
+    return _state.isFullyAvailable || _state.isPartiallyAvailable;
   }
 
   String? get savedProfileId {
@@ -412,5 +590,70 @@ class SeerrMediaDetailViewModel extends ChangeNotifier {
   String? get saved4kServerId {
     if (_state.isTv) return _prefs.fourKTvServerId;
     return _prefs.fourKMovieServerId;
+  }
+
+  Future<SeerrTvDetails?> _trySearchFallbackTv(int tmdbId, String? title) async {
+    try {
+      SeerrDiscoverPage? searchPage;
+      if (title != null && title.isNotEmpty) {
+        searchPage = await _repo.search(title);
+      }
+      if (searchPage == null || searchPage.results.isEmpty) {
+        searchPage = await _repo.search(tmdbId.toString());
+      }
+      if (searchPage.results.isNotEmpty) {
+        final match = searchPage.results.firstWhere(
+          (item) => item.id == tmdbId,
+          orElse: () => searchPage!.results.first,
+        );
+        return SeerrTvDetails(
+          id: match.id,
+          mediaType: match.mediaType ?? 'tv',
+          name: match.name ?? match.title,
+          title: match.title ?? match.name,
+          posterPath: match.posterPath,
+          backdropPath: match.backdropPath,
+          overview: match.overview,
+          voteAverage: match.voteAverage,
+          voteCount: match.voteCount,
+          mediaInfo: match.mediaInfo,
+        );
+      }
+    } catch (e) {
+      debugPrint('[SeerrDetail] TV search fallback error: $e');
+    }
+    return null;
+  }
+
+  Future<SeerrMovieDetails?> _trySearchFallbackMovie(int tmdbId, String? title) async {
+    try {
+      SeerrDiscoverPage? searchPage;
+      if (title != null && title.isNotEmpty) {
+        searchPage = await _repo.search(title);
+      }
+      if (searchPage == null || searchPage.results.isEmpty) {
+        searchPage = await _repo.search(tmdbId.toString());
+      }
+      if (searchPage.results.isNotEmpty) {
+        final match = searchPage.results.firstWhere(
+          (item) => item.id == tmdbId,
+          orElse: () => searchPage!.results.first,
+        );
+        return SeerrMovieDetails(
+          id: match.id,
+          mediaType: match.mediaType ?? 'movie',
+          title: match.title ?? match.name ?? '',
+          posterPath: match.posterPath,
+          backdropPath: match.backdropPath,
+          overview: match.overview,
+          voteAverage: match.voteAverage,
+          voteCount: match.voteCount,
+          mediaInfo: match.mediaInfo,
+        );
+      }
+    } catch (e) {
+      debugPrint('[SeerrDetail] Movie search fallback error: $e');
+    }
+    return null;
   }
 }

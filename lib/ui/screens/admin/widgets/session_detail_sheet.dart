@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'package:moonfin_design/moonfin_design.dart';
 
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../../../l10n/app_localizations.dart';
+import '../../../widgets/adaptive/adaptive_dialog.dart';
+import '../../../widgets/adaptive/adaptive_slider.dart';
 
 class SessionDetailSheet extends StatefulWidget {
   final Map<String, dynamic> session;
@@ -96,7 +99,7 @@ class _SessionDetailSheetState extends State<SessionDetailSheet> {
     final l10n = AppLocalizations.of(context);
     showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => AlertDialog.adaptive(
         title: Text(l10n.adminSendMessage),
         content: TextField(
           controller: controller,
@@ -105,7 +108,7 @@ class _SessionDetailSheetState extends State<SessionDetailSheet> {
           decoration: InputDecoration(hintText: l10n.adminMessageTextHint),
         ),
         actions: [
-          TextButton(
+          adaptiveDialogAction(
             onPressed: () => Navigator.pop(ctx),
             child: Text(l10n.cancel),
           ),
@@ -136,9 +139,9 @@ class _SessionDetailSheetState extends State<SessionDetailSheet> {
     showDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setInner) => AlertDialog(
+        builder: (ctx, setInner) => AlertDialog.adaptive(
           title: Text(l10n.adminSetVolume),
-          content: Slider(
+          content: adaptiveSlider(
             value: volume,
             min: 0,
             max: 100,
@@ -147,7 +150,7 @@ class _SessionDetailSheetState extends State<SessionDetailSheet> {
             onChanged: (v) => setInner(() => volume = v),
           ),
           actions: [
-            TextButton(
+            adaptiveDialogAction(
               onPressed: () => Navigator.pop(ctx),
               child: Text(l10n.cancel),
             ),
@@ -215,7 +218,7 @@ class _SessionDetailSheetState extends State<SessionDetailSheet> {
               height: 4,
               decoration: BoxDecoration(
                 color: theme.colorScheme.outlineVariant,
-                borderRadius: BorderRadius.circular(2),
+                borderRadius: AppRadius.circular(2),
               ),
             ),
             Expanded(
@@ -269,7 +272,7 @@ class _SessionDetailSheetState extends State<SessionDetailSheet> {
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: theme.colorScheme.surfaceContainerLow,
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: AppRadius.circular(14),
                         border: Border.all(
                           color: theme.colorScheme.outlineVariant.withValues(
                             alpha: 0.5,
@@ -301,7 +304,7 @@ class _SessionDetailSheetState extends State<SessionDetailSheet> {
                                   style: theme.textTheme.labelSmall,
                                 ),
                                 Expanded(
-                                  child: Slider(
+                                  child: adaptiveSlider(
                                     value:
                                         (_seekPosition ??
                                                 positionTicks / runtimeTicks)
@@ -331,7 +334,7 @@ class _SessionDetailSheetState extends State<SessionDetailSheet> {
                               ),
                               decoration: BoxDecoration(
                                 color: theme.colorScheme.secondaryContainer,
-                                borderRadius: BorderRadius.circular(6),
+                                borderRadius: AppRadius.circular(6),
                               ),
                               child: Text(
                                 l10n.paused,
@@ -529,7 +532,7 @@ class _ControlButton extends StatelessWidget {
         (primary ? theme.colorScheme.primary : theme.colorScheme.onSurface);
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: AppRadius.circular(12),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
         child: Column(
@@ -557,7 +560,7 @@ class _InfoGrid extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: AppRadius.circular(14),
         border: Border.all(
           color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
         ),

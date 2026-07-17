@@ -30,6 +30,8 @@ List the key changes included in this PR.
 ## Platform
 - [ ] Android
 - [ ] iOS
+- [ ] tvOS
+- [ ] Web
 - [ ] macOS
 - [ ] Windows
 - [ ] Linux

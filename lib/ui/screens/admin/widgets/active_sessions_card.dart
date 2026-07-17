@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:moonfin_design/moonfin_design.dart';
 
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
@@ -6,6 +7,7 @@ import 'package:server_core/server_core.dart';
 
 import '../../../../data/services/socket_handler.dart';
 import '../../../../l10n/app_localizations.dart';
+import 'admin_form_styles.dart';
 import 'session_detail_sheet.dart';
 
 class ActiveSessionsCard extends StatefulWidget {
@@ -88,26 +90,37 @@ class _ActiveSessionsCardState extends State<ActiveSessionsCard> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
           children: [
-            Row(
-              children: [
-                Icon(Icons.people, color: theme.colorScheme.primary),
-                const SizedBox(width: 8),
-                Text(l10n.adminActiveSessions, style: theme.textTheme.titleMedium),
-                const Spacer(),
-                if (_loading)
-                  const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                else
-                  Text('${_sessions.length}', style: theme.textTheme.titleLarge),
-              ],
+            Expanded(
+              child: adminSectionLabel(context, l10n.adminActiveSessions,
+                  icon: Icons.people),
             ),
-            const SizedBox(height: 12),
-            if (_error != null)
+            if (_loading)
+              const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+            else
+              Text('${_sessions.length}', style: theme.textTheme.titleLarge),
+            const SizedBox(width: AppSpacing.spaceXs),
+          ],
+        ),
+        adminGlassGroup(
+          context,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.spaceLg,
+                vertical: AppSpacing.spaceMd,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_error != null)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Column(
@@ -146,7 +159,7 @@ class _ActiveSessionsCardState extends State<ActiveSessionsCard> {
 
                 return InkWell(
                   onTap: () => _openDetail(session),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: AppRadius.circular(10),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
                         vertical: 8, horizontal: 2),
@@ -218,7 +231,7 @@ class _ActiveSessionsCardState extends State<ActiveSessionsCard> {
                           Padding(
                             padding: const EdgeInsets.only(left: 42),
                             child: ClipRRect(
-                              borderRadius: BorderRadius.circular(999),
+                              borderRadius: AppRadius.circular(999),
                               child: LinearProgressIndicator(
                                 value: progress,
                                 minHeight: 3,
@@ -233,9 +246,12 @@ class _ActiveSessionsCardState extends State<ActiveSessionsCard> {
                   ),
                 );
               }),
+                ],
+              ),
+            ),
           ],
         ),
-      ),
+      ],
     );
   }
 
@@ -301,7 +317,7 @@ class _ActiveSessionsCardState extends State<ActiveSessionsCard> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration:
-          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
+          BoxDecoration(color: bg, borderRadius: AppRadius.circular(999)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "Тут з’являться улюблені треки",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "Не вдалося завантажити",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "Конкретний користувач",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "Завжди автентифікувати",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "Пошук віддаленої особи",
     "adminNoRemoteMatches": "Віддалених збігів не знайдено",
     "adminRemoteResults": "Віддалені результати",
     "adminRemoteMetadataApplied": "Застосовано віддалені метадані",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "Додати тюнер",
     "adminTunerType": "Тип тюнера",
-    "adminTunerTypeHint": "HDHomeRun, M3U, інше",
-    "adminUrlPath": "URL / шлях",
-    "adminNameOptional": "Ім'я (необов'язково)",
     "adminTunerAdded": "Додано тюнер",
     "adminTunerAddFailed": "Failed to add tuner: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "Додати постачальника посібника",
     "adminProviderType": "Тип постачальника",
-    "adminProviderTypeHint": "SchedulesDirect або XMLTV",
-    "adminUsernameOptional": "Ім'я користувача (необов'язково)",
-    "adminRefreshInterval": "Інтервал оновлення (годин)",
     "adminProviderAdded": "Провайдер доданий",
     "adminProviderAddFailed": "Failed to add provider: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "Немає відповідних рядків",
     "adminMetadataEditorTitle": "Редактор метаданих",
-    "adminMetadataRemote": "Дистанційний",
     "adminMetadataType": "Тип",
     "adminMetadataDetails": "Подробиці",
     "adminMetadataExternalIds": "Зовнішні ідентифікатори",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "Запам'ятай мій вибір",
     "playHdr10Fallback": "Відтворити HDR10 запасний варіант",
     "requestTranscode": "Запит на перекодування",
-    "homeScreenSectionsIntegrationDescription": "Виявлення рядків, відкритих плагіном IAmParadox27 «Розділи головного екрана». Нижче можна ввімкнути та змінити порядок рядків.",
-    "homeScreenSectionsIntegrationNoServers": "Жоден сервер Jellyfin не повідомляє про плагін.",
-    "integrationOpenHomeSections": "Відкрийте головні розділи",
-    "integrationOpenHomeSectionsSubtitle": "Увімкнути, вимкнути та змінити порядок рядків",
-    "integrationInstalledButDisabled": "Встановлено, але вимкнено",
-    "integrationNotInstalled": "Не встановлено",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "Переглянути всі",
     "noItems": "Немає елементів",
     "switchUser": "Змінити користувача",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "AAC Stereo",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Passthrough (Advanced)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Видалити збережену тему",
     "savedThemesManageSubtitle": "Керуйте завантаженими темами плагінів на цьому пристрої",
-    "homeScreenSectionsTitle": "Розділи головного екрана",
     "themeEditor": "Редактор тем",
     "themeEditorSubtitle": "Відкрийте редактор тем Moonfin у своєму браузері",
     "homeScreen": "Головний екран",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "Автоматично вмикайте HDR для відтворення відео HDR і відновлюйте режим відображення після виходу.",
     "whenFullscreen": "У повноекранному режимі",
     "transcodingLimits": "Обмеження перекодування",
-    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer"
+    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer",
+    "reportDownloadsActivity": "Показувати завантаження на сервері",
+    "reportDownloadsActivitySubtitle": "Дозволити адміністратору сервера бачити ваші транскодовані завантаження на панелі керування",
+    "mbValue": "{value} МБ",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "Ліміт кешу зображень",
+    "clearImageCache": "Очистити кеш зображень",
+    "imageCacheCleared": "Кеш зображень очищено"
 }

@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "Любимите песни ще се появят тук",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "Неуспешно зареждане",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "Конкретен потребител",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "Винаги удостоверявай",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "Търсене на отдалечено лице",
     "adminNoRemoteMatches": "Няма открити отдалечени съвпадения",
     "adminRemoteResults": "Дистанционни резултати",
     "adminRemoteMetadataApplied": "Приложени са отдалечени метаданни",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "Добавете тунер",
     "adminTunerType": "Тип тунер",
-    "adminTunerTypeHint": "HDHomeRun, M3U, Други",
-    "adminUrlPath": "URL/път",
-    "adminNameOptional": "Име (по избор)",
     "adminTunerAdded": "Добавен тунер",
     "adminTunerAddFailed": "Неуспешно добавяне на тунер: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "Добавете доставчик на ръководство",
     "adminProviderType": "Тип доставчик",
-    "adminProviderTypeHint": "SchedulesDirect или XMLTV",
-    "adminUsernameOptional": "потребителско име (по избор)",
-    "adminRefreshInterval": "Интервал на опресняване (часове)",
     "adminProviderAdded": "Доставчикът е добавен",
     "adminProviderAddFailed": "Неуспешно добавяне на доставчик: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "Няма съответстващи редове",
     "adminMetadataEditorTitle": "Редактор на метаданни",
-    "adminMetadataRemote": "Дистанционно",
     "adminMetadataType": "Тип",
     "adminMetadataDetails": "Подробности",
     "adminMetadataExternalIds": "Външни идентификатори",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "Запомни моя избор",
     "playHdr10Fallback": "Играйте HDR10 резервен вариант",
     "requestTranscode": "Заявка за прекодиране",
-    "homeScreenSectionsIntegrationDescription": "Откриване на редове, изложени от плъгина „Секции на началния екран“ на IAmParadox27. Редовете могат да бъдат активирани и пренаредени по-долу.",
-    "homeScreenSectionsIntegrationNoServers": "Все още няма Jellyfin сървъри, които да докладват плъгина.",
-    "integrationOpenHomeSections": "Отворете началните секции",
-    "integrationOpenHomeSectionsSubtitle": "Активирайте, деактивирайте и пренаредете редовете",
-    "integrationInstalledButDisabled": "Инсталиран, но деактивиран",
-    "integrationNotInstalled": "Не е инсталиран",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "Вижте всички",
     "noItems": "Няма елементи",
     "switchUser": "Превключване на потребител",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "AAC стерео",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Преминаване (разширено)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Изтриване на запазена тема",
     "savedThemesManageSubtitle": "Управлявайте изтеглените теми на приставката на това устройство",
-    "homeScreenSectionsTitle": "Секции на началния екран",
     "themeEditor": "Редактор на теми",
     "themeEditorSubtitle": "Отворете Moonfin редактора на теми във вашия браузър",
     "homeScreen": "Начален екран",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "Автоматично активиране на HDR за възпроизвеждане на HDR видео и възстановяване на режима на показване при излизане.",
     "whenFullscreen": "Когато е на цял екран",
     "transcodingLimits": "Ограничения за транскодиране",
-    "settingsSupportMoonfinSubtitle": "Дарете кафе на разработчика"
+    "settingsSupportMoonfinSubtitle": "Дарете кафе на разработчика",
+    "reportDownloadsActivity": "Показване на изтеглянията на сървъра",
+    "reportDownloadsActivitySubtitle": "Позволете на администратора на сървъра да вижда вашите прекодирани изтегляния в таблото за управление",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "Лимит на кеша за изображения",
+    "clearImageCache": "Изчистване на кеша за изображения",
+    "imageCacheCleared": "Кешът за изображения е изчистен"
 }

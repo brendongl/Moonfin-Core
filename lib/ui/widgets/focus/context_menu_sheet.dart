@@ -38,7 +38,7 @@ class _ContextMenu extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
-            borderRadius: BorderRadius.circular(FocusTheme.defaultBorderRadius),
+            borderRadius: AppRadius.circular(FocusTheme.defaultBorderRadius),
             boxShadow: [
               BoxShadow(
                 color: AppColorScheme.scrim.withValues(alpha: 0.4),
@@ -87,11 +87,11 @@ class _ActionRow extends StatelessWidget {
     return FocusableButton(
       autofocus: autofocus,
       borderRadius: 6,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       onPressed: () async {
         await OverlaySheetController.closeAdaptive<void>(
           context,
-          restoreFocus: false,
+          restoreFocus: true,
         );
         await action.onSelect();
       },

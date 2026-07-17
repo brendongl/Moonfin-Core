@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:moonfin_design/moonfin_design.dart';
 
 import '../../../../l10n/app_localizations.dart';
 import '../providers/admin_media_analytics_provider.dart';
+import 'admin_form_styles.dart';
 
 const _dashboardMetricKeys = <String>[
   'movies',
@@ -37,43 +39,44 @@ class AdminMediaSummarySection extends StatelessWidget {
         ? title!
         : l10n.adminMediaOverview;
 
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(resolvedTitle, style: theme.textTheme.titleLarge),
-                      if ((subtitle ?? '').isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          subtitle!,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
+    return adminGlassGroup(
+      context,
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(resolvedTitle, style: theme.textTheme.titleLarge),
+                        if ((subtitle ?? '').isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            subtitle!,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
                           ),
-                        ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
-                ),
-                if (onOpenAnalytics != null)
-                  FilledButton.tonalIcon(
-                    onPressed: onOpenAnalytics,
-                    icon: const Icon(Icons.insights_outlined),
-                    label: Text(l10n.analytics),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            LayoutBuilder(
+                  if (onOpenAnalytics != null)
+                    FilledButton.tonalIcon(
+                      onPressed: onOpenAnalytics,
+                      icon: const Icon(Icons.insights_outlined),
+                      label: Text(l10n.analytics),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              LayoutBuilder(
               builder: (context, constraints) {
                 final maxWidth = constraints.maxWidth;
                 const spacing = 12.0;
@@ -103,11 +106,12 @@ class AdminMediaSummarySection extends StatelessWidget {
                       ),
                   ],
                 );
-              },
-            ),
-          ],
+                },
+              ),
+            ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -131,7 +135,7 @@ class _AdminMediaMetricTile extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHigh.withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: AppRadius.circular(14),
         border: Border.all(
           color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
         ),
@@ -176,7 +180,7 @@ class _AdminMediaMetricTile extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: AppRadius.circular(14),
         onTap: onTap,
         child: child,
       ),

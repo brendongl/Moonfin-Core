@@ -26,6 +26,9 @@ fun loadAndroidTvVersionName(rootDir: File, fallback: String): String {
 
 plugins {
     id("com.android.application")
+    // START: FlutterFire Configuration
+    id("com.google.gms.google-services")
+    // END: FlutterFire Configuration
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
@@ -65,6 +68,9 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // Fallback so the main manifest's ${enableImpeller} always resolves;
+        // TV flavors override this to "false".
+        manifestPlaceholders["enableImpeller"] = "true"
     }
 
     flavorDimensions += "device"
@@ -99,6 +105,8 @@ android {
             versionName = androidTvVersionName
             ndk { abiFilters += tvAbis }
             manifestPlaceholders["appName"] = baseAppName
+            // Impeller off on TV: the GLES fallback stutters on TV-box GPUs.
+            manifestPlaceholders["enableImpeller"] = "false"
         }
         create("androidTv-beta") {
             dimension = "device"
@@ -107,6 +115,7 @@ android {
             versionName = androidTvVersionName
             ndk { abiFilters += tvAbis }
             manifestPlaceholders["appName"] = "$baseAppName Beta"
+            manifestPlaceholders["enableImpeller"] = "false"
         }
     }
 
@@ -155,6 +164,8 @@ dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
     implementation("com.google.android.gms:play-services-cast-framework:22.0.0")
     implementation("eu.simonbinder:sqlite3-native-library:3.52.0")
+    implementation("androidx.tvprovider:tvprovider:1.1.0")
+    implementation("androidx.work:work-runtime-ktx:2.10.1")
 }
 
 val flutterApkOutputDir = layout.buildDirectory.dir("app/outputs/flutter-apk")

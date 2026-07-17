@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "Тут з'явяцца любімыя трэкі",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "Не ўдалося загрузіць",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "Канкрэтны карыстальнік",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "Заўсёды правяраць сапраўднасць",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "Пошук аддаленага чалавека",
     "adminNoRemoteMatches": "Аддаленых супадзенняў не знойдзена",
     "adminRemoteResults": "Аддаленыя вынікі",
     "adminRemoteMetadataApplied": "Ужытыя аддаленыя метаданыя",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "Дадаць цюнэр",
     "adminTunerType": "Тып цюнэра",
-    "adminTunerTypeHint": "HDHomeRun, M3U, іншае",
-    "adminUrlPath": "URL / шлях",
-    "adminNameOptional": "Імя (неабавязкова)",
     "adminTunerAdded": "Цюнэр дададзены",
     "adminTunerAddFailed": "Не атрымалася дадаць цюнэр: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "Дадаць пастаўшчыка гіда",
     "adminProviderType": "Тып пастаўшчыка",
-    "adminProviderTypeHint": "SchedulesDirect або XMLTV",
-    "adminUsernameOptional": "Імя карыстальніка (неабавязкова)",
-    "adminRefreshInterval": "Інтэрвал абнаўлення (гадзіны)",
     "adminProviderAdded": "Пастаўшчык дададзены",
     "adminProviderAddFailed": "Не атрымалася дадаць пастаўшчыка: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "Няма адпаведных радкоў",
     "adminMetadataEditorTitle": "Рэдактар ​​метададзеных",
-    "adminMetadataRemote": "Дыстанцыйнае",
     "adminMetadataType": "Тып",
     "adminMetadataDetails": "Дэталі",
     "adminMetadataExternalIds": "Знешнія ідэнтыфікатары",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "Запомні мой выбар",
     "playHdr10Fallback": "Гуляць HDR10 запасны",
     "requestTranscode": "Запытаць перакадзіраванне",
-    "homeScreenSectionsIntegrationDescription": "Выяўляйце радкі, адкрытыя плагінам IAmParadox27 \"Раздзелы галоўнага экрана\". Радкі можна ўключыць і змяніць парадак ніжэй.",
-    "homeScreenSectionsIntegrationNoServers": "Пакуль няма сервераў Jellyfin, якія паведамляюць пра плагін.",
-    "integrationOpenHomeSections": "Адкрыйце хатнія раздзелы",
-    "integrationOpenHomeSectionsSubtitle": "Уключыць, адключыць і змяніць парадак радкоў",
-    "integrationInstalledButDisabled": "Усталяваны, але адключаны",
-    "integrationNotInstalled": "Не ўстаноўлены",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "Глядзець усе",
     "noItems": "Няма элементаў",
     "switchUser": "Змяніць карыстальніка",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "AAC Стэрэа",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Праходжанне (пашыраны)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Выдаліць захаваную тэму",
     "savedThemesManageSubtitle": "Кіруйце спампаванымі тэмамі плагінаў на гэтай прыладзе",
-    "homeScreenSectionsTitle": "Раздзелы галоўнага экрана",
     "themeEditor": "Рэдактар ​​тэм",
     "themeEditorSubtitle": "Адкрыйце рэдактар ​​тэм Moonfin у сваім браўзеры",
     "homeScreen": "Галоўны экран",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "Аўтаматычна ўключыць HDR для прайгравання HDR-відэа і аднавіць рэжым адлюстравання пры выхадзе.",
     "whenFullscreen": "У поўнаэкранным рэжыме",
     "transcodingLimits": "Абмежаванні перакадавання",
-    "settingsSupportMoonfinSubtitle": "Ахвяруйце каву распрацоўніку"
+    "settingsSupportMoonfinSubtitle": "Ахвяруйце каву распрацоўніку",
+    "reportDownloadsActivity": "Паказваць спампоўкі на серверы",
+    "reportDownloadsActivitySubtitle": "Дазволіць адміністратару сервера бачыць вашы транскадаваныя спампоўкі на панэлі кіравання",
+    "mbValue": "{value} МБ",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "Ліміт кэшу відарысаў",
+    "clearImageCache": "Ачысціць кэш відарысаў",
+    "imageCacheCleared": "Кэш відарысаў ачышчаны"
 }

@@ -7,6 +7,7 @@ import '../preference/preference_constants.dart';
 import '../preference/user_preferences.dart';
 import '../util/platform_detection.dart';
 import 'audio_capability_profile.dart';
+
 import 'device_profile_builder.dart';
 import 'known_defects.dart';
 
@@ -229,9 +230,7 @@ class AppleTvMpvBackend implements PlayerBackend {
       'audioCodec': payload['audioCodec']?.toString(),
       'audioProfile': payload['audioProfile']?.toString(),
       'audioChannels': payload['audioChannels'],
-      'audioChannelsMode': _resolveAudioChannelsMode(
-        (payload['audioChannels'] as num?)?.toInt() ?? 0,
-      ),
+      'audioChannelsMode': _resolveAudioChannelsMode(),
       'hybridAudioUrl': ?_resolveHybridAudioUrl(payload),
       'hybridAudioStreamIndex': (payload['audioStreamIndex'] as num?)?.toInt() ?? -1,
       'audioPassthrough': _audioPassthroughEligible(payload),
@@ -255,7 +254,7 @@ class AppleTvMpvBackend implements PlayerBackend {
       'subtitleDelayMs': (_subtitleDelaySeconds * 1000).round(),
       'subtitleRendererMode': _modeToWire(_requestedSubtitleRendererMode),
       'forceSubtitlesDisabledOnStart':
-          !audioOnly && _prefs.get(UserPreferences.subtitlesDefaultToNone),
+          !audioOnly && _prefs.get(UserPreferences.subtitleMode) == SubtitleMode.none,
     });
   }
 
@@ -324,22 +323,21 @@ class AppleTvMpvBackend implements PlayerBackend {
       _prefs.get(UserPreferences.dolbyVisionProfile7DirectPlayBehavior) !=
       DolbyVisionProfile7DirectPlayBehavior.disabled;
 
-  String _resolveAudioChannelsMode(int contentChannels) {
+  String _resolveAudioChannelsMode() {
     if (_prefs.resolveAudioOutputMode() == AudioOutputMode.forceStereo) {
       return 'stereo';
     }
-    final profile = PlatformDetection.hasAudioCapabilities
-        ? AudioCapabilityProfile.fromMap(
-            PlatformDetection.audioCapabilitiesSnapshot,
-          )
-        : const AudioCapabilityProfile.optimistic();
+    final profile = _prefs.detectedAudioCapabilities;
     if (profile.maxPcmChannels <= 2) {
       return 'stereo';
     }
+    // A multichannel HDMI route (a normal 7.1 AVR, or a tvOS Continuous Audio
+    // Connection / Dolby MAT link, which is always a fixed 8-channel 7.1 bed)
+    // doesn't expose a layout mpv's auto detection can map, so it collapses to
+    // stereo. Force a full 7.1 bed. mpv pads 5.1 into it and tvOS wraps it into
+    // MAT.
     if (profile.activeRouteType == AudioRouteType.hdmi &&
-        profile.maxPcmChannels == 8 &&
-        contentChannels > 0 &&
-        contentChannels < 8) {
+        profile.maxPcmChannels >= 8) {
       return '7.1';
     }
     return 'auto-safe';
@@ -380,11 +378,7 @@ class AppleTvMpvBackend implements PlayerBackend {
   }) {
     final maxBitrate = int.tryParse(_prefs.get(UserPreferences.maxBitrate));
     final maxResolution = _prefs.get(UserPreferences.maxVideoResolution);
-    final audioCapabilityProfile = PlatformDetection.hasAudioCapabilities
-        ? AudioCapabilityProfile.fromMap(
-            PlatformDetection.audioCapabilitiesSnapshot,
-          )
-        : const AudioCapabilityProfile.optimistic();
+    final audioCapabilityProfile = _prefs.detectedAudioCapabilities;
 
     return DeviceProfileBuilder.build(
       maxBitrateMbps: maxBitrate,
@@ -400,6 +394,9 @@ class AppleTvMpvBackend implements PlayerBackend {
       trueHdPassthroughEnabled: _prefs.resolveTrueHdPassthroughEnabled(),
       trueHdAtmosPassthroughEnabled: _prefs
           .resolveTrueHdAtmosPassthroughEnabled(),
+      // MPVKit decodes all advertised audio codecs in software and downmixes
+      // locally, so stereo routes never need a server-side audio transcode.
+      universalAudioDecode: true,
       maxResolution: maxResolution,
       pgsDirectPlay: _prefs.get(UserPreferences.pgsDirectPlay),
       assDirectPlay: _prefs.get(UserPreferences.assDirectPlay),
@@ -676,6 +673,9 @@ class AppleTvMpvBackend implements PlayerBackend {
 
   @override
   bool get nativelyHandlesStartPosition => true;
+
+  @override
+  bool get managesAudioFocus => false;
 
   @override
   bool get canRenderBitmapSubtitles => true;

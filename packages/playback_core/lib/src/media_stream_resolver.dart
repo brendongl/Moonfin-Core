@@ -53,16 +53,45 @@ abstract class MediaStreamResolver {
         (path.startsWith('http://') || path.startsWith('https://'));
   }
 
+  /// Re-authorities a server-owned Live TV path onto the connected server base.
+  ///
+  /// Emby/Jellyfin can return the server's own remux endpoint
+  /// (`/LiveTv/LiveStreamFiles/{id}/stream.ts`) as an ABSOLUTE URL built with
+  /// the server's internal bind address — loopback or a container-private host
+  /// (e.g. `http://127.0.0.1:8096/LiveTv/LiveStreamFiles/…`) — when it sits
+  /// behind a reverse proxy that doesn't set a published server URL. That host
+  /// is unreachable from a remote client, so the direct-play/-stream branch must
+  /// not use it verbatim. This swaps the scheme+host+port to [baseUrl] while
+  /// preserving the path and query. Genuine remote upstream URLs (not a server
+  /// LiveStreamFiles endpoint and not a loopback host) are returned unchanged.
+  static String rebaseLiveServerPath(String path, String baseUrl) {
+    final uri = Uri.tryParse(path);
+    if (uri == null || !uri.hasAuthority) return path;
+
+    final host = uri.host.toLowerCase();
+    final isLoopback =
+        host == 'localhost' || host == '::1' || host.startsWith('127.');
+    final isServerRemux = uri.path.contains('/LiveTv/LiveStreamFiles/');
+    if (!isLoopback && !isServerRemux) return path;
+
+    final base = baseUrl.endsWith('/')
+        ? baseUrl.substring(0, baseUrl.length - 1)
+        : baseUrl;
+    return uri.hasQuery ? '$base${uri.path}?${uri.query}' : '$base${uri.path}';
+  }
+
   static String applyStreamIndices(String url, int? audioStreamIndex, int? subtitleStreamIndex) {
     try {
       final uri = Uri.parse(url);
       final params = Map<String, String>.from(uri.queryParameters);
 
-      // Emby & Jellyfin streaming URLs use PascalCase indices. Emby's query
-      // binding is case-INSENSITIVE, so emitting a second camelCase copy makes
-      // it merge the two values into "1,1" -> FormatException -> HTTP 500 on the
-      // manifest (intermittent "source error", esp. on resume). Set exactly one
-      // canonical key and strip any camelCase variant.
+      // Emby & Jellyfin streaming URLs use PascalCase stream indices. Emby's
+      // query-parameter binding is case-INSENSITIVE, so emitting BOTH
+      // `AudioStreamIndex` and `audioStreamIndex` makes the server merge the two
+      // values into "1,1", which fails integer parsing -> HTTP 500 on the
+      // manifest ("Failed to open" / source error, especially when resuming an
+      // audio-transcoded stream). Emit a single canonical key and strip any
+      // camelCase variant.
       if (audioStreamIndex != null) {
         params.remove('audioStreamIndex');
         params['AudioStreamIndex'] = '$audioStreamIndex';

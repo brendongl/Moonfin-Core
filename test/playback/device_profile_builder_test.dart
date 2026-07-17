@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:moonfin/playback/audio_capability_profile.dart';
 import 'package:moonfin/playback/device_profile_builder.dart';
@@ -55,6 +56,39 @@ Map<dynamic, dynamic>? _stereoAacFallbackProfile(Map<String, dynamic> profile) {
   }
 
   return null;
+}
+
+String? _videoAudioChannelsConditionValue(Map<String, dynamic> profile) {
+  final codecProfiles = profile['CodecProfiles'] as List<dynamic>? ?? const [];
+
+  for (final rawProfile in codecProfiles) {
+    final codecProfile = rawProfile as Map<dynamic, dynamic>;
+    if (codecProfile['Type'] != 'VideoAudio' || codecProfile['Codec'] != null) {
+      continue;
+    }
+
+    final conditions = codecProfile['Conditions'] as List<dynamic>? ?? const [];
+    for (final rawCondition in conditions) {
+      final condition = rawCondition as Map<dynamic, dynamic>;
+      if (condition['Property'] == 'AudioChannels' &&
+          condition['Condition'] == 'LessThanEqual') {
+        return condition['Value']?.toString();
+      }
+    }
+  }
+
+  return null;
+}
+
+List<String> _transcodingMaxAudioChannels(Map<String, dynamic> profile) {
+  final transcodingProfiles =
+      profile['TranscodingProfiles'] as List<dynamic>? ?? const [];
+
+  return transcodingProfiles
+      .map((rawProfile) =>
+          (rawProfile as Map<dynamic, dynamic>)['MaxAudioChannels']?.toString())
+      .whereType<String>()
+      .toList(growable: false);
 }
 
 Set<String> _videoDirectPlayAudioCodecs(Map<String, dynamic> profile) {
@@ -211,6 +245,8 @@ void main() {
       expect(codecs, contains('eac3'));
       expect(codecs, contains('dts'));
       expect(codecs, contains('dca'));
+      // Android has no hardware TrueHD/MLP decoder, but the bundled FFmpeg
+      // decoder handles them, so they stay advertised there.
       expect(codecs, contains('truehd'));
       expect(codecs, contains('mlp'));
     });
@@ -412,6 +448,7 @@ void main() {
             canDecodeTrueHd: false,
             canPassthroughTrueHd: false,
             canPassthroughTrueHdJoc: true,
+            activeRouteType: AudioRouteType.earc,
           ),
           trueHdPassthroughEnabled: false,
           trueHdAtmosPassthroughEnabled: true,
@@ -486,10 +523,157 @@ void main() {
     });
   });
 
+  group('DeviceProfileBuilder universalAudioDecode', () {
+    test(
+      'downmix mode keeps the full codec list and 8ch direct play when the '
+      'player decodes everything in software',
+      () {
+        final profile = DeviceProfileBuilder.build(
+          audioOutputMode: AudioOutputMode.forceStereo,
+          universalAudioDecode: true,
+        );
+
+        final codecs = _videoDirectPlayAudioCodecs(profile);
+        expect(codecs, containsAll(<String>['ac3', 'eac3', 'dts', 'truehd', 'flac', 'opus']));
+        expect(_stereoAacFallbackProfile(profile), isNull);
+        expect(_videoAudioChannelsConditionValue(profile), '8');
+      },
+    );
+
+    test(
+      'a detected 2ch speaker route no longer restricts direct play (the AAC '
+      '5.1 transcode bug)',
+      () {
+        final profile = DeviceProfileBuilder.build(
+          audioCapabilityProfile: _capabilityProfile(
+            maxPcmChannels: 2,
+            activeRouteType: AudioRouteType.speaker,
+          ),
+          universalAudioDecode: true,
+        );
+
+        final codecs = _videoDirectPlayAudioCodecs(profile);
+        expect(codecs, containsAll(<String>['aac', 'ac3', 'eac3', 'dts', 'truehd', 'flac']));
+        expect(_stereoAacFallbackProfile(profile), isNull);
+        expect(_videoAudioChannelsConditionValue(profile), '8');
+      },
+    );
+
+    test('an explicit user channel cap is still honored without collapsing codecs', () {
+      final profile = DeviceProfileBuilder.build(
+        maxAudioChannels: 2,
+        universalAudioDecode: true,
+      );
+
+      expect(_videoAudioChannelsConditionValue(profile), '2');
+      final codecs = _videoDirectPlayAudioCodecs(profile);
+      expect(codecs, contains('ac3'));
+      expect(_stereoAacFallbackProfile(profile), isNull);
+    });
+
+    test('does not bypass AVR passthrough gating on an AV receiver route', () {
+      final profile = DeviceProfileBuilder.build(
+        audioOutputMode: AudioOutputMode.avrPassthrough,
+        audioCapabilityProfile: _capabilityProfile(
+          canDecodeDts: true,
+          canDecodeDtsHd: true,
+          activeRouteType: AudioRouteType.hdmi,
+        ),
+        universalAudioDecode: true,
+        dtsCorePassthroughEnabled: false,
+        dtsHdPassthroughEnabled: false,
+        dtsXPassthroughEnabled: false,
+      );
+
+      final codecs = _videoDirectPlayAudioCodecs(profile);
+      expect(codecs, isNot(contains('dts')));
+      expect(codecs, isNot(contains('dca')));
+    });
+
+    test('stereo output keeps a stereo transcode target via TranscodingProfiles', () {
+      final profile = DeviceProfileBuilder.build(
+        audioOutputMode: AudioOutputMode.forceStereo,
+        universalAudioDecode: true,
+      );
+
+      final channels = _transcodingMaxAudioChannels(profile);
+      expect(channels, isNotEmpty);
+      expect(channels, everyElement('2'));
+    });
+
+    test('multichannel routes do not cap the transcode target', () {
+      final profile = DeviceProfileBuilder.build(
+        universalAudioDecode: true,
+      );
+
+      expect(_transcodingMaxAudioChannels(profile), isEmpty);
+    });
+
+    test('advertises ac3 even when the platform reports no hardware decoder', () {
+      final profile = DeviceProfileBuilder.build(
+        audioCapabilityProfile: _capabilityProfile(
+          canDecodeAc3: false,
+          canDecodeEac3: false,
+        ),
+        universalAudioDecode: true,
+      );
+
+      final codecs = _videoDirectPlayAudioCodecs(profile);
+      expect(codecs, contains('ac3'));
+      expect(codecs, contains('eac3'));
+    });
+
+    test('does not advertise TrueHD on iOS, which ships no decoder for it', () {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+      final profile = DeviceProfileBuilder.build(
+        audioCapabilityProfile: const AudioCapabilityProfile.appleMobile(),
+        universalAudioDecode: true,
+      );
+
+      final codecs = _videoDirectPlayAudioCodecs(profile);
+      expect(codecs, isNot(contains('truehd')));
+      expect(codecs, isNot(contains('mlp')));
+      // Everything else still decodes in software.
+      expect(codecs, containsAll(<String>['ac3', 'eac3', 'dts', 'flac']));
+    });
+  });
+
   group('KnownDefects model mapping', () {
     test('matches additional Fire TV models for DoVi HDR10+ bug', () {
       expect(KnownDefects.modelHasHevcDoviHdr10PlusBug('AFTKRT'), isTrue);
       expect(KnownDefects.modelHasHevcDoviHdr10PlusBug('aftmm'), isFalse);
+    });
+  });
+
+  group('KnownDefects DoVi Profile 7 EL direct play', () {
+    test('enabled and disabled behaviors take precedence over device signals', () {
+      expect(
+        KnownDefects.shouldAllowDolbyVisionProfile7ElDirectPlay(
+          behavior: DolbyVisionProfile7DirectPlayBehavior.enabled,
+          hasHardwareDolbyVisionDecoder: false,
+        ),
+        isTrue,
+      );
+      expect(
+        KnownDefects.shouldAllowDolbyVisionProfile7ElDirectPlay(
+          behavior: DolbyVisionProfile7DirectPlayBehavior.disabled,
+          hasHardwareDolbyVisionDecoder: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('auto allows direct play when a hardware DoVi decoder is present', () {
+      expect(
+        KnownDefects.shouldAllowDolbyVisionProfile7ElDirectPlay(
+          behavior: DolbyVisionProfile7DirectPlayBehavior.auto,
+          model: 'not-in-allowlist',
+          hasHardwareDolbyVisionDecoder: true,
+        ),
+        isTrue,
+      );
     });
   });
 }

@@ -15,10 +15,13 @@ import '../../l10n/app_localizations.dart';
 import '../../preference/seerr_preferences.dart';
 import '../../preference/user_preferences.dart';
 import '../../util/overlay_color_palette.dart';
+import '../../util/game_library.dart';
 import '../navigation/destinations.dart';
 import '../navigation/home_refresh_bus.dart';
 import '../screens/settings/settings_side_panel.dart';
 import '../screens/syncplay/syncplay_screen.dart';
+import 'adaptive/adaptive_glass.dart';
+import 'adaptive/sf_symbol.dart';
 import 'seerr_icons.dart';
 import 'settings/settings_panel.dart';
 import 'shuffle_overlay.dart';
@@ -26,8 +29,8 @@ import 'user_menu_dialog.dart';
 
 const double _kBarHeight = 54.0;
 const double _kIconSize = 24.0;
-const double _kBarCornerRadius = 16.0;
-const double _kBarHorizontalInset = 8.0;
+const double _kFloatingInset = 14.0;
+const double _kFloatingRadius = 22.0;
 class MobileBottomNavBar extends StatefulWidget {
   final String? activeRoute;
 
@@ -106,6 +109,8 @@ class _MobileBottomNavBarState extends State<MobileBottomNavBar> {
                 .getAggregatedLibraries()
           : await _viewsRepo.getUserViews();
 
+      unawaited(GetIt.instance<GameLibraryRegistry>().refresh());
+
       List<AggregatedLibrary> filtered = libs;
       if (useMultiServer) {
         try {
@@ -144,10 +149,10 @@ class _MobileBottomNavBarState extends State<MobileBottomNavBar> {
         isActive: _isActive(Destinations.home),
         onTap: () {
           if (_isActive(Destinations.home)) {
-            requestHomeRefresh();
+            homeRefreshBus.request();
             return;
           }
-          requestHomeRefreshAfterNavigation();
+          homeRefreshBus.requestAfterNavigation();
           context.go(Destinations.home);
         },
       ),
@@ -238,15 +243,12 @@ class _MobileBottomNavBarState extends State<MobileBottomNavBar> {
 
     if (_seerrEnabled()) {
       final seerrPrefs = GetIt.instance<SeerrPreferences>();
-      final displayName = seerrPrefs.moonfinDisplayName.trim();
-      final label = displayName.isNotEmpty
-          ? displayName
-          : (seerrPrefs.isSeerrVariant ? l10n.seerr : l10n.jellyseerr);
+      final label = seerrPrefs.labelOrDefault(l10n.seerr);
       actions.add(
         _BottomNavAction(
           iconBuilder: (size, color) => seerrPrefs.isSeerrVariant
               ? SeerrIcon(size: size, color: color)
-              : JellyseerrIcon(size: size, color: color),
+              : SeerrIcon(size: size, color: color),
           label: label,
           isActive: _isActive(Destinations.seerrDiscover),
           onTap: () {
@@ -304,10 +306,17 @@ class _MobileBottomNavBarState extends State<MobileBottomNavBar> {
   void _navigateToLibrary(AggregatedLibrary lib) {
     if (lib.collectionType == 'music') {
       context.navigateTopLevel('/music/${lib.id}');
+    } else if (lib.collectionType == 'books' ||
+        lib.collectionType == 'audiobooks') {
+      context.navigateTopLevel(
+        Destinations.bookLibrary(lib.id, collectionType: lib.collectionType),
+      );
     } else if (lib.collectionType == 'livetv') {
       context.navigateTopLevel(Destinations.liveTvGuide);
     } else {
-      context.navigateTopLevel('/library/${lib.id}');
+      context.navigateTopLevel(
+        gameOrLibraryRoute(lib.id, lib.collectionType, lib.name),
+      );
     }
   }
 
@@ -449,7 +458,7 @@ class _MobileBottomNavBarState extends State<MobileBottomNavBar> {
         height: 4,
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(2),
+          borderRadius: AppRadius.circular(2),
         ),
       ),
     );
@@ -530,16 +539,21 @@ class _MobileBottomNavBarState extends State<MobileBottomNavBar> {
   }
 
   Widget _icon(_BottomNavAction action, {required Color color}) {
+    final icon = action.icon;
     return action.iconBuilder?.call(_kIconSize, color) ??
-        Icon(action.icon, size: _kIconSize, color: color);
+        (icon != null
+            ? AdaptiveIcon(icon, size: _kIconSize, color: color)
+            : const SizedBox.shrink());
   }
 
   Widget _buildTab(BuildContext context, _BottomNavAction action,
       {required int slot}) {
     final accent = Theme.of(context).colorScheme.primary;
     final slotColor = AppColorScheme.navColorForSlot(slot);
-    final color = slotColor ??
-        (action.isActive ? accent : Colors.white.withValues(alpha: 0.6));
+    final baseColor = slotColor ?? accent;
+    final color = action.isActive
+        ? Color.lerp(baseColor, Colors.white, 0.30)!
+        : (slotColor ?? Colors.white.withValues(alpha: 0.6));
     return Semantics(
       button: true,
       selected: action.isActive,
@@ -557,15 +571,23 @@ class _MobileBottomNavBarState extends State<MobileBottomNavBar> {
             height: double.infinity,
             child: Center(
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                curve: Curves.easeOut,
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
                 width: 56,
                 height: 32,
                 decoration: BoxDecoration(
                   color: action.isActive
-                      ? accent.withValues(alpha: 0.16)
+                      ? baseColor.withValues(alpha: 0.16)
                       : Colors.transparent,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: AppRadius.circular(16),
+                  boxShadow: action.isActive
+                      ? [
+                          BoxShadow(
+                            color: baseColor.withValues(alpha: 0.35),
+                            blurRadius: 12,
+                          ),
+                        ]
+                      : null,
                 ),
                 alignment: Alignment.center,
                 child: _icon(action, color: color),
@@ -605,49 +627,56 @@ class _MobileBottomNavBarState extends State<MobileBottomNavBar> {
       fill = true;
     }
 
-    final barColor = _resolveBarColor(context);
-    final borderAlpha = 0.08 * _overlayOpacity();
-
-    final bar = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: _kBarHorizontalInset),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(_kBarCornerRadius),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: barColor,
-            border: Border(
-              top: BorderSide(
-                color: Colors.white.withValues(alpha: borderAlpha),
-                width: 1,
-              ),
-            ),
-          ),
-          child: SafeArea(
-            top: false,
-            child: SizedBox(
-              height: _kBarHeight,
-              child: Material(
-                type: MaterialType.transparency,
-                child: Row(
-                  mainAxisAlignment: fill
-                      ? MainAxisAlignment.spaceBetween
-                      : MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (var i = 0; i < tabs.length; i++)
-                      fill
-                          ? Expanded(child: _buildTab(context, tabs[i], slot: i))
-                          : _buildTab(context, tabs[i], slot: i),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
+    final row = Material(
+      type: MaterialType.transparency,
+      child: Row(
+        mainAxisAlignment:
+            fill ? MainAxisAlignment.spaceBetween : MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < tabs.length; i++)
+            fill
+                ? Expanded(child: _buildTab(context, tabs[i], slot: i))
+                : _buildTab(context, tabs[i], slot: i),
+        ],
       ),
     );
 
-    return bar;
+    return _buildFloatingGlassBar(context, row);
+  }
+
+  Widget _buildFloatingGlassBar(BuildContext context, Widget row) {
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    final accent = Theme.of(context).colorScheme.primary;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        _kFloatingInset,
+        0,
+        _kFloatingInset,
+        bottomInset > 0 ? bottomInset : _kFloatingInset,
+      ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: AppRadius.circular(_kFloatingRadius),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.45),
+              blurRadius: 30,
+              spreadRadius: -12,
+              offset: const Offset(0, 14),
+            ),
+          ],
+        ),
+        child: adaptiveGlass(
+          context: context,
+          cornerRadius: _kFloatingRadius,
+          blur: 28,
+          tint: accent.withValues(alpha: 0.05),
+          fallbackColor: _resolveBarColor(context, forSheet: true),
+          child: SizedBox(height: _kBarHeight, child: row),
+        ),
+      ),
+    );
   }
 }
 

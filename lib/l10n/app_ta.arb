@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "பிடித்த டிராக்குகள் இங்கே தோன்றும்",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "ஏற்றுவதில் தோல்வி",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "குறிப்பிட்ட பயனர்",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "எப்போதும் அங்கீகரிக்கவும்",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "தொலைதூர நபரைத் தேடுங்கள்",
     "adminNoRemoteMatches": "ரிமோட் பொருத்தங்கள் எதுவும் இல்லை",
     "adminRemoteResults": "தொலைநிலை முடிவுகள்",
     "adminRemoteMetadataApplied": "தொலைநிலை மெட்டாடேட்டா பயன்படுத்தப்பட்டது",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "ட்யூனரைச் சேர்க்கவும்",
     "adminTunerType": "ட்யூனர் வகை",
-    "adminTunerTypeHint": "HDHomeRun, M3U, மற்றவை",
-    "adminUrlPath": "URL / பாதை",
-    "adminNameOptional": "பெயர் (விரும்பினால்)",
     "adminTunerAdded": "ட்யூனர் சேர்க்கப்பட்டது",
     "adminTunerAddFailed": "Failed to add tuner: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "வழிகாட்டி வழங்குநரைச் சேர்க்கவும்",
     "adminProviderType": "வழங்குநர் வகை",
-    "adminProviderTypeHint": "அட்டவணைகள் டைரக்ட் அல்லது எக்ஸ்எம்எல்டிவி",
-    "adminUsernameOptional": "பயனர்பெயர் (விரும்பினால்)",
-    "adminRefreshInterval": "புதுப்பிப்பு இடைவெளி (மணிநேரம்)",
     "adminProviderAdded": "வழங்குநர் சேர்க்கப்பட்டார்",
     "adminProviderAddFailed": "Failed to add provider: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "பொருந்தக்கூடிய கோடுகள் இல்லை",
     "adminMetadataEditorTitle": "மெட்டாடேட்டா எடிட்டர்",
-    "adminMetadataRemote": "ரிமோட்",
     "adminMetadataType": "வகை",
     "adminMetadataDetails": "விவரங்கள்",
     "adminMetadataExternalIds": "வெளிப்புற அடையாளங்கள்",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "என் விருப்பத்தை நினைவில் வையுங்கள்",
     "playHdr10Fallback": "HDR10 ஃபால்பேக்கை இயக்கவும்",
     "requestTranscode": "டிரான்ஸ்கோடு கோரிக்கை",
-    "homeScreenSectionsIntegrationDescription": "IAmParadox27 இன் \"முகப்புத் திரைப் பிரிவுகள்\" செருகுநிரல் மூலம் வெளிப்படும் வரிசைகளைக் கண்டறியவும். வரிசைகளை இயக்கலாம் மற்றும் கீழே மறுவரிசைப்படுத்தலாம்.",
-    "homeScreenSectionsIntegrationNoServers": "Jellyfin சேவையகங்கள் இன்னும் செருகுநிரலைப் புகாரளிக்கவில்லை.",
-    "integrationOpenHomeSections": "முகப்புப் பிரிவுகளைத் திற",
-    "integrationOpenHomeSectionsSubtitle": "வரிசைகளை இயக்கவும், முடக்கவும் மற்றும் மறுவரிசைப்படுத்தவும்",
-    "integrationInstalledButDisabled": "நிறுவப்பட்டது ஆனால் முடக்கப்பட்டது",
-    "integrationNotInstalled": "நிறுவப்படவில்லை",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "அனைத்தையும் பார்க்கவும்",
     "noItems": "பொருட்கள் இல்லை",
     "switchUser": "பயனரை மாற்றவும்",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "AAC Stereo",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Passthrough (Advanced)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Delete saved theme",
     "savedThemesManageSubtitle": "Manage downloaded plugin themes on this device",
-    "homeScreenSectionsTitle": "Home Screen Sections",
     "themeEditor": "Theme Editor",
     "themeEditorSubtitle": "Open the Moonfin Theme Editor in your browser",
     "homeScreen": "Home Screen",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "Automatically enable HDR for HDR video playback and restore display mode on exit.",
     "whenFullscreen": "When fullscreen",
     "transcodingLimits": "Transcoding Limits",
-    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer"
+    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer",
+    "reportDownloadsActivity": "சர்வரில் பதிவிறக்கங்களைக் காட்டு",
+    "reportDownloadsActivitySubtitle": "உங்கள் டிரான்ஸ்கோட் செய்யப்பட்ட பதிவிறக்கங்களை டாஷ்போர்டில் சர்வர் நிர்வாகி பார்க்க அனுமதிக்கும்",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "படக் கேச் வரம்பு",
+    "clearImageCache": "படக் கேசை அழி",
+    "imageCacheCleared": "படக் கேச் அழிக்கப்பட்டது"
 }

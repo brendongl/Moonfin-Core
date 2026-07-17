@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "Favorittspor vises her",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "Kunne ikke laste inn",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "Spesifikk bruker",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "Autentiser alltid",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "Søk etter ekstern person",
     "adminNoRemoteMatches": "Ingen eksterne treff funnet",
     "adminRemoteResults": "Eksterne resultater",
     "adminRemoteMetadataApplied": "Eksterne metadata er brukt",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "Legg til tuner",
     "adminTunerType": "Tuner Type",
-    "adminTunerTypeHint": "HDHomeRun, M3U, Annet",
-    "adminUrlPath": "URL / bane",
-    "adminNameOptional": "Navn (valgfritt)",
     "adminTunerAdded": "Tuner lagt til",
     "adminTunerAddFailed": "Failed to add tuner: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "Legg til guideleverandør",
     "adminProviderType": "Leverandørtype",
-    "adminProviderTypeHint": "SchedulesDirect eller XMLTV",
-    "adminUsernameOptional": "Brukernavn (valgfritt)",
-    "adminRefreshInterval": "Oppdateringsintervall (timer)",
     "adminProviderAdded": "Leverandør lagt til",
     "adminProviderAddFailed": "Failed to add provider: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "Ingen samsvarende linjer",
     "adminMetadataEditorTitle": "Metadataredigerer",
-    "adminMetadataRemote": "Fjernkontroll",
     "adminMetadataType": "Type",
     "adminMetadataDetails": "Detaljer",
     "adminMetadataExternalIds": "Eksterne IDer",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "Husk valget mitt",
     "playHdr10Fallback": "Spill HDR10 reserve",
     "requestTranscode": "Be om omkoding",
-    "homeScreenSectionsIntegrationDescription": "Oppdag rader eksponert av IAmParadox27s \"Home Screen Sections\"-plugin. Rader kan aktiveres og omorganiseres nedenfor.",
-    "homeScreenSectionsIntegrationNoServers": "Ingen Jellyfin-servere rapporterer plugin-modulen ennå.",
-    "integrationOpenHomeSections": "Åpne Hjem-seksjoner",
-    "integrationOpenHomeSectionsSubtitle": "Aktiver, deaktiver og omorganiser rader",
-    "integrationInstalledButDisabled": "Installert, men deaktivert",
-    "integrationNotInstalled": "Ikke installert",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "Se alle",
     "noItems": "Ingen varer",
     "switchUser": "Bytt bruker",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "AAC Stereo",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Passthrough (Advanced)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Delete saved theme",
     "savedThemesManageSubtitle": "Manage downloaded plugin themes on this device",
-    "homeScreenSectionsTitle": "Home Screen Sections",
     "themeEditor": "Theme Editor",
     "themeEditorSubtitle": "Open the Moonfin Theme Editor in your browser",
     "homeScreen": "Home Screen",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "Automatically enable HDR for HDR video playback and restore display mode on exit.",
     "whenFullscreen": "When fullscreen",
     "transcodingLimits": "Transcoding Limits",
-    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer"
+    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer",
+    "reportDownloadsActivity": "Vis nedlastinger på serveren",
+    "reportDownloadsActivitySubtitle": "La serveradministratoren se dine omkodede nedlastinger i dashbordet",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "Grense for bildebuffer",
+    "clearImageCache": "Tøm bildebuffer",
+    "imageCacheCleared": "Bildebufferen er tømt"
 }

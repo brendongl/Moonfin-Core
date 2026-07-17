@@ -49,7 +49,7 @@ class MultiServerRepository {
       'ParentIndexNumber,IndexNumber,Status,ImageTags,BackdropImageTags,'
       'ParentBackdropItemId,ParentBackdropImageTags,ParentThumbItemId,'
       'ParentThumbImageTag,SeriesId,SeriesPrimaryImageTag,'
-      'ParentLogoItemId,ParentLogoImageTag';
+      'ParentLogoItemId,ParentLogoImageTag,PrimaryImageTag,PrimaryImageAspectRatio';
   // Cap image tags to one per type (server returns all by default)
   static const _imageTypes = 'Primary,Backdrop,Thumb';
   static const _imageTypeLimit = 1;
@@ -188,19 +188,19 @@ class MultiServerRepository {
     final sessions = await getLoggedInServers();
     final perServer = (limit * 3).clamp(1, 100);
 
-    final results = await Future.wait(
-      sessions.map(
-        (session) => _withTimeout(() async {
-          final response = await session.client.itemsApi.getResumeItems(
-            includeItemTypes: ['Movie', 'Episode'],
-            limit: perServer,
-            fields: _fields,
-            enableImageTypes: _imageTypes,
-            imageTypeLimit: _imageTypeLimit,
-          );
-          return _parseItems(response, session.server.id);
-        }, label: 'resume from ${session.server.name}'),
-      ),
+    final results = await _gatherPerServer(
+      sessions,
+      (session) async {
+        final response = await session.client.itemsApi.getResumeItems(
+          includeItemTypes: ['Movie', 'Episode'],
+          limit: perServer,
+          fields: _fields,
+          enableImageTypes: _imageTypes,
+          imageTypeLimit: _imageTypeLimit,
+        );
+        return _parseItems(response, session.server.id);
+      },
+      label: 'resume',
     );
 
     final all = results.expand((e) => e).toList()..sort(_compareByLastPlayed);
@@ -246,23 +246,23 @@ class MultiServerRepository {
     final sessions = await getLoggedInServers();
     final perServer = (limit * 3).clamp(1, 100);
 
-    final results = await Future.wait(
-      sessions.map(
-        (session) => _withTimeout(() async {
-          final response = await session.client.itemsApi.getNextUp(
-            limit: perServer,
-            fields: _fields,
-            enableImageTypes: _imageTypes,
-            imageTypeLimit: _imageTypeLimit,
-            enableResumable: false,
-          );
-          final parsed = _parseItems(response, session.server.id);
-          return await _enrichNextUpItemsWithSeriesLastPlayed(
-            parsed,
-            session.client,
-          );
-        }, label: 'next up from ${session.server.name}'),
-      ),
+    final results = await _gatherPerServer(
+      sessions,
+      (session) async {
+        final response = await session.client.itemsApi.getNextUp(
+          limit: perServer,
+          fields: _fields,
+          enableImageTypes: _imageTypes,
+          imageTypeLimit: _imageTypeLimit,
+          enableResumable: false,
+        );
+        final parsed = _parseItems(response, session.server.id);
+        return await _enrichNextUpItemsWithSeriesLastPlayed(
+          parsed,
+          session.client,
+        );
+      },
+      label: 'next up',
     );
 
     final all = results.expand((e) => e).toList()..sort(_compareByLastPlayed);
@@ -448,7 +448,7 @@ class MultiServerRepository {
             sortOrder: sortOrder,
             recursive: true,
             limit: perServer,
-            fields: 'ItemCounts',
+            fields: 'ItemCounts,PrimaryImageAspectRatio',
             includeItemTypes: browseItemTypes,
           );
           final items = await _buildBrowsableGenresForSession(
@@ -999,6 +999,33 @@ class MultiServerRepository {
     }
   }
 
+  /// Runs [task] for every session and tolerates individual server failures,
+  /// substituting an empty list for any server that timed out or errored. Throws
+  /// only when every session fails, so callers can tell a real all-servers
+  /// outage apart from a legitimately empty result and keep the previous row.
+  Future<List<List<AggregatedItem>>> _gatherPerServer(
+    List<ServerUserSession> sessions,
+    Future<List<AggregatedItem>> Function(ServerUserSession session) task, {
+    required String label,
+  }) async {
+    var failures = 0;
+    final results = await Future.wait(
+      sessions.map(
+        (session) => _withTimeout(
+          () => task(session),
+          label: '$label from ${session.server.name}',
+        ).catchError((_) {
+          failures++;
+          return <AggregatedItem>[];
+        }),
+      ),
+    );
+    if (sessions.isNotEmpty && failures == sessions.length) {
+      throw StateError('MultiServer: all servers failed to load $label');
+    }
+    return results;
+  }
+
   Future<List<AggregatedItem>> _buildBrowsableGenresForSession(
     ServerUserSession session,
     Map<String, dynamic> response, {
@@ -1050,24 +1077,26 @@ class MultiServerRepository {
         genreIds: [genreId],
         includeItemTypes: includeItemTypes,
         excludeItemTypes: const ['Episode'],
-        sortBy: _defaultSortBy,
-        sortOrder: _defaultSortOrder,
+        sortBy: 'Random',
+        sortOrder: 'Ascending',
         recursive: true,
-        limit: 1,
+        limit: 10,
         fields: _fields,
         enableImageTypes: _imageTypes,
         imageTypeLimit: _imageTypeLimit,
       );
 
       final items = (response['Items'] as List?) ?? const [];
-      if (items.isEmpty) {
+      final maps = List<Map<String, dynamic>>.from(
+        items.whereType<Map>().map((item) => item.cast<String, dynamic>()),
+      );
+      if (maps.isEmpty) {
         return null;
       }
 
-      final representative = items.first;
-      if (representative is! Map) {
-        return null;
-      }
+      maps.shuffle();
+      final representative = maps[0];
+      final backdropRepresentative = maps.length > 1 ? maps[1] : null;
 
       final rawTotalCount = response['TotalRecordCount'];
       final totalCount = rawTotalCount is num
@@ -1082,8 +1111,9 @@ class MultiServerRepository {
 
       final merged = mergeGenreWithRepresentativeItem(
         genreData: genreData,
-        representativeItem: representative.cast<String, dynamic>(),
+        representativeItem: representative,
         itemCount: totalCount,
+        backdropRepresentativeItem: backdropRepresentative,
       );
       return AggregatedItem(
         id: merged['Id']?.toString() ?? '',

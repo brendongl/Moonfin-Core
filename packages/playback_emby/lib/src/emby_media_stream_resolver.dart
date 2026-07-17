@@ -108,6 +108,7 @@ class EmbyMediaStreamResolver implements MediaStreamResolver {
       externalSubtitles: authedSubs,
       mediaStreams: source.mediaStreams,
       selectedAudioStreamIndex: source.defaultAudioStreamIndex,
+      selectedSubtitleStreamIndex: source.defaultSubtitleStreamIndex,
       transcodingReasons: source.transcodingReasons,
     );
   }
@@ -172,10 +173,12 @@ class EmbyMediaStreamResolver implements MediaStreamResolver {
       isManagedLiveStream: isManagedLiveStream,
       path: remotePath,
     )) {
-      final method = remotePath!.startsWith(_client.baseUrl)
+      final resolvedPath =
+          MediaStreamResolver.rebaseLiveServerPath(remotePath!, _client.baseUrl);
+      final method = resolvedPath.startsWith(_client.baseUrl)
           ? StreamPlayMethod.directStream
           : StreamPlayMethod.directPlay;
-      return (remotePath, method);
+      return (resolvedPath, method);
     }
 
     if (source.supportsDirectPlay) {

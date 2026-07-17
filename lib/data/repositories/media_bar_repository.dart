@@ -372,6 +372,7 @@ class MediaBarRepository {
     final posterUrl = _client.imageApi.getPrimaryImageUrl(
       itemId,
       tag: primaryTag,
+      maxWidth: 600,
     );
 
     final runTimeTicks = data['RunTimeTicks'] as int?;
@@ -394,8 +395,8 @@ class MediaBarRepository {
           : null,
       communityRating: (data['CommunityRating'] as num?)?.toDouble(),
       criticRating: (data['CriticRating'] as num?)?.toInt(),
-      tmdbId: providerIds?['Tmdb'] as String?,
-      imdbId: providerIds?['Imdb'] as String?,
+      tmdbId: (providerIds?['Tmdb'] ?? providerIds?['tmdb'])?.toString(),
+      imdbId: (providerIds?['Imdb'] ?? providerIds?['imdb'])?.toString(),
       itemType: data['Type'] as String? ?? 'Movie',
       remoteTrailers:
           (data['RemoteTrailers'] as List?)?.cast<Map<String, dynamic>>() ??

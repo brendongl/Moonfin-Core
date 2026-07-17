@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
+import '../offline_aware_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:moonfin_design/moonfin_design.dart';
@@ -181,7 +181,7 @@ class _BannerMediaBarState extends State<BannerMediaBar> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: AppRadius.circular(16),
             border: Border.all(
               color: _focused
                   ? AppColorScheme.accent
@@ -198,7 +198,7 @@ class _BannerMediaBarState extends State<BannerMediaBar> {
                 : null,
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: AppRadius.circular(14),
             child: SizedBox(
               height: widget.height,
               child: GestureDetector(
@@ -289,7 +289,7 @@ class _BannerMediaBarState extends State<BannerMediaBar> {
             child: SizedBox(
               width: 240,
               height: 56,
-              child: CachedNetworkImage(
+              child: OfflineAwareImage(
                 imageUrl: item.logoUrl!,
                 fit: BoxFit.contain,
                 alignment: Alignment.centerLeft,
@@ -382,7 +382,7 @@ class _Dots extends StatelessWidget {
               color: i == active
                   ? AppColorScheme.onSurface
                   : AppColorScheme.onSurface.withValues(alpha: 0.4),
-              borderRadius: BorderRadius.circular(3),
+              borderRadius: AppRadius.circular(3),
             ),
           ),
       ],

@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
+import 'package:moonfin_design/moonfin_design.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../../../l10n/app_localizations.dart';
+import '../../../widgets/adaptive/adaptive_slider.dart';
+import '../widgets/admin_form_styles.dart';
 
 class AdminTrickplayScreen extends StatefulWidget {
   const AdminTrickplayScreen({super.key});
@@ -131,40 +134,43 @@ class _AdminTrickplayScreenState extends State<AdminTrickplayScreen> {
     return ListView(
       padding: EdgeInsets.fromLTRB(16, 16, 16, bottomSafe + 40),
       children: [
-        Text(l10n.adminDrawerTrickplay, style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 8),
-        Text(
-          l10n.adminTrickplayDescription,
-          style: Theme.of(context).textTheme.bodyMedium,
+        adminScreenHeader(
+          context,
+          title: l10n.adminDrawerTrickplay,
+          subtitle: l10n.adminTrickplayDescription,
+          icon: Icons.view_comfy,
         ),
-        const SizedBox(height: 24),
-        _sectionHeader(l10n.general),
-        SwitchListTile(
-          title: Text(l10n.adminTrickplayHwAccel),
-          value: _boolOpt('EnableHwAcceleration'),
-          onChanged: (v) => setState(() => _opts['EnableHwAcceleration'] = v),
+        adminSection(
+          context,
+          title: l10n.general,
+          icon: Icons.tune,
+          children: [
+            adminSwitchRow(
+              title: l10n.adminTrickplayHwAccel,
+              value: _boolOpt('EnableHwAcceleration'),
+              onChanged: (v) =>
+                  setState(() => _opts['EnableHwAcceleration'] = v),
+            ),
+            adminSwitchRow(
+              title: l10n.adminTrickplayHwEncoding,
+              value: _boolOpt('EnableHwEncoding'),
+              onChanged: (v) => setState(() => _opts['EnableHwEncoding'] = v),
+            ),
+            adminSwitchRow(
+              title: l10n.adminTrickplayKeyFrameOnly,
+              subtitle: l10n.adminTrickplayKeyFrameOnlySubtitle,
+              value: _boolOpt('EnableKeyFrameOnlyExtraction'),
+              onChanged: (v) =>
+                  setState(() => _opts['EnableKeyFrameOnlyExtraction'] = v),
+            ),
+          ],
         ),
-        SwitchListTile(
-          title: Text(l10n.adminTrickplayHwEncoding),
-          value: _boolOpt('EnableHwEncoding'),
-          onChanged: (v) => setState(() => _opts['EnableHwEncoding'] = v),
-        ),
-        SwitchListTile(
-          title: Text(l10n.adminTrickplayKeyFrameOnly),
-          subtitle: Text(l10n.adminTrickplayKeyFrameOnlySubtitle),
-          value: _boolOpt('EnableKeyFrameOnlyExtraction'),
-          onChanged: (v) =>
-              setState(() => _opts['EnableKeyFrameOnlyExtraction'] = v),
-        ),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppSpacing.spaceLg),
         DropdownButtonFormField<String>(
           initialValue: _scanBehaviorKeys.contains(_strOpt('ScanBehavior', 'NonBlocking'))
               ? _strOpt('ScanBehavior', 'NonBlocking')
               : 'NonBlocking',
-          decoration: InputDecoration(
-            labelText: l10n.adminTrickplayScanBehavior,
-            border: const OutlineInputBorder(),
-          ),
+          decoration: adminInputDecoration(label: l10n.adminTrickplayScanBehavior),
           items: scanBehaviors
               .map((o) => DropdownMenuItem(value: o.$1, child: Text(o.$2)))
               .toList(),
@@ -175,26 +181,23 @@ class _AdminTrickplayScreenState extends State<AdminTrickplayScreen> {
           initialValue: _priorityKeys.contains(_strOpt('ProcessPriority', 'BelowNormal'))
               ? _strOpt('ProcessPriority', 'BelowNormal')
               : 'BelowNormal',
-          decoration: InputDecoration(
-            labelText: l10n.adminTrickplayProcessPriority,
-            border: const OutlineInputBorder(),
-          ),
+          decoration:
+              adminInputDecoration(label: l10n.adminTrickplayProcessPriority),
           items: priorities
               .map((o) => DropdownMenuItem(value: o.$1, child: Text(o.$2)))
               .toList(),
           onChanged: (v) => setState(() => _opts['ProcessPriority'] = v),
         ),
-        const Divider(height: 32),
-        _sectionHeader(l10n.adminTrickplayImageSettings),
+        adminSectionLabel(context, l10n.adminTrickplayImageSettings,
+            icon: Icons.image_outlined),
         _intField('Interval', l10n.adminTrickplayInterval, fallback: 10000,
             subtitle: l10n.adminTrickplayIntervalSubtitle),
         const SizedBox(height: 12),
         TextFormField(
           initialValue: _widthResolutionsText(),
-          decoration: InputDecoration(
-            labelText: l10n.adminTrickplayWidthResolutions,
-            helperText: l10n.adminTrickplayWidthResolutionsHint,
-            border: const OutlineInputBorder(),
+          decoration: adminInputDecoration(
+            label: l10n.adminTrickplayWidthResolutions,
+            helper: l10n.adminTrickplayWidthResolutionsHint,
           ),
           onChanged: (v) {
             _opts['WidthResolutions'] = v
@@ -216,39 +219,20 @@ class _AdminTrickplayScreenState extends State<AdminTrickplayScreen> {
             ),
           ],
         ),
-        const Divider(height: 32),
-        _sectionHeader(l10n.adminTrickplayQuality),
+        adminSectionLabel(context, l10n.adminTrickplayQuality,
+            icon: Icons.high_quality_outlined),
         _sliderField('Qscale', l10n.adminTrickplayQScale, min: 2, max: 31, fallback: 4,
             subtitle: l10n.adminTrickplayQScaleSubtitle),
         const SizedBox(height: 16),
         _sliderField('JpegQuality', l10n.adminTrickplayJpegQuality, min: 1, max: 100,
             fallback: 90),
-        const Divider(height: 32),
-        _sectionHeader(l10n.adminTrickplayProcessing),
+        adminSectionLabel(context, l10n.adminTrickplayProcessing,
+            icon: Icons.memory),
         _intField('ProcessThreads', l10n.adminTrickplayProcessThreads, fallback: 1,
             subtitle: l10n.adminPlaybackAutomatic),
-        const SizedBox(height: 24),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: FilledButton(
-            onPressed: _saving ? null : _save,
-            child: _saving
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Text(l10n.save),
-          ),
-        ),
+        const SizedBox(height: AppSpacing.spaceXl),
+        adminSaveButton(label: l10n.save, saving: _saving, onPressed: _save),
       ],
-    );
-  }
-
-  Widget _sectionHeader(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Text(text, style: Theme.of(context).textTheme.titleMedium),
     );
   }
 
@@ -256,11 +240,7 @@ class _AdminTrickplayScreenState extends State<AdminTrickplayScreen> {
       {int fallback = 0, String? subtitle}) {
     return TextFormField(
       initialValue: _intOpt(key, fallback).toString(),
-      decoration: InputDecoration(
-        labelText: label,
-        helperText: subtitle,
-        border: const OutlineInputBorder(),
-      ),
+      decoration: adminInputDecoration(label: label, helper: subtitle),
       keyboardType: TextInputType.number,
       onChanged: (v) => _opts[key] = int.tryParse(v) ?? fallback,
     );
@@ -285,7 +265,7 @@ class _AdminTrickplayScreenState extends State<AdminTrickplayScreen> {
         Row(
           children: [
             Expanded(
-              child: Slider(
+              child: adaptiveSlider(
                 value: value,
                 min: min,
                 max: max,

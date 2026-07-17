@@ -3,14 +3,12 @@ import 'package:server_core/server_core.dart';
 
 import '../../auth/repositories/session_repository.dart';
 import '../services/seerr/seerr_api_models.dart';
-import '../services/seerr/seerr_cookie_jar.dart';
 import '../services/seerr/seerr_http_client.dart';
 import '../services/seerr/seerr_models.dart';
 
 class SeerrRepository {
   final PreferenceStore _store;
   final SessionRepository _session;
-  final SeerrCookieJar _cookieJar;
   final MediaServerClient _client;
 
   SeerrHttpClient? _httpClient;
@@ -24,10 +22,16 @@ class SeerrRepository {
   bool _lastSessionValid = false;
   static const _sessionCacheDurationMs = 5 * 60 * 1000;
 
+  int _lastBadgeCountMs = 0;
+  int _cachedBadgeCount = 0;
+  static const _badgeCountCacheDurationMs = 60 * 1000;
+
+  final Map<String, SeerrMediaSummary> _mediaSummaryCache = {};
+
   bool get isAvailable => _isAvailable;
   bool get isMoonfinMode => _isMoonfinMode;
 
-  SeerrRepository(this._store, this._session, this._cookieJar, this._client);
+  SeerrRepository(this._store, this._session, this._client);
 
   String _userKey(String key) {
     final uid = _session.activeUserId ?? '';
@@ -35,8 +39,6 @@ class SeerrRepository {
   }
 
   String get _enabledKey => _userKey('enabled');
-  String get _serverUrlKey => _userKey('server_url');
-  String get _apiKeyKey => _userKey('api_key');
   String get _authMethodKey => _userKey('auth_method');
   String get _moonfinModeKey => _userKey('moonfin_mode');
   String get _moonfinDisplayNameKey => _userKey('moonfin_display_name');
@@ -77,7 +79,6 @@ class SeerrRepository {
         return;
       }
 
-      _cookieJar.switchToUser(currentUserId);
       _lastUserId = currentUserId;
 
       await _initMoonfinMode();
@@ -96,13 +97,10 @@ class SeerrRepository {
       return;
     }
 
-    final proxyConfig = MoonfinProxyConfig(
+    _initClient(MoonfinProxyConfig(
       jellyfinBaseUrl: baseUrl,
       jellyfinToken: token,
-    );
-
-    _initClient(baseUrl, '');
-    _httpClient!.proxyConfig = proxyConfig;
+    ));
     _isMoonfinMode = true;
 
     try {
@@ -113,13 +111,9 @@ class SeerrRepository {
     }
   }
 
-  void _initClient(String serverUrl, String apiKey) {
+  void _initClient(MoonfinProxyConfig proxyConfig) {
     _httpClient?.close();
-    _httpClient = SeerrHttpClient(
-      baseUrl: serverUrl,
-      apiKey: apiKey,
-      cookieJar: _cookieJar,
-    );
+    _httpClient = SeerrHttpClient(proxyConfig: proxyConfig);
   }
 
   Future<T> _withClient<T>(
@@ -157,26 +151,18 @@ class SeerrRepository {
   Future<SeerrUser> getCurrentUser() =>
       _withClient((c) async => SeerrUser.fromJson(await c.getCurrentUser()));
 
-  Future<String> regenerateApiKey() async {
-    final key = await _withClient((c) => c.regenerateApiKey());
-    await _store.setString(_apiKeyKey, key);
-    return key;
-  }
-
   Future<MoonfinStatusResponse> configureWithMoonfin({
     required String jellyfinBaseUrl,
     required String jellyfinToken,
   }) async {
     final userId = _session.activeUserId;
     if (userId == null) throw StateError('No active user');
-    _cookieJar.switchToUser(userId);
     _lastUserId = userId;
 
-    _initClient(jellyfinBaseUrl, '');
-    _httpClient!.proxyConfig = MoonfinProxyConfig(
+    _initClient(MoonfinProxyConfig(
       jellyfinBaseUrl: jellyfinBaseUrl,
       jellyfinToken: jellyfinToken,
-    );
+    ));
 
     final status = await _httpClient!.getMoonfinStatus();
     final effectiveEnabled = status.enabled && status.authenticated;
@@ -187,10 +173,10 @@ class SeerrRepository {
     _isMoonfinMode = true;
 
     if (effectiveEnabled) {
-      if (status.jellyseerrUserId != null) {
+      if (status.seerrUserId != null) {
         await _store.setString(
           _moonfinUserIdKey,
-          status.jellyseerrUserId.toString(),
+          status.seerrUserId.toString(),
         );
       }
       _isAvailable = true;
@@ -244,11 +230,11 @@ class SeerrRepository {
     String authType = 'jellyfin',
   }) async {
     await ensureInitialized();
-    if (_httpClient == null || _httpClient!.isProxyMode != true) {
+    if (_httpClient == null) {
       await _initMoonfinMode();
     }
     final client = _httpClient;
-    if (client == null || !client.isProxyMode) {
+    if (client == null) {
       throw StateError(
         'Moonfin plugin proxy unavailable (no active Jellyfin session)',
       );
@@ -266,7 +252,7 @@ class SeerrRepository {
     );
     await _store.setString(
       _moonfinUserIdKey,
-      response.jellyseerrUserId?.toString() ?? '',
+      response.seerrUserId?.toString() ?? '',
     );
     await _store.setString(_authMethodKey, 'moonfin');
     await _store.setBool(_enabledKey, true);
@@ -281,7 +267,7 @@ class SeerrRepository {
 
   Future<void> logoutMoonfin() async {
     final client = _httpClient;
-    if (client != null && client.isProxyMode) {
+    if (client != null) {
       try {
         await client.moonfinLogout();
       } catch (_) {}
@@ -402,6 +388,10 @@ class SeerrRepository {
     (c) async => SeerrTvDetails.fromJson(await c.getTvDetails(tmdbId)),
   );
 
+  Future<SeerrTvDetails> getTvDetailsByTvdb(int tvdbId) => _withClient(
+    (c) async => SeerrTvDetails.fromJson(await c.getTvDetailsByTvdb(tvdbId)),
+  );
+
   Future<SeerrDiscoverPage> getSimilarMovies(int tmdbId, {int page = 1}) =>
       _withClient(
         (c) async => SeerrDiscoverPage.fromJson(
@@ -460,6 +450,7 @@ class SeerrRepository {
 
   Future<SeerrRequestListResponse> getRequests({
     String? filter,
+    String? sort,
     int? requestedBy,
     int limit = 50,
     int offset = 0,
@@ -467,6 +458,7 @@ class SeerrRepository {
     (c) async => SeerrRequestListResponse.fromJson(
       await c.getRequests(
         filter: filter,
+        sort: sort,
         requestedBy: requestedBy,
         limit: limit,
         offset: offset,
@@ -519,6 +511,142 @@ class SeerrRepository {
   Future<void> declineRequest(int requestId) =>
       _withClient((c) => c.declineRequest(requestId));
 
+  Future<void> retryRequest(int requestId) =>
+      _withClient((c) => c.retryRequest(requestId));
+
+  Future<SeerrRequestCounts> getRequestCount() => _withClient(
+    (c) async => SeerrRequestCounts.fromJson(await c.getRequestCount()),
+  );
+
+  /// Pending requests plus open issues, for the discover entry badge.
+  /// Cached briefly and only counted for users who can act on them.
+  Future<int> getActionableBadgeCount({bool force = false}) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (!force && (now - _lastBadgeCountMs) < _badgeCountCacheDurationMs) {
+      return _cachedBadgeCount;
+    }
+
+    var count = 0;
+    try {
+      final user = await getCurrentUser();
+      if (user.hasPermission(SeerrPermission.manageRequests)) {
+        try {
+          count += (await getRequestCount()).pending;
+        } catch (_) {}
+      }
+      if (user.canManageIssues) {
+        try {
+          count += (await getIssueCount()).open;
+        } catch (_) {}
+      }
+    } catch (_) {}
+
+    _cachedBadgeCount = count;
+    _lastBadgeCountMs = DateTime.now().millisecondsSinceEpoch;
+    return count;
+  }
+
+  void invalidateBadgeCount() {
+    _lastBadgeCountMs = 0;
+  }
+
+  /// Title and poster for a card, since the request and issue lists only
+  /// carry media ids. Cached for the session.
+  Future<SeerrMediaSummary?> getMediaSummary(
+    int tmdbId,
+    String mediaType,
+  ) async {
+    final key = '$mediaType:$tmdbId';
+    final cached = _mediaSummaryCache[key];
+    if (cached != null) return cached;
+
+    try {
+      final SeerrMediaSummary summary;
+      if (mediaType == 'tv') {
+        final details = await getTvDetails(tmdbId);
+        summary = SeerrMediaSummary(
+          title: details.displayTitle,
+          posterPath: details.posterPath,
+        );
+      } else {
+        final details = await getMovieDetails(tmdbId);
+        summary = SeerrMediaSummary(
+          title: details.title,
+          posterPath: details.posterPath,
+        );
+      }
+      _mediaSummaryCache[key] = summary;
+      return summary;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<SeerrQuota> getUserQuota(int userId) => _withClient(
+    (c) async => SeerrQuota.fromJson(await c.getUserQuota(userId)),
+  );
+
+  Future<SeerrCollection> getCollectionDetails(int collectionId) => _withClient(
+    (c) async => SeerrCollection.fromJson(
+      await c.getCollectionDetails(collectionId),
+    ),
+  );
+
+  Future<SeerrIssue> createIssue({
+    required int issueType,
+    required String message,
+    required int mediaId,
+    int problemSeason = 0,
+    int problemEpisode = 0,
+  }) => _withClient(
+    (c) async => SeerrIssue.fromJson(
+      await c.createIssue(
+        issueType: issueType,
+        message: message,
+        mediaId: mediaId,
+        problemSeason: problemSeason,
+        problemEpisode: problemEpisode,
+      ),
+    ),
+  );
+
+  Future<SeerrIssueListResponse> getIssues({
+    String? filter,
+    String? sort,
+    int? createdBy,
+    int limit = 20,
+    int offset = 0,
+  }) => _withClient(
+    (c) async => SeerrIssueListResponse.fromJson(
+      await c.getIssues(
+        filter: filter,
+        sort: sort,
+        createdBy: createdBy,
+        limit: limit,
+        offset: offset,
+      ),
+    ),
+  );
+
+  Future<SeerrIssueCounts> getIssueCount() => _withClient(
+    (c) async => SeerrIssueCounts.fromJson(await c.getIssueCount()),
+  );
+
+  Future<SeerrIssue> getIssue(int issueId) => _withClient(
+    (c) async => SeerrIssue.fromJson(await c.getIssue(issueId)),
+  );
+
+  Future<SeerrIssue> commentOnIssue(int issueId, String message) => _withClient(
+    (c) async => SeerrIssue.fromJson(await c.commentOnIssue(issueId, message)),
+  );
+
+  Future<SeerrIssue> setIssueStatus(int issueId, String status) => _withClient(
+    (c) async => SeerrIssue.fromJson(await c.setIssueStatus(issueId, status)),
+  );
+
+  Future<void> deleteIssue(int issueId) =>
+      _withClient((c) => c.deleteIssue(issueId));
+
   Future<List<SeerrServiceServer>> getRadarrServers() => _withClient(
     (c) async => (await c.getRadarrServers())
         .cast<Map<String, dynamic>>()
@@ -563,23 +691,7 @@ class SeerrRepository {
 
   Future<SeerrStatus> getStatus() => _withClient((c) => c.getStatus());
 
-  Future<void> logout() async {
-    if (_httpClient?.isProxyMode == true) {
-      await logoutMoonfin();
-      return;
-    }
-
-    await _store.setString(_serverUrlKey, '');
-    await _store.setBool(_enabledKey, false);
-    await _store.setString(_apiKeyKey, '');
-    await _store.setString(_authMethodKey, '');
-
-    _httpClient?.close();
-    _httpClient = null;
-    _initialized = false;
-    _lastUserId = null;
-    _isAvailable = false;
-  }
+  Future<void> logout() => logoutMoonfin();
 
   void close() {
     _httpClient?.close();

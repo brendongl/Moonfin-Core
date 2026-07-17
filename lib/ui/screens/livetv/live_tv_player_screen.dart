@@ -8,24 +8,32 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:moonfin_native_video/moonfin_native_video.dart';
 import 'package:playback_core/playback_core.dart';
 import 'package:server_core/server_core.dart';
+import 'package:screen_brightness_platform_interface/screen_brightness_platform_interface.dart';
+import 'package:volume_controller/volume_controller.dart';
 
 import '../../../data/models/aggregated_item.dart';
 import '../../../data/viewmodels/live_tv_guide_view_model.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../playback/html_video_backend.dart';
 import '../../../playback/media_kit_player_backend.dart';
+import '../../../platform/pip_service.dart';
 import '../../../playback/tizen_player_backend.dart';
 import 'package:video_player/video_player.dart';
 import '../../../playback/media3_player_backend.dart';
 import '../../../preference/preference_constants.dart';
 import '../../../preference/user_preferences.dart';
 import '../../../util/clock_format.dart';
+import '../../../util/subtitle_track_logic.dart';
 import '../../../util/play_method_label.dart';
 import '../../../util/platform_detection.dart';
+import '../../widgets/adaptive/sf_symbol.dart';
 import '../../widgets/playback/stream_info_dialog.dart';
 import '../../widgets/subtitle_preview.dart';
+import '../../widgets/track_selector_dialog.dart';
 import 'live_tv_guide_screen.dart';
 import '../../screensaver/screensaver_controller.dart';
+
+const _kGuideResizeDuration = Duration(milliseconds: 250);
 
 class LiveTvPlayerScreen extends StatefulWidget {
   final List<GuideChannel> channels;
@@ -41,7 +49,8 @@ class LiveTvPlayerScreen extends StatefulWidget {
   State<LiveTvPlayerScreen> createState() => _LiveTvPlayerScreenState();
 }
 
-class _LiveTvPlayerScreenState extends State<LiveTvPlayerScreen> {
+class _LiveTvPlayerScreenState extends State<LiveTvPlayerScreen>
+    with WidgetsBindingObserver {
   final _manager = GetIt.instance<PlaybackManager>();
   final MediaKitPlayerBackend? _backend =
       (PlatformDetection.isTizen || PlatformDetection.isAppleTV)
@@ -81,13 +90,43 @@ class _LiveTvPlayerScreenState extends State<LiveTvPlayerScreen> {
   StreamSubscription<PlayerBackend>? _backendSub;
   StreamSubscription<bool>? _screensaverPlayingSub;
 
+  // Brightness and volume swipe gesture state (mobile/tablet). Left half of the
+  // screen controls brightness, right half controls volume.
+  double _brightnessValue = 0.5;
+  double _systemVolume = 1.0;
+  bool _showVolumeOverlay = false;
+  bool _showBrightnessOverlay = false;
+  Timer? _volumeOverlayTimer;
+  Timer? _brightnessOverlayTimer;
+  StreamSubscription<double>? _brightnessListenerSub;
+  StreamSubscription<double>? _volumeListenerSub;
+  double? _pendingMobileSystemVolume;
+  bool _isApplyingMobileSystemVolume = false;
+  double _verticalDragStartY = 0.0;
+  double _verticalDragStartValue = 0.0;
+  bool _verticalDragIsVolume = false;
+  bool _verticalDragIgnored = false;
+  int _media3VolumeBoostLevel = 0;
+
+  // Android Picture-in-Picture wiring. iOS Live TV PiP needs the separate
+  // sample-buffer bridge and is not wired here.
+  final _pipService = GetIt.instance<PipService>();
+  StreamSubscription<bool>? _pipChangedSub;
+  StreamSubscription<String>? _pipActionSub;
+  StreamSubscription<bool>? _pipScreenLockSub;
+  StreamSubscription<bool>? _pipPlayingSub;
+  bool _wasPlayingBeforeScreenLock = false;
+
   final _overlayFocus = FocusNode();
   final _tvPlayPauseFocus = FocusNode(debugLabel: 'LiveTvPlayPause');
   final _tvChannelsFocus = FocusNode(debugLabel: 'LiveTvChannels');
+  final _tvAudioFocus = FocusNode(debugLabel: 'LiveTvAudio');
+  final _tvSubtitleFocus = FocusNode(debugLabel: 'LiveTvSubtitle');
+  final _tvBitrateFocus = FocusNode(debugLabel: 'LiveTvBitrate');
   final _tvPlaybackInfoFocus = FocusNode(debugLabel: 'LiveTvPlaybackInfo');
-  // Index of the currently focused OSD control (0=PlayPause, 1=Channels,
-  // 2=PlaybackInfo). Tracked explicitly so arrow navigation never depends on
-  // FocusManager.primaryFocus matching one of these exact nodes.
+  // Index of the currently focused OSD control within _osdFocusOrder. Tracked
+  // explicitly so arrow navigation never depends on FocusManager.primaryFocus
+  // matching one of these exact nodes.
   int _focusedControlIndex = 0;
   PlayerState get _state => _manager.state;
 
@@ -107,10 +146,28 @@ class _LiveTvPlayerScreenState extends State<LiveTvPlayerScreen> {
     });
     _tvPlayPauseFocus.addListener(_onControlFocusChanged);
     _tvChannelsFocus.addListener(_onControlFocusChanged);
+    _tvAudioFocus.addListener(_onControlFocusChanged);
+    _tvSubtitleFocus.addListener(_onControlFocusChanged);
+    _tvBitrateFocus.addListener(_onControlFocusChanged);
     _tvPlaybackInfoFocus.addListener(_onControlFocusChanged);
     _playCurrentChannel();
     _scheduleHide();
     _startProgramRefresh();
+
+    WidgetsBinding.instance.addObserver(this);
+    if (PlatformDetection.isMobile) {
+      _initBrightness();
+      _initSystemVolume();
+    }
+    if (PlatformDetection.isAndroid && !PlatformDetection.isTV) {
+      _pipService.enableAutoPiP(true, owner: this);
+      _pipChangedSub = _pipService.onPiPChanged.listen(_onPiPChanged);
+      _pipActionSub = _pipService.onPiPAction.listen(_onPiPAction);
+      _pipScreenLockSub = _pipService.onScreenLock.listen(_onScreenLock);
+      _pipPlayingSub = _state.playingStream.listen((playing) {
+        _pipService.updatePiPActions(isPlaying: playing);
+      });
+    }
   }
 
   @override
@@ -120,18 +177,420 @@ class _LiveTvPlayerScreenState extends State<LiveTvPlayerScreen> {
     _hideTimer?.cancel();
     _programRefreshTimer?.cancel();
     _backendSub?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    _volumeOverlayTimer?.cancel();
+    _brightnessOverlayTimer?.cancel();
+    _pipChangedSub?.cancel();
+    _pipActionSub?.cancel();
+    _pipScreenLockSub?.cancel();
+    _pipPlayingSub?.cancel();
+    if (PlatformDetection.isAndroid && !PlatformDetection.isTV) {
+      _pipService.enableAutoPiP(false, owner: this);
+    }
+    if (PlatformDetection.isMobile) {
+      _volumeListenerSub?.cancel();
+      VolumeController.instance.removeListener();
+      _brightnessListenerSub?.cancel();
+      Future.microtask(() async {
+        try {
+          if (PlatformDetection.isIOS) {
+            await ScreenBrightnessPlatform.instance.setAutoReset(true);
+          } else {
+            await ScreenBrightnessPlatform.instance
+                .resetApplicationScreenBrightness();
+          }
+        } catch (_) {}
+      });
+    }
     _tvPlayPauseFocus.removeListener(_onControlFocusChanged);
     _tvChannelsFocus.removeListener(_onControlFocusChanged);
+    _tvAudioFocus.removeListener(_onControlFocusChanged);
+    _tvSubtitleFocus.removeListener(_onControlFocusChanged);
+    _tvBitrateFocus.removeListener(_onControlFocusChanged);
     _tvPlaybackInfoFocus.removeListener(_onControlFocusChanged);
     _overlayFocus.dispose();
     _tvPlayPauseFocus.dispose();
     _tvChannelsFocus.dispose();
+    _tvAudioFocus.dispose();
+    _tvSubtitleFocus.dispose();
+    _tvBitrateFocus.dispose();
     _tvPlaybackInfoFocus.dispose();
     if (!_isStopping) {
       _manager.stop(userInitiated: false);
     }
     unawaited(_restoreSystemUiForExit());
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState lifecycleState) {
+    // Android keeps the video rendering when backgrounded so the OS can capture
+    // a live frame for auto-PiP. On resume, re-read the system brightness in
+    // case it changed while away.
+    if (lifecycleState == AppLifecycleState.resumed &&
+        PlatformDetection.isMobile) {
+      _syncBrightnessFromSystem();
+    }
+  }
+
+  void _onPiPChanged(bool isInPiP) {
+    if (!mounted) return;
+    if (!isInPiP) {
+      _applyPlayerDisplayMode();
+      _showInfo();
+    }
+  }
+
+  void _onPiPAction(String action) {
+    switch (action) {
+      case 'playPause':
+        if (_state.isPlaying) {
+          _manager.pause();
+        } else {
+          _manager.resume();
+        }
+      case 'play':
+        _manager.resume();
+      case 'pause':
+        _manager.pause();
+      case 'dismissed':
+        final lifecycle = WidgetsBinding.instance.lifecycleState;
+        final isForeground =
+            lifecycle == AppLifecycleState.resumed ||
+            lifecycle == AppLifecycleState.inactive;
+        if (isForeground) return;
+        _exitPlayback();
+    }
+  }
+
+  void _onScreenLock(bool locked) {
+    if (locked) {
+      _wasPlayingBeforeScreenLock = _state.isPlaying;
+      if (_wasPlayingBeforeScreenLock) {
+        _manager.pause();
+      }
+    } else if (_wasPlayingBeforeScreenLock) {
+      _wasPlayingBeforeScreenLock = false;
+      _manager.resume();
+    }
+  }
+
+  void _initBrightness() {
+    final brightness = ScreenBrightnessPlatform.instance;
+    Future.microtask(() async {
+      try {
+        if (PlatformDetection.isIOS) {
+          await brightness.setAutoReset(true);
+          final current = await brightness.system;
+          if (mounted) setState(() => _brightnessValue = current);
+          _brightnessListenerSub = brightness.onSystemScreenBrightnessChanged
+              .listen((value) {
+                if (mounted && (value - _brightnessValue).abs() > 0.01) {
+                  setState(() => _brightnessValue = value);
+                }
+              });
+        } else {
+          await brightness.setAutoReset(false);
+          final current = await brightness.application;
+          if (mounted) setState(() => _brightnessValue = current);
+          _brightnessListenerSub = brightness
+              .onApplicationScreenBrightnessChanged
+              .listen((value) {
+                if (mounted && (value - _brightnessValue).abs() > 0.01) {
+                  setState(() => _brightnessValue = value);
+                }
+              });
+        }
+      } catch (_) {}
+    });
+  }
+
+  void _syncBrightnessFromSystem() {
+    Future.microtask(() async {
+      try {
+        final current = PlatformDetection.isIOS
+            ? await ScreenBrightnessPlatform.instance.system
+            : await ScreenBrightnessPlatform.instance.application;
+        if (mounted && (current - _brightnessValue).abs() > 0.01) {
+          setState(() => _brightnessValue = current);
+        }
+      } catch (_) {}
+    });
+  }
+
+  Future<void> _setBrightness(double value) async {
+    try {
+      final clamped = value.clamp(0.0, 1.0);
+      if (PlatformDetection.isIOS) {
+        await ScreenBrightnessPlatform.instance.setSystemScreenBrightness(
+          clamped,
+        );
+      } else {
+        await ScreenBrightnessPlatform.instance.setApplicationScreenBrightness(
+          clamped,
+        );
+      }
+    } catch (_) {}
+  }
+
+  void _initSystemVolume() {
+    final vc = VolumeController.instance;
+    vc.showSystemUI = false;
+    unawaited(_manager.backend?.setVolume(100.0));
+    _volumeListenerSub = vc.addListener((value) {
+      if (mounted && (value - _systemVolume).abs() > 0.01) {
+        setState(() => _systemVolume = value);
+      }
+      if (value < 0.99 &&
+          _media3VolumeBoostLevel > 0 &&
+          _activeMedia3Backend != null) {
+        unawaited(_setMedia3VolumeBoostLevel(0));
+      }
+    }, fetchInitialVolume: true);
+  }
+
+  Future<void> _setMobileSystemVolume(
+    double value, {
+    bool syncFromSystem = false,
+  }) async {
+    final clamped = value.clamp(0.0, 1.0);
+    if (mounted && (clamped - _systemVolume).abs() > 0.01) {
+      setState(() => _systemVolume = clamped);
+    }
+    _pendingMobileSystemVolume = clamped;
+    if (_isApplyingMobileSystemVolume) return;
+    _isApplyingMobileSystemVolume = true;
+    try {
+      while (_pendingMobileSystemVolume != null) {
+        final next = _pendingMobileSystemVolume!;
+        _pendingMobileSystemVolume = null;
+        await VolumeController.instance.setVolume(next);
+      }
+      if (syncFromSystem) {
+        final actual = await VolumeController.instance.getVolume();
+        if (mounted && (actual - _systemVolume).abs() > 0.01) {
+          setState(() => _systemVolume = actual);
+        }
+      }
+    } catch (_) {
+    } finally {
+      _isApplyingMobileSystemVolume = false;
+    }
+  }
+
+  Future<void> _setMedia3VolumeBoostLevel(int level) async {
+    final backend = _activeMedia3Backend;
+    if (backend == null) return;
+    final clampedLevel = level.clamp(0, 10).toInt();
+    if (_media3VolumeBoostLevel != clampedLevel) {
+      if (mounted) {
+        setState(() => _media3VolumeBoostLevel = clampedLevel);
+      } else {
+        _media3VolumeBoostLevel = clampedLevel;
+      }
+    }
+    await backend.setVolumeBoostLevel(clampedLevel);
+  }
+
+  void _showVolumeIndicator() {
+    setState(() => _showVolumeOverlay = true);
+    _volumeOverlayTimer?.cancel();
+    _volumeOverlayTimer = Timer(const Duration(milliseconds: 800), () {
+      if (mounted) setState(() => _showVolumeOverlay = false);
+    });
+  }
+
+  void _showBrightnessIndicator() {
+    setState(() => _showBrightnessOverlay = true);
+    _brightnessOverlayTimer?.cancel();
+    _brightnessOverlayTimer = Timer(const Duration(milliseconds: 800), () {
+      if (mounted) setState(() => _showBrightnessOverlay = false);
+    });
+  }
+
+  void _onVerticalDragStart(DragStartDetails details) {
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    _verticalDragStartY = details.localPosition.dy;
+    // Ignore drags that begin in the top edge strip so a swipe there pulls down
+    // the system notification shade instead of changing brightness or volume.
+    final topInset = MediaQuery.paddingOf(context).top;
+    final topDeadZone = topInset > 48.0 ? topInset : 48.0;
+    _verticalDragIgnored = _verticalDragStartY < topDeadZone;
+    if (_verticalDragIgnored) return;
+    _verticalDragIsVolume = details.localPosition.dx > screenWidth / 2;
+    if (_verticalDragIsVolume) {
+      final includeBoost = _activeMedia3Backend != null;
+      _verticalDragStartValue = includeBoost
+          ? _systemVolume + (_media3VolumeBoostLevel / 10.0)
+          : _systemVolume;
+      return;
+    }
+    _verticalDragStartValue = _brightnessValue;
+  }
+
+  void _onVerticalDragUpdate(DragUpdateDetails details) {
+    if (_verticalDragIgnored) return;
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final deltaY = _verticalDragStartY - details.localPosition.dy;
+    final deltaValue = deltaY / (screenHeight * 0.7);
+
+    if (_verticalDragIsVolume) {
+      final media3Backend = _activeMedia3Backend;
+      if (media3Backend != null) {
+        final rawEffective = (_verticalDragStartValue + deltaValue)
+            .clamp(0.0, 2.0)
+            .toDouble();
+        final newSystemVolume = rawEffective.clamp(0.0, 1.0).toDouble();
+        final newBoostLevel = rawEffective <= 1.0
+            ? 0
+            : ((rawEffective - 1.0) * 10.0).round().clamp(0, 10).toInt();
+        unawaited(_setMedia3VolumeBoostLevel(newBoostLevel));
+        unawaited(_setMobileSystemVolume(newSystemVolume));
+      } else {
+        final newVolume = (_verticalDragStartValue + deltaValue)
+            .clamp(0.0, 1.0)
+            .toDouble();
+        unawaited(_setMobileSystemVolume(newVolume));
+      }
+      _showVolumeIndicator();
+    } else {
+      final newBrightness = (_verticalDragStartValue + deltaValue).clamp(
+        0.0,
+        1.0,
+      );
+      _brightnessValue = newBrightness;
+      _setBrightness(newBrightness);
+      _showBrightnessIndicator();
+    }
+  }
+
+  void _onVerticalDragEnd(DragEndDetails details) {
+    if (_verticalDragIgnored) return;
+    if (_verticalDragIsVolume) {
+      unawaited(_setMobileSystemVolume(_systemVolume, syncFromSystem: true));
+    }
+  }
+
+  void _onVerticalDragCancel() {
+    if (_verticalDragIgnored) return;
+    if (_verticalDragIsVolume) {
+      unawaited(_setMobileSystemVolume(_systemVolume, syncFromSystem: true));
+    }
+  }
+
+  Widget _buildVolumeOverlay() {
+    final displayVolume = _systemVolume;
+    final usingMedia3Boost = _activeMedia3Backend != null;
+    final overlayProgress = usingMedia3Boost
+        ? ((displayVolume * 100.0) + (_media3VolumeBoostLevel * 10.0)).clamp(
+                0.0,
+                200.0,
+              ) /
+              200.0
+        : displayVolume.clamp(0.0, 1.0);
+    final overlayLabel = usingMedia3Boost && _media3VolumeBoostLevel > 0
+        ? 'Volume +$_media3VolumeBoostLevel'
+        : '${(displayVolume * 100).round()}%';
+    return Positioned.fill(
+      child: AnimatedOpacity(
+        opacity: _showVolumeOverlay ? 1.0 : 0.0,
+        duration: const Duration(milliseconds: 200),
+        child: IgnorePointer(
+          child: Align(
+            alignment: const Alignment(0.85, 0.0),
+            child: _buildGestureIndicator(
+              icon: displayVolume <= 0
+                  ? Icons.volume_off_rounded
+                  : displayVolume < 0.5
+                  ? Icons.volume_down_rounded
+                  : Icons.volume_up_rounded,
+              value: overlayProgress,
+              label: overlayLabel,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBrightnessOverlay() {
+    return Positioned.fill(
+      child: AnimatedOpacity(
+        opacity: _showBrightnessOverlay ? 1.0 : 0.0,
+        duration: const Duration(milliseconds: 200),
+        child: IgnorePointer(
+          child: Align(
+            alignment: const Alignment(-0.85, 0.0),
+            child: _buildGestureIndicator(
+              icon: _brightnessValue <= 0.25
+                  ? Icons.brightness_low_rounded
+                  : _brightnessValue >= 0.75
+                  ? Icons.brightness_high_rounded
+                  : Icons.brightness_medium_rounded,
+              value: _brightnessValue,
+              label: '${(_brightnessValue * 100).round()}%',
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGestureIndicator({
+    required IconData icon,
+    required double value,
+    required String label,
+  }) {
+    const barHeight = 120.0;
+    final fillHeight = barHeight * value.clamp(0.0, 1.0);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.6),
+        borderRadius: AppRadius.circular(14),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AdaptiveIcon(icon, color: Colors.white, size: 24),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: barHeight,
+            width: 4,
+            child: ClipRRect(
+              borderRadius: AppRadius.circular(2),
+              child: Stack(
+                children: [
+                  const Positioned.fill(
+                    child: ColoredBox(color: Colors.white24),
+                  ),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: fillHeight,
+                    child: const ColoredBox(color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: 88,
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   GuideChannel get _currentChannel => widget.channels[_currentIndex];
@@ -261,7 +720,10 @@ class _LiveTvPlayerScreenState extends State<LiveTvPlayerScreen> {
 
   void _scheduleHide() {
     _hideTimer?.cancel();
-    _hideTimer = Timer(const Duration(seconds: 5), () {
+    final hideDelay = PlatformDetection.useMobileUi
+        ? const Duration(seconds: 8)
+        : const Duration(seconds: 5);
+    _hideTimer = Timer(hideDelay, () {
       if (!mounted) return;
       if (_isOverlayInteractionActive) {
         _scheduleHide();
@@ -274,32 +736,33 @@ class _LiveTvPlayerScreenState extends State<LiveTvPlayerScreen> {
     });
   }
 
+  /// OSD controls in visual order. Audio/subtitle only participate when their
+  /// buttons are shown, so arrow navigation never lands on a hidden control.
+  List<FocusNode> get _osdFocusOrder => [
+        _tvPlayPauseFocus,
+        _tvChannelsFocus,
+        if (_streamsOfType('Audio').length > 1) _tvAudioFocus,
+        if (_streamsOfType('Subtitle').isNotEmpty) _tvSubtitleFocus,
+        _tvBitrateFocus,
+        _tvPlaybackInfoFocus,
+      ];
+
   bool get _isOverlayInteractionActive {
     if (_isGuidePickerOpen) return true;
-    if (!PlatformDetection.isTV) return false;
-    return _tvPlayPauseFocus.hasFocus ||
-        _tvChannelsFocus.hasFocus ||
-        _tvPlaybackInfoFocus.hasFocus;
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) return true;
+    return false;
   }
 
   void _onControlFocusChanged() {
     if (!mounted || !PlatformDetection.isTV) return;
-    if (_tvPlayPauseFocus.hasFocus) {
-      _focusedControlIndex = 0;
-    } else if (_tvChannelsFocus.hasFocus) {
-      _focusedControlIndex = 1;
-    } else if (_tvPlaybackInfoFocus.hasFocus) {
-      _focusedControlIndex = 2;
-    }
-    if (_tvPlayPauseFocus.hasFocus || _tvChannelsFocus.hasFocus) {
-      _hideTimer?.cancel();
+    final order = _osdFocusOrder;
+    final focused = order.indexWhere((node) => node.hasFocus);
+    if (focused >= 0) {
+      _focusedControlIndex = focused;
       if (!_infoVisible) {
         setState(() => _infoVisible = true);
       }
-      return;
-    }
-
-    if (_infoVisible) {
       _scheduleHide();
     }
   }
@@ -327,13 +790,21 @@ class _LiveTvPlayerScreenState extends State<LiveTvPlayerScreen> {
     _scheduleHide();
   }
 
+  void _hideInfo() {
+    _hideTimer?.cancel();
+    if (_infoVisible) {
+      setState(() => _infoVisible = false);
+    }
+    // Move focus off the OSD controls so it doesn't immediately re-pin itself
+    // (a focused control keeps the OSD visible via _onControlFocusChanged).
+    if (PlatformDetection.isTV) {
+      _overlayFocus.requestFocus();
+    }
+  }
+
   void _toggleInfo() {
     if (_infoVisible) {
-      _hideTimer?.cancel();
-      setState(() => _infoVisible = false);
-      if (PlatformDetection.isTV) {
-        _overlayFocus.requestFocus();
-      }
+      _hideInfo();
     } else {
       _showInfo();
     }
@@ -377,6 +848,127 @@ class _LiveTvPlayerScreenState extends State<LiveTvPlayerScreen> {
         streamInfoSections: streamInfoSections,
       ),
     );
+    _showInfo();
+  }
+
+  List<Map<String, dynamic>> _streamsOfType(String type) =>
+      (_manager.currentResolution?.mediaStreams ??
+              const <Map<String, dynamic>>[])
+          .where((s) => s['Type'] == type)
+          .toList();
+
+  String _streamLabel(Map<String, dynamic> stream, String fallback) {
+    final display = stream['DisplayTitle'] as String? ?? '';
+    if (display.isNotEmpty) return display;
+    final title = stream['Title'] as String? ?? '';
+    if (title.isNotEmpty) return title;
+    final language = stream['Language'] as String? ?? '';
+    if (language.isNotEmpty) return language;
+    return fallback;
+  }
+
+  void _showAudioSelector() {
+    final l10n = AppLocalizations.of(context);
+    final streams = _streamsOfType('Audio');
+    if (streams.isEmpty) return;
+
+    final currentIndex = _manager.audioStreamIndex ??
+        (streams.firstWhere(
+          (s) => s['IsDefault'] == true,
+          orElse: () => streams.first,
+        )['Index'] as int?);
+    final selected =
+        streams.indexWhere((s) => s['Index'] == currentIndex);
+
+    final options = <TrackOption>[];
+    for (var i = 0; i < streams.length; i++) {
+      final details = [
+        (streams[i]['Codec'] as String? ?? '').toUpperCase(),
+        streams[i]['ChannelLayout'] as String? ?? '',
+      ].where((s) => s.isNotEmpty).join(' • ');
+      options.add(TrackOption(
+        label: _streamLabel(streams[i], '${l10n.audioTrack} ${i + 1}'),
+        subtitle: details.isEmpty ? null : details,
+      ));
+    }
+
+    unawaited(() async {
+      final result = await TrackSelectorDialog.show(
+        context,
+        title: l10n.audioTrack,
+        options: options,
+        selectedIndex: selected >= 0 ? selected : null,
+      );
+      _suppressBackNavigation();
+      if (result == null || !mounted) return;
+      final index = streams[result]['Index'] as int?;
+      if (index != null) unawaited(_manager.changeAudioTrack(index));
+    }());
+    _showInfo();
+  }
+
+  void _showSubtitleSelector() {
+    final l10n = AppLocalizations.of(context);
+    final streams = _streamsOfType('Subtitle');
+
+    final current = _manager.subtitleStreamIndex;
+    final selectedStream = current == null || current < 0
+        ? -1
+        : streams.indexWhere((s) => s['Index'] == current);
+
+    final options = <TrackOption>[TrackOption(label: l10n.off)];
+    for (var i = 0; i < streams.length; i++) {
+      final codec = (streams[i]['Codec'] as String? ?? '').toUpperCase();
+      options.add(TrackOption(
+        label: _streamLabel(streams[i], '${l10n.subtitleTrack} ${i + 1}'),
+        subtitle: codec.isEmpty ? null : codec,
+      ));
+    }
+
+    unawaited(() async {
+      final result = await TrackSelectorDialog.show(
+        context,
+        title: l10n.subtitleTrack,
+        options: options,
+        selectedIndex: selectedStream >= 0 ? selectedStream + 1 : 0,
+      );
+      _suppressBackNavigation();
+      if (result == null || !mounted) return;
+      if (result == 0) {
+        unawaited(_manager.disableSubtitles());
+        return;
+      }
+      final index = streams[result - 1]['Index'] as int?;
+      if (index != null) unawaited(_manager.changeSubtitleTrack(index));
+    }());
+    _showInfo();
+  }
+
+  void _showBitrateSelector() {
+    final l10n = AppLocalizations.of(context);
+    final options = <int?>[null, 40, 20, 12, 8, 4, 2];
+    final current = _manager.maxBitrateOverrideMbps;
+
+    final trackOptions = options
+        .map(
+          (mbps) => TrackOption(
+            label: mbps == null ? l10n.auto : l10n.bitrateValueMbps(mbps),
+          ),
+        )
+        .toList();
+    final currentIdx = options.indexWhere((mbps) => mbps == current);
+
+    unawaited(() async {
+      final result = await TrackSelectorDialog.show(
+        context,
+        title: l10n.bitrate,
+        options: trackOptions,
+        selectedIndex: currentIdx >= 0 ? currentIdx : null,
+      );
+      _suppressBackNavigation();
+      if (result == null || !mounted) return;
+      unawaited(_manager.changeBitrate(options[result]));
+    }());
     _showInfo();
   }
 
@@ -587,48 +1179,22 @@ class _LiveTvPlayerScreenState extends State<LiveTvPlayerScreen> {
     return 'SDR';
   }
 
+  // Opens the channel guide as an in-player overlay (not a separate route) so
+  // the single existing video surface can be shrunk into the mini-player box
+  // and shown for BOTH the media_kit and Media3 engines. See [_buildVideoSurface].
   Future<void> _showChannelPicker() async {
+    if (_isGuidePickerOpen) return;
     _hideTimer?.cancel();
     _suppressBackNavigation();
-    if (!_isGuidePickerOpen) {
-      setState(() => _isGuidePickerOpen = true);
-    }
-
+    setState(() => _isGuidePickerOpen = true);
     await _applyGuideDisplayMode();
-    if (!mounted) return;
+  }
 
-    String? selectedChannelId;
-    try {
-      selectedChannelId = await Navigator.of(context).push<String>(
-        MaterialPageRoute(
-          builder: (context) => LiveTvGuideScreen(
-            miniPlayerMode: true,
-            currentChannel: _currentChannel,
-          ),
-        ),
-      );
-    } finally {
-      if (mounted) {
-        _applyPlayerDisplayMode();
-      }
-      if (mounted && _isGuidePickerOpen) {
-        setState(() => _isGuidePickerOpen = false);
-      }
-      _suppressBackNavigation();
-    }
-
-    if (!mounted) return;
-
-    if (selectedChannelId != null && selectedChannelId != _currentChannel.id) {
-      final selectedIndex = widget.channels.indexWhere(
-        (channel) => channel.id == selectedChannelId,
-      );
-      if (selectedIndex >= 0) {
-        await _switchChannel(selectedIndex);
-        return;
-      }
-    }
-
+  void _closeGuideOverlay() {
+    if (!_isGuidePickerOpen) return;
+    setState(() => _isGuidePickerOpen = false);
+    _applyPlayerDisplayMode();
+    _suppressBackNavigation();
     if (_infoVisible) {
       _scheduleHide();
       if (PlatformDetection.isTV) {
@@ -637,6 +1203,17 @@ class _LiveTvPlayerScreenState extends State<LiveTvPlayerScreen> {
           _tvChannelsFocus.requestFocus();
         });
       }
+    }
+  }
+
+  Future<void> _onGuideChannelSelected(String channelId) async {
+    _closeGuideOverlay();
+    if (channelId == _currentChannel.id) return;
+    final selectedIndex = widget.channels.indexWhere(
+      (channel) => channel.id == channelId,
+    );
+    if (selectedIndex >= 0) {
+      await _switchChannel(selectedIndex);
     }
   }
 
@@ -688,8 +1265,22 @@ class _LiveTvPlayerScreenState extends State<LiveTvPlayerScreen> {
 
     final strokeShadows = subtitleStrokeShadows(strokeColor, fontSize);
 
+    final activeIndex = _manager.subtitleStreamIndex;
+    bool isAssOrPgs = false;
+    if (activeIndex != null && activeIndex >= 0) {
+      final mediaStreams = _manager.currentResolution?.mediaStreams;
+      if (mediaStreams != null) {
+        final activeStream = mediaStreams.firstWhere(
+          (s) => s['Index'] == activeIndex,
+          orElse: () => const <String, dynamic>{},
+        );
+        final codec = activeStream['Codec'] as String?;
+        isAssOrPgs = shouldRenderSubtitleNatively(codec);
+      }
+    }
+
     return SubtitleViewConfiguration(
-      visible: true,
+      visible: PlatformDetection.isDesktop ? false : !isAssOrPgs,
       style: TextStyle(
         inherit: false,
         height: 1.4,
@@ -710,6 +1301,12 @@ class _LiveTvPlayerScreenState extends State<LiveTvPlayerScreen> {
       return KeyEventResult.ignored;
     }
 
+    // While the in-player guide overlay is open it owns all navigation keys;
+    // let them flow to the embedded guide's focus subtree.
+    if (_isGuidePickerOpen) {
+      return KeyEventResult.ignored;
+    }
+
     switch (event.logicalKey) {
       case LogicalKeyboardKey.arrowUp:
       case LogicalKeyboardKey.arrowDown:
@@ -718,6 +1315,7 @@ class _LiveTvPlayerScreenState extends State<LiveTvPlayerScreen> {
           return KeyEventResult.handled;
         }
         if (PlatformDetection.isTV) {
+          _scheduleHide();
           return KeyEventResult.handled;
         }
         return KeyEventResult.ignored;
@@ -764,7 +1362,7 @@ class _LiveTvPlayerScreenState extends State<LiveTvPlayerScreen> {
   }
 
   void _moveControlFocus(int delta) {
-    final order = [_tvPlayPauseFocus, _tvChannelsFocus, _tvPlaybackInfoFocus];
+    final order = _osdFocusOrder;
     _focusedControlIndex =
         (_focusedControlIndex + delta).clamp(0, order.length - 1);
     order[_focusedControlIndex].requestFocus();
@@ -772,11 +1370,24 @@ class _LiveTvPlayerScreenState extends State<LiveTvPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final gesturesEnabled =
+        PlatformDetection.isMobile && !_isGuidePickerOpen;
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
-        if (_isGuidePickerOpen || _isBackNavigationSuppressed) return;
+        if (_isGuidePickerOpen) {
+          _closeGuideOverlay();
+          return;
+        }
+        if (_isBackNavigationSuppressed) return;
+        // Back dismisses the on-screen controls first; only exit the player once
+        // the OSD is already hidden (e.g. after returning from the EPG overlay,
+        // where a focused control otherwise keeps the OSD pinned open).
+        if (_infoVisible) {
+          _hideInfo();
+          return;
+        }
         _exitPlayback();
       },
       child: Scaffold(
@@ -787,6 +1398,10 @@ class _LiveTvPlayerScreenState extends State<LiveTvPlayerScreen> {
           onKeyEvent: _handleKeyEvent,
           child: GestureDetector(
             onTap: PlatformDetection.isTV ? null : _toggleInfo,
+            onVerticalDragStart: gesturesEnabled ? _onVerticalDragStart : null,
+            onVerticalDragUpdate: gesturesEnabled ? _onVerticalDragUpdate : null,
+            onVerticalDragEnd: gesturesEnabled ? _onVerticalDragEnd : null,
+            onVerticalDragCancel: gesturesEnabled ? _onVerticalDragCancel : null,
             behavior: HitTestBehavior.opaque,
             child: MouseRegion(
               cursor: PlatformDetection.useDesktopUi && !_infoVisible
@@ -806,7 +1421,10 @@ class _LiveTvPlayerScreenState extends State<LiveTvPlayerScreen> {
                 children: [
                   _buildVideoSurface(),
                   _buildBufferingIndicator(),
-                  if (_infoVisible) ...[
+                  if (PlatformDetection.isMobile) _buildBrightnessOverlay(),
+                  if (PlatformDetection.isMobile) _buildVolumeOverlay(),
+                  if (_isGuidePickerOpen) _buildGuideOverlay(),
+                  if (_infoVisible && !_isGuidePickerOpen) ...[
                     _buildTopOverlay(),
                     _buildBottomOverlay(),
                   ],
@@ -819,9 +1437,34 @@ class _LiveTvPlayerScreenState extends State<LiveTvPlayerScreen> {
     );
   }
 
+  // Fullscreen normally, or the mini-player box (geometry shared with the guide
+  // overlay) while the in-player guide is open. The surface is only resized,
+  // never recreated, so the Media3 SurfaceView keeps its decoder and frame-rate
+  // matching intact.
+  Rect _videoRect(Size size) {
+    if (_isGuidePickerOpen) {
+      return const Rect.fromLTWH(
+        LiveTvGuideScreen.miniPlayerVideoLeft,
+        LiveTvGuideScreen.miniPlayerVideoTop,
+        LiveTvGuideScreen.miniPlayerVideoWidth,
+        LiveTvGuideScreen.miniPlayerVideoHeight,
+      );
+    }
+    return Rect.fromLTWH(0, 0, size.width, size.height);
+  }
+
   Widget _buildVideoSurface() {
+    return AnimatedPositioned.fromRect(
+      rect: _videoRect(MediaQuery.sizeOf(context)),
+      duration: _kGuideResizeDuration,
+      curve: Curves.easeInOut,
+      child: _buildVideoChild(),
+    );
+  }
+
+  Widget _buildVideoChild() {
     if (PlatformDetection.isTizen) {
-      return _buildTizenVideoSurface();
+      return _buildTizenVideoChild();
     }
 
     final prefersMedia3 =
@@ -829,83 +1472,91 @@ class _LiveTvPlayerScreenState extends State<LiveTvPlayerScreen> {
         PlaybackEnginePreference.media3;
     final prewarmMedia3 = _manager.backend == null && prefersMedia3;
     if (_activeMedia3Backend != null || prewarmMedia3) {
-      return const Positioned.fill(child: Media3VideoView(fill: Colors.black));
+      return const Media3VideoView(fill: Colors.black);
     }
 
     final htmlBackend = _activeHtmlVideoBackend;
     if (htmlBackend != null) {
-      return Positioned.fill(child: htmlBackend.buildView(fit: BoxFit.contain));
+      return htmlBackend.buildView(fit: BoxFit.contain);
     }
 
     final mediaKitBackend = _activeMediaKitBackend ?? _backend;
     if (mediaKitBackend == null) {
-      return const Positioned.fill(child: ColoredBox(color: Colors.black));
+      return const ColoredBox(color: Colors.black);
     }
-    final size = MediaQuery.sizeOf(context);
     if (PlatformDetection.useNativeVideoSurface) {
-      return Positioned.fill(
-        child: NativeVideoView(
-          player: mediaKitBackend.player,
-          fill: Colors.black,
-          videoOutput: 'gpu',
-          hardwareDecodingEnabled: _prefs.get(UserPreferences.hardwareDecoding),
-        ),
+      return NativeVideoView(
+        player: mediaKitBackend.player,
+        fill: Colors.black,
+        videoOutput: 'gpu',
+        hardwareDecodingEnabled: _prefs.get(UserPreferences.hardwareDecoding),
       );
     }
 
     final controller = mediaKitBackend.videoController;
     if (controller == null) {
-      return const Positioned.fill(child: ColoredBox(color: Colors.black));
+      return const ColoredBox(color: Colors.black);
     }
 
-    return Positioned.fill(
-      child: Video(
-        controller: controller,
-        controls: NoVideoControls,
-        width: size.width,
-        height: size.height,
-        fit: BoxFit.contain,
-        fill: Colors.black,
-        pauseUponEnteringBackgroundMode: false,
-        subtitleViewConfiguration: _buildSubtitleConfig(),
-      ),
+    return Video(
+      controller: controller,
+      controls: NoVideoControls,
+      fit: BoxFit.contain,
+      fill: Colors.black,
+      pauseUponEnteringBackgroundMode: false,
+      subtitleViewConfiguration: _buildSubtitleConfig(),
     );
   }
 
-  Widget _buildTizenVideoSurface() {
+  Widget _buildTizenVideoChild() {
     final backend = _manager.backend;
     if (backend is! TizenPlayerBackend) {
-      return const Positioned.fill(child: ColoredBox(color: Colors.black));
+      return const ColoredBox(color: Colors.black);
     }
     final controller = backend.controller;
     if (controller == null || !controller.value.isInitialized) {
-      return const Positioned.fill(child: ColoredBox(color: Colors.black));
+      return const ColoredBox(color: Colors.black);
     }
-    return Positioned.fill(
-      child: ColoredBox(
-        color: Colors.black,
-        child: FittedBox(
-          fit: BoxFit.contain,
-          child: SizedBox(
-            width: controller.value.size.width,
-            height: controller.value.size.height,
-            child: VideoPlayer(controller),
-          ),
+    return ColoredBox(
+      color: Colors.black,
+      child: FittedBox(
+        fit: BoxFit.contain,
+        child: SizedBox(
+          width: controller.value.size.width,
+          height: controller.value.size.height,
+          child: VideoPlayer(controller),
         ),
       ),
     );
   }
 
+  Widget _buildGuideOverlay() {
+    return Positioned.fill(
+      child: LiveTvGuideScreen(
+        embedded: true,
+        miniPlayerMode: true,
+        currentChannel: _currentChannel,
+        onChannelSelected: _onGuideChannelSelected,
+        onClose: _closeGuideOverlay,
+      ),
+    );
+  }
+
   Widget _buildBufferingIndicator() {
-    return StreamBuilder<bool>(
-      stream: _state.bufferingStream,
-      initialData: _state.isBuffering,
-      builder: (context, snap) {
-        if (snap.data != true) return const SizedBox.shrink();
-        return Center(
-          child: CircularProgressIndicator(color: AppColorScheme.accent),
-        );
-      },
+    return AnimatedPositioned.fromRect(
+      rect: _videoRect(MediaQuery.sizeOf(context)),
+      duration: _kGuideResizeDuration,
+      curve: Curves.easeInOut,
+      child: StreamBuilder<bool>(
+        stream: _state.bufferingStream,
+        initialData: _state.isBuffering,
+        builder: (context, snap) {
+          if (snap.data != true) return const SizedBox.shrink();
+          return Center(
+            child: CircularProgressIndicator(color: AppColorScheme.accent),
+          );
+        },
+      ),
     );
   }
 
@@ -951,7 +1602,7 @@ class _LiveTvPlayerScreenState extends State<LiveTvPlayerScreen> {
                 ),
                 decoration: BoxDecoration(
                   color: AppColorScheme.accent,
-                  borderRadius: BorderRadius.circular(4),
+                  borderRadius: AppRadius.circular(4),
                 ),
                 child: Text(
                   channel.number!,
@@ -1056,6 +1707,8 @@ class _LiveTvPlayerScreenState extends State<LiveTvPlayerScreen> {
 
   Widget _buildPlaybackControlsRow() {
     final l10n = AppLocalizations.of(context);
+    final hasAudioChoices = _streamsOfType('Audio').length > 1;
+    final hasSubtitles = _streamsOfType('Subtitle').isNotEmpty;
 
     return Padding(
       padding: const EdgeInsets.only(top: AppSpacing.spaceSm),
@@ -1093,6 +1746,31 @@ class _LiveTvPlayerScreenState extends State<LiveTvPlayerScreen> {
               onPressed: _toggleOrientationLock,
             ),
           ],
+          if (hasAudioChoices) ...[
+            const SizedBox(width: AppSpacing.spaceSm),
+            _buildOverlayControlButton(
+              focusNode: PlatformDetection.isTV ? _tvAudioFocus : null,
+              icon: Icons.audiotrack_rounded,
+              tooltip: l10n.audioTrack,
+              onPressed: _showAudioSelector,
+            ),
+          ],
+          if (hasSubtitles) ...[
+            const SizedBox(width: AppSpacing.spaceSm),
+            _buildOverlayControlButton(
+              focusNode: PlatformDetection.isTV ? _tvSubtitleFocus : null,
+              icon: Icons.subtitles_rounded,
+              tooltip: l10n.subtitleTrack,
+              onPressed: _showSubtitleSelector,
+            ),
+          ],
+          const SizedBox(width: AppSpacing.spaceSm),
+          _buildOverlayControlButton(
+            focusNode: PlatformDetection.isTV ? _tvBitrateFocus : null,
+            icon: Icons.video_settings_outlined,
+            tooltip: l10n.bitrate,
+            onPressed: _showBitrateSelector,
+          ),
           const SizedBox(width: AppSpacing.spaceSm),
           _buildOverlayControlButton(
             focusNode: PlatformDetection.isTV ? _tvPlaybackInfoFocus : null,
@@ -1147,7 +1825,7 @@ class _LiveTvPlayerScreenState extends State<LiveTvPlayerScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(2),
+                  borderRadius: AppRadius.circular(2),
                   child: LinearProgressIndicator(
                     value: progress,
                     backgroundColor: Colors.white24,

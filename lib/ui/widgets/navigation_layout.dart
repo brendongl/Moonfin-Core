@@ -4,6 +4,7 @@ import 'package:get_it/get_it.dart';
 import '../../preference/preference_constants.dart';
 import '../../preference/user_preferences.dart';
 import '../../util/platform_detection.dart';
+import '../../util/overlay_color_palette.dart';
 import 'download_progress_bar.dart';
 import 'left_sidebar.dart';
 import 'mobile_bottom_nav_bar.dart';
@@ -22,6 +23,10 @@ class NavigationLayout extends StatefulWidget {
   final Widget child;
   final bool showBackButton;
   final bool showNavigationChrome;
+
+  /// Keep the top toolbar fixed instead of letting it translate away as the
+  /// content scrolls. No effect off-TV, where the toolbar is already fixed.
+  final bool pinTopToolbar;
 
   static bool get allowBottomNavbar =>
       PlatformDetection.useMobileUi && !PlatformDetection.isWeb;
@@ -50,6 +55,11 @@ class NavigationLayout extends StatefulWidget {
   static final focusContentFromNavbarNotifier = ValueNotifier<VoidCallback?>(
     null,
   );
+  static final focusDetailsPlayButtonNotifier = ValueNotifier<FocusNode?>(null);
+
+  /// True while a media-bar trailer is playing; the toolbar and sidebar fade
+  /// out on TV. Focusing chrome cancels the trailer, which fades them back in.
+  static final trailerImmersiveNotifier = ValueNotifier<bool>(false);
 
   const NavigationLayout({
     super.key,
@@ -57,6 +67,7 @@ class NavigationLayout extends StatefulWidget {
     required this.child,
     this.showBackButton = false,
     this.showNavigationChrome = true,
+    this.pinTopToolbar = false,
   });
 
   @override
@@ -136,15 +147,17 @@ class _NavigationLayoutState extends State<NavigationLayout> with WidgetsBinding
 
   @override
   Widget build(BuildContext context) {
-    if (!widget.showNavigationChrome) {
-      return widget.child;
-    }
-    return switch (_position) {
+    final layout = switch (_position) {
       NavbarPosition.left => _buildSidebar(),
       NavbarPosition.top => _buildToolbar(),
       NavbarPosition.bottom =>
         NavigationLayout.allowBottomNavbar ? _buildBottomBar() : _buildToolbar(),
     };
+    // Grouping only pays off when the tier draws real backdrop blurs, the
+    // sheen tier never does.
+    return AppColorScheme.isGlass && GlassSettings.blursBackdrop
+        ? BackdropGroup(child: layout)
+        : layout;
   }
 
   Widget _buildBottomBar() {
@@ -153,27 +166,61 @@ class _NavigationLayoutState extends State<NavigationLayout> with WidgetsBinding
       skipTraversal: true,
       child: widget.child,
     );
-    return Column(
+    return Stack(
       children: [
-        Expanded(child: content),
-        const DownloadProgressBar(),
-        const BottomMusicBar(),
-        MobileBottomNavBar(activeRoute: widget.activeRoute),
+        Column(
+          children: [
+            Expanded(child: content),
+            const DownloadProgressBar(),
+            const BottomMusicBar(),
+            AnimatedOpacity(
+              opacity: widget.showNavigationChrome ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 200),
+              child: IgnorePointer(
+                ignoring: !widget.showNavigationChrome,
+                child: MobileBottomNavBar(activeRoute: widget.activeRoute),
+              ),
+            ),
+          ],
+        ),
+        if (widget.showBackButton)
+          Positioned(
+            top: 16,
+            left: 16,
+            child: SafeArea(
+              child: _buildFloatingBackButton(),
+            ),
+          ),
       ],
     );
   }
 
   Widget _buildToolbar() {
-    final translateWithScroll = PlatformDetection.isTV;
+    final translateWithScroll = PlatformDetection.isTV && !widget.pinTopToolbar;
     final content = Focus(
       focusNode: _contentFocusNode,
       skipTraversal: true,
       child: widget.child,
     );
-    final toolbar = TopToolbar(
-      activeRoute: widget.activeRoute,
-      showBackButton: widget.showBackButton,
-      contentFocusNode: _contentFocusNode,
+    final toolbar = ValueListenableBuilder<bool>(
+      valueListenable: NavigationLayout.trailerImmersiveNotifier,
+      builder: (context, trailerImmersive, child) {
+        final show = widget.showNavigationChrome &&
+            !(trailerImmersive && PlatformDetection.isTV);
+        return AnimatedOpacity(
+          opacity: show ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 200),
+          child: IgnorePointer(
+            ignoring: !show,
+            child: child,
+          ),
+        );
+      },
+      child: TopToolbar(
+        activeRoute: widget.activeRoute,
+        showBackButton: widget.showBackButton,
+        contentFocusNode: _contentFocusNode,
+      ),
     );
     final maxTranslate = TopToolbar.heightFor(context);
     final body = translateWithScroll
@@ -189,12 +236,8 @@ class _NavigationLayoutState extends State<NavigationLayout> with WidgetsBinding
             child: content,
           )
         : content;
-    // The top toolbar is a fixed overlay off-TV, so content must reserve the
-    // embedded music bar's extra height or it gets occluded. On TV the toolbar
-    // translates with scroll, so its reserve belongs in the scrolling list
-    // inset instead and is handled there.
     final musicExtra = TopToolbar.musicBarExtraHeight();
-    final insetBody = (!translateWithScroll && musicExtra > 0)
+    final insetBody = (widget.pinTopToolbar && musicExtra > 0)
         ? Padding(padding: EdgeInsets.only(top: musicExtra), child: body)
         : body;
     return Column(
@@ -207,13 +250,15 @@ class _NavigationLayoutState extends State<NavigationLayout> with WidgetsBinding
                 ValueListenableBuilder<double>(
                   valueListenable: _toolbarScrollOffset,
                   builder: (_, offset, child) {
-                    final translate = offset.clamp(0.0, maxTranslate);
+                    final translate = widget.showNavigationChrome
+                        ? offset.clamp(0.0, maxTranslate)
+                        : maxTranslate;
                     return Positioned(
                       left: 0,
                       right: 0,
                       top: -translate,
                       child: IgnorePointer(
-                        ignoring: translate >= maxTranslate,
+                        ignoring: !widget.showNavigationChrome || translate >= maxTranslate,
                         child: child!,
                       ),
                     );
@@ -226,6 +271,14 @@ class _NavigationLayoutState extends State<NavigationLayout> with WidgetsBinding
                   right: 0,
                   top: 0,
                   child: toolbar,
+                ),
+              if (widget.showBackButton &&
+                  !PlatformDetection.isTV &&
+                  !widget.showNavigationChrome)
+                Positioned(
+                  top: 16,
+                  left: 16,
+                  child: SafeArea(child: _buildFloatingBackButton()),
                 ),
             ],
           ),
@@ -242,10 +295,25 @@ class _NavigationLayoutState extends State<NavigationLayout> with WidgetsBinding
       child: widget.child,
     );
 
-    final sidebar = LeftSidebar(
-      activeRoute: widget.activeRoute,
-      contentFocusNode: _contentFocusNode,
-      showBackButton: widget.showBackButton,
+    final sidebar = ValueListenableBuilder<bool>(
+      valueListenable: NavigationLayout.trailerImmersiveNotifier,
+      builder: (context, trailerImmersive, child) {
+        final show = widget.showNavigationChrome &&
+            !(trailerImmersive && PlatformDetection.isTV);
+        return AnimatedOpacity(
+          opacity: show ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 200),
+          child: IgnorePointer(
+            ignoring: !show,
+            child: child,
+          ),
+        );
+      },
+      child: LeftSidebar(
+        activeRoute: widget.activeRoute,
+        contentFocusNode: _contentFocusNode,
+        showBackButton: widget.showBackButton,
+      ),
     );
 
     if (PlatformDetection.isTV || (PlatformDetection.isDesktop || (PlatformDetection.isWeb && !PlatformDetection.useMobileUi))) {
@@ -261,6 +329,12 @@ class _NavigationLayoutState extends State<NavigationLayout> with WidgetsBinding
                   bottom: 0,
                   child: sidebar,
                 ),
+                if (widget.showBackButton && !PlatformDetection.isTV)
+                  Positioned(
+                    top: 16,
+                    left: 88,
+                    child: _buildFloatingBackButton(),
+                  ),
               ],
             ),
           ),
@@ -283,6 +357,44 @@ class _NavigationLayoutState extends State<NavigationLayout> with WidgetsBinding
         ),
         const DownloadProgressBar(),
       ],
+    );
+  }
+
+  Widget _buildFloatingBackButton() {
+    final overlayColor = OverlayColorPalette.resolveColor(
+      _prefs.get(UserPreferences.navbarColor),
+    );
+    final opacity = _prefs.get(UserPreferences.navbarOpacity) / 100.0;
+    final backgroundColor = ThemeRegistry.active.transparentNavbarSurface
+        ? Colors.transparent
+        : overlayColor.withValues(alpha: opacity);
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => context.popOrHome(),
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.25),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: const Icon(
+            Icons.arrow_back,
+            size: 20,
+            color: Colors.white,
+          ),
+        ),
+      ),
     );
   }
 }

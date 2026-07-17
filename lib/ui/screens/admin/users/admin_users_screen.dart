@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:moonfin_design/moonfin_design.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../../navigation/destinations.dart';
+import '../../../widgets/adaptive/adaptive_dialog.dart';
 import '../providers/admin_user_providers.dart';
+import '../widgets/admin_form_styles.dart';
 import 'admin_user_delete_dialog.dart';
 import '../../../../l10n/app_localizations.dart';
 
@@ -27,7 +30,7 @@ class _AdminUsersScreenState extends ConsumerState<AdminUsersScreen> {
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => AlertDialog.adaptive(
         title: Text(willDisable ? l10n.adminDisableUser : l10n.adminEnableUser),
         content: Text(
           willDisable
@@ -35,7 +38,7 @@ class _AdminUsersScreenState extends ConsumerState<AdminUsersScreen> {
               : l10n.adminEnableUserConfirm(user.name ?? ''),
         ),
         actions: [
-          TextButton(
+          adaptiveDialogAction(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: Text(l10n.cancel),
           ),
@@ -130,13 +133,20 @@ class _AdminUsersScreenState extends ConsumerState<AdminUsersScreen> {
           Column(
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                child: adminScreenHeader(
+                  context,
+                  title: l10n.adminDrawerUsers,
+                  icon: Icons.group_outlined,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
                 child: TextField(
                   controller: _searchController,
                   onChanged: (value) => setState(() => _searchQuery = value.trim()),
-                  decoration: InputDecoration(
-                    hintText: l10n.adminSearchUsers,
-                    prefixIcon: const Icon(Icons.search),
+                  decoration: adminInputDecoration(
+                    hint: l10n.adminSearchUsers,
                     suffixIcon: _searchQuery.isEmpty
                         ? null
                         : IconButton(
@@ -146,10 +156,7 @@ class _AdminUsersScreenState extends ConsumerState<AdminUsersScreen> {
                             },
                             icon: const Icon(Icons.clear),
                           ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
+                  ).copyWith(prefixIcon: const Icon(Icons.search)),
                 ),
               ),
               Expanded(
@@ -176,9 +183,11 @@ class _AdminUsersScreenState extends ConsumerState<AdminUsersScreen> {
                       ? '?'
                       : displayName.characters.first.toUpperCase();
 
-                  return Card(
-                    clipBehavior: Clip.antiAlias,
-                    child: InkWell(
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: adminListCard(
+                      child: InkWell(
+                      borderRadius: AppRadius.circular(18),
                       onTap: () => context.push(Destinations.adminUser(user.id)),
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
@@ -301,6 +310,7 @@ class _AdminUsersScreenState extends ConsumerState<AdminUsersScreen> {
                         ),
                       ),
                     ),
+                    ),
                   );
                 },
               ),
@@ -335,7 +345,7 @@ class _AdminUsersScreenState extends ConsumerState<AdminUsersScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: base.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: AppRadius.circular(999),
         border: Border.all(color: base.withValues(alpha: 0.35)),
       ),
       child: Row(

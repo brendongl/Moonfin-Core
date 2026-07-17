@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -8,6 +9,9 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../../../l10n/app_localizations.dart';
 import '../../../../util/platform_detection.dart';
+import '../../../../util/insecure_certificates.dart';
+import '../../../../util/webview_environment.dart';
+import '../widgets/admin_form_styles.dart';
 
 class PluginWebSettingsScreen extends StatefulWidget {
   final Uri configurationPageUri;
@@ -42,6 +46,7 @@ class _PluginWebSettingsScreenState extends State<PluginWebSettingsScreen> {
     const style = document.createElement('style');
     style.id = styleId;
     style.textContent = `
+      /* Legacy jellyfin-web shell (older servers) */
       #header,
       .skinHeader,
       .mainDrawer,
@@ -51,12 +56,18 @@ class _PluginWebSettingsScreenState extends State<PluginWebSettingsScreen> {
       .sectionTabs,
       .emby-tab-button,
       .pageTitle,
-      .pageTitleWithLogo {
+      .pageTitleWithLogo,
+      /* Modern React dashboard chrome (10.9+) */
+      .MuiAppBar-root,
+      .MuiDrawer-root {
         display: none !important;
       }
 
+      /* Reclaim the space the removed chrome used, without forcing colors so
+         the server's own (usually dark) theme is preserved. */
       html,
       body,
+      main,
       .mainAnimatedPage,
       .page,
       .scrollY,
@@ -65,13 +76,14 @@ class _PluginWebSettingsScreenState extends State<PluginWebSettingsScreen> {
         padding-top: 0 !important;
       }
 
-      html,
-      body,
+      main,
       .mainAnimatedPage,
       .page,
-      .scrollY,
       .content-primary {
-        background-color: #ffffff !important;
+        margin-left: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
       }
     `;
     document.head.appendChild(style);
@@ -156,13 +168,16 @@ class _PluginWebSettingsScreenState extends State<PluginWebSettingsScreen> {
         NavigationDelegate(
           onNavigationRequest: (request) {
             final parsed = Uri.tryParse(request.url);
-
-            if (parsed != null && !_isSameOrigin(parsed)) {
-              _openExternalUri(parsed);
-              return NavigationDecision.prevent;
+            if (parsed == null || _isSameOrigin(parsed)) {
+              return NavigationDecision.navigate;
             }
-
-            return NavigationDecision.navigate;
+            // Only hand main-frame navigations to the browser; block cross
+            // origin sub-frame loads (e.g. injected media-bar YouTube
+            // trailers) so they do not spawn browser tabs.
+            if (request.isMainFrame) {
+              _openExternalUri(parsed);
+            }
+            return NavigationDecision.prevent;
           },
           onPageStarted: (url) {
             if (!mounted) return;
@@ -285,23 +300,23 @@ class _PluginWebSettingsScreenState extends State<PluginWebSettingsScreen> {
         _effectivePort(uri) == _effectivePort(base);
   }
 
-  String _buildBootstrapHtml(Uri targetUrl) {
-    final payload = <String, dynamic>{
-      'Servers': <Map<String, dynamic>>[
-        <String, dynamic>{
-          'Id': widget.serverId,
-          'Name': widget.serverName,
-          'Url': _normalizedServerBaseUrl,
-          'ManualAddress': _normalizedServerBaseUrl,
-          'AccessToken': widget.accessToken,
-          'UserId': widget.userId ?? '',
-          'DateLastAccessed': DateTime.now().millisecondsSinceEpoch,
-          'LastConnectionMode': 1,
-        },
-      ],
-    };
+  Map<String, dynamic> _credentialsPayload() => {
+        'Servers': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'Id': widget.serverId,
+            'Name': widget.serverName,
+            'Url': _normalizedServerBaseUrl,
+            'ManualAddress': _normalizedServerBaseUrl,
+            'AccessToken': widget.accessToken,
+            'UserId': widget.userId ?? '',
+            'DateLastAccessed': DateTime.now().millisecondsSinceEpoch,
+            'LastConnectionMode': 1,
+          },
+        ],
+      };
 
-    final payloadLiteral = jsonEncode(payload);
+  String _buildBootstrapHtml(Uri targetUrl) {
+    final payloadLiteral = jsonEncode(_credentialsPayload());
     final targetLiteral = jsonEncode(targetUrl.toString());
     return '''<!doctype html><html lang="en"><head><meta charset="utf-8"></head><body>
 <script>(() => {
@@ -323,6 +338,27 @@ class _PluginWebSettingsScreenState extends State<PluginWebSettingsScreen> {
   location.replace($targetLiteral);
 })();</script>
 </body></html>''';
+  }
+
+  String _buildCredentialsJs() {
+    final payloadLiteral = jsonEncode(_credentialsPayload());
+    return '''(() => {
+  try {
+    const credentials = $payloadLiteral;
+    const s = JSON.stringify(credentials);
+    const keys = [
+      'jellyfin_credentials',
+      'jellyfin_credentials_v2',
+      'jellyfin_credentials_v3',
+      'jellyfin-credentials',
+      'emby_credentials',
+    ];
+    for (const k of keys) {
+      localStorage.setItem(k, s);
+      sessionStorage.setItem(k, s);
+    }
+  } catch (_) {}
+})();''';
   }
 
   Future<void> _openExternalUri(Uri uri) async {
@@ -457,17 +493,9 @@ class _PluginWebSettingsScreenState extends State<PluginWebSettingsScreen> {
             controller: _addressController,
             textInputAction: TextInputAction.go,
             onSubmitted: (_) => _goToAddress(),
-            decoration: InputDecoration(
-              isDense: true,
-              hintText: l10n.address,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 10,
-              ),
-              prefixIcon: const Icon(Icons.language, size: 18),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
+            decoration: adminInputDecoration(
+              hint: l10n.address,
+              suffixIcon: const Icon(Icons.language, size: 18),
             ),
           );
 
@@ -514,31 +542,50 @@ class _PluginWebSettingsScreenState extends State<PluginWebSettingsScreen> {
   Widget _buildInAppWebView() {
     return InAppWebView(
       key: const ValueKey('plugin-webview-inapp'),
+      webViewEnvironment: gWebViewEnvironment,
       initialSettings: InAppWebViewSettings(
         javaScriptEnabled: true,
         domStorageEnabled: true,
+        isInspectable: kDebugMode,
       ),
-      initialData: InAppWebViewInitialData(
-        data: _buildBootstrapHtml(_currentUrl),
-        baseUrl: WebUri.uri(_serverBaseUri.resolve('/web/')),
-        mimeType: 'text/html',
-        encoding: 'utf-8',
-      ),
+      initialUrlRequest: URLRequest(url: WebUri.uri(_currentUrl)),
+      initialUserScripts: UnmodifiableListView<UserScript>([
+        UserScript(
+          source: _buildCredentialsJs(),
+          injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+        ),
+      ]),
       onWebViewCreated: (controller) {
         _inAppController = controller;
       },
+      // Only override trust evaluation when the user opted into self-signed
+      // certificates; otherwise leave it null so default validation runs (a
+      // CANCEL-for-all handler would break valid HTTPS on Apple platforms).
+      onReceivedServerTrustAuthRequest: gAllowSelfSignedCertificates
+          ? (controller, challenge) async => ServerTrustAuthResponse(
+                action: ServerTrustAuthResponseAction.PROCEED,
+              )
+          : null,
       shouldOverrideUrlLoading: (controller, navigationAction) async {
         final targetUri = navigationAction.request.url?.uriValue;
         if (targetUri == null) {
           return NavigationActionPolicy.ALLOW;
         }
-
-        if (!_isSameOrigin(targetUri)) {
-          _openExternalUri(targetUri);
-          return NavigationActionPolicy.CANCEL;
+        if (_isSameOrigin(targetUri)) {
+          return NavigationActionPolicy.ALLOW;
         }
-
-        return NavigationActionPolicy.ALLOW;
+        // Cross-origin: only open the external browser for a real user link
+        // click in the main frame. Silently block script-driven and sub-frame
+        // loads (e.g. the injected media-bar YouTube trailers) so they do not
+        // spawn browser tabs.
+        final isUserClick = navigationAction.isForMainFrame &&
+            (navigationAction.navigationType ==
+                    NavigationType.LINK_ACTIVATED ||
+                navigationAction.hasGesture == true);
+        if (isUserClick) {
+          _openExternalUri(targetUri);
+        }
+        return NavigationActionPolicy.CANCEL;
       },
       onLoadStart: (controller, uri) {
         _currentUrl = uri?.uriValue ?? _currentUrl;

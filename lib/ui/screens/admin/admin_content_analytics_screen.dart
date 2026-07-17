@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:moonfin_design/moonfin_design.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../l10n/app_localizations.dart';
 import 'libraries/admin_libraries_screen.dart';
 import 'providers/admin_media_analytics_provider.dart';
+import 'widgets/admin_form_styles.dart';
 import 'widgets/admin_media_summary_section.dart';
 
 class AdminContentAnalyticsScreen extends ConsumerStatefulWidget {
@@ -43,14 +45,56 @@ class _AdminContentAnalyticsScreenState
           ],
         ),
       ),
-      data: (analytics) => RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(adminMediaSummaryProvider);
-          ref.invalidate(adminMediaAnalyticsProvider);
-          await ref.read(adminMediaAnalyticsProvider.future);
-        },
-        child: _buildBody(context, analytics),
-      ),
+      data: (state) {
+        final data = state.data;
+        if (data == null) {
+          final percentage = (state.progress * 100).toInt();
+          return Center(
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 320),
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 24),
+                  Text(
+                    l10n.adminAnalyticsLoadingProgress(percentage),
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(100),
+                    child: LinearProgressIndicator(
+                      value: state.progress,
+                      minHeight: 6,
+                      backgroundColor: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest
+                          .withValues(alpha: 0.4),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+        return RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(adminMediaSummaryProvider);
+            ref.invalidate(adminMediaAnalyticsProvider);
+            await ref.read(adminMediaAnalyticsProvider.future);
+          },
+          child: _buildBody(context, data),
+        );
+      },
     );
   }
 
@@ -111,8 +155,13 @@ class _AdminContentAnalyticsScreenState
     );
 
     return ListView(
-      padding: EdgeInsets.fromLTRB(16, 16, 16, bottomInset),
+      padding: EdgeInsets.fromLTRB(16, 20, 16, bottomInset),
       children: [
+        adminScreenHeader(
+          context,
+          title: l10n.adminDrawerAnalytics,
+          icon: Icons.insights_outlined,
+        ),
         _LibraryTabGrid(
           tabs: tabs,
           selectedKey: activeTabKey,
@@ -385,15 +434,15 @@ class _LibraryTabBox extends StatelessWidget {
       color: selected
           ? theme.colorScheme.primaryContainer
           : theme.colorScheme.surfaceContainerHigh,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: AppRadius.circular(10),
       child: InkWell(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: AppRadius.circular(10),
         onTap: onTap,
         child: Container(
           height: 44,
           padding: const EdgeInsets.symmetric(horizontal: 10),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: AppRadius.circular(10),
             border: Border.all(
               color: selected
                   ? theme.colorScheme.primary.withValues(alpha: 0.35)

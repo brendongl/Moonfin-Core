@@ -25,14 +25,13 @@ enum HomeSectionKind {
 /// Identifies which third-party plugin produced a `pluginDynamic` entry so
 /// row loading can dispatch to the correct backend.
 enum HomeSectionPluginSource {
-  /// IAmParadox27 "Home Screen Sections" plugin.
-  hss('hss'),
-
   collections('collections'),
 
   genres('genres'),
 
-  playlists('playlists');
+  playlists('playlists'),
+
+  custom('custom');
 
   const HomeSectionPluginSource(this.serializedName);
   final String serializedName;
@@ -41,7 +40,7 @@ enum HomeSectionPluginSource {
     for (final v in HomeSectionPluginSource.values) {
       if (v.serializedName == value) return v;
     }
-    return HomeSectionPluginSource.hss;
+    return HomeSectionPluginSource.collections;
   }
 }
 
@@ -67,7 +66,7 @@ class HomeSectionConfig {
     this.pluginSection,
     this.pluginAdditionalData,
     this.pluginDisplayText,
-    this.pluginSource = HomeSectionPluginSource.hss,
+    this.pluginSource = HomeSectionPluginSource.collections,
   });
 
   factory HomeSectionConfig.pluginDynamic({
@@ -77,7 +76,7 @@ class HomeSectionConfig {
     String? pluginDisplayText,
     bool enabled = true,
     int order = 0,
-    HomeSectionPluginSource pluginSource = HomeSectionPluginSource.hss,
+    HomeSectionPluginSource pluginSource = HomeSectionPluginSource.collections,
   }) => HomeSectionConfig(
     kind: HomeSectionKind.pluginDynamic,
     type: HomeSectionType.none,
@@ -312,15 +311,39 @@ class HomeSectionConfig {
       enabled: false,
       order: 31,
     ),
+    HomeSectionConfig(
+      type: HomeSectionType.radarrCalendar,
+      enabled: false,
+      order: 38,
+    ),
+    HomeSectionConfig(
+      type: HomeSectionType.sonarrCalendar,
+      enabled: false,
+      order: 39,
+    ),
   ];
+
+  static bool isSupportedJson(Map<String, dynamic> json) {
+    if (json['kind'] != HomeSectionKind.pluginDynamic.serializedName) return true;
+    final source = json['pluginSource'] as String?;
+    return HomeSectionPluginSource.values.any((s) => s.serializedName == source);
+  }
 
   static List<HomeSectionConfig> fromJsonString(String jsonString) {
     if (jsonString.isEmpty) return defaults();
     try {
       final list = jsonDecode(jsonString) as List;
-      return list
-          .map((e) => HomeSectionConfig.fromJson(e as Map<String, dynamic>))
-          .toList();
+      final parsed = <HomeSectionConfig>[];
+      for (final e in list) {
+        if (e is Map<String, dynamic> && isSupportedJson(e)) {
+          final cfg = HomeSectionConfig.fromJson(e);
+          if (cfg.isBuiltin && cfg.type == HomeSectionType.none) {
+            continue;
+          }
+          parsed.add(cfg);
+        }
+      }
+      return parsed;
     } catch (_) {
       return defaults();
     }

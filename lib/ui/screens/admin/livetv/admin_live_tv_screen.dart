@@ -3,9 +3,12 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
+import 'package:moonfin_design/moonfin_design.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../../../l10n/app_localizations.dart';
+import '../../../widgets/adaptive/adaptive_dialog.dart';
+import '../widgets/admin_form_styles.dart';
 
 class AdminLiveTvScreen extends StatefulWidget {
   const AdminLiveTvScreen({super.key});
@@ -18,6 +21,7 @@ class _AdminLiveTvScreenState extends State<AdminLiveTvScreen> {
   bool _loading = true;
   bool _discovering = false;
   bool _savingConfig = false;
+  bool _refreshingGuide = false;
   String? _error;
 
   List<Map<String, dynamic>> _tuners = const [];
@@ -38,6 +42,19 @@ class _AdminLiveTvScreenState extends State<AdminLiveTvScreen> {
       final status = error.response?.statusCode;
       if (status == 404 || status == 405 || status == 501) {
         return AppLocalizations.of(context).adminLiveTvNotAvailable;
+      }
+      final data = error.response?.data;
+      if (data is Map) {
+        final message =
+            data['message'] ?? data['Message'] ?? data['error'] ?? data['title'];
+        if (message != null && message.toString().trim().isNotEmpty) {
+          return message.toString();
+        }
+      } else if (data is String && data.trim().isNotEmpty) {
+        return data;
+      }
+      if (status != null) {
+        return AppLocalizations.of(context).adminServerReturnedHttp(status);
       }
     }
     return error.toString();
@@ -95,6 +112,32 @@ class _AdminLiveTvScreenState extends State<AdminLiveTvScreen> {
     return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 
+  String _guideDaysText() {
+    final l10n = AppLocalizations.of(context);
+    final days = (_config['GuideDays'] as num?)?.toInt();
+    return days == null
+        ? l10n.adminGuideDaysAuto
+        : l10n.adminGuideDaysValue(days);
+  }
+
+  Widget _dialogSectionLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(2, 16, 2, 8),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          text.toUpperCase(),
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.1,
+            color: AppColorScheme.accent.withValues(alpha: 0.9),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _discoverTuners() async {
     if (_discovering) return;
     setState(() => _discovering = true);
@@ -114,77 +157,222 @@ class _AdminLiveTvScreenState extends State<AdminLiveTvScreen> {
     }
   }
 
+  Future<List<(String, String)>> _loadTunerTypes() async {
+    final l10n = AppLocalizations.of(context);
+    final fallback = <(String, String)>[
+      ('m3u', l10n.adminTunerTypeM3u),
+      ('hdhomerun', l10n.adminTunerTypeHdHomerun),
+    ];
+    try {
+      final types = await _api.getTunerHostTypes();
+      final parsed = <(String, String)>[];
+      for (final type in types) {
+        final id = _display(type, const ['Id', 'Type'], fallback: '');
+        final name = _display(type, const ['Name'], fallback: id);
+        if (id.isNotEmpty) parsed.add((id, name));
+      }
+      return parsed.isEmpty ? fallback : parsed;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
   Future<void> _showAddTunerDialog({Map<String, dynamic>? seed}) async {
-    final typeController = TextEditingController(
-      text: _display(seed ?? const {}, const ['Type', 'TunerType'], fallback: 'M3U'),
-    );
+    final source = seed ?? const <String, dynamic>{};
+    final existingId = _display(source, const ['Id'], fallback: '');
+    final isEdit = existingId.isNotEmpty;
+    final deviceId = _display(source, const ['DeviceId'], fallback: '');
+
+    final types = await _loadTunerTypes();
+    if (!mounted) return;
+
+    var type = _display(source, const ['Type', 'TunerType'], fallback: types.first.$1);
+    if (!types.any((t) => t.$1 == type)) type = types.first.$1;
+
     final urlController = TextEditingController(
-      text: _display(seed ?? const {}, const ['Url', 'Path', 'ImportUrl'], fallback: ''),
+      text: _display(source, const ['Url', 'Path', 'ImportUrl'], fallback: ''),
     );
     final nameController = TextEditingController(
-      text: _display(seed ?? const {}, const ['Name', 'FriendlyName'], fallback: ''),
+      text: _display(source, const ['FriendlyName', 'Name'], fallback: ''),
+    );
+    final userAgentController = TextEditingController(
+      text: _display(source, const ['UserAgent'], fallback: ''),
+    );
+    final tunerCountController = TextEditingController(
+      text: (_intValue(source['TunerCount'])).toString(),
+    );
+    final fallbackBitrate = _intValue(source['FallbackMaxStreamingBitrate']);
+    final fallbackBitrateController = TextEditingController(
+      text: fallbackBitrate > 0 ? (fallbackBitrate / 1000000).toString() : '',
     );
 
+    var importFavoritesOnly = source['ImportFavoritesOnly'] as bool? ?? false;
+    var allowHwTranscoding = source['AllowHWTranscoding'] as bool? ?? false;
+    var allowFmp4 = source['AllowFmp4TranscodingContainer'] as bool? ?? false;
+    var allowStreamSharing = source['AllowStreamSharing'] as bool? ?? true;
+    var enableStreamLooping = source['EnableStreamLooping'] as bool? ?? false;
+    var ignoreDts = source['IgnoreDts'] as bool? ?? true;
+    var readAtNativeFramerate = source['ReadAtNativeFramerate'] as bool? ?? true;
+
+    final l10n = AppLocalizations.of(context);
     final payload = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(AppLocalizations.of(context).adminAddTuner),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: typeController,
-                decoration: InputDecoration(
-                  labelText: AppLocalizations.of(context).adminTunerType,
-                  hintText: AppLocalizations.of(context).adminTunerTypeHint,
-                  border: OutlineInputBorder(),
+      builder: (ctx) => AlertDialog.adaptive(
+        title: Text(isEdit ? l10n.adminEditTuner : l10n.adminAddTuner),
+        content: SizedBox(
+          width: 400,
+          child: StatefulBuilder(
+            builder: (ctx, setLocal) {
+              final isHd = type == 'hdhomerun';
+              return SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      initialValue: type,
+                      decoration: adminInputDecoration(label: l10n.adminTunerType),
+                      items: types
+                          .map((t) => DropdownMenuItem(
+                                value: t.$1,
+                                child: Text(t.$2),
+                              ))
+                          .toList(),
+                      onChanged: (value) {
+                        if (value != null) setLocal(() => type = value);
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: urlController,
+                      decoration: adminInputDecoration(
+                        label: isHd
+                            ? l10n.adminTunerIpAddress
+                            : l10n.adminTunerFileOrUrl,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: nameController,
+                      decoration: adminInputDecoration(
+                        label: l10n.adminTunerFriendlyName,
+                      ),
+                    ),
+                    if (!isHd) ...[
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: userAgentController,
+                        decoration: adminInputDecoration(
+                          label: l10n.adminTunerUserAgent,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: tunerCountController,
+                        keyboardType: TextInputType.number,
+                        decoration: adminInputDecoration(
+                          label: l10n.adminTunerCount,
+                          helper: l10n.adminTunerCountHelp,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: fallbackBitrateController,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: adminInputDecoration(
+                        label: l10n.adminTunerFallbackBitrate,
+                        suffixText: 'Mbps',
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    if (isHd) ...[
+                      adminSwitchRow(
+                        title: l10n.adminTunerImportFavoritesOnly,
+                        value: importFavoritesOnly,
+                        onChanged: (v) => setLocal(() => importFavoritesOnly = v),
+                      ),
+                      adminSwitchRow(
+                        title: l10n.adminTunerAllowHwTranscoding,
+                        value: allowHwTranscoding,
+                        onChanged: (v) => setLocal(() => allowHwTranscoding = v),
+                      ),
+                    ] else ...[
+                      adminSwitchRow(
+                        title: l10n.adminTunerAllowFmp4,
+                        value: allowFmp4,
+                        onChanged: (v) => setLocal(() => allowFmp4 = v),
+                      ),
+                      adminSwitchRow(
+                        title: l10n.adminTunerAllowStreamSharing,
+                        value: allowStreamSharing,
+                        onChanged: (v) => setLocal(() => allowStreamSharing = v),
+                      ),
+                      adminSwitchRow(
+                        title: l10n.adminTunerEnableStreamLooping,
+                        value: enableStreamLooping,
+                        onChanged: (v) => setLocal(() => enableStreamLooping = v),
+                      ),
+                      adminSwitchRow(
+                        title: l10n.adminTunerIgnoreDts,
+                        value: ignoreDts,
+                        onChanged: (v) => setLocal(() => ignoreDts = v),
+                      ),
+                      adminSwitchRow(
+                        title: l10n.adminTunerReadAtNativeFramerate,
+                        value: readAtNativeFramerate,
+                        onChanged: (v) => setLocal(() => readAtNativeFramerate = v),
+                      ),
+                    ],
+                  ],
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: urlController,
-                decoration: InputDecoration(
-                  labelText: AppLocalizations.of(context).adminUrlPath,
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: nameController,
-                decoration: InputDecoration(
-                  labelText: AppLocalizations.of(context).adminNameOptional,
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
+              );
+            },
           ),
         ),
         actions: [
-          TextButton(
+          adaptiveDialogAction(
             onPressed: () => Navigator.pop(ctx),
-            child: Text(AppLocalizations.of(context).cancel),
+            child: Text(l10n.cancel),
           ),
           FilledButton(
             onPressed: () {
-              final type = typeController.text.trim();
               final url = urlController.text.trim();
               final name = nameController.text.trim();
-              Navigator.pop(ctx, {
+              final userAgent = userAgentController.text.trim();
+              final mbps = double.tryParse(fallbackBitrateController.text.trim());
+              Navigator.pop(ctx, <String, dynamic>{
+                if (isEdit) 'Id': existingId,
+                if (deviceId.isNotEmpty) 'DeviceId': deviceId,
                 'Type': type,
-                'Url': url,
-                if (name.isNotEmpty) 'Name': name,
+                'Url': url.isEmpty ? null : url,
+                'FriendlyName': name.isEmpty ? null : name,
+                'UserAgent': userAgent.isEmpty ? null : userAgent,
+                'TunerCount':
+                    int.tryParse(tunerCountController.text.trim()) ?? 0,
+                'FallbackMaxStreamingBitrate':
+                    mbps == null ? null : (mbps * 1000000).round(),
+                'ImportFavoritesOnly': importFavoritesOnly,
+                'AllowHWTranscoding': allowHwTranscoding,
+                'AllowFmp4TranscodingContainer': allowFmp4,
+                'AllowStreamSharing': allowStreamSharing,
+                'EnableStreamLooping': enableStreamLooping,
+                'IgnoreDts': ignoreDts,
+                'ReadAtNativeFramerate': readAtNativeFramerate,
               });
             },
-            child: Text(AppLocalizations.of(context).add),
+            child: Text(isEdit ? l10n.save : l10n.add),
           ),
         ],
       ),
     );
 
-    typeController.dispose();
     urlController.dispose();
     nameController.dispose();
+    userAgentController.dispose();
+    tunerCountController.dispose();
+    fallbackBitrateController.dispose();
 
     if (payload == null || !mounted) return;
     try {
@@ -202,99 +390,330 @@ class _AdminLiveTvScreenState extends State<AdminLiveTvScreen> {
     }
   }
 
-  Future<void> _showAddProviderDialog() async {
-    final typeController = TextEditingController(text: 'XMLTV');
-    final urlController = TextEditingController();
-    final usernameController = TextEditingController();
-    final passwordController = TextEditingController();
-    final refreshHoursController = TextEditingController(text: '24');
+  List<String> _splitCategories(String text) {
+    return text
+        .split('|')
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .toList();
+  }
 
+  Future<void> _showAddProviderDialog({Map<String, dynamic>? seed}) async {
+    final source = seed ?? const <String, dynamic>{};
+    final existingId = _display(source, const ['Id'], fallback: '');
+    final isEdit = existingId.isNotEmpty;
+
+    final seedType = _display(source, const ['Type'], fallback: 'xmltv');
+    var kind = seedType.toLowerCase() == 'schedulesdirect'
+        ? 'SchedulesDirect'
+        : 'xmltv';
+
+    // XMLTV fields.
+    final pathController = TextEditingController(
+      text: _display(source, const ['Path', 'Url'], fallback: ''),
+    );
+    final moviePrefixController = TextEditingController(
+      text: _display(source, const ['MoviePrefix'], fallback: ''),
+    );
+    final userAgentController = TextEditingController(
+      text: _display(source, const ['UserAgent'], fallback: ''),
+    );
+    final moviesController = TextEditingController(
+      text: (source['MovieCategories'] as List?)?.join('|') ?? '',
+    );
+    final kidsController = TextEditingController(
+      text: (source['KidsCategories'] as List?)?.join('|') ?? '',
+    );
+    final newsController = TextEditingController(
+      text: (source['NewsCategories'] as List?)?.join('|') ?? '',
+    );
+    final sportsController = TextEditingController(
+      text: (source['SportsCategories'] as List?)?.join('|') ?? '',
+    );
+
+    // Schedules Direct fields.
+    final usernameController = TextEditingController(
+      text: _display(source, const ['Username'], fallback: ''),
+    );
+    final passwordController = TextEditingController();
+    final zipController = TextEditingController(
+      text: _display(source, const ['ZipCode'], fallback: ''),
+    );
+    var enableAllTuners = source['EnableAllTuners'] as bool? ?? true;
+    var country = _display(source, const ['Country'], fallback: '');
+    var listingsId = _display(source, const ['ListingsId'], fallback: '');
+    var providerId = existingId;
+    var loadingListings = false;
+    String? listingsError;
+    var countries = <Map<String, dynamic>>[];
+    var listings = <Map<String, dynamic>>[];
+
+    try {
+      countries = await _api.getSchedulesDirectCountries();
+    } catch (_) {}
+    if (!mounted) return;
+
+    final l10n = AppLocalizations.of(context);
     final payload = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(AppLocalizations.of(context).adminAddProvider),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: typeController,
-                decoration: InputDecoration(
-                  labelText: AppLocalizations.of(context).adminProviderType,
-                  hintText: AppLocalizations.of(context).adminProviderTypeHint,
-                  border: OutlineInputBorder(),
+      builder: (ctx) => AlertDialog.adaptive(
+        title: Text(isEdit ? l10n.adminEditProvider : l10n.adminAddProvider),
+        content: SizedBox(
+          width: 400,
+          child: StatefulBuilder(
+            builder: (ctx, setLocal) {
+              Future<void> fetchListings() async {
+                setLocal(() {
+                  loadingListings = true;
+                  listingsError = null;
+                });
+                try {
+                  final login = await _api.addListingProvider(
+                    {
+                      if (providerId.isNotEmpty) 'Id': providerId,
+                      'Type': 'SchedulesDirect',
+                      'Username': usernameController.text.trim(),
+                      'Password': passwordController.text,
+                    },
+                    validateLogin: true,
+                  );
+                  final id = _display(login, const ['Id'], fallback: providerId);
+                  final found = await _api.getListingProviderLineups(
+                    providerId: id,
+                    location: zipController.text.trim(),
+                    country: country,
+                  );
+                  setLocal(() {
+                    providerId = id;
+                    listings = found;
+                    loadingListings = false;
+                    if (!found.any((e) => _display(e, const ['Id']) == listingsId)) {
+                      listingsId = '';
+                    }
+                  });
+                } catch (e) {
+                  setLocal(() {
+                    loadingListings = false;
+                    listingsError = _friendlyError(e);
+                  });
+                }
+              }
+
+              return SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      initialValue: kind,
+                      decoration: adminInputDecoration(label: l10n.adminProviderType),
+                      items: [
+                        DropdownMenuItem(
+                          value: 'xmltv',
+                          child: Text(l10n.adminProviderXmltv),
+                        ),
+                        DropdownMenuItem(
+                          value: 'SchedulesDirect',
+                          child: Text(l10n.adminProviderSchedulesDirect),
+                        ),
+                      ],
+                      onChanged: isEdit
+                          ? null
+                          : (value) {
+                              if (value != null) setLocal(() => kind = value);
+                            },
+                    ),
+                    const SizedBox(height: 12),
+                    if (kind == 'xmltv') ...[
+                      TextField(
+                        controller: pathController,
+                        decoration:
+                            adminInputDecoration(label: l10n.adminXmltvPath),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: userAgentController,
+                        decoration: adminInputDecoration(
+                          label: l10n.adminTunerUserAgent,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: moviePrefixController,
+                        decoration: adminInputDecoration(
+                          label: l10n.adminXmltvMoviePrefix,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: moviesController,
+                        decoration: adminInputDecoration(
+                          label: l10n.adminXmltvMovieCategories,
+                          helper: l10n.adminXmltvCategoriesHelp,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: kidsController,
+                        decoration: adminInputDecoration(
+                          label: l10n.adminXmltvKidsCategories,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: newsController,
+                        decoration: adminInputDecoration(
+                          label: l10n.adminXmltvNewsCategories,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: sportsController,
+                        decoration: adminInputDecoration(
+                          label: l10n.adminXmltvSportsCategories,
+                        ),
+                      ),
+                    ] else ...[
+                      TextField(
+                        controller: usernameController,
+                        decoration:
+                            adminInputDecoration(label: l10n.adminSdUsername),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: passwordController,
+                        obscureText: true,
+                        decoration:
+                            adminInputDecoration(label: l10n.adminSdPassword),
+                      ),
+                      const SizedBox(height: 12),
+                      adminCodeDropdown(
+                        label: l10n.adminSdCountry,
+                        defaultLabel: l10n.adminSdCountrySelect,
+                        current: country,
+                        rawItems: countries.map((c) => (
+                              _display(c, const ['ShortName', 'Id'], fallback: ''),
+                              _display(c, const ['FullName', 'Name'], fallback: ''),
+                            )),
+                        onChanged: (value) =>
+                            setLocal(() => country = value ?? ''),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: zipController,
+                        decoration:
+                            adminInputDecoration(label: l10n.adminSdPostalCode),
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: loadingListings ? null : fetchListings,
+                        icon: loadingListings
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.download),
+                        label: Text(l10n.adminSdGetListings),
+                      ),
+                      if (listingsError != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          listingsError!,
+                          style: TextStyle(color: Theme.of(ctx).colorScheme.error),
+                        ),
+                      ],
+                      if (listings.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          initialValue: listingsId.isEmpty ? null : listingsId,
+                          isExpanded: true,
+                          decoration:
+                              adminInputDecoration(label: l10n.adminSdListings),
+                          items: listings
+                              .map((e) => DropdownMenuItem(
+                                    value: _display(e, const ['Id']),
+                                    child: Text(_display(e, const ['Name', 'Id'])),
+                                  ))
+                              .toList(),
+                          onChanged: (value) =>
+                              setLocal(() => listingsId = value ?? ''),
+                        ),
+                      ],
+                    ],
+                    adminSwitchRow(
+                      title: l10n.adminEnableAllTuners,
+                      value: enableAllTuners,
+                      onChanged: (v) => setLocal(() => enableAllTuners = v),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: urlController,
-                decoration: InputDecoration(
-                  labelText: AppLocalizations.of(context).adminUrlPath,
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: usernameController,
-                decoration: InputDecoration(
-                  labelText: AppLocalizations.of(context).adminUsernameOptional,
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: passwordController,
-                obscureText: true,
-                decoration: InputDecoration(
-                  labelText: AppLocalizations.of(context).adminPasswordOptional,
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: refreshHoursController,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: AppLocalizations.of(context).adminRefreshInterval,
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
+              );
+            },
           ),
         ),
         actions: [
-          TextButton(
+          adaptiveDialogAction(
             onPressed: () => Navigator.pop(ctx),
-            child: Text(AppLocalizations.of(context).cancel),
+            child: Text(l10n.cancel),
           ),
           FilledButton(
             onPressed: () {
-              final refresh = int.tryParse(refreshHoursController.text.trim());
-              final payload = <String, dynamic>{
-                'Type': typeController.text.trim(),
-                if (urlController.text.trim().isNotEmpty) 'Url': urlController.text.trim(),
-                if (usernameController.text.trim().isNotEmpty) 'Username': usernameController.text.trim(),
-                if (passwordController.text.trim().isNotEmpty) 'Password': passwordController.text.trim(),
-                'RefreshIntervalHours': ?refresh,
-              };
-              Navigator.pop(ctx, payload);
+              if (kind == 'xmltv') {
+                Navigator.pop(ctx, <String, dynamic>{
+                  if (isEdit) 'Id': existingId,
+                  'Type': 'xmltv',
+                  'Path': pathController.text.trim(),
+                  'MoviePrefix': moviePrefixController.text.trim().isEmpty
+                      ? null
+                      : moviePrefixController.text.trim(),
+                  'UserAgent': userAgentController.text.trim().isEmpty
+                      ? null
+                      : userAgentController.text.trim(),
+                  'MovieCategories': _splitCategories(moviesController.text),
+                  'KidsCategories': _splitCategories(kidsController.text),
+                  'NewsCategories': _splitCategories(newsController.text),
+                  'SportsCategories': _splitCategories(sportsController.text),
+                  'EnableAllTuners': enableAllTuners,
+                });
+              } else {
+                Navigator.pop(ctx, <String, dynamic>{
+                  if (providerId.isNotEmpty) 'Id': providerId,
+                  'Type': 'SchedulesDirect',
+                  'Username': usernameController.text.trim(),
+                  if (passwordController.text.isNotEmpty)
+                    'Password': passwordController.text,
+                  'ListingsId': listingsId,
+                  'Country': country,
+                  'ZipCode': zipController.text.trim(),
+                  'EnableAllTuners': enableAllTuners,
+                });
+              }
             },
-            child: Text(AppLocalizations.of(context).add),
+            child: Text(isEdit ? l10n.save : l10n.add),
           ),
         ],
       ),
     );
 
-    typeController.dispose();
-    urlController.dispose();
+    pathController.dispose();
+    moviePrefixController.dispose();
+    userAgentController.dispose();
+    moviesController.dispose();
+    kidsController.dispose();
+    newsController.dispose();
+    sportsController.dispose();
     usernameController.dispose();
     passwordController.dispose();
-    refreshHoursController.dispose();
+    zipController.dispose();
 
     if (payload == null || !mounted) return;
 
     try {
-      await _api.addListingProvider(payload);
+      await _api.addListingProvider(
+        payload,
+        validateListings: payload['Type'] == 'SchedulesDirect',
+      );
       await _loadAll();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -333,9 +752,47 @@ class _AdminLiveTvScreenState extends State<AdminLiveTvScreen> {
       );
     } catch (e) {
       if (!mounted) return;
+      final l10n = AppLocalizations.of(context);
+      final message = e is DioException && e.response?.statusCode == 400
+          ? l10n.adminTunerResetNotSupported
+          : l10n.adminTunerResetFailed(_friendlyError(e));
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppLocalizations.of(context).adminTunerResetFailed(e.toString()))),
+        SnackBar(content: Text(message)),
       );
+    }
+  }
+
+  Future<void> _refreshGuideData() async {
+    if (_refreshingGuide) return;
+    setState(() => _refreshingGuide = true);
+    final l10n = AppLocalizations.of(context);
+    try {
+      final tasksApi = GetIt.instance<MediaServerClient>().adminTasksApi;
+      final tasks = await tasksApi.getTasks();
+      final task = tasks.firstWhere(
+        (t) => t['Key'] == 'RefreshGuide',
+        orElse: () => const <String, dynamic>{},
+      );
+      final id = (task['Id'] ?? '').toString();
+      if (id.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.adminGuideRefreshUnavailable)),
+        );
+        return;
+      }
+      await tasksApi.startTask(id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.adminGuideRefreshStarted)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_friendlyError(e))),
+      );
+    } finally {
+      if (mounted) setState(() => _refreshingGuide = false);
     }
   }
 
@@ -371,55 +828,139 @@ class _AdminLiveTvScreenState extends State<AdminLiveTvScreen> {
     );
     final recPathController = TextEditingController(text: recordingPath);
     final seriesPathController = TextEditingController(text: seriesPath);
+    final moviePathController = TextEditingController(
+      text: (_config['MovieRecordingPath'] ?? '').toString(),
+    );
+    final postProcessorController = TextEditingController(
+      text: (_config['RecordingPostProcessor'] ?? '').toString(),
+    );
+    final postProcessorArgsController = TextEditingController(
+      text: (_config['RecordingPostProcessorArguments'] ?? '').toString(),
+    );
 
+    const guideDayOptions = <int?>[null, 1, 2, 3, 5, 7, 14];
+    final rawGuideDays = (_config['GuideDays'] as num?)?.toInt();
+    var guideDays = guideDayOptions.contains(rawGuideDays) ? rawGuideDays : null;
+    var saveNfo = _config['SaveRecordingNFO'] as bool? ?? true;
+    var saveImages = _config['SaveRecordingImages'] as bool? ?? true;
+
+    final l10n = AppLocalizations.of(context);
     final updated = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(AppLocalizations.of(context).adminRecordingSettings),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: preController,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: AppLocalizations.of(context).adminPrePadding,
-                  border: OutlineInputBorder(),
-                ),
+      builder: (ctx) => AlertDialog.adaptive(
+        title: Text(l10n.adminRecordingSettings),
+        content: SizedBox(
+          width: 400,
+          child: StatefulBuilder(
+            builder: (ctx, setLocal) => SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _dialogSectionLabel(l10n.adminLiveTvSectionTiming),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: preController,
+                          keyboardType: TextInputType.number,
+                          decoration:
+                              adminInputDecoration(label: l10n.adminPrePadding),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: postController,
+                          keyboardType: TextInputType.number,
+                          decoration:
+                              adminInputDecoration(label: l10n.adminPostPadding),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<int?>(
+                    initialValue: guideDays,
+                    decoration: adminInputDecoration(label: l10n.adminGuideDays),
+                    items: [
+                      for (final d in guideDayOptions)
+                        DropdownMenuItem(
+                          value: d,
+                          child: Text(d == null
+                              ? l10n.adminGuideDaysAuto
+                              : l10n.adminGuideDaysValue(d)),
+                        ),
+                    ],
+                    onChanged: (v) => setLocal(() => guideDays = v),
+                  ),
+                  _dialogSectionLabel(l10n.adminLiveTvSectionPaths),
+                  TextField(
+                    controller: recPathController,
+                    decoration:
+                        adminInputDecoration(label: l10n.adminRecordingPath),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: seriesPathController,
+                    decoration: adminInputDecoration(
+                        label: l10n.adminSeriesRecordingPath),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: moviePathController,
+                    decoration: adminInputDecoration(
+                        label: l10n.adminMovieRecordingPath),
+                  ),
+                  _dialogSectionLabel(l10n.adminLiveTvSectionPostProcessing),
+                  TextField(
+                    controller: postProcessorController,
+                    decoration: adminInputDecoration(
+                        label: l10n.adminRecordingPostProcessor),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: postProcessorArgsController,
+                    decoration: adminInputDecoration(
+                        label: l10n.adminRecordingPostProcessorArgs),
+                  ),
+                  const SizedBox(height: 16),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: AppColorScheme.onSurface.withValues(alpha: 0.05),
+                      borderRadius: AppRadius.circular(14),
+                    ),
+                    child: Column(
+                      children: [
+                        adminSwitchRow(
+                          title: l10n.adminSaveRecordingNfo,
+                          value: saveNfo,
+                          onChanged: (v) => setLocal(() => saveNfo = v),
+                        ),
+                        Divider(
+                          height: 0.5,
+                          thickness: 0.5,
+                          indent: 16,
+                          color:
+                              AppColorScheme.onSurface.withValues(alpha: 0.10),
+                        ),
+                        adminSwitchRow(
+                          title: l10n.adminSaveRecordingImages,
+                          value: saveImages,
+                          onChanged: (v) => setLocal(() => saveImages = v),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: postController,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: AppLocalizations.of(context).adminPostPadding,
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: recPathController,
-                decoration: InputDecoration(
-                  labelText: AppLocalizations.of(context).adminRecordingPath,
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: seriesPathController,
-                decoration: InputDecoration(
-                  labelText: AppLocalizations.of(context).adminSeriesRecordingPath,
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
         actions: [
-          TextButton(
+          adaptiveDialogAction(
             onPressed: () => Navigator.pop(ctx),
-            child: Text(AppLocalizations.of(context).cancel),
+            child: Text(l10n.cancel),
           ),
           FilledButton(
             onPressed: () {
@@ -429,11 +970,18 @@ class _AdminLiveTvScreenState extends State<AdminLiveTvScreen> {
                 ..._config,
                 'PrePaddingSeconds': preMinutes * 60,
                 'PostPaddingSeconds': postMinutes * 60,
+                'GuideDays': guideDays,
                 'RecordingPath': recPathController.text.trim(),
                 'SeriesRecordingPath': seriesPathController.text.trim(),
+                'MovieRecordingPath': moviePathController.text.trim(),
+                'RecordingPostProcessor': postProcessorController.text.trim(),
+                'RecordingPostProcessorArguments':
+                    postProcessorArgsController.text.trim(),
+                'SaveRecordingNFO': saveNfo,
+                'SaveRecordingImages': saveImages,
               });
             },
-            child: Text(AppLocalizations.of(context).save),
+            child: Text(l10n.save),
           ),
         ],
       ),
@@ -443,6 +991,9 @@ class _AdminLiveTvScreenState extends State<AdminLiveTvScreen> {
     postController.dispose();
     recPathController.dispose();
     seriesPathController.dispose();
+    moviePathController.dispose();
+    postProcessorController.dispose();
+    postProcessorArgsController.dispose();
 
     if (updated == null || !mounted) return;
 
@@ -470,7 +1021,7 @@ class _AdminLiveTvScreenState extends State<AdminLiveTvScreen> {
     final controller = TextEditingController();
     final payload = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => AlertDialog.adaptive(
         title: Text(AppLocalizations.of(context).adminSetChannelMappings),
         content: TextField(
           controller: controller,
@@ -483,7 +1034,7 @@ class _AdminLiveTvScreenState extends State<AdminLiveTvScreen> {
           maxLines: 8,
         ),
         actions: [
-          TextButton(
+          adaptiveDialogAction(
             onPressed: () => Navigator.pop(ctx),
             child: Text(AppLocalizations.of(context).cancel),
           ),
@@ -594,6 +1145,13 @@ class _AdminLiveTvScreenState extends State<AdminLiveTvScreen> {
                         spacing: 4,
                         children: [
                           IconButton(
+                            tooltip: AppLocalizations.of(context).edit,
+                            onPressed: id.isEmpty
+                                ? null
+                                : () => _showAddTunerDialog(seed: tuner),
+                            icon: const Icon(Icons.edit_outlined),
+                          ),
+                          IconButton(
                             tooltip: AppLocalizations.of(context).adminReset,
                             onPressed: id.isEmpty ? null : () => _resetTuner(tuner),
                             icon: const Icon(Icons.restart_alt),
@@ -618,25 +1176,58 @@ class _AdminLiveTvScreenState extends State<AdminLiveTvScreen> {
             icon: const Icon(Icons.add),
             label: Text(AppLocalizations.of(context).adminAddGuideProvider),
           ),
-          child: _providers.isEmpty
-              ? Text(AppLocalizations.of(context).adminNoListingProviders)
-              : Column(
-                  children: _providers.map((provider) {
-                    final name = _display(provider, const ['Name', 'Type']);
-                    final url = _display(provider, const ['Url', 'Path'], fallback: '');
-                    final id = _idOf(provider);
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(name),
-                      subtitle: url.isEmpty ? null : Text(url),
-                      trailing: IconButton(
-                        tooltip: AppLocalizations.of(context).delete,
-                        onPressed: id.isEmpty ? null : () => _removeProvider(provider),
-                        icon: const Icon(Icons.delete_outline),
-                      ),
-                    );
-                  }).toList(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  onPressed: _refreshingGuide ? null : _refreshGuideData,
+                  icon: _refreshingGuide
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh),
+                  label: Text(AppLocalizations.of(context).adminRefreshGuideData),
                 ),
+              ),
+              const SizedBox(height: 8),
+              if (_providers.isEmpty)
+                Text(AppLocalizations.of(context).adminNoListingProviders)
+              else
+                ..._providers.map((provider) {
+                  final name = _display(provider, const ['Name', 'Type']);
+                  final url =
+                      _display(provider, const ['Url', 'Path'], fallback: '');
+                  final id = _idOf(provider);
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(name),
+                    subtitle: url.isEmpty ? null : Text(url),
+                    trailing: Wrap(
+                      spacing: 4,
+                      children: [
+                        IconButton(
+                          tooltip: AppLocalizations.of(context).edit,
+                          onPressed: id.isEmpty
+                              ? null
+                              : () => _showAddProviderDialog(seed: provider),
+                          icon: const Icon(Icons.edit_outlined),
+                        ),
+                        IconButton(
+                          tooltip: AppLocalizations.of(context).delete,
+                          onPressed:
+                              id.isEmpty ? null : () => _removeProvider(provider),
+                          icon: const Icon(Icons.delete_outline),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+            ],
+          ),
         ),
         const SizedBox(height: 12),
         _sectionCard(
@@ -657,6 +1248,9 @@ class _AdminLiveTvScreenState extends State<AdminLiveTvScreen> {
               Text(AppLocalizations.of(context).adminPrePaddingDisplay(_intValue(_config['PrePaddingSeconds']) ~/ 60)),
               const SizedBox(height: 4),
               Text(AppLocalizations.of(context).adminPostPaddingDisplay(_intValue(_config['PostPaddingSeconds']) ~/ 60)),
+              const SizedBox(height: 4),
+              Text(AppLocalizations.of(context)
+                  .adminGuideDaysDisplay(_guideDaysText())),
             ],
           ),
         ),

@@ -1,26 +1,36 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/gestures.dart' show kBackMouseButton, kForwardMouseButton;
+import 'package:flutter/gestures.dart'
+    show kBackMouseButton, kForwardMouseButton;
+import 'package:flutter/cupertino.dart' show CupertinoTheme, CupertinoThemeData;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_tvos/flutter_tvos.dart'
+    show TvRemoteController, TvRemoteConfig;
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:playback_core/playback_core.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'data/models/aggregated_item.dart';
 import 'data/services/app_update_service.dart';
 import 'data/services/cast/cast_service.dart';
 import 'data/services/download_service.dart';
+import 'data/services/seerr_notification_service.dart';
 import 'data/services/plugin_sync_service.dart';
+import 'data/services/theme_music_service.dart';
 import 'data/services/topshelf_service.dart';
+import 'data/services/watch_next_service.dart';
 import 'di/providers.dart';
 import 'l10n/app_localizations.dart';
 import 'preference/user_preferences.dart';
 import 'syncplay/syncplay_manager.dart';
 import 'ui/navigation/app_router.dart';
+import 'ui/navigation/deep_link_navigator.dart';
+import 'ui/navigation/home_refresh_bus.dart';
 import 'ui/theme/app_theme.dart';
 import 'ui/theme/app_theme_controller.dart';
 import 'ui/widgets/cast_mini_player.dart';
@@ -34,11 +44,14 @@ import 'util/focus/dpad_keys.dart';
 import 'util/fullscreen_helper.dart';
 import 'util/global_shortcut_focus.dart';
 import 'util/focus/input_mode_tracker.dart';
+import 'util/idiom/app_ui_idiom.dart';
+import 'util/idiom/glass_capability.dart';
 import 'util/platform_detection.dart';
 import 'ui/widgets/overlay_sheet.dart';
 import 'package:moonfin_design/moonfin_design.dart';
 import 'util/focus/key_event_utils.dart';
 import 'ui/widgets/focus/request_initial_focus.dart';
+import 'package:custom_tv_text_field/custom_tv_text_field.dart';
 
 class MoonfinApp extends StatefulWidget {
   const MoonfinApp({super.key});
@@ -58,15 +71,46 @@ class _MoonfinAppState extends State<MoonfinApp> {
     _prefs = GetIt.instance<UserPreferences>();
     _themeController = AppThemeController.fromPreferences(_prefs);
     _lastResolvedLocale = _resolveLocale();
+    AppUiIdiomResolver.setOverride(_prefs.get(UserPreferences.interfaceStyle));
+    GlassCapability.apply(_prefs.get(UserPreferences.glassQuality));
     _prefs.addListener(_syncThemeFromPrefs);
     _prefs.addListener(_syncLocaleFromPrefs);
+    _prefs.addListener(_syncIdiomFromPrefs);
+    _prefs.addListener(_syncGlassFromPrefs);
     if (PlatformDetection.isAppleTV) {
-      TopShelfService().startDeepLinkListener(appRouter.go);
+      TopShelfService().startDeepLinkListener(navigateWhenReady);
+      TvRemoteController.instance.init();
+      TvRemoteController.instance.config = const TvRemoteConfig(
+        shortSwipeThreshold: 0.45,
+        fastSwipeThreshold: 0.7,
+        continuousSwipeMoveThreshold: 4,
+        keyRepeatInitialDelay: Duration(milliseconds: 450),
+        keyRepeatInterval: Duration(milliseconds: 140),
+      );
+    }
+    if (PlatformDetection.isAndroid && PlatformDetection.isTV) {
+      WatchNextService().startDeepLinkListener(navigateWhenReady);
     }
   }
 
   void _syncThemeFromPrefs() {
     _themeController.refreshFromPreferences(_prefs);
+  }
+
+  void _syncIdiomFromPrefs() {
+    final before = AppUiIdiomResolver.current;
+    AppUiIdiomResolver.setOverride(_prefs.get(UserPreferences.interfaceStyle));
+    if (AppUiIdiomResolver.current != before && mounted) {
+      setState(() {});
+    }
+  }
+
+  void _syncGlassFromPrefs() {
+    final before = GlassSettings.tier;
+    GlassCapability.apply(_prefs.get(UserPreferences.glassQuality));
+    if (GlassSettings.tier != before && mounted) {
+      setState(() {});
+    }
   }
 
   void _syncLocaleFromPrefs() {
@@ -96,6 +140,8 @@ class _MoonfinAppState extends State<MoonfinApp> {
   void dispose() {
     _prefs.removeListener(_syncThemeFromPrefs);
     _prefs.removeListener(_syncLocaleFromPrefs);
+    _prefs.removeListener(_syncIdiomFromPrefs);
+    _prefs.removeListener(_syncGlassFromPrefs);
     _themeController.dispose();
     super.dispose();
   }
@@ -109,7 +155,8 @@ class _MoonfinAppState extends State<MoonfinApp> {
           animation: _themeController,
           builder: (context, _) {
             return MaterialApp.router(
-              onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
+              onGenerateTitle: (context) =>
+                  AppLocalizations.of(context).appTitle,
               theme: AppTheme.buildTheme(_themeController.activeSpec),
               routerConfig: appRouter,
               debugShowCheckedModeBanner: false,
@@ -152,10 +199,17 @@ class _MoonfinAppState extends State<MoonfinApp> {
                       builder: (context) {
                         final Widget shell = Column(
                           children: [
-                            const OfflineBanner(),
                             Expanded(
-                              child: _ConnectivityListener(
-                                child: child ?? const SizedBox.shrink(),
+                              child: Stack(
+                                children: [
+                                  _ConnectivityListener(
+                                    child: child ?? const SizedBox.shrink(),
+                                  ),
+                                  const Align(
+                                    alignment: Alignment.topCenter,
+                                    child: OfflineBanner(),
+                                  ),
+                                ],
                               ),
                             ),
                             if (!hidePlayer)
@@ -163,28 +217,38 @@ class _MoonfinAppState extends State<MoonfinApp> {
                           ],
                         );
                         final glass = AppColorScheme.isGlass;
-                        final Widget content =
-                            (glass || PlatformDetection.isTV)
-                            ? Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  if (glass)
-                                    Positioned.fill(
-                                      child: GlassBackdrop(
-                                        animated: !PlatformDetection.isTV,
-                                      ),
-                                    ),
-                                  shell,
-                                  if (PlatformDetection.isTV)
-                                    const ScreensaverHost(),
-                                ],
-                              )
-                            : shell;
+                        // The backdrop slot stays in the tree even when empty so
+                        // toggling the glass theme only swaps this one child and
+                        // never restructures the shell below it. Restructuring
+                        // would tear down the navigator subtree and drop the
+                        // screen the user is on (e.g. an open settings page).
+                        final Widget content = Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            Positioned.fill(
+                              child: glass
+                                  ? GlassBackdrop(
+                                      animated: GlassSettings.animatedBackdrop,
+                                    )
+                                  : const SizedBox.shrink(),
+                            ),
+                            shell,
+                            if (PlatformDetection.isTV) const ScreensaverHost(),
+                          ],
+                        );
                         return InputModeTracker(
                           child: _GlobalShortcutScope(
                             child: Material(
                               type: MaterialType.transparency,
-                              child: content,
+                              child: CupertinoTheme(
+                                data: CupertinoThemeData(
+                                  brightness: Brightness.dark,
+                                  primaryColor: AppColorScheme.accent,
+                                  scaffoldBackgroundColor:
+                                      AppColorScheme.background,
+                                ),
+                                child: content,
+                              ),
                             ),
                           ),
                         );
@@ -200,13 +264,21 @@ class _MoonfinAppState extends State<MoonfinApp> {
                 return ListenableBuilder(
                   listenable: _prefs,
                   builder: (context, _) {
-                    final scale =
-                        _prefs.get(UserPreferences.desktopUiScale).scaleFactor;
-                    final systemScale =
-                        MediaQuery.textScalerOf(context).scale(1.0);
+                    final scale = _prefs
+                        .get(UserPreferences.desktopUiScale)
+                        .scaleFactor;
+                    final systemScale = MediaQuery.textScalerOf(
+                      context,
+                    ).scale(1.0);
+                    // The pixel font renders far larger and wider than a normal
+                    // face at a given size, so shrink all text to keep dense
+                    // layouts from overflowing.
+                    final pixelScale = AppColorScheme.isPixel ? 0.6 : 1.0;
                     return MediaQuery(
                       data: MediaQuery.of(context).copyWith(
-                        textScaler: TextScaler.linear(scale * systemScale),
+                        textScaler: TextScaler.linear(
+                          scale * systemScale * pixelScale,
+                        ),
                       ),
                       child: mainChild,
                     );
@@ -253,6 +325,10 @@ class _GlobalShortcutScopeState extends State<_GlobalShortcutScope>
     globalShortcutFocusNode = _focusNode;
     _hardwareKeyHandler = _onHardwareKeyEvent;
     HardwareKeyboard.instance.addHandler(_hardwareKeyHandler);
+    _screensaverController.visible.addListener(_onScreensaverVisibleChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _screensaverController.refreshWakeLock();
+    });
     if (_trackMouseThumbHistory) {
       appRouter.routerDelegate.addListener(_onRouterStateChanged);
       _onRouterStateChanged();
@@ -317,7 +393,8 @@ class _GlobalShortcutScopeState extends State<_GlobalShortcutScope>
   }
 
   bool _canRouteHistoryForward() {
-    return _routeHistoryIndex >= 0 && _routeHistoryIndex < _routeHistory.length - 1;
+    return _routeHistoryIndex >= 0 &&
+        _routeHistoryIndex < _routeHistory.length - 1;
   }
 
   void _navigateRouteHistory(int delta) {
@@ -462,7 +539,13 @@ class _GlobalShortcutScopeState extends State<_GlobalShortcutScope>
   bool _isEditingText() {
     final focusContext = FocusManager.instance.primaryFocus?.context;
     if (focusContext == null) return false;
-    return focusContext.findAncestorWidgetOfExactType<EditableText>() != null;
+    if (focusContext.findAncestorWidgetOfExactType<EditableText>() != null) {
+      return true;
+    }
+    if (CustomTVTextField.isKeyboardVisibleNotifier.value) {
+      return true;
+    }
+    return false;
   }
 
   bool _onHardwareKeyEvent(KeyEvent event) {
@@ -562,10 +645,32 @@ class _GlobalShortcutScopeState extends State<_GlobalShortcutScope>
 
   void _maybePausePlaybackForBackground(AppLifecycleState state) {
     if (!PlatformDetection.isTV) return;
-    final isBackground = state == AppLifecycleState.paused ||
+    final isBackground =
+        state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.detached;
     if (!isBackground) return;
+
+    if (GetIt.instance.isRegistered<PlaybackManager>()) {
+      final manager = GetIt.instance<PlaybackManager>();
+      final item = manager.queueService.currentItem;
+      bool isAudio = false;
+      if (item is AggregatedItem) {
+        isAudio = item.isAudioLike;
+      } else if (item is String) {
+        try {
+          final meta = manager.currentOfflineMetadata;
+          if (meta != null) {
+            final type = meta['Type']?.toString();
+            final mediaType = meta['MediaType']?.toString();
+            isAudio =
+                type == 'Audio' || type == 'AudioBook' || mediaType == 'Audio';
+          }
+        } catch (_) {}
+      }
+      if (isAudio) return;
+    }
+
     if (!GetIt.instance.isRegistered<PlaybackArbiter>()) return;
     final arbiter = GetIt.instance<PlaybackArbiter>();
     if (arbiter.pipActive) return;
@@ -587,17 +692,27 @@ class _GlobalShortcutScopeState extends State<_GlobalShortcutScope>
     }
     WidgetsBinding.instance.removeObserver(this);
     HardwareKeyboard.instance.removeHandler(_hardwareKeyHandler);
+    _screensaverController.visible.removeListener(_onScreensaverVisibleChanged);
     _focusNode.dispose();
     super.dispose();
   }
 
+  // When the screensaver comes up, silence the theme song playing under it.
+  void _onScreensaverVisibleChanged() {
+    if (_screensaverController.visible.value) {
+      GetIt.instance<ThemeMusicService>().forceStop();
+    }
+  }
+
   Future<void> _saveWindowGeometry() async {
     try {
-      final isFullScreen = await FullscreenHelper.isFullscreen();
+      final prefs = GetIt.instance<UserPreferences>();
+      final isFullScreen = await windowManager.isFullScreen();
+      await prefs.set(UserPreferences.windowFullscreen, isFullScreen);
+      // Keep the last windowed bounds; don't save fullscreen size as the window size.
       if (isFullScreen) return;
       final size = await windowManager.getSize();
       final pos = await windowManager.getPosition();
-      final prefs = GetIt.instance<UserPreferences>();
       await prefs.set(UserPreferences.windowWidth, size.width);
       await prefs.set(UserPreferences.windowHeight, size.height);
       await prefs.set(UserPreferences.windowX, pos.dx);
@@ -617,7 +732,9 @@ class _GlobalShortcutScopeState extends State<_GlobalShortcutScope>
     if (eventName == 'move' ||
         eventName == 'resize' ||
         eventName == 'moved' ||
-        eventName == 'resized') {
+        eventName == 'resized' ||
+        eventName == 'enter-full-screen' ||
+        eventName == 'leave-full-screen') {
       _scheduleSaveGeometry();
     }
   }
@@ -628,6 +745,8 @@ class _GlobalShortcutScopeState extends State<_GlobalShortcutScope>
   }
 
   Future<void> _handleWindowClose() async {
+    _geometrySaveTimer?.cancel();
+    await _saveWindowGeometry();
     await AppExit.prepareForExit();
     await windowManager.destroy();
   }
@@ -690,6 +809,7 @@ class _ConnectivityListener extends ConsumerStatefulWidget {
 class _ConnectivityListenerState extends ConsumerState<_ConnectivityListener>
     with WidgetsBindingObserver {
   bool? _wasOnline;
+  bool? _wasServerReachable;
   bool _didScheduleUpdateCheck = false;
   StreamSubscription<SyncPlayUiEvent>? _syncPlayEventsSub;
   StreamSubscription<String>? _downloadErrorSub;
@@ -704,6 +824,19 @@ class _ConnectivityListenerState extends ConsumerState<_ConnectivityListener>
     _syncPlayEventsSub = manager.uiEvents.listen(_handleSyncPlayEvent);
     if (GetIt.instance.isRegistered<PluginSyncService>()) {
       GetIt.instance<PluginSyncService>().onAdminMessage = _handleAdminMessage;
+      if (GetIt.instance.isRegistered<SeerrNotificationService>()) {
+        final notificationService =
+            GetIt.instance<SeerrNotificationService>();
+        GetIt.instance<PluginSyncService>().onSeerrNotification =
+            (title, body, route, {requestId, isRequest = false}) =>
+                notificationService.show(
+                  title,
+                  body,
+                  route,
+                  requestId: requestId,
+                  isRequest: isRequest,
+                );
+      }
     }
     if (GetIt.instance.isRegistered<DownloadService>()) {
       _downloadErrorSub = GetIt.instance<DownloadService>().errors.listen(
@@ -719,6 +852,7 @@ class _ConnectivityListenerState extends ConsumerState<_ConnectivityListener>
     _downloadErrorSub?.cancel();
     if (GetIt.instance.isRegistered<PluginSyncService>()) {
       GetIt.instance<PluginSyncService>().onAdminMessage = null;
+      GetIt.instance<PluginSyncService>().onSeerrNotification = null;
     }
     super.dispose();
   }
@@ -801,7 +935,8 @@ class _ConnectivityListenerState extends ConsumerState<_ConnectivityListener>
   void _handleAdminMessage(String message) {
     if (!mounted) return;
 
-    final navContext = appRouter.routerDelegate.navigatorKey.currentContext ?? context;
+    final navContext =
+        appRouter.routerDelegate.navigatorKey.currentContext ?? context;
     if (!navContext.mounted) {
       return;
     }
@@ -831,10 +966,12 @@ class _ConnectivityListenerState extends ConsumerState<_ConnectivityListener>
           action: SnackBarAction(
             label: l10n.download,
             onPressed: () {
-              unawaited(launchUrl(
-                update.downloadUri,
-                mode: LaunchMode.externalApplication,
-              ));
+              unawaited(
+                launchUrl(
+                  update.downloadUri,
+                  mode: LaunchMode.externalApplication,
+                ),
+              );
             },
           ),
         ),
@@ -842,9 +979,23 @@ class _ConnectivityListenerState extends ConsumerState<_ConnectivityListener>
     } catch (_) {}
   }
 
+  /// Fires whenever server reachability flips (either way) so home swaps
+  /// between live rows and offline downloaded-only rows automatically.
+  void _handleServerReachabilityChanged() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      homeRefreshBus.requestNowOrAfterNavigation();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final isOnline = ref.watch(isOnlineProvider);
+    final serverReachable = ref.watch(activeServerReachableProvider);
+
+    if (_wasServerReachable != null && _wasServerReachable != serverReachable) {
+      _handleServerReachabilityChanged();
+    }
+    _wasServerReachable = serverReachable;
 
     if (_wasOnline != null && _wasOnline != isOnline) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -879,7 +1030,9 @@ class _AdminMessageDialog extends StatefulWidget {
 
 class _AdminMessageDialogState extends State<_AdminMessageDialog> {
   final _okFocusNode = FocusNode(debugLabel: 'AdminMessageOkButton');
-  final _dialogScopeNode = FocusScopeNode(debugLabel: 'AdminMessageDialogScope');
+  final _dialogScopeNode = FocusScopeNode(
+    debugLabel: 'AdminMessageDialogScope',
+  );
   bool _focused = false;
 
   @override
@@ -922,7 +1075,7 @@ class _AdminMessageDialogState extends State<_AdminMessageDialog> {
                 color: AppColorScheme.isGlass
                     ? const Color(0xD90E1117)
                     : AppColorScheme.surface,
-                borderRadius: BorderRadius.circular(
+                borderRadius: AppRadius.circular(
                   AppColorScheme.isGlass ? 20 : 16,
                 ),
                 border: Border.fromBorderSide(
@@ -973,19 +1126,24 @@ class _AdminMessageDialogState extends State<_AdminMessageDialog> {
                         Navigator.of(context, rootNavigator: true).pop();
                       },
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 12,
+                        ),
                         decoration: BoxDecoration(
                           color: _focused
                               ? AppColorScheme.onSurface
                               : AppColorScheme.onSurface.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: AppRadius.circular(8),
                         ),
                         child: Text(
                           l10n.ok,
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w500,
-                            color: _focused ? AppColors.black : AppColorScheme.onSurface,
+                            color: _focused
+                                ? AppColors.black
+                                : AppColorScheme.onSurface,
                             decoration: TextDecoration.none,
                           ),
                         ),
@@ -1019,6 +1177,13 @@ class _TvUiScale extends StatelessWidget {
     }
     final scale = realSize.width / _designWidth;
     final logicalSize = Size(realSize.width / scale, realSize.height / scale);
+    EdgeInsets scaleInsets(EdgeInsets insets, {bool zeroTop = false}) =>
+        EdgeInsets.fromLTRB(
+          insets.left / scale,
+          zeroTop ? 0 : insets.top / scale,
+          insets.right / scale,
+          insets.bottom / scale,
+        );
     return FittedBox(
       fit: BoxFit.fill,
       child: SizedBox(
@@ -1028,6 +1193,9 @@ class _TvUiScale extends StatelessWidget {
           data: mq.copyWith(
             size: logicalSize,
             devicePixelRatio: mq.devicePixelRatio * scale,
+            padding: scaleInsets(mq.padding, zeroTop: true),
+            viewPadding: scaleInsets(mq.viewPadding, zeroTop: true),
+            viewInsets: scaleInsets(mq.viewInsets),
           ),
           child: child,
         ),

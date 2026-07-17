@@ -3,6 +3,7 @@ import 'package:moonfin_design/moonfin_design.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../../../l10n/app_localizations.dart';
+import 'admin_form_styles.dart';
 
 class ServerPathsCard extends StatelessWidget {
   final StorageInfo storageInfo;
@@ -63,30 +64,34 @@ class ServerPathsCard extends StatelessWidget {
       }
     }
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        adminSectionLabel(context, l10n.adminServerPaths, icon: Icons.folder),
+        adminGlassGroup(
+          context,
           children: [
-            Row(
-              children: [
-                Icon(Icons.folder, color: theme.colorScheme.primary),
-                const SizedBox(width: 8),
-                Text(l10n.adminServerPaths, style: theme.textTheme.titleMedium),
-              ],
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.spaceLg,
+                vertical: AppSpacing.spaceMd,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (pathRows.isEmpty)
+                    Text(
+                      l10n.adminNoServerPathsReturned,
+                      style: theme.textTheme.bodySmall,
+                    )
+                  else
+                    ...pathRows,
+                ],
+              ),
             ),
-            const SizedBox(height: 12),
-            if (pathRows.isEmpty)
-              Text(
-                l10n.adminNoServerPathsReturned,
-                style: theme.textTheme.bodySmall,
-              )
-            else
-              ...pathRows,
           ],
         ),
-      ),
+      ],
     );
   }
 
@@ -136,7 +141,7 @@ class ServerPathsCard extends StatelessWidget {
           if (hasCapacity) ...[
             const SizedBox(height: 4),
             ClipRRect(
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: AppRadius.circular(999),
               child: LinearProgressIndicator(
                 minHeight: 4,
                 value: usageFrac,

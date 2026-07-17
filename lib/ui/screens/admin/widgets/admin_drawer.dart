@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:moonfin_design/moonfin_design.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 
@@ -143,9 +144,9 @@ class _AdminDrawerState extends State<AdminDrawer> {
         color: selected
             ? theme.colorScheme.primaryContainer.withValues(alpha: 0.85)
             : theme.colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: AppRadius.circular(9),
         child: InkWell(
-          borderRadius: BorderRadius.circular(9),
+          borderRadius: AppRadius.circular(9),
           onTap: () {
             if (!widget.isEmbedded) {
               Navigator.of(context).pop();
@@ -158,7 +159,7 @@ class _AdminDrawerState extends State<AdminDrawer> {
             height: 40,
             padding: const EdgeInsets.symmetric(horizontal: 10),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(9),
+              borderRadius: AppRadius.circular(9),
               border: Border.all(
                 color: selected
                     ? theme.colorScheme.primary.withValues(alpha: 0.35)
@@ -260,6 +261,27 @@ List<_AdminNavEntry> _buildDefaultEntries(AppLocalizations l10n) => [
     icon: null,
     destination: Destinations.adminLibraries,
     iconBuilder: _librariesIcon,
+  ),
+  _AdminNavEntry(
+    id: 'display',
+    section: l10n.adminDrawerSectionServer,
+    title: l10n.adminDrawerDisplay,
+    icon: Icons.grid_view,
+    destination: Destinations.adminSettingsDisplay,
+  ),
+  _AdminNavEntry(
+    id: 'metadata',
+    section: l10n.adminDrawerSectionServer,
+    title: l10n.adminDrawerMetadata,
+    icon: Icons.description_outlined,
+    destination: Destinations.adminSettingsMetadata,
+  ),
+  _AdminNavEntry(
+    id: 'nfo',
+    section: l10n.adminDrawerSectionServer,
+    title: l10n.adminDrawerNfo,
+    icon: Icons.text_snippet_outlined,
+    destination: Destinations.adminSettingsNfo,
   ),
   _AdminNavEntry(
     id: 'transcoding',

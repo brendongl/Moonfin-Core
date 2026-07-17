@@ -9,6 +9,7 @@ import 'package:server_core/server_core.dart';
 
 import '../../../../l10n/app_localizations.dart';
 import '../../../../util/platform_detection.dart';
+import '../widgets/admin_form_styles.dart';
 
 class AdminLogViewerScreen extends StatefulWidget {
   final String fileName;
@@ -187,14 +188,14 @@ class _AdminLogViewerScreenState extends State<AdminLogViewerScreen> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
           child: Row(
             children: [
               Expanded(
-                child: Text(
-                  widget.fileName,
-                  style: theme.textTheme.titleLarge,
-                  overflow: TextOverflow.ellipsis,
+                child: adminScreenHeader(
+                  context,
+                  title: widget.fileName,
+                  icon: Icons.description_outlined,
                 ),
               ),
               IconButton(
@@ -221,10 +222,9 @@ class _AdminLogViewerScreenState extends State<AdminLogViewerScreen> {
           child: TextField(
             controller: _searchController,
             onChanged: (value) => setState(() => _query = value),
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search),
-              hintText: AppLocalizations.of(context).adminSearchInLog,
-              border: const OutlineInputBorder(),
+            decoration: adminInputDecoration(
+              hint: AppLocalizations.of(context).adminSearchInLog,
+              suffixIcon: const Icon(Icons.search),
             ),
           ),
         ),

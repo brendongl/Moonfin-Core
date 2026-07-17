@@ -19,8 +19,13 @@ import '../../../playback/appletv_mpv_backend.dart';
 import '../../../playback/playback_profile_diagnostics.dart';
 import '../../../syncplay/syncplay_manager.dart';
 import '../../theme/app_theme_controller.dart';
+import '../../screensaver/screensaver_controller.dart';
+import '../../navigation/app_router.dart';
+import '../../navigation/destinations.dart';
 import '../../../preference/preference_constants.dart';
 import '../../../preference/user_preferences.dart';
+import '../../../l10n/app_localizations.dart';
+import '../../../util/play_method_label.dart';
 
 class AppleTvPlayerHostScreen extends StatefulWidget {
   const AppleTvPlayerHostScreen({super.key});
@@ -46,6 +51,8 @@ class _AppleTvPlayerHostScreenState extends State<AppleTvPlayerHostScreen> {
   bool _pendingStillWatching = false;
   SyncPlayManager? _syncPlay;
   AppThemeController? _themeController;
+  ScreensaverController? _screensaverController;
+  StreamSubscription<bool>? _screensaverPlayingSub;
 
   AppleTvMpvBackend? get _backend {
     try {
@@ -66,6 +73,10 @@ class _AppleTvPlayerHostScreenState extends State<AppleTvPlayerHostScreen> {
   @override
   void initState() {
     super.initState();
+    try {
+      _screensaverController = GetIt.instance<ScreensaverController>();
+    } catch (_) {}
+    _screensaverController?.setPlaybackActive(true);
     _exitSub = _backend?.userExitStream.listen((_) => _handleExit());
     _actionSub = _backend?.uiActionStream.listen(_handleUiAction);
     final manager = _manager;
@@ -77,6 +88,9 @@ class _AppleTvPlayerHostScreenState extends State<AppleTvPlayerHostScreen> {
         (_) => _handleExit(),
       );
       _bringupSub = manager.bringupStateStream.listen((_) => _pushMetadata());
+      _screensaverPlayingSub = manager.state.playingStream.listen(
+        (playing) => _screensaverController?.setPlaybackActive(playing),
+      );
     }
     if (GetIt.instance.isRegistered<SyncPlayManager>()) {
       _syncPlay = GetIt.instance<SyncPlayManager>();
@@ -197,18 +211,7 @@ class _AppleTvPlayerHostScreenState extends State<AppleTvPlayerHostScreen> {
     }
   }
 
-  String _prettyPlayMethod(String name) {
-    switch (name) {
-      case 'directPlay':
-        return 'Direct Play';
-      case 'directStream':
-        return 'Direct Stream (Remux)';
-      case 'transcode':
-        return 'Transcode';
-      default:
-        return name;
-    }
-  }
+
 
   Map<String, dynamic>? _rawDataForQueueItem(dynamic item) {
     if (item is AggregatedItem) return item.rawData;
@@ -386,7 +389,11 @@ class _AppleTvPlayerHostScreenState extends State<AppleTvPlayerHostScreen> {
       rowEntry('File Name', fileName()),
       rowEntry(
         'Play Method',
-        res != null ? _prettyPlayMethod(res.playMethod.name) : 'Unknown',
+        playbackMethodLabel(
+          l10n: AppLocalizations.of(context),
+          playMethod: res?.playMethod,
+          transcodingReasons: res?.transcodingReasons ?? const [],
+        ),
       ),
       if (res != null && res.transcodingReasons.isNotEmpty)
         rowEntry('Transcode Reasons', res.transcodingReasons.join(', ')),
@@ -601,6 +608,7 @@ class _AppleTvPlayerHostScreenState extends State<AppleTvPlayerHostScreen> {
             'name': name,
             'subtitle': subtitle,
             'imageUrl': imageUrl,
+            'personId': personId,
           };
         })
         .whereType<Map<String, dynamic>>()
@@ -1262,6 +1270,19 @@ class _AppleTvPlayerHostScreenState extends State<AppleTvPlayerHostScreen> {
         unawaited(
           manager.changeBitrate(mbps == null || mbps < 0 ? null : mbps),
         );
+      case 'openCastPerson':
+        final personId = action['personId']?.toString();
+        if (personId != null && personId.isNotEmpty) {
+          final current = manager.queueService.currentItem;
+          final serverId = current is AggregatedItem ? current.serverId : null;
+          // The native player is presented over Flutter, so exit it before
+          // pushing the person route or the detail would stay hidden behind it.
+          _handleExit();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            appRouter.push(Destinations.item(personId, serverId: serverId));
+          });
+        }
+        return;
       case 'toggleFavorite':
         _toggleFavorite(manager.queueService.currentItem);
       case 'stillWatchingContinue':
@@ -1300,6 +1321,8 @@ class _AppleTvPlayerHostScreenState extends State<AppleTvPlayerHostScreen> {
     _sessionEndedSub?.cancel();
     _bringupSub?.cancel();
     _actionSub?.cancel();
+    _screensaverPlayingSub?.cancel();
+    _screensaverController?.setPlaybackActive(false);
     _syncPlay?.removeListener(_onSyncPlayChanged);
     _themeController?.removeListener(_onThemeChanged);
     unawaited(_backend?.dismissPlayer() ?? Future<void>.value());

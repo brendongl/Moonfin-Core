@@ -6,10 +6,19 @@ import 'package:server_core/server_core.dart';
 
 import '../../data/models/aggregated_item.dart';
 import '../../data/repositories/offline_repository.dart';
+import '../../data/services/audiobook_bookmarks_service.dart';
+import '../../data/services/audiobook_notes_service.dart';
+import '../../data/services/audiobook_resume_service.dart';
+import '../../data/services/connectivity_service.dart';
 import '../../data/services/media_server_client_factory.dart';
 import '../../data/services/offline_playback_tracker.dart';
-import '../../playback/audio_capability_profile.dart';
+import '../../playback/local_aware_player_service.dart';
+import '../../playback/local_first_media_stream_resolver.dart';
+
 import '../../playback/hdr_stream_capability.dart';
+import '../../playback/headless_session_bootstrap.dart';
+import '../../playback/last_playback_session_store.dart';
+import '../../playback/media_browse_service.dart';
 import '../../playback/html_video_backend.dart';
 import '../../playback/known_defects.dart';
 import '../../playback/external_player_policy.dart';
@@ -19,12 +28,15 @@ import '../../playback/media3_player_backend.dart';
 import '../../playback/tizen_player_backend.dart';
 import '../../playback/offline_stream_resolver.dart';
 import '../../playback/playback_profile_diagnostics.dart';
+import '../../playback/sleep_timer_controller.dart';
 import '../../platform/pip_service.dart';
 import '../../preference/preference_constants.dart';
 import '../../preference/user_preferences.dart';
 import '../../syncplay/syncplay_manager.dart';
 import '../../util/platform_detection.dart';
 import '../../util/episode_playability.dart';
+import '../../util/audio_track_logic.dart';
+import '../../util/subtitle_track_logic.dart';
 
 final _getIt = GetIt.instance;
 
@@ -379,6 +391,13 @@ void registerPlaybackModule() {
   _getIt.registerSingleton<PlayerBackend>(initialBackend);
 
   final manager = PlaybackManager();
+  manager.onSubtitleTrackChanged = (itemId, index) {
+    _getIt<UserPreferences>().setItemSubtitleStreamIndex(itemId, index);
+  };
+  manager.onAudioTrackChanged = (itemId, index) {
+    _getIt<UserPreferences>().setItemAudioStreamIndex(itemId, index);
+  };
+
   manager.setBackend(initialBackend);
   manager.setBackendSelector((resolution, currentBackend) {
     if (PlatformDetection.isTizen) {
@@ -460,11 +479,7 @@ void registerPlaybackModule() {
     return startPosition - rewind;
   });
   manager.setPlaybackDecisionLogger((context) {
-    final audioCapabilityProfile = AudioCapabilityProfile.fromMap(
-      PlatformDetection.hasAudioCapabilities
-          ? PlatformDetection.audioCapabilitiesSnapshot
-          : null,
-    );
+    final audioCapabilityProfile = prefs.detectedAudioCapabilities;
 
     final audioSpdifCodecs = context.backend is MediaKitPlayerBackend
         ? _passthroughCodecsForDiagnostics(prefs)
@@ -502,6 +517,78 @@ void registerPlaybackModule() {
   final audioArbiter = PlaybackArbiter();
   _getIt.registerSingleton<PlaybackArbiter>(audioArbiter);
   manager.setAudioArbiter(audioArbiter);
+  manager.audioTrackSelector = (audioStreams, explicitIndex) {
+    final preferredAudioLanguage = manager.lastExplicitAudioLanguage ??
+        (prefs.get(UserPreferences.defaultAudioLanguage) as String? ?? 'auto');
+
+    return computeEffectiveAudioIndex(
+      audioStreams: audioStreams,
+      preferredAudioLanguage: preferredAudioLanguage,
+      fallbackAudioLanguage: prefs.get(UserPreferences.fallbackAudioLanguage) as String? ?? '',
+      preferDefaultAudioTrack: prefs.get(UserPreferences.preferDefaultAudioTrack) as bool? ?? false,
+      preferAudioDescription: prefs.get(UserPreferences.preferAudioDescription) as bool? ?? false,
+      explicitAudioIndex: explicitIndex,
+    );
+  };
+
+  manager.subtitleTrackSelector = (subtitleStreams, audioStreams, explicitIndex) {
+    final effectiveAudioIndex = computeEffectiveAudioIndex(
+      audioStreams: audioStreams,
+      preferredAudioLanguage: manager.lastExplicitAudioLanguage ??
+          (prefs.get(UserPreferences.defaultAudioLanguage) as String? ?? 'auto'),
+      fallbackAudioLanguage: prefs.get(UserPreferences.fallbackAudioLanguage) as String? ?? '',
+      preferDefaultAudioTrack: prefs.get(UserPreferences.preferDefaultAudioTrack) as bool? ?? false,
+      preferAudioDescription: prefs.get(UserPreferences.preferAudioDescription) as bool? ?? false,
+      explicitAudioIndex: manager.audioSelectionExplicit ? manager.audioStreamIndex : null,
+    );
+
+    final activeAudioStream = audioStreams.firstWhere(
+      (s) => s['Index'] == effectiveAudioIndex,
+      orElse: () => const <String, dynamic>{},
+    );
+    final activeAudioLanguage = activeAudioStream.isNotEmpty ? activeAudioStream['Language'] as String? : null;
+
+    final currentItem = manager.queueService.currentItem;
+    String? seriesId;
+    if (currentItem is AggregatedItem) {
+      seriesId = currentItem.seriesId;
+    }
+
+    var subtitleMode = manager.lastExplicitSubtitleEnabled == false
+        ? SubtitleMode.none
+        : prefs.get(UserPreferences.subtitleMode);
+
+    var preferredLanguage = manager.lastExplicitSubtitleLanguage;
+    if (preferredLanguage == null && seriesId != null && seriesId.isNotEmpty) {
+      final seriesLanguage = prefs.getSeriesSubtitleLanguage(seriesId);
+      if (seriesLanguage == 'none') {
+        return -1;
+      } else if (seriesLanguage.isNotEmpty) {
+        preferredLanguage = seriesLanguage;
+        if (subtitleMode == SubtitleMode.none) {
+          subtitleMode = SubtitleMode.always;
+        }
+      }
+    }
+
+    preferredLanguage ??=
+        (prefs.get(UserPreferences.defaultSubtitleLanguage) as String? ?? '');
+
+    return computeEffectiveSubtitleIndex(
+      subtitleStreams: subtitleStreams,
+      selectedSubtitleIndex: explicitIndex,
+      activePlaybackSubtitleIndex: null,
+      subtitleMode: subtitleMode,
+      preferredLanguage: preferredLanguage,
+      fallbackLanguage: prefs.get(UserPreferences.fallbackSubtitleLanguage) as String? ?? '',
+      preferSdh: prefs.get(UserPreferences.preferSdhSubtitles) as bool? ?? false,
+      pgsDirectPlay: prefs.get(UserPreferences.pgsDirectPlay) as bool? ?? false,
+      assDirectPlay: prefs.get(UserPreferences.assDirectPlay) as bool? ?? false,
+      preferredAudioLanguage: prefs.get(UserPreferences.defaultAudioLanguage) as String? ?? 'auto',
+      activeAudioLanguage: activeAudioLanguage,
+    );
+  };
+
   _getIt.registerSingleton<PlaybackManager>(manager);
 
   _getIt.registerLazySingleton<OfflineStreamResolver>(
@@ -513,6 +600,36 @@ void registerPlaybackModule() {
 
   _getIt.registerLazySingleton<SyncPlayManager>(
     () => SyncPlayManager(_getIt<PlaybackManager>(), _getIt<UserPreferences>()),
+  );
+
+  _getIt.registerLazySingleton<AudiobookBookmarksService>(
+    () => AudiobookBookmarksService(),
+    dispose: (s) => s.dispose(),
+  );
+  _getIt.registerLazySingleton<AudiobookNotesService>(
+    () => AudiobookNotesService(),
+    dispose: (s) => s.dispose(),
+  );
+  _getIt.registerLazySingleton<AudiobookResumeService>(
+    () => AudiobookResumeService(),
+  );
+  _getIt.registerLazySingleton<HeadlessSessionBootstrap>(
+    () => HeadlessSessionBootstrap(),
+  );
+  _getIt.registerLazySingleton<LastPlaybackSessionStore>(
+    () => LastPlaybackSessionStore(),
+  );
+  _getIt.registerLazySingleton<MediaBrowseService>(
+    () => MediaBrowseService(
+      _getIt<MediaServerClientFactory>(),
+      _getIt<HeadlessSessionBootstrap>(),
+      _getIt<AudiobookResumeService>(),
+      _getIt<LastPlaybackSessionStore>(),
+    ),
+  );
+  _getIt.registerLazySingleton<SleepTimerController>(
+    () => SleepTimerController(_getIt<PlaybackManager>()),
+    dispose: (s) => s.dispose(),
   );
 }
 
@@ -537,8 +654,8 @@ void setActiveStreamResolver(MediaServerClient client) {
   }
 
   final (
-    MediaStreamResolver resolver,
-    PlayerService service,
+    MediaStreamResolver serverResolver,
+    PlayerService serverService,
   ) = switch (client.serverType) {
     ServerType.jellyfin => () {
       final p = JellyfinPlugin(client);
@@ -549,6 +666,21 @@ void setActiveStreamResolver(MediaServerClient client) {
       return (p.createStreamResolver(), p.createPlaySessionService());
     }(),
   };
+
+  // Local-first: completed downloads play from disk instead of streaming,
+  // with progress mirrored to the downloads DB (and to the server when
+  // reachable).
+  final resolver = LocalFirstMediaStreamResolver(
+    inner: serverResolver,
+    offline: _getIt<OfflineStreamResolver>(),
+  );
+  final service = LocalAwarePlayerService(
+    serverService,
+    _getIt<OfflineRepository>(),
+    canReachServer: () =>
+        !_getIt.isRegistered<ConnectivityService>() ||
+        _getIt<ConnectivityService>().canReachServer,
+  );
 
   _getIt.registerSingleton<MediaStreamResolver>(resolver);
   _getIt.registerSingleton<PlayerService>(service);

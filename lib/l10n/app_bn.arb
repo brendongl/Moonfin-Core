@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "প্রিয় ট্র্যাক এখানে প্রদর্শিত হবে",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "লোড করতে ব্যর্থ হয়েছে",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "নির্দিষ্ট ব্যবহারকারী",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "সর্বদা প্রমাণীকরণ",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "দূরবর্তী ব্যক্তি অনুসন্ধান করুন",
     "adminNoRemoteMatches": "কোনো দূরবর্তী মিল খুঁজে পাওয়া যায়নি",
     "adminRemoteResults": "দূরবর্তী ফলাফল",
     "adminRemoteMetadataApplied": "দূরবর্তী মেটাডেটা প্রয়োগ করা হয়েছে",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "টিউনার যোগ করুন",
     "adminTunerType": "টিউনার প্রকার",
-    "adminTunerTypeHint": "HDHomeRun, M3U, অন্যান্য",
-    "adminUrlPath": "URL/পথ",
-    "adminNameOptional": "নাম (ঐচ্ছিক)",
     "adminTunerAdded": "টিউনার যোগ করা হয়েছে",
     "adminTunerAddFailed": "টিউনার যোগ করতে ব্যর্থ হয়েছে: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "গাইড প্রদানকারী যোগ করুন",
     "adminProviderType": "প্রদানকারীর ধরন",
-    "adminProviderTypeHint": "শিডিউল ডাইরেক্ট বা এক্সএমএলটিভি",
-    "adminUsernameOptional": "ব্যবহারকারীর নাম (ঐচ্ছিক)",
-    "adminRefreshInterval": "রিফ্রেশ ব্যবধান (ঘন্টা)",
     "adminProviderAdded": "প্রদানকারী যোগ করা হয়েছে",
     "adminProviderAddFailed": "প্রদানকারী যোগ করতে ব্যর্থ হয়েছে: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "কোন মিল লাইন",
     "adminMetadataEditorTitle": "মেটাডেটা সম্পাদক",
-    "adminMetadataRemote": "দূরবর্তী",
     "adminMetadataType": "টাইপ",
     "adminMetadataDetails": "বিস্তারিত",
     "adminMetadataExternalIds": "বাহ্যিক আইডি",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "আমার পছন্দ মনে রাখবেন",
     "playHdr10Fallback": "HDR10 ফলব্যাক চালান",
     "requestTranscode": "ট্রান্সকোড অনুরোধ করুন",
-    "homeScreenSectionsIntegrationDescription": "IAmParadox27 এর \"হোম স্ক্রীন সেকশনস\" প্লাগইন দ্বারা উন্মুক্ত সারিগুলি সনাক্ত করুন৷ সারি সক্রিয় এবং নীচে পুনঃক্রম করা যেতে পারে.",
-    "homeScreenSectionsIntegrationNoServers": "কোন Jellyfin সার্ভার এখনো প্লাগইন রিপোর্ট করছে।",
-    "integrationOpenHomeSections": "হোম বিভাগ খুলুন",
-    "integrationOpenHomeSectionsSubtitle": "সারিগুলিকে সক্ষম করুন, অক্ষম করুন এবং পুনরায় সাজান৷",
-    "integrationInstalledButDisabled": "ইনস্টল করা কিন্তু নিষ্ক্রিয়",
-    "integrationNotInstalled": "ইনস্টল করা হয়নি",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "সব দেখুন",
     "noItems": "কোনো আইটেম নেই",
     "switchUser": "ব্যবহারকারী পরিবর্তন করুন",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "এএসি স্টেরিও",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "পাসথ্রু (উন্নত)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "সংরক্ষিত থিম মুছুন",
     "savedThemesManageSubtitle": "এই ডিভাইসে ডাউনলোড করা প্লাগইন থিম পরিচালনা করুন",
-    "homeScreenSectionsTitle": "হোম স্ক্রীন বিভাগ",
     "themeEditor": "থিম সম্পাদক",
     "themeEditorSubtitle": "আপনার ব্রাউজারে Moonfin থিম এডিটর খুলুন",
     "homeScreen": "হোম স্ক্রীন",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "HDR ভিডিও প্লেব্যাকের জন্য স্বয়ংক্রিয়ভাবে HDR সক্ষম করুন এবং প্রস্থান করার সময় প্রদর্শন মোড পুনরুদ্ধার করুন।",
     "whenFullscreen": "যখন ফুলস্ক্রিন",
     "transcodingLimits": "ট্রান্সকোডিং সীমা",
-    "settingsSupportMoonfinSubtitle": "বিকাশকারীকে একটি কফি দান করুন"
+    "settingsSupportMoonfinSubtitle": "বিকাশকারীকে একটি কফি দান করুন",
+    "reportDownloadsActivity": "সার্ভারে ডাউনলোড দেখান",
+    "reportDownloadsActivitySubtitle": "সার্ভার অ্যাডমিনকে ড্যাশবোর্ডে আপনার ট্রান্সকোড করা ডাউনলোড দেখতে দিন",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "ইমেজ ক্যাশের সীমা",
+    "clearImageCache": "ইমেজ ক্যাশ পরিষ্কার করুন",
+    "imageCacheCleared": "ইমেজ ক্যাশ পরিষ্কার করা হয়েছে"
 }

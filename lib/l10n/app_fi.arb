@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "Suosikkikappaleet näkyvät täällä",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "Lataus epäonnistui",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "Tietty käyttäjä",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "Todenna aina",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "Etsi etähenkilö",
     "adminNoRemoteMatches": "Etäosumia ei löytynyt",
     "adminRemoteResults": "Etätulokset",
     "adminRemoteMetadataApplied": "Etäsisällönkuvaustiedot otettu käyttöön",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "Lisää viritin",
     "adminTunerType": "Virittimen tyyppi",
-    "adminTunerTypeHint": "HDHomeRun, M3U, muu",
-    "adminUrlPath": "URL / polku",
-    "adminNameOptional": "Nimi (valinnainen)",
     "adminTunerAdded": "Viritin lisätty",
     "adminTunerAddFailed": "Virittimen lisääminen epäonnistui: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "Lisää oppaan tarjoaja",
     "adminProviderType": "Palveluntarjoajan tyyppi",
-    "adminProviderTypeHint": "SchedulesDirect tai XMLTV",
-    "adminUsernameOptional": "Käyttäjätunnus (valinnainen)",
-    "adminRefreshInterval": "Päivitysväli (tunteja)",
     "adminProviderAdded": "Palveluntarjoaja lisätty",
     "adminProviderAddFailed": "Palveluntarjoajan lisääminen epäonnistui: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "Ei vastaavia rivejä",
     "adminMetadataEditorTitle": "Metatietoeditori",
-    "adminMetadataRemote": "Kauko",
     "adminMetadataType": "Tyyppi",
     "adminMetadataDetails": "Yksityiskohdat",
     "adminMetadataExternalIds": "Ulkoiset tunnukset",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "Muista valintani",
     "playHdr10Fallback": "Pelaa HDR10-varaa",
     "requestTranscode": "Pyydä transkoodausta",
-    "homeScreenSectionsIntegrationDescription": "Tunnista IAmParadox27:n \"Home Screen Sections\" -laajennuksen paljastamat rivit. Rivit voidaan ottaa käyttöön ja järjestää uudelleen alla.",
-    "homeScreenSectionsIntegrationNoServers": "Yksikään Jellyfin-palvelin ei ole vielä ilmoittanut laajennuksesta.",
-    "integrationOpenHomeSections": "Avaa Koti-osiot",
-    "integrationOpenHomeSectionsSubtitle": "Ota rivejä käyttöön, poista se käytöstä ja järjestä uudelleen",
-    "integrationInstalledButDisabled": "Asennettu mutta poistettu käytöstä",
-    "integrationNotInstalled": "Ei asennettu",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "Katso kaikki",
     "noItems": "Ei kohteita",
     "switchUser": "Vaihda käyttäjää",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "AAC Stereo",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Läpivienti (edistynyt)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Poista tallennettu teema",
     "savedThemesManageSubtitle": "Hallinnoi ladattuja laajennusteemoja tällä laitteella",
-    "homeScreenSectionsTitle": "Aloitusnäytön osiot",
     "themeEditor": "Teeman editori",
     "themeEditorSubtitle": "Avaa Moonfin teemaeditori selaimessasi",
     "homeScreen": "Kotinäyttö",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "Ota HDR automaattisesti käyttöön HDR-videon toistoa varten ja palauta näyttötila poistuessasi.",
     "whenFullscreen": "Kun koko näyttö",
     "transcodingLimits": "Transkoodausrajat",
-    "settingsSupportMoonfinSubtitle": "Lahjoita kahvi kehittäjälle"
+    "settingsSupportMoonfinSubtitle": "Lahjoita kahvi kehittäjälle",
+    "reportDownloadsActivity": "Näytä lataukset palvelimella",
+    "reportDownloadsActivitySubtitle": "Anna palvelimen ylläpitäjän nähdä transkoodatut lataukset hallintapaneelissa",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "Kuvavälimuistin raja",
+    "clearImageCache": "Tyhjennä kuvavälimuisti",
+    "imageCacheCleared": "Kuvavälimuisti tyhjennetty"
 }

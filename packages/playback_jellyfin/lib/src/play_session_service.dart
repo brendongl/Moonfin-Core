@@ -68,7 +68,9 @@ class PlaySessionService implements PlayerService {
     Object? reportError;
     StackTrace? reportStackTrace;
     try {
-      await _client.playbackApi.reportPlaybackStopped(report.toJson());
+      if (!_isAudiobook(mediaItem)) {
+        await _client.playbackApi.reportPlaybackStopped(report.toJson());
+      }
     } catch (error, stackTrace) {
       reportError = error;
       reportStackTrace = stackTrace;
@@ -94,12 +96,24 @@ class PlaySessionService implements PlayerService {
     } catch (_) {}
   }
 
+  @override
+  Future<void> stopTranscoding(StreamResolutionResult resolution) async {
+    final playSessionId = resolution.playSessionId;
+    if (playSessionId == null || playSessionId.isEmpty) return;
+    try {
+      await _client.playbackApi.stopActiveEncodings(
+        deviceId: _client.deviceInfo.id,
+        playSessionId: playSessionId,
+      );
+    } catch (_) {}
+  }
+
   void _armExitBeacon(
     dynamic mediaItem,
     StreamResolutionResult resolution,
     int positionTicks,
   ) {
-    if (!PlaybackExitBeacon.supported) {
+    if (!PlaybackExitBeacon.supported || _isAudiobook(mediaItem)) {
       return;
     }
     final token = _client.accessToken;
@@ -108,7 +122,7 @@ class PlaySessionService implements PlayerService {
     }
     final report = _stopReport(mediaItem, resolution, positionTicks);
     PlaybackExitBeacon.arm(
-      url: '${_client.baseUrl}/Sessions/Playing/Stopped?api_key=$token',
+      url: '${_client.baseUrl}/Sessions/Playing/Stopped?ApiKey=$token',
       body: jsonEncode(report.toJson()),
     );
   }
@@ -131,6 +145,21 @@ class PlaySessionService implements PlayerService {
     StreamPlayMethod.directStream => PlayMethod.directStream,
     StreamPlayMethod.transcode => PlayMethod.transcode,
   };
+
+  bool _isAudiobook(dynamic mediaItem) {
+    if (mediaItem is Map) {
+      final type = mediaItem['Type']?.toString().toLowerCase();
+      final mediaType = mediaItem['MediaType']?.toString().toLowerCase();
+      return type == 'audiobook' || type == 'audio_book' || mediaType == 'audiobook';
+    }
+    try {
+      final type = mediaItem.type?.toString().toLowerCase();
+      final mediaType = mediaItem.mediaType?.toString().toLowerCase();
+      return type == 'audiobook' || type == 'audio_book' || mediaType == 'audiobook';
+    } catch (_) {
+      return false;
+    }
+  }
 
   @override
   void dispose() {

@@ -9,6 +9,7 @@ import '../../data/services/connectivity_service.dart';
 import '../../di/injection.dart';
 import '../../playback/external_player_policy.dart';
 import '../../preference/user_preferences.dart';
+import '../../preference/preference_constants.dart';
 import '../../syncplay/syncplay_manager.dart';
 import '../../util/platform_detection.dart';
 import '../screens/auth/emby_connect_screen.dart';
@@ -27,16 +28,22 @@ import '../screens/browse/library_browse_screen.dart';
 import '../screens/browse/library_genres_screen.dart';
 import '../screens/browse/library_letters_screen.dart';
 import '../screens/browse/library_suggestions_screen.dart';
+import '../screens/browse/book_browse_screen.dart';
 import '../screens/browse/music_browse_screen.dart';
 import '../screens/detail/item_detail_screen.dart';
+import '../screens/games/game_library_screen.dart';
+import '../screens/games/game_detail_screen.dart';
+import '../screens/playback/game_emulator_screen.dart';
+import '../screens/playback/native_game_player_screen.dart';
 import '../screens/detail/item_list_screen.dart';
-import '../screens/detail/music_favorites_screen.dart';
 import '../screens/home/home_screen.dart';
 import '../screens/seerr/seerr_browse_screen.dart';
+import '../screens/seerr/seerr_collection_screen.dart';
 import '../screens/seerr/seerr_discover_screen.dart';
 import '../screens/seerr/seerr_media_detail_screen.dart';
 import '../screens/seerr/seerr_person_screen.dart';
 import '../screens/seerr/seerr_requests_screen.dart';
+import '../screens/livetv/live_tv_channel_player_loader.dart';
 import '../screens/livetv/live_tv_guide_screen.dart';
 import '../screens/livetv/live_tv_player_screen.dart';
 import '../../data/viewmodels/live_tv_guide_view_model.dart';
@@ -75,6 +82,9 @@ import '../screens/admin/settings/admin_playback_settings_screen.dart';
 import '../screens/admin/settings/admin_resume_settings_screen.dart';
 import '../screens/admin/settings/admin_streaming_screen.dart';
 import '../screens/admin/settings/admin_trickplay_screen.dart';
+import '../screens/admin/libraries/admin_library_display_screen.dart';
+import '../screens/admin/libraries/admin_library_metadata_screen.dart';
+import '../screens/admin/libraries/admin_library_nfo_screen.dart';
 import '../screens/admin/plugins/admin_plugins_screen.dart';
 import '../screens/admin/plugins/admin_plugin_detail_screen.dart';
 import '../screens/admin/plugins/admin_repositories_screen.dart';
@@ -85,11 +95,6 @@ import '../screens/admin/logs/admin_logs_screen.dart';
 import '../screens/admin/logs/admin_log_viewer_screen.dart';
 import '../screens/admin/livetv/admin_live_tv_screen.dart';
 import '../screens/admin/metadata/admin_metadata_edit_screen.dart';
-import '../screens/downloads/saved_media_screen.dart';
-import '../screens/downloads/saved_album_screen.dart';
-import '../screens/downloads/saved_season_screen.dart';
-import '../screens/downloads/saved_series_screen.dart';
-import '../screens/downloads/storage_management_screen.dart';
 import 'destinations.dart';
 import 'focus_route_observer.dart';
 import 'route_lifecycle_observer.dart';
@@ -104,14 +109,13 @@ const _authRoutes = {
   Destinations.qrLogin,
 };
 
-bool _isOfflineAllowed(String path) {
-  if (path.startsWith('/settings')) return true;
-  if (path == Destinations.videoPlayer ||
-      path == Destinations.externalPlayer ||
-      path == Destinations.audioPlayer) {
-    return true;
-  }
-  return false;
+/// Surfaces that genuinely need the server. Everything else works offline
+/// against the downloads catalog.
+bool _isOfflineBlocked(String path) {
+  return path.startsWith('/live-tv') ||
+      path.startsWith('/seerr') ||
+      path.startsWith('/admin') ||
+      path.startsWith('/games');
 }
 
 bool _shouldRedirectVideoToExternalPlayer(String path) {
@@ -149,6 +153,9 @@ CustomTransitionPage<T> _opaqueFullScreenPage<T>({
 }) {
   return CustomTransitionPage<T>(
     key: state.pageKey,
+    // Name the page so PlayerRouteObserver recognizes fullscreen player routes.
+    // go_router only auto-names builder-based routes, not pageBuilder ones.
+    name: state.name ?? state.uri.path,
     opaque: true,
     barrierColor: Colors.black,
     transitionDuration: Duration.zero,
@@ -170,8 +177,6 @@ final appRouter = GoRouter(
     final path = state.uri.path;
     if (_authRoutes.contains(path)) return null;
 
-    if (path.startsWith('/downloads')) return null;
-
     final session = GetIt.instance<SessionRepository>();
     if (session.activeUserId == null) {
       return Destinations.startup;
@@ -185,8 +190,8 @@ final appRouter = GoRouter(
     }
 
     final connectivity = GetIt.instance<ConnectivityService>();
-    if (!connectivity.isOnline && !_isOfflineAllowed(path)) {
-      return Destinations.downloads;
+    if (!connectivity.canReachServer && _isOfflineBlocked(path)) {
+      return Destinations.home;
     }
 
     if (_shouldRedirectVideoToExternalPlayer(path)) {
@@ -270,7 +275,6 @@ final appRouter = GoRouter(
       builder: (context, state) {
         final libraryId = state.pathParameters['libraryId']!;
         final typesParam = state.uri.queryParameters['types'];
-        final bookUiParam = state.uri.queryParameters['bookUi'];
         final includeItemTypes = typesParam
             ?.split(',')
             .map(Uri.decodeComponent)
@@ -278,8 +282,7 @@ final appRouter = GoRouter(
         return LibraryBrowseScreen(
           libraryId: libraryId,
           includeItemTypes: includeItemTypes,
-          forceBookExperience:
-              bookUiParam == '1' || bookUiParam?.toLowerCase() == 'true',
+          favoritesOnly: state.uri.queryParameters['favorites'] == '1',
         );
       },
       routes: [
@@ -341,8 +344,21 @@ final appRouter = GoRouter(
       },
     ),
     GoRoute(
+      path: Destinations.bookBrowse,
+      builder: (context, state) {
+        final libraryId = state.pathParameters['libraryId']!;
+        final collectionType = state.uri.queryParameters['collectionType'];
+        return BookBrowseScreen(
+          libraryId: libraryId,
+          collectionType: collectionType,
+        );
+      },
+    ),
+    GoRoute(
       path: Destinations.genreBrowse,
       builder: (context, state) {
+        // go_router already decodes path parameters; decoding again crashes on
+        // accented/non-ASCII or '%' genre names ("Comédie" for example).
         final genreName = state.pathParameters['genreName']!;
         final genreId = state.uri.queryParameters['genreId']!;
         final parentId = state.uri.queryParameters['parentId'];
@@ -350,9 +366,16 @@ final appRouter = GoRouter(
         return LibraryBrowseScreen(
           libraryId: parentId ?? '',
           genreId: genreId,
-          genreName: Uri.decodeComponent(genreName),
+          genreName: genreName,
           includeItemTypes: includeType != null ? [includeType] : null,
         );
+      },
+    ),
+    GoRoute(
+      path: Destinations.studioBrowse,
+      builder: (context, state) {
+        final studioName = state.pathParameters['studioName']!;
+        return LibraryBrowseScreen(libraryId: '', studioName: studioName);
       },
     ),
 
@@ -380,11 +403,58 @@ final appRouter = GoRouter(
         ),
       ],
     ),
+
+    // Games (EmulatorJS)
     GoRoute(
-      path: Destinations.musicFavorites,
+      path: Destinations.gameLibrary,
       builder: (context, state) {
-        final parentId = state.pathParameters['parentId']!;
-        return MusicFavoritesScreen(parentId: parentId);
+        final libraryId = state.pathParameters['libraryId']!;
+        return GameLibraryScreen(
+          key: ValueKey('game-lib-$libraryId'),
+          libraryId: libraryId,
+          title: state.uri.queryParameters['title'],
+        );
+      },
+    ),
+    GoRoute(
+      path: Destinations.gameDetail,
+      builder: (context, state) {
+        final libraryId = state.pathParameters['libraryId']!;
+        final gameId = state.pathParameters['gameId']!;
+        return GameDetailScreen(
+          key: ValueKey('game-$gameId'),
+          libraryId: libraryId,
+          gameId: gameId,
+        );
+      },
+    ),
+    GoRoute(
+      path: Destinations.gamePlayer,
+      pageBuilder: (context, state) {
+        final libraryId = state.pathParameters['libraryId']!;
+        final gameId = state.pathParameters['gameId']!;
+        final core = state.uri.queryParameters['core'] ?? 'nes';
+        final startFresh = state.uri.queryParameters['fresh'] == '1';
+        return _opaqueFullScreenPage<void>(
+          state: state,
+          // tvOS has no WebView; games run on the native libretro bridge there.
+          child: PlatformDetection.isAppleTV
+              ? NativeGamePlayerScreen(
+                  libraryId: libraryId,
+                  gameId: gameId,
+                  core: core,
+                  gameName: state.uri.queryParameters['name'],
+                  startFresh: startFresh,
+                )
+              : GameEmulatorScreen(
+                  libraryId: libraryId,
+                  gameId: gameId,
+                  core: core,
+                  biosId: state.uri.queryParameters['bios'],
+                  gameName: state.uri.queryParameters['name'],
+                  startFresh: startFresh,
+                ),
+        );
       },
     ),
 
@@ -421,12 +491,14 @@ final appRouter = GoRouter(
         GoRoute(
           path: 'player',
           pageBuilder: (context, state) {
-            final extra = state.extra as Map<String, dynamic>;
-            final channels = extra['channels'] as List<GuideChannel>;
-            final startIndex = extra['startIndex'] as int;
-            return _opaqueFullScreenPage<void>(
-              state: state,
-              child: PlatformDetection.isAppleTV
+            final extra = state.extra is Map<String, dynamic>
+                ? state.extra as Map<String, dynamic>
+                : const <String, dynamic>{};
+            final channels = extra['channels'] as List<GuideChannel>?;
+            final startIndex = extra['startIndex'] as int? ?? 0;
+            final Widget child;
+            if (channels != null) {
+              child = PlatformDetection.isAppleTV
                   ? AppleTvLiveTvPlayerHostScreen(
                       channels: channels,
                       startIndex: startIndex,
@@ -434,7 +506,17 @@ final appRouter = GoRouter(
                   : LiveTvPlayerScreen(
                       channels: channels,
                       startIndex: startIndex,
-                    ),
+                    );
+            } else {
+              // Entered by channel id (favorites, search, deep links). The
+              // loader resolves the lineup before showing the player.
+              child = LiveTvChannelPlayerLoader(
+                channelId: state.uri.queryParameters['channelId'] ?? '',
+              );
+            }
+            return _opaqueFullScreenPage<void>(
+              state: state,
+              child: child,
             );
           },
         ),
@@ -574,6 +656,18 @@ final appRouter = GoRouter(
           builder: (context, state) => const AdminBrandingScreen(),
         ),
         GoRoute(
+          path: Destinations.adminSettingsDisplay,
+          builder: (context, state) => const AdminLibraryDisplayScreen(),
+        ),
+        GoRoute(
+          path: Destinations.adminSettingsMetadata,
+          builder: (context, state) => const AdminLibraryMetadataScreen(),
+        ),
+        GoRoute(
+          path: Destinations.adminSettingsNfo,
+          builder: (context, state) => const AdminLibraryNfoScreen(),
+        ),
+        GoRoute(
           path: Destinations.adminTasks,
           builder: (context, state) => const AdminTasksScreen(),
         ),
@@ -619,7 +713,8 @@ final appRouter = GoRouter(
         GoRoute(
           path: Destinations.adminLogsFile,
           builder: (context, state) => AdminLogViewerScreen(
-            fileName: Uri.decodeComponent(state.pathParameters['fileName']!),
+            // go_router already decodes path parameters, no need for a second decode
+            fileName: state.pathParameters['fileName']!,
           ),
         ),
         GoRoute(
@@ -647,7 +742,9 @@ final appRouter = GoRouter(
     ),
     GoRoute(
       path: Destinations.seerrRequests,
-      builder: (context, state) => const SeerrRequestsScreen(),
+      builder: (context, state) => SeerrRequestsScreen(
+        initialTab: state.uri.queryParameters['tab'] == 'issues' ? 1 : 0,
+      ),
     ),
     GoRoute(
       path: Destinations.seerrBrowse,
@@ -665,48 +762,34 @@ final appRouter = GoRouter(
       path: Destinations.seerrMediaDetail,
       builder: (context, state) {
         final itemId = state.pathParameters['itemId']!;
-        return SeerrMediaDetailScreen(itemId: itemId);
+        return SeerrMediaDetailScreen(
+          itemId: itemId,
+          mediaType: state.uri.queryParameters['mediaType'],
+        );
+      },
+    ),
+    GoRoute(
+      path: Destinations.seerrCollectionDetail,
+      builder: (context, state) {
+        final collectionId = state.pathParameters['collectionId']!;
+        return SeerrCollectionScreen(collectionId: collectionId);
       },
     ),
     GoRoute(
       path: Destinations.seerrPersonDetail,
       builder: (context, state) {
         final personId = state.pathParameters['personId']!;
+        final prefs = GetIt.instance<UserPreferences>();
+        if (prefs.get(UserPreferences.detailScreenStyle) == DetailScreenStyle.modern) {
+          return ItemDetailScreen(
+            key: ValueKey('tmdb:$personId'),
+            itemId: 'tmdb:$personId',
+          );
+        }
         return SeerrPersonScreen(personId: personId);
       },
     ),
 
-    // Downloads / Saved Media
-    GoRoute(
-      path: Destinations.downloads,
-      builder: (context, state) => const SavedMediaScreen(),
-      routes: [
-        GoRoute(
-          path: 'music/:albumId',
-          builder: (context, state) => SavedAlbumScreen(
-            albumId: state.pathParameters['albumId']!,
-            albumName: state.uri.queryParameters['name'],
-          ),
-        ),
-        GoRoute(
-          path: 'series/:seriesId',
-          builder: (context, state) =>
-              SavedSeriesScreen(seriesId: state.pathParameters['seriesId']!),
-          routes: [
-            GoRoute(
-              path: 'season/:seasonId',
-              builder: (context, state) => SavedSeasonScreen(
-                seasonId: state.pathParameters['seasonId']!,
-              ),
-            ),
-          ],
-        ),
-      ],
-    ),
-    GoRoute(
-      path: Destinations.storageManagement,
-      builder: (context, state) => const StorageManagementScreen(),
-    ),
   ],
 );
 
@@ -719,6 +802,7 @@ class PlayerRouteObserver extends NavigatorObserver {
     final name = route.settings.name;
     return name != null &&
         (name.startsWith('/player/') ||
+         name.startsWith('/game-player/') ||
          name == '/live-tv/player' ||
          name == Destinations.audioPlayer ||
          name == Destinations.videoPlayer);

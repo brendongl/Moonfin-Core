@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "ఇష్టమైన ట్రాక్‌లు ఇక్కడ కనిపిస్తాయి",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "లోడ్ చేయడంలో విఫలమైంది",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "నిర్దిష్ట వినియోగదారు",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "ఎల్లప్పుడూ ప్రమాణీకరించండి",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "రిమోట్ వ్యక్తిని శోధించండి",
     "adminNoRemoteMatches": "రిమోట్ సరిపోలికలు ఏవీ కనుగొనబడలేదు",
     "adminRemoteResults": "రిమోట్ ఫలితాలు",
     "adminRemoteMetadataApplied": "రిమోట్ మెటాడేటా వర్తింపజేయబడింది",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "ట్యూనర్‌ని జోడించండి",
     "adminTunerType": "ట్యూనర్ రకం",
-    "adminTunerTypeHint": "HDHomeRun, M3U, ఇతర",
-    "adminUrlPath": "URL / మార్గం",
-    "adminNameOptional": "పేరు (ఐచ్ఛికం)",
     "adminTunerAdded": "ట్యూనర్ జోడించబడింది",
     "adminTunerAddFailed": "Failed to add tuner: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "గైడ్ ప్రొవైడర్‌ని జోడించండి",
     "adminProviderType": "ప్రొవైడర్ రకం",
-    "adminProviderTypeHint": "షెడ్యూల్స్డైరెక్ట్ లేదా XMLTV",
-    "adminUsernameOptional": "వినియోగదారు పేరు (ఐచ్ఛికం)",
-    "adminRefreshInterval": "రిఫ్రెష్ విరామం (గంటలు)",
     "adminProviderAdded": "ప్రొవైడర్ జోడించబడింది",
     "adminProviderAddFailed": "Failed to add provider: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "సరిపోలే పంక్తులు లేవు",
     "adminMetadataEditorTitle": "మెటాడేటా ఎడిటర్",
-    "adminMetadataRemote": "రిమోట్",
     "adminMetadataType": "టైప్ చేయండి",
     "adminMetadataDetails": "వివరాలు",
     "adminMetadataExternalIds": "బాహ్య IDలు",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "నా ఎంపికను గుర్తుంచుకో",
     "playHdr10Fallback": "HDR10 ఫాల్‌బ్యాక్‌ని ప్లే చేయండి",
     "requestTranscode": "ట్రాన్స్‌కోడ్‌ని అభ్యర్థించండి",
-    "homeScreenSectionsIntegrationDescription": "IAmParadox27 యొక్క \"హోమ్ స్క్రీన్ విభాగాలు\" ప్లగ్ఇన్ ద్వారా బహిర్గతమయ్యే అడ్డు వరుసలను గుర్తించండి. అడ్డు వరుసలను ప్రారంభించవచ్చు మరియు దిగువ క్రమం చేయవచ్చు.",
-    "homeScreenSectionsIntegrationNoServers": "ఇంకా Jellyfin సర్వర్‌లు ప్లగిన్‌ను నివేదించలేదు.",
-    "integrationOpenHomeSections": "హోమ్ విభాగాలను తెరవండి",
-    "integrationOpenHomeSectionsSubtitle": "అడ్డు వరుసలను ప్రారంభించండి, నిలిపివేయండి మరియు క్రమాన్ని మార్చండి",
-    "integrationInstalledButDisabled": "ఇన్‌స్టాల్ చేయబడింది కానీ నిలిపివేయబడింది",
-    "integrationNotInstalled": "ఇన్‌స్టాల్ చేయలేదు",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "అన్నీ చూడండి",
     "noItems": "అంశాలు లేవు",
     "switchUser": "వినియోగదారుని మార్చండి",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "AAC Stereo",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Passthrough (Advanced)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "సేవ్ చేసిన థీమ్‌ను తొలగించండి",
     "savedThemesManageSubtitle": "ఈ పరికరంలో డౌన్‌లోడ్ చేయబడిన ప్లగిన్ థీమ్‌లను నిర్వహించండి",
-    "homeScreenSectionsTitle": "హోమ్ స్క్రీన్ విభాగాలు",
     "themeEditor": "థీమ్ ఎడిటర్",
     "themeEditorSubtitle": "మీ బ్రౌజర్‌లో Moonfin థీమ్ ఎడిటర్‌ను తెరవండి",
     "homeScreen": "హోమ్ స్క్రీన్",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "HDR వీడియో ప్లేబ్యాక్ కోసం HDRని స్వయంచాలకంగా ప్రారంభించండి మరియు నిష్క్రమణలో ప్రదర్శన మోడ్‌ని పునరుద్ధరించండి.",
     "whenFullscreen": "పూర్తి స్క్రీన్‌లో ఉన్నప్పుడు",
     "transcodingLimits": "ట్రాన్స్‌కోడింగ్ పరిమితులు",
-    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer"
+    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer",
+    "reportDownloadsActivity": "సర్వర్‌లో డౌన్‌లోడ్‌లను చూపించండి",
+    "reportDownloadsActivitySubtitle": "మీ ట్రాన్స్‌కోడ్ చేసిన డౌన్‌లోడ్‌లను డాష్‌బోర్డ్‌లో సర్వర్ అడ్మిన్ చూసేందుకు అనుమతించండి",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "ఇమేజ్ కాష్ పరిమితి",
+    "clearImageCache": "ఇమేజ్ కాష్‌ను క్లియర్ చేయండి",
+    "imageCacheCleared": "ఇమేజ్ కాష్ క్లియర్ చేయబడింది"
 }

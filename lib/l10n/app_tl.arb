@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "Lalabas dito ang mga paboritong track",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "Nabigong mag-load",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "Partikular na Gumagamit",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "Palaging Authenticate",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "Maghanap ng Malayong Tao",
     "adminNoRemoteMatches": "Walang nakitang malalayong tugma",
     "adminRemoteResults": "Malayong Resulta",
     "adminRemoteMetadataApplied": "Inilapat ang malayuang metadata",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "Magdagdag ng Tuner",
     "adminTunerType": "Uri ng Tuner",
-    "adminTunerTypeHint": "HDHomeRun, M3U, Iba pa",
-    "adminUrlPath": "URL / Landas",
-    "adminNameOptional": "Pangalan (opsyonal)",
     "adminTunerAdded": "Idinagdag ni Tuner",
     "adminTunerAddFailed": "Failed to add tuner: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "Magdagdag ng Tagabigay ng Gabay",
     "adminProviderType": "Uri ng Provider",
-    "adminProviderTypeHint": "SchedulesDirect o XMLTV",
-    "adminUsernameOptional": "Username (opsyonal)",
-    "adminRefreshInterval": "Refresh interval (oras)",
     "adminProviderAdded": "Idinagdag ng provider",
     "adminProviderAddFailed": "Failed to add provider: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "Walang tugmang linya",
     "adminMetadataEditorTitle": "Metadata Editor",
-    "adminMetadataRemote": "Remote",
     "adminMetadataType": "Uri",
     "adminMetadataDetails": "Mga Detalye",
     "adminMetadataExternalIds": "Mga panlabas na ID",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "Tandaan ang aking pinili",
     "playHdr10Fallback": "Maglaro ng HDR10 fallback",
     "requestTranscode": "Humiling ng transcode",
-    "homeScreenSectionsIntegrationDescription": "I-detect ang mga row na inilantad ng plugin na \"Home Screen Sections\" ng IAmParadox27. Maaaring paganahin at muling ayusin ang mga hilera sa ibaba.",
-    "homeScreenSectionsIntegrationNoServers": "Wala pang mga server ng Jellyfin na nag-uulat ng plugin.",
-    "integrationOpenHomeSections": "Buksan ang Mga Seksyon ng Tahanan",
-    "integrationOpenHomeSectionsSubtitle": "Paganahin, huwag paganahin, at muling ayusin ang mga hilera",
-    "integrationInstalledButDisabled": "Naka-install ngunit hindi pinagana",
-    "integrationNotInstalled": "Hindi naka-install",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "Tingnan Lahat",
     "noItems": "Walang item",
     "switchUser": "Lumipat ng User",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "AAC Stereo",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Passthrough (Advanced)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Delete saved theme",
     "savedThemesManageSubtitle": "Manage downloaded plugin themes on this device",
-    "homeScreenSectionsTitle": "Home Screen Sections",
     "themeEditor": "Theme Editor",
     "themeEditorSubtitle": "Open the Moonfin Theme Editor in your browser",
     "homeScreen": "Home Screen",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "Automatically enable HDR for HDR video playback and restore display mode on exit.",
     "whenFullscreen": "When fullscreen",
     "transcodingLimits": "Transcoding Limits",
-    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer"
+    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer",
+    "reportDownloadsActivity": "Ipakita ang mga download sa server",
+    "reportDownloadsActivitySubtitle": "Hayaang makita ng admin ng server ang iyong mga transcoded na download sa dashboard",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "Limitasyon ng image cache",
+    "clearImageCache": "I-clear ang image cache",
+    "imageCacheCleared": "Na-clear ang image cache"
 }

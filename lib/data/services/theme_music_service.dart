@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:flutter/widgets.dart';
 import 'package:playback_core/playback_core.dart';
 import 'package:server_core/server_core.dart';
 
@@ -23,6 +24,7 @@ class ThemeMusicService {
   bool _playSuppressed = false;
   int _playGeneration = 0;
   StreamSubscription<bool>? _mainPlaybackSub;
+  AppLifecycleListener? _lifecycleListener;
 
   static const _fadeDurationMs = 2000;
   static const _fadeStepMs = 50;
@@ -34,6 +36,19 @@ class ThemeMusicService {
         fadeOutAndStop();
       }
     });
+    // Stop immediately when backgrounded. fadeOutAndStop defers the real stop to
+    // a fade timer that is frozen while the app is suspended, so the player
+    // would otherwise keep sounding. 'inactive' is excluded so a desktop window
+    // losing focus does not kill the theme.
+    _lifecycleListener = AppLifecycleListener(
+      onStateChange: (state) {
+        if (state == AppLifecycleState.paused ||
+            state == AppLifecycleState.hidden ||
+            state == AppLifecycleState.detached) {
+          stop();
+        }
+      },
+    );
   }
 
   void registerDetailScreen(Object token) {
@@ -58,18 +73,7 @@ class ThemeMusicService {
   Future<void> playForItem(AggregatedItem item) async {
     if (!_prefs.get(UserPreferences.themeMusicEnabled)) return;
     final activeItem = _playbackManager.queueService.currentItem;
-    bool isAudio = false;
-    if (activeItem is AggregatedItem) {
-      isAudio = activeItem.isAudioLike;
-    } else if (activeItem is String) {
-      final meta = _playbackManager.currentOfflineMetadata;
-      if (meta != null) {
-        final type = meta['Type']?.toString();
-        final mediaType = meta['MediaType']?.toString();
-        isAudio = type == 'Audio' || type == 'AudioBook' || mediaType == 'Audio';
-      }
-    }
-    if (isAudio) return;
+    if (activeItem != null) return;
     if (_playbackManager.state.isPlaying) return;
     if (_externalAudioActive) return;
     if (_playSuppressed) return;
@@ -128,10 +132,12 @@ class ThemeMusicService {
         return;
       }
 
-      await localPlayer.setLoop();
-      if (generation != _playGeneration) {
-        await _safeDispose(localPlayer);
-        return;
+      if (_prefs.get(UserPreferences.themeMusicLoop)) {
+        await localPlayer.setLoop();
+        if (generation != _playGeneration) {
+          await _safeDispose(localPlayer);
+          return;
+        }
       }
 
       _fadeIn(generation);
@@ -157,7 +163,7 @@ class ThemeMusicService {
 
   String _buildAudioUrl(String songId) {
     final token = _client.accessToken ?? '';
-    return '${_client.baseUrl}/Audio/$songId/stream?static=true&audioCodec=mp3&audioBitrate=128000&api_key=$token';
+    return '${_client.baseUrl}/Audio/$songId/stream?static=true&audioCodec=mp3&audioBitrate=128000&${_client.serverType.tokenQueryParam}=$token';
   }
 
   void _fadeIn(int generation) {
@@ -233,6 +239,7 @@ class ThemeMusicService {
 
   void dispose() {
     _mainPlaybackSub?.cancel();
+    _lifecycleListener?.dispose();
     stop();
   }
 }

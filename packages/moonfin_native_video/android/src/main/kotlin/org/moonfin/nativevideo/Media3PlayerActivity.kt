@@ -764,6 +764,20 @@ class Media3PlayerActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        if (::media3View.isInitialized) {
+            media3View.resumeFromBackground()
+        }
+    }
+
+    override fun onStop() {
+        if (::media3View.isInitialized && !media3View.isAudioPlayback()) {
+            media3View.forceReleasePlayer()
+        }
+        super.onStop()
+    }
+
     override fun onDestroy() {
         if (::media3View.isInitialized) {
             media3View.dispose()
@@ -1058,6 +1072,9 @@ private data class Media3TrackState(
             val raw = map[key] as? List<*> ?: return emptyList()
             return raw.mapNotNull { entry ->
                 val data = entry as? Map<*, *> ?: return@mapNotNull null
+                // Unsupported tracks keep their position in the numbering but
+                // can't be selected, so hide them from the menu.
+                if (data["supported"] == false) return@mapNotNull null
                 val index = (data["index"] as? Number)?.toInt() ?: return@mapNotNull null
                 val label = data["label"]?.toString()?.takeIf { it.isNotBlank() } ?: "Track $index"
                 val selected = data["selected"] as? Boolean ?: false

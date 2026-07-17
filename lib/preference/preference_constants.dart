@@ -1,3 +1,11 @@
+enum SubtitleMode {
+  flagged,
+  always,
+  foreign,
+  forced,
+  none,
+}
+
 enum AudioOutputMode {
   auto,
   forceStereo,
@@ -153,6 +161,11 @@ enum DesktopScrollWheelAction {
   volume,
 }
 
+/// Glass rendering budget. `auto` picks per-device (real blur on capable
+/// hardware, zero-blur sheen on TV boxes/web); `full` forces real blur;
+/// `reduced` forces the zero-blur sheen everywhere.
+enum GlassQualityMode { auto, full, reduced }
+
 enum AppTheme {
   white(0xFFFFFFFF),
   black(0xFF000000),
@@ -168,7 +181,8 @@ enum AppTheme {
   slate(0xFF708090),
   indigo(0xFF4B0082),
   moonfinCyan(0xFF00A4DC),
-  neonPulseMagenta(0xFFFF2E92);
+  neonPulseMagenta(0xFFFF2E92),
+  eightBitGold(0xFFFFCD75);
 
   const AppTheme(this.colorValue);
   final int colorValue;
@@ -178,6 +192,30 @@ enum VisualThemeId {
   moonfin,
   neonPulse,
   glass,
+  eightbitHero,
+}
+
+/// Selectable structural style for the media detail screen.
+///
+/// [moonfin] is the original centered-stack layout (default). [modern] is the
+/// responsive cinematic layout (landscape two-pane / portrait stack). Resolved
+/// globally (not scoped per server/user).
+enum DetailScreenStyle {
+  classic,
+  modern;
+}
+
+/// Selectable algorithm source for similarity recommendation system.
+enum RecommendationSystemSource {
+  local,
+  online;
+}
+
+/// Default mobile (portrait phone) view for the Live TV guide: a Now/Next
+/// channel card list or the compact time grid.
+enum EpgMobileView {
+  list,
+  grid,
 }
 
 enum RatingType {
@@ -257,6 +295,33 @@ enum HomeSectionType {
   seerrStudios('seerr_studios'),
   seerrSeriesGenres('seerr_series_genres'),
   seerrNetworks('seerr_networks'),
+  imdbTop250Movies('imdb_top_250_movies'),
+  imdbTop250TvShows('imdb_top_250_tv_shows'),
+  imdbMostPopularMovies('imdb_most_popular_movies'),
+  imdbMostPopularTvShows('imdb_most_popular_tv_shows'),
+  imdbLowestRatedMovies('imdb_lowest_rated_movies'),
+  imdbTopEnglishMovies('imdb_top_english_movies'),
+  tmdbPopularMovies('tmdb_popular_movies'),
+  tmdbTopRatedMovies('tmdb_top_rated_movies'),
+  tmdbNowPlayingMovies('tmdb_now_playing_movies'),
+  tmdbUpcomingMovies('tmdb_upcoming_movies'),
+  tmdbPopularTv('tmdb_popular_tv'),
+  tmdbTopRatedTv('tmdb_top_rated_tv'),
+  tmdbAiringTodayTv('tmdb_airing_today_tv'),
+  tmdbOnTheAirTv('tmdb_on_the_air_tv'),
+  tmdbTrendingMovieDaily('tmdb_trending_movie_daily'),
+  tmdbTrendingMovieWeekly('tmdb_trending_movie_weekly'),
+  tmdbTrendingTvDaily('tmdb_trending_tv_daily'),
+  tmdbTrendingTvWeekly('tmdb_trending_tv_weekly'),
+  tmdbTrendingAllWeekly('tmdb_trending_all_weekly'),
+  radarrCalendar('radarr_calendar'),
+  sonarrCalendar('sonarr_calendar'),
+  sinceYouWatched1('sinceyouwatched1'),
+  sinceYouWatched2('sinceyouwatched2'),
+  sinceYouWatched3('sinceyouwatched3'),
+  sinceYouWatched4('sinceyouwatched4'),
+  sinceYouWatched5('sinceyouwatched5'),
+  rewatch('rewatch'),
   none('none');
 
   const HomeSectionType(this.serializedName);
@@ -283,6 +348,15 @@ enum LibrarySortBy {
 
   const LibrarySortBy(this.apiValue, this.displayName);
   final String apiValue;
+  final String displayName;
+}
+
+enum ChannelSortBy {
+  number('Channel Number'),
+  name('Name'),
+  favoritesFirst('Favorites First');
+
+  const ChannelSortBy(this.displayName);
   final String displayName;
 }
 
@@ -399,6 +473,39 @@ enum SeerrRowType {
       );
 }
 
+extension SeerrRowTypeHomeSection on SeerrRowType {
+  HomeSectionType get homeSectionType => switch (this) {
+        SeerrRowType.recentRequests => HomeSectionType.seerrRecentRequests,
+        SeerrRowType.recentlyAdded => HomeSectionType.seerrRecentlyAdded,
+        SeerrRowType.trending => HomeSectionType.seerrTrending,
+        SeerrRowType.popularMovies => HomeSectionType.seerrPopularMovies,
+        SeerrRowType.movieGenres => HomeSectionType.seerrMovieGenres,
+        SeerrRowType.upcomingMovies => HomeSectionType.seerrUpcomingMovies,
+        SeerrRowType.studios => HomeSectionType.seerrStudios,
+        SeerrRowType.popularSeries => HomeSectionType.seerrPopularSeries,
+        SeerrRowType.seriesGenres => HomeSectionType.seerrSeriesGenres,
+        SeerrRowType.upcomingSeries => HomeSectionType.seerrUpcomingSeries,
+        SeerrRowType.networks => HomeSectionType.seerrNetworks,
+      };
+}
+
+extension HomeSectionTypeSeerrRow on HomeSectionType {
+  SeerrRowType? get seerrRowType => switch (this) {
+        HomeSectionType.seerrRecentRequests => SeerrRowType.recentRequests,
+        HomeSectionType.seerrRecentlyAdded => SeerrRowType.recentlyAdded,
+        HomeSectionType.seerrTrending => SeerrRowType.trending,
+        HomeSectionType.seerrPopularMovies => SeerrRowType.popularMovies,
+        HomeSectionType.seerrMovieGenres => SeerrRowType.movieGenres,
+        HomeSectionType.seerrUpcomingMovies => SeerrRowType.upcomingMovies,
+        HomeSectionType.seerrStudios => SeerrRowType.studios,
+        HomeSectionType.seerrPopularSeries => SeerrRowType.popularSeries,
+        HomeSectionType.seerrSeriesGenres => SeerrRowType.seriesGenres,
+        HomeSectionType.seerrUpcomingSeries => SeerrRowType.upcomingSeries,
+        HomeSectionType.seerrNetworks => SeerrRowType.networks,
+        _ => null,
+      };
+}
+
 enum ScreensaverMode { library, logo }
 
 enum ScreensaverClockMode { off, staticCorner, bouncing }
@@ -415,3 +522,59 @@ enum ScreensaverTimeout {
   const ScreensaverTimeout(this.minutes);
   final int minutes;
 }
+
+enum SinceYouWatchedSource {
+  local,
+  online;
+
+  String get displayName => this == local ? 'Local' : 'Online';
+}
+
+enum SinceYouWatchedSourceType {
+  movies,
+  shows,
+  both;
+
+  String get displayName {
+    switch (this) {
+      case movies: return 'Movies';
+      case shows: return 'Shows';
+      case both: return 'Both';
+    }
+  }
+}
+
+enum SinceYouWatchedSourceItem {
+  recentlyWatched,
+  favorites,
+  random;
+
+  String get displayName {
+    switch (this) {
+      case recentlyWatched: return 'Recently Watched';
+      case favorites: return 'Favorites';
+      case random: return 'Random';
+    }
+  }
+}
+
+enum SinceYouWatchedNumRows {
+  one(1),
+  two(2),
+  three(3),
+  four(4),
+  five(5);
+
+  const SinceYouWatchedNumRows(this.value);
+  final int value;
+
+  String get displayName => value.toString();
+}
+
+enum RewatchSortBy {
+  recentlyWatched,
+  random;
+
+  String get displayName => this == recentlyWatched ? 'Recently Watched' : 'Random';
+}
+

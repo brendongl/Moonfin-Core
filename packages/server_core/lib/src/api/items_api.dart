@@ -1,5 +1,6 @@
 abstract class ItemsApi {
   Future<Map<String, dynamic>> getItems({
+    bool? serverWide,
     String? parentId,
     List<String>? ids,
     List<String>? includeItemTypes,
@@ -29,9 +30,23 @@ abstract class ItemsApi {
     DateTime? minPremiereDate,
     String? maxOfficialRating,
     bool? hasParentalRating,
+    String? anyProviderIdEquals,
   });
 
-  Future<Map<String, dynamic>> getItem(String itemId);
+  Future<Map<String, dynamic>> getPersons({
+    required String searchTerm,
+    int? limit,
+    String? fields,
+    String? enableImageTypes,
+  });
+
+  /// Full metadata by default. Pass [fields] to request a leaner set, e.g. an
+  /// empty string when only the default DTO members like Name are needed.
+  Future<Map<String, dynamic>> getItem(
+    String itemId, {
+    String? mediaSourceId,
+    String? fields,
+  });
   Future<List<Map<String, dynamic>>> getAncestors(String itemId);
   Future<Map<String, dynamic>> getSimilarItems(String itemId, {int? limit});
 
@@ -55,6 +70,15 @@ abstract class ItemsApi {
   });
 
   Future<Map<String, dynamic>> getLatestItems({
+    String? parentId,
+    List<String>? includeItemTypes,
+    int? limit,
+    String? fields,
+    String? enableImageTypes,
+    int? imageTypeLimit,
+  });
+
+  Future<Map<String, dynamic>> getRecentlyReleasedItems({
     String? parentId,
     List<String>? includeItemTypes,
     int? limit,

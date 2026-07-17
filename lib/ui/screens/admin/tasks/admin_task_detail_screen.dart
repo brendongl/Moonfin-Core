@@ -8,6 +8,8 @@ import 'package:server_core/server_core.dart';
 
 import '../providers/admin_user_providers.dart';
 import '../../../../l10n/app_localizations.dart';
+import '../../../widgets/adaptive/adaptive_dialog.dart';
+import '../widgets/admin_form_styles.dart';
 
 class AdminTaskDetailScreen extends ConsumerStatefulWidget {
   final String taskId;
@@ -71,29 +73,31 @@ class _AdminTaskDetailScreenState
     final isCancelling = task.state == 'Cancelling';
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
       children: [
-        Text(task.name, style: theme.textTheme.headlineSmall),
-        if (task.description != null) ...[
-          const SizedBox(height: 4),
-          Text(task.description!,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant)),
-        ],
+        adminScreenHeader(
+          context,
+          title: task.name,
+          subtitle: task.description,
+          icon: Icons.task_alt_outlined,
+        ),
         if (task.category != null) ...[
-          const SizedBox(height: 4),
-          Chip(label: Text(task.category!)),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Chip(label: Text(task.category!)),
+          ),
+          const SizedBox(height: 16),
         ],
-        const SizedBox(height: 16),
 
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
+        adminSectionLabel(context, l10n.status, icon: Icons.info_outline),
+        adminGlassGroup(
+          context,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(l10n.status, style: theme.textTheme.titleMedium),
-                const SizedBox(height: 8),
                 Row(
                   children: [
                     Icon(
@@ -138,7 +142,8 @@ class _AdminTaskDetailScreenState
                 ],
               ],
             ),
-          ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
 
@@ -247,39 +252,51 @@ class _LastExecutionCard extends StatelessWidget {
         statusColor = theme.colorScheme.onSurfaceVariant;
     }
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        adminSectionLabel(context, l10n.adminTaskDetailLastExecution,
+            icon: Icons.history),
+        adminGlassGroup(
+          context,
           children: [
-            Text(l10n.adminTaskDetailLastExecution, style: theme.textTheme.titleMedium),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Icon(Icons.circle, size: 10, color: statusColor),
-                const SizedBox(width: 8),
-                Text(result.status,
-                    style: TextStyle(
-                        color: statusColor, fontWeight: FontWeight.w500)),
-              ],
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.circle, size: 10, color: statusColor),
+                      const SizedBox(width: 8),
+                      Text(result.status,
+                          style: TextStyle(
+                              color: statusColor,
+                              fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _infoRow(l10n.adminTaskDetailStarted,
+                      _formatDateTime(result.startTime)),
+                  _infoRow(l10n.adminTaskDetailEnded,
+                      _formatDateTime(result.endTime)),
+                  _infoRow(l10n.adminTaskDetailDuration,
+                      _formatDuration(duration)),
+                  if (result.errorMessage != null) ...[
+                    const SizedBox(height: 8),
+                    Text(l10n.adminTaskDetailErrorLabel,
+                        style: TextStyle(color: theme.colorScheme.error)),
+                    const SizedBox(height: 4),
+                    Text(result.errorMessage!,
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: theme.colorScheme.error)),
+                  ],
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
-            _infoRow(l10n.adminTaskDetailStarted, _formatDateTime(result.startTime)),
-            _infoRow(l10n.adminTaskDetailEnded, _formatDateTime(result.endTime)),
-            _infoRow(l10n.adminTaskDetailDuration, _formatDuration(duration)),
-            if (result.errorMessage != null) ...[
-              const SizedBox(height: 8),
-              Text(l10n.adminTaskDetailErrorLabel,
-                  style: TextStyle(color: theme.colorScheme.error)),
-              const SizedBox(height: 4),
-              Text(result.errorMessage!,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.error)),
-            ],
           ],
         ),
-      ),
+      ],
     );
   }
 
@@ -330,32 +347,40 @@ class _TriggersSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Row(
-              children: [
-                Text(l10n.adminTriggers, style: theme.textTheme.titleMedium),
-                const Spacer(),
-                FilledButton.tonalIcon(
-                  onPressed: onAdd,
-                  icon: const Icon(Icons.add),
-                  label: Text(l10n.adminAddTrigger),
-                ),
-              ],
+            Expanded(
+              child: adminSectionLabel(context, l10n.adminTriggers,
+                  icon: Icons.schedule),
             ),
-            const SizedBox(height: 8),
-            if (triggers.isEmpty)
+            FilledButton.tonalIcon(
+              onPressed: onAdd,
+              icon: const Icon(Icons.add),
+              label: Text(l10n.adminAddTrigger),
+            ),
+          ],
+        ),
+        if (triggers.isEmpty)
+          adminGlassGroup(
+            context,
+            children: [
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 20),
                 child: Text(l10n.adminNoTriggers,
                     style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant)),
-              )
-            else
+              ),
+            ],
+          )
+        else
+          adminGlassGroup(
+            context,
+            children: [
               ...triggers.asMap().entries.map((entry) {
                 final i = entry.key;
                 final trigger = entry.value;
@@ -372,9 +397,9 @@ class _TriggersSection extends StatelessWidget {
                   ),
                 );
               }),
-          ],
-        ),
-      ),
+            ],
+          ),
+      ],
     );
   }
 
@@ -460,7 +485,7 @@ class _AddTriggerDialogState extends State<_AddTriggerDialog> {
       'IntervalTrigger': l10n.adminTaskTriggerTypeInterval,
       'StartupTrigger': l10n.adminTaskTriggerStartup,
     };
-    return AlertDialog(
+    return AlertDialog.adaptive(
       title: Text(l10n.adminAddTrigger),
       content: SizedBox(
         width: 360,
@@ -470,7 +495,8 @@ class _AddTriggerDialogState extends State<_AddTriggerDialog> {
           children: [
             DropdownButtonFormField<String>(
               initialValue: _type,
-              decoration: InputDecoration(labelText: l10n.adminTriggerType),
+              isExpanded: true,
+              decoration: adminInputDecoration(label: l10n.adminTriggerType),
               items: triggerTypes.entries
                   .map((e) =>
                       DropdownMenuItem(value: e.key, child: Text(e.value)))
@@ -482,8 +508,8 @@ class _AddTriggerDialogState extends State<_AddTriggerDialog> {
             const SizedBox(height: 16),
             DropdownButtonFormField<int?>(
               initialValue: _maxRuntimeHours,
-              decoration: InputDecoration(
-                  labelText: l10n.adminTimeLimit),
+              isExpanded: true,
+              decoration: adminInputDecoration(label: l10n.adminTimeLimit),
               items: [
                 DropdownMenuItem(value: null, child: Text(l10n.adminNoLimit)),
                 ...[1, 2, 3, 6, 12, 24].map((h) => DropdownMenuItem(
@@ -496,7 +522,7 @@ class _AddTriggerDialogState extends State<_AddTriggerDialog> {
         ),
       ),
       actions: [
-        TextButton(
+        adaptiveDialogAction(
           onPressed: () => Navigator.pop(context),
           child: Text(l10n.cancel),
         ),
@@ -517,7 +543,8 @@ class _AddTriggerDialogState extends State<_AddTriggerDialog> {
         return [
           DropdownButtonFormField<String>(
             initialValue: _dayOfWeek,
-            decoration: InputDecoration(labelText: l10n.adminDayOfWeek),
+            isExpanded: true,
+            decoration: adminInputDecoration(label: l10n.adminDayOfWeek),
             items: _daysOfWeek
                 .map((d) => DropdownMenuItem(value: d, child: Text(d)))
                 .toList(),
@@ -537,7 +564,9 @@ class _AddTriggerDialogState extends State<_AddTriggerDialog> {
         return [
           DropdownButtonFormField<int>(
             initialValue: _intervalHours,
-            decoration: InputDecoration(labelText: l10n.adminTaskTriggerIntervalLabel),
+            isExpanded: true,
+            decoration: adminInputDecoration(
+                label: l10n.adminTaskTriggerIntervalLabel),
             items: intervalOptions.entries
                 .map((e) =>
                     DropdownMenuItem(value: e.key, child: Text(e.value)))

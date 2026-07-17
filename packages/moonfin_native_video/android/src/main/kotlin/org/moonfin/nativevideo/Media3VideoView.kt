@@ -340,24 +340,37 @@ private class AdjustableAudioDelayProcessor : BaseAudioProcessor() {
 @UnstableApi
 class Media3VideoView(
     private val context: Context,
+    private val platformViewId: Int = -1,
+    // "preview" for the media bar and home row inline trailers, "main" for the
+    // real players. A preview must never steal the slot from a live main view.
+    val role: String = "main",
 ) : PlatformView, MethodChannel.MethodCallHandler {
     companion object {
         private const val TS_SEARCH_BYTES_LOW_RAM = TsExtractor.TS_PACKET_SIZE * 1800
         private const val TS_SEARCH_BYTES_DEFAULT = TsExtractor.DEFAULT_TIMESTAMP_SEARCH_BYTES
+        private const val EXTERNAL_SUBTITLE_ID_BASE = 10000
         private const val ASS_FALLBACK_FONT_ASSET = "fonts/NotoSans-Regular.ttf"
         private const val ASS_FALLBACK_FONT_NAME = "Noto Sans"
+        private val FONT_EXTENSIONS = setOf("ttf", "otf", "ttc")
         private val ASS_SYSTEM_CJK_FONTS = listOf(
             "NotoSansCJK-Regular.ttc",
             "NotoSerifCJK-Regular.ttc",
             "DroidSansFallbackFull.ttf",
             "DroidSansFallback.ttf",
         )
-        private val ASS_SYSTEM_SCRIPT_FONTS = listOf(
-            "NotoNaskhArabic-Regular.ttf",
-            "NotoSansArabic-Regular.ttf",
-            "NotoSansDevanagari-Regular.ttf",
-            "NotoSansThai-Regular.ttf",
-            "NotoSansHebrew-Regular.ttf",
+        // libass renders ASS itself and cannot query the OS font system, so it
+        // must be handed the system fonts for each script/symbol block. Matched
+        // by filename prefix so it works whether Android ships "-Regular.ttf" or
+        // a variable "-VF.ttf" file, and picks up scripts added in newer builds.
+        private val ASS_SYSTEM_SCRIPT_PREFIXES = listOf(
+            "NotoNaskhArabic", "NotoSansArabic",
+            "NotoSansDevanagari", "NotoSansBengali", "NotoSansTamil",
+            "NotoSansTelugu", "NotoSansKannada", "NotoSansMalayalam",
+            "NotoSansGujarati", "NotoSansGurmukhi", "NotoSansOriya",
+            "NotoSansSinhala", "NotoSansThai", "NotoSansLao",
+            "NotoSansKhmer", "NotoSansMyanmar", "NotoSansHebrew",
+            "NotoSansGeorgian", "NotoSansArmenian", "NotoSansEthiopic",
+            "NotoSansSymbols", "NotoSansSymbols2", "NotoSansMath", "NotoMusic",
         )
     }
 
@@ -403,6 +416,7 @@ class Media3VideoView(
     private data class TrackEntry(
         val group: TrackGroup,
         val trackIndex: Int,
+        val supported: Boolean,
     )
 
     private enum class ZoomMode(
@@ -421,18 +435,36 @@ class Media3VideoView(
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val useSurfaceView = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
-    private var videoView: View = if (useSurfaceView) {
-        SurfaceView(context)
-    } else {
-        TextureView(context)
-    }
+    // SurfaceView is required for display refresh-rate switching (applyFrameRateSwitching is gated
+    // on SurfaceView); TextureView never receives it, so 24/25fps content judders. SurfaceView works
+    // on older Android too once it is lifted above Flutter's background on the legacy hybrid-
+    // composition path (see newVideoView). Previously gated to API 30+.
+    private val useSurfaceView = true
+    private var videoView: View = newVideoView()
+    private var lastSourceArguments: Map<*, *>? = null
+    private var lastPlaybackPositionMs: Long = 0L
+
+    private fun newVideoView(): View =
+        if (useSurfaceView) {
+            SurfaceView(context).apply {
+                // Legacy hybrid composition (older devices without Impeller) otherwise composites
+                // this platform-view SurfaceView behind Flutter and the video renders black; lift it
+                // as a media overlay so it stays visible. The Flutter controls still draw on top.
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) setZOrderMediaOverlay(true)
+            }
+        } else {
+            TextureView(context)
+        }
     private val firstFrameCover = View(context).apply {
         setBackgroundColor(Color.BLACK)
     }
     private val subtitleView = SubtitleView(context)
     private val containerView: FrameLayout = FrameLayout(context).also { container ->
         container.setBackgroundColor(Color.BLACK)
+        // Hold the screen awake while a real player surface is attached so the
+        // OS screensaver cannot interrupt playback if the wakelock lapses.
+        // Previews stay excluded so browsing does not keep the screen on.
+        container.keepScreenOn = role == "main"
         val videoLayoutParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT,
@@ -443,8 +475,30 @@ class Media3VideoView(
             FrameLayout.LayoutParams.MATCH_PARENT,
         )
         container.addView(videoView, videoLayoutParams)
-        container.addView(firstFrameCover, subtitleLayoutParams)
+        // The cover keeps its own params so resizing the subtitle canvas to the
+        // active video box never shrinks the full-frame cover.
+        container.addView(
+            firstFrameCover,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
         container.addView(subtitleView, subtitleLayoutParams)
+
+        container.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {
+                if (!isDisposedByFlutter && currentMediaType != "audio") {
+                    resumeFromBackground()
+                }
+            }
+
+            override fun onViewDetachedFromWindow(v: View) {
+                if (currentMediaType != "audio") {
+                    forceReleasePlayer()
+                }
+            }
+        })
     }
     private val isLowRamDevice = context.getSystemService<ActivityManager>()?.isLowRamDevice == true
     private val hasHardwareAv1Decoder by lazy { queryHardwareAv1DecoderAvailability() }
@@ -530,11 +584,6 @@ class Media3VideoView(
     private var subtitleEmbeddedStylesEnabled = true
     private var subtitleEmbeddedFontSizesEnabled = true
     private var assFallbackFontBytes: ByteArray? = null
-    private val subtitleTypeface: Typeface? by lazy {
-        runCatching {
-            Typeface.createFromAsset(context.assets, ASS_FALLBACK_FONT_ASSET)
-        }.getOrNull()
-    }
     // Single pending runnable for delayed cue rendering (positive subtitle delay).
     // Replaced on every new cue group; cancelled on seek, source change, and dispose.
     private var pendingCueRunnable: Runnable? = null
@@ -690,7 +739,7 @@ class Media3VideoView(
 
         override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
             pendingSubtitleIndex?.let { index ->
-                if (selectTrack(C.TRACK_TYPE_TEXT, index)) {
+                if (selectTextTrack(index, pendingExternalSubtitleUrl)) {
                     selectedSubtitleCodec = pendingSubtitleCodec?.trim()?.lowercase()
                     selectedSubtitleIsExternal = pendingSubtitleIsExternal ?: false
                     selectedSubtitleIsBitmap = pendingSubtitleIsBitmap ?: false
@@ -704,10 +753,21 @@ class Media3VideoView(
                     pendingSubtitleIsExternal = null
                     pendingSubtitleIsBitmap = null
                     pendingExternalSubtitleUrl = null
+                } else if (index in 1..trackCount(C.TRACK_TYPE_TEXT)) {
+                    // The target track exists but can't be selected (for
+                    // example an unsupported codec), so retrying on the next
+                    // tracks change won't help.
+                    pendingSubtitleIndex = null
+                    pendingSubtitleCodec = null
+                    pendingSubtitleIsExternal = null
+                    pendingSubtitleIsBitmap = null
+                    pendingExternalSubtitleUrl = null
                 }
             }
             pendingAudioIndex?.let { index ->
-                if (selectTrack(C.TRACK_TYPE_AUDIO, index)) {
+                if (selectTrack(C.TRACK_TYPE_AUDIO, index) ||
+                    index in 1..trackCount(C.TRACK_TYPE_AUDIO)
+                ) {
                     pendingAudioIndex = null
                 }
             }
@@ -887,13 +947,54 @@ class Media3VideoView(
         refreshSubtitleRendererMode()
 
         startTicker()
+        Media3Bridge.registerView(platformViewId, this)
         Media3Bridge.attachView(this)
     }
 
     override fun getView(): View = containerView
 
+    fun isReattachable(): Boolean = !isDisposedByFlutter
+
+    fun isPlayerLive(): Boolean = !isPlayerReleased && !isDisposedByFlutter
+
+    // Rebuilds the player after another view's attachView() force-released it
+    // while this widget stayed mounted. This mirrors the init path and leaves
+    // the source alone, because the caller re-sends its own source right after
+    // (a view swap or trailer reactivation). Use resumeFromBackground when there
+    // is no incoming source to reload.
+    fun ensurePlayerAlive() {
+        if (!isPlayerReleased) return
+        isPlayerReleased = false
+        isDisposed = false
+        firstFrameRendered = false
+        firstFrameCover.visibility = View.VISIBLE
+        recreateVideoView()
+        player = createPlayer()
+        playerHasLoadedSource = false
+        applyTrackSelectorForCurrentSource()
+        refreshSubtitleRendererMode()
+        startTicker()
+    }
+
+    // Rebuilds the player and reloads the last source at its paused position when
+    // the app returns from the background or the system screensaver. Only runs
+    // when the player was actually released, so a still-live view is untouched.
+    fun resumeFromBackground() {
+        if (!isPlayerReleased) return
+        ensurePlayerAlive()
+        val args = lastSourceArguments ?: return
+        val restored = args.toMutableMap().apply {
+            this["startPositionMs"] = lastPlaybackPositionMs
+            this["autoPlay"] = false
+        }
+        setSource(restored)
+    }
+
+    fun isAudioPlayback(): Boolean = currentMediaType == "audio"
+
     fun forceReleasePlayer() {
         if (isPlayerReleased) return
+        lastPlaybackPositionMs = player.currentPosition
         isPlayerReleased = true
         isDisposed = true
         cancelPendingSubtitleCue(clearView = false)
@@ -908,16 +1009,29 @@ class Media3VideoView(
         audioPipeline.release()
         player.clearVideoSurface()
         Media3SessionController.releaseForPlayer(player)
+        // Stop and clear before releasing so the render threads unwind and the
+        // last decoded frame is dropped instead of lingering in the surface.
+        player.stop()
+        player.clearMediaItems()
         player.release()
+
+        videoView.visibility = View.GONE
+        if (videoView is SurfaceView) {
+            (videoView as SurfaceView).holder.setFormat(android.graphics.PixelFormat.TRANSPARENT)
+        }
     }
 
     override fun dispose() {
         isDisposedByFlutter = true
+        // Unregister before the audio early return so a disposed view can
+        // never be re-activated.
+        Media3Bridge.unregisterView(platformViewId, this)
         if (currentMediaType == "audio") {
             player.clearVideoSurface()
             return
         }
         forceReleasePlayer()
+        containerView.removeAllViews()
         Media3Bridge.detachView(this)
     }
 
@@ -947,7 +1061,7 @@ class Media3VideoView(
         httpDataSourceFactory = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
         val bootDataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
-        val assHandler = AssHandler(AssRenderType.OVERLAY_OPEN_GL)
+        val assHandler = AssHandler(AssRenderType.OVERLAY_CANVAS)
         registerAssFonts(assHandler)
         val assParserFactory = AssSubtitleParserFactory(assHandler)
         val bootMediaSourceFactory = DefaultMediaSourceFactory(
@@ -979,7 +1093,7 @@ class Media3VideoView(
             .setMediaSourceFactory(bootMediaSourceFactory)
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
-            .setPauseAtEndOfMediaItems(true)
+            .setPauseAtEndOfMediaItems(false)
             .build()
             .also {
                 attachAssOverlay(assHandler)
@@ -993,7 +1107,8 @@ class Media3VideoView(
                 }
                 it.addListener(listener)
                 it.addAnalyticsListener(analyticsListener)
-                Media3SessionController.attachPlayer(context, it)
+                // The MediaSession attaches lazily in setSource() so muted
+                // previews never create one.
             }
     }
 
@@ -1012,13 +1127,29 @@ class Media3VideoView(
     private fun registerSystemFallbackFonts(assHandler: AssHandler) {
         val dir = File("/system/fonts")
         if (!dir.isDirectory) return
-        val names = ArrayList<String>()
-        ASS_SYSTEM_CJK_FONTS.firstOrNull { File(dir, it).canRead() }?.let { names.add(it) }
-        names.addAll(ASS_SYSTEM_SCRIPT_FONTS)
-        for (name in names) {
-            val file = File(dir, name)
-            if (!file.canRead()) continue
+        val fonts = dir.listFiles()?.filter {
+            it.isFile && it.canRead() &&
+                it.extension.lowercase() in FONT_EXTENSIONS
+        } ?: return
+
+        val added = HashSet<String>()
+        fun add(file: File?) {
+            if (file == null || !added.add(file.name)) return
             runCatching { assHandler.addFont(file.nameWithoutExtension, file.readBytes()) }
+        }
+
+        // One CJK font is enough
+        add(ASS_SYSTEM_CJK_FONTS.firstNotNullOfOrNull { name ->
+            fonts.firstOrNull { it.name.equals(name, ignoreCase = true) }
+        })
+
+        // One font per script/symbol block. The char after the prefix must not be
+        // a digit, so "NotoSansSymbols" does not swallow "NotoSansSymbols2".
+        for (prefix in ASS_SYSTEM_SCRIPT_PREFIXES) {
+            add(fonts.firstOrNull {
+                it.name.startsWith(prefix, ignoreCase = true) &&
+                    it.name.getOrNull(prefix.length)?.isDigit() != true
+            })
         }
     }
 
@@ -1062,27 +1193,30 @@ class Media3VideoView(
             FrameLayout.LayoutParams.MATCH_PARENT,
             Gravity.CENTER,
         )
+        videoView.visibility = View.GONE
+        if (videoView is SurfaceView) {
+            (videoView as SurfaceView).holder.setFormat(android.graphics.PixelFormat.TRANSPARENT)
+        }
         containerView.removeView(videoView)
-        videoView = if (useSurfaceView) SurfaceView(context) else TextureView(context)
+        videoView = newVideoView()
         containerView.addView(videoView, 0, params)
     }
 
+    // Dart "release" is only issued by preview flows, so stop in place and
+    // keep the player for the next setSource. playerHasLoadedSource stays true
+    // so the next setSource still takes the fresh-player/fresh-surface rebuild
+    // path that works around decoder-reuse hangs on some TVs.
     private fun releaseActivePlayer() {
         if (isDisposed) return
+        cancelPendingSubtitleCue(clearView = true)
         cancelPendingAudioRekick()
         closeExternalAudioEffectSessionIfOpen()
         currentAudioSessionId = C.AUDIO_SESSION_ID_UNSET
         restorePreferredDisplayMode()
         detectedFrameRate = null
-        player.removeListener(listener)
-        player.removeAnalyticsListener(analyticsListener)
-        audioPipeline.release()
-        player.clearVideoSurface()
         Media3SessionController.releaseForPlayer(player)
-        player.release()
-        player = createPlayer()
-        httpDataSourceFactory.setDefaultRequestProperties(currentHeaders)
-        playerHasLoadedSource = false
+        player.stop()
+        player.clearMediaItems()
         firstFrameCover.visibility = View.VISIBLE
         emitState()
     }
@@ -1126,6 +1260,20 @@ class Media3VideoView(
                     if (isDisposedByFlutter && currentMediaType != "audio") {
                         forceReleasePlayer()
                         Media3Bridge.detachView(this)
+                    }
+                    result.success(null)
+                }
+
+                "appPaused" -> {
+                    if (currentMediaType != "audio") {
+                        forceReleasePlayer()
+                    }
+                    result.success(null)
+                }
+
+                "appResumed" -> {
+                    if (currentMediaType != "audio") {
+                        resumeFromBackground()
                     }
                     result.success(null)
                 }
@@ -1203,35 +1351,7 @@ class Media3VideoView(
                 }
 
                 "setSubtitleTrack" -> {
-                    val args = call.arguments as? Map<*, *>
-                    val index = (args?.get("index") as? Number)?.toInt() ?: 0
-                    val codec = args?.get("codec")?.toString()
-                    val isExternal = args?.get("isExternalSubtitle") as? Boolean ?: false
-                    val isBitmap = args?.get("isBitmapSubtitle") as? Boolean ?: false
-                    val externalUrl = args?.get("externalSubtitleUrl")?.toString()
-
-                    pendingSubtitleIndex = index
-                    pendingSubtitleCodec = codec
-                    pendingSubtitleIsExternal = isExternal
-                    pendingSubtitleIsBitmap = isBitmap
-                    pendingExternalSubtitleUrl = externalUrl
-
-                    val selected = selectTrack(C.TRACK_TYPE_TEXT, index)
-                    if (selected) {
-                        selectedSubtitleCodec = codec?.trim()?.lowercase()
-                        selectedSubtitleIsExternal = isExternal
-                        selectedSubtitleIsBitmap = isBitmap
-                        selectedExternalSubtitleUrl = externalUrl?.takeIf { it.isNotBlank() }
-                        subtitleTrackEnabled = true
-                        applyTrackSelectorForCurrentSource()
-                        refreshSubtitleRendererMode()
-
-                        pendingSubtitleIndex = null
-                        pendingSubtitleCodec = null
-                        pendingSubtitleIsExternal = null
-                        pendingSubtitleIsBitmap = null
-                        pendingExternalSubtitleUrl = null
-                    }
+                    handleSetSubtitleTrack(call.arguments as? Map<*, *>)
                     result.success(null)
                 }
 
@@ -1387,22 +1507,7 @@ class Media3VideoView(
                 }
 
                 "setSubtitleTrack" -> {
-                    val subtitleArgs = args as? Map<*, *> ?: return
-                    val index = subtitleArgs["index"] as? Number ?: return
-                    val codec = subtitleArgs["codec"]?.toString()
-                    val isExternal = subtitleArgs["isExternalSubtitle"] as? Boolean ?: false
-                    val isBitmap = subtitleArgs["isBitmapSubtitle"] as? Boolean ?: false
-                    val externalUrl = subtitleArgs["externalSubtitleUrl"]?.toString()
-                    val selected = selectTrack(C.TRACK_TYPE_TEXT, index.toInt())
-                    if (selected) {
-                        selectedSubtitleCodec = codec?.trim()?.lowercase()
-                        selectedSubtitleIsExternal = isExternal
-                        selectedSubtitleIsBitmap = isBitmap
-                        selectedExternalSubtitleUrl = externalUrl?.takeIf { it.isNotBlank() }
-                        subtitleTrackEnabled = true
-                        applyTrackSelectorForCurrentSource()
-                        refreshSubtitleRendererMode()
-                    }
+                    handleSetSubtitleTrack(args as? Map<*, *>)
                 }
 
                 "disableSubtitleTrack" -> {
@@ -1444,6 +1549,7 @@ class Media3VideoView(
 
     private fun setSource(arguments: Any?) {
         val args = arguments as? Map<*, *> ?: return
+        lastSourceArguments = args
         val url = args["url"]?.toString() ?: return
         val startPositionMs = (args["startPositionMs"] as? Number)?.toLong() ?: 0L
         val autoPlay = args["autoPlay"] as? Boolean ?: false
@@ -1454,12 +1560,21 @@ class Media3VideoView(
         val nextMediaType = args["mediaType"]?.toString()?.lowercase() ?: "video"
         val isAudio = nextMediaType == "audio"
         val mediaTypeChanged = nextMediaType != currentMediaType
+        val isPreview = args["preview"] as? Boolean ?: false
 
         currentMediaType = nextMediaType
 
         if (mediaTypeChanged || (!isAudio && (decoderPreferenceDirty || playerHasLoadedSource))) {
             rebuildPlayerForDecoderPreference()
             decoderPreferenceDirty = false
+        }
+
+        // Previews must not surface a MediaSession or start the session
+        // service, and audio stays sessionless because audio_service owns the
+        // music session. The session attaches after the rebuild so it binds
+        // the live player.
+        if (!isPreview && !isAudio) {
+            Media3SessionController.attachPlayer(context, player)
         }
 
         closeExternalAudioEffectSessionIfOpen()
@@ -1469,7 +1584,6 @@ class Media3VideoView(
             ?.trim()
             ?.lowercase()
             ?.takeIf { it.isNotEmpty() }
-        player.setPauseAtEndOfMediaItems(currentMediaType != "audio")
         audioOffloadRetryAttemptedForCurrentSource = false
         stereoDownmixRetryAttemptedForCurrentSource = false
         containerFallbackAttempted = false
@@ -2173,18 +2287,30 @@ class Media3VideoView(
     }
 
     private fun applyVideoLayout() {
-        val currentParams = videoView.layoutParams as? FrameLayout.LayoutParams
-        val layoutParams = currentParams ?: FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            Gravity.CENTER,
-        )
+        val videoLayoutParams = videoView.layoutParams as? FrameLayout.LayoutParams
+            ?: FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER,
+            )
+        val subtitleLayoutParams = subtitleView.layoutParams as? FrameLayout.LayoutParams
+            ?: FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER,
+            )
+
+        // Keep the subtitle canvas aligned to the active video box so PGS cues
+        // and the ASS overlay position against the video, not the full frame.
+        fun applyBounds(width: Int, height: Int) {
+            applyLayoutBounds(videoView, videoLayoutParams, width, height)
+            applyLayoutBounds(subtitleView, subtitleLayoutParams, width, height)
+        }
 
         if (zoomMode == ZoomMode.STRETCH) {
-            updateVideoLayoutParams(
-                layoutParams = layoutParams,
-                width = FrameLayout.LayoutParams.MATCH_PARENT,
-                height = FrameLayout.LayoutParams.MATCH_PARENT,
+            applyBounds(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
             )
             return
         }
@@ -2194,10 +2320,9 @@ class Media3VideoView(
         val sourceWidth = videoWidthPx.toFloat() * videoPixelRatio
         val sourceHeight = videoHeightPx.toFloat()
         if (containerWidth <= 0 || containerHeight <= 0 || sourceWidth <= 0f || sourceHeight <= 0f) {
-            updateVideoLayoutParams(
-                layoutParams = layoutParams,
-                width = FrameLayout.LayoutParams.MATCH_PARENT,
-                height = FrameLayout.LayoutParams.MATCH_PARENT,
+            applyBounds(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
             )
             return
         }
@@ -2232,14 +2357,14 @@ class Media3VideoView(
             ZoomMode.STRETCH -> FrameLayout.LayoutParams.MATCH_PARENT to FrameLayout.LayoutParams.MATCH_PARENT
         }
 
-        updateVideoLayoutParams(
-            layoutParams = layoutParams,
-            width = targetSize.first.coerceAtLeast(1),
-            height = targetSize.second.coerceAtLeast(1),
+        applyBounds(
+            targetSize.first.coerceAtLeast(1),
+            targetSize.second.coerceAtLeast(1),
         )
     }
 
-    private fun updateVideoLayoutParams(
+    private fun applyLayoutBounds(
+        view: View,
         layoutParams: FrameLayout.LayoutParams,
         width: Int,
         height: Int,
@@ -2255,7 +2380,7 @@ class Media3VideoView(
         layoutParams.width = width
         layoutParams.height = height
         layoutParams.gravity = Gravity.CENTER
-        videoView.layoutParams = layoutParams
+        view.layoutParams = layoutParams
     }
 
     private fun applySubtitleRendererMode(mode: SubtitleRendererMode) {
@@ -2338,6 +2463,8 @@ class Media3VideoView(
 
         val subtitleBuilder = MediaItem.SubtitleConfiguration.Builder(Uri.parse(url))
             .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+            // ass-media matches selected Media3 text tracks back to libass tracks by ID.
+            .setId((EXTERNAL_SUBTITLE_ID_BASE + externalSubtitleConfigurations.size).toString())
 
         val mimeType = codecToMimeType(codec)
         if (!mimeType.isNullOrEmpty()) {
@@ -2383,7 +2510,10 @@ class Media3VideoView(
         }
         refreshSubtitleRendererMode()
 
-        val baseTypeface = subtitleTypeface ?: Typeface.DEFAULT
+        // Use the OS default typeface so Android falls back per script
+        // for glyphs beyond Latin, instead of a bundled font
+        // that only covers Latin and renders everything else as tofu.
+        val baseTypeface = Typeface.DEFAULT
         val resolvedTypeface = if (bold) {
             Typeface.create(baseTypeface, Typeface.BOLD)
         } else {
@@ -2776,7 +2906,14 @@ class Media3VideoView(
             return false
         }
         val entry = entries[oneBasedIndex - 1]
+        if (!entry.supported) {
+            return false
+        }
 
+        return applyTrackOverride(trackType, entry)
+    }
+
+    private fun applyTrackOverride(trackType: Int, entry: TrackEntry): Boolean {
         return try {
             val override = TrackSelectionOverride(entry.group, listOf(entry.trackIndex))
 
@@ -2797,6 +2934,82 @@ class Media3VideoView(
         }
     }
 
+    // Include unsupported tracks so 1-based positions stay aligned with the
+    // server's stream list (a track the decoder rejects must not shift every
+    // later position); selection of an unsupported entry is vetoed instead.
+    // Resolves an external file by the URL it was added from (through the
+    // deterministic SubtitleConfiguration id), which is immune to ExoPlayer
+    // group-ordering surprises, and falls back to positional selection.
+    // Applies a subtitle selection request from either the live channel
+    // (handleControlCall) or a replayed queued call (handleQueuedCall). Both
+    // must resolve externals through selectTextTrack (by SubtitleConfiguration
+    // id), and both keep the request pending so onTracksChanged retries once the
+    // tracks are ready.
+    private fun handleSetSubtitleTrack(args: Map<*, *>?) {
+        val index = (args?.get("index") as? Number)?.toInt() ?: 0
+        val codec = args?.get("codec")?.toString()
+        val isExternal = args?.get("isExternalSubtitle") as? Boolean ?: false
+        val isBitmap = args?.get("isBitmapSubtitle") as? Boolean ?: false
+        val externalUrl = args?.get("externalSubtitleUrl")?.toString()
+
+        pendingSubtitleIndex = index
+        pendingSubtitleCodec = codec
+        pendingSubtitleIsExternal = isExternal
+        pendingSubtitleIsBitmap = isBitmap
+        pendingExternalSubtitleUrl = externalUrl
+
+        val selected = selectTextTrack(index, externalUrl)
+        if (selected) {
+            selectedSubtitleCodec = codec?.trim()?.lowercase()
+            selectedSubtitleIsExternal = isExternal
+            selectedSubtitleIsBitmap = isBitmap
+            selectedExternalSubtitleUrl = externalUrl?.takeIf { it.isNotBlank() }
+            subtitleTrackEnabled = true
+            applyTrackSelectorForCurrentSource()
+            refreshSubtitleRendererMode()
+
+            pendingSubtitleIndex = null
+            pendingSubtitleCodec = null
+            pendingSubtitleIsExternal = null
+            pendingSubtitleIsBitmap = null
+            pendingExternalSubtitleUrl = null
+        }
+    }
+
+    private fun selectTextTrack(oneBasedIndex: Int, externalUrl: String?): Boolean {
+        if (!externalUrl.isNullOrBlank() && selectExternalSubtitleByUrl(externalUrl)) {
+            return true
+        }
+        return selectTrack(C.TRACK_TYPE_TEXT, oneBasedIndex)
+    }
+
+    private fun selectExternalSubtitleByUrl(url: String): Boolean {
+        // The configuration uri was built with Uri.parse at add time, so parse
+        // the request the same way. Comparing a parsed uri to the raw string
+        // misses whenever Android normalizes it, dropping us to positional
+        // selection which is off for externals.
+        val target = Uri.parse(url)
+        val configIndex = externalSubtitleConfigurations.indexOfFirst {
+            it.uri == target
+        }
+        if (configIndex < 0) return false
+        val targetId = (EXTERNAL_SUBTITLE_ID_BASE + configIndex).toString()
+
+        for (group in player.currentTracks.groups) {
+            if (group.type != C.TRACK_TYPE_TEXT) continue
+            val mediaTrackGroup = group.mediaTrackGroup
+            for (index in 0 until group.length) {
+                if (group.getTrackFormat(index).id != targetId) continue
+                if (!group.isTrackSupported(index)) return false
+                return applyTrackOverride(
+                    C.TRACK_TYPE_TEXT,
+                    TrackEntry(mediaTrackGroup, index, supported = true),
+                )
+            }
+        }
+        return false
+    }
+
     private fun collectTracks(trackType: Int): List<TrackEntry> {
         val entries = mutableListOf<TrackEntry>()
 
@@ -2804,9 +3017,9 @@ class Media3VideoView(
             if (group.type != trackType) continue
             val mediaTrackGroup = group.mediaTrackGroup
             for (index in 0 until group.length) {
-                if (group.isTrackSupported(index)) {
-                    entries.add(TrackEntry(mediaTrackGroup, index))
-                }
+                entries.add(
+                    TrackEntry(mediaTrackGroup, index, group.isTrackSupported(index)),
+                )
             }
         }
 
@@ -2826,12 +3039,12 @@ class Media3VideoView(
         val options = mutableListOf<Map<String, Any?>>()
         var oneBasedIndex = 1
 
+        // Numbering must mirror collectTracks (all tracks, including
+        // unsupported ones) so a menu selection resolves to the same track.
         for (group in player.currentTracks.groups) {
             if (group.type != trackType) continue
 
             for (trackIndex in 0 until group.length) {
-                if (!group.isTrackSupported(trackIndex)) continue
-
                 val format = group.getTrackFormat(trackIndex)
                 options.add(
                     mapOf(
@@ -2840,6 +3053,7 @@ class Media3VideoView(
                         "selected" to group.isTrackSelected(trackIndex),
                         "language" to (format.language ?: ""),
                         "codec" to (format.codecs ?: format.sampleMimeType ?: ""),
+                        "supported" to group.isTrackSupported(trackIndex),
                     ),
                 )
                 oneBasedIndex += 1

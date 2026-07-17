@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "Yndlingsnumre vises her",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "Kunne ikke indlæses",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -2195,7 +2191,7 @@
     "@watch": {
         "description": "Button label to start watching a channel"
     },
-    "close": "Tæt",
+    "close": "Luk",
     "@close": {
         "description": "Button label to close a dialog"
     },
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "Specifik bruger",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "Autentificer altid",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "Søg fjernperson",
     "adminNoRemoteMatches": "Ingen fjernmatch fundet",
     "adminRemoteResults": "Fjernresultater",
     "adminRemoteMetadataApplied": "Fjernmetadata anvendt",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "Tilføj Tuner",
     "adminTunerType": "Tuner type",
-    "adminTunerTypeHint": "HDHomeRun, M3U, Andet",
-    "adminUrlPath": "URL / sti",
-    "adminNameOptional": "Navn (valgfrit)",
     "adminTunerAdded": "Tuner tilføjet",
     "adminTunerAddFailed": "Kunne ikke tilføje tuner: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "Tilføj guideudbyder",
     "adminProviderType": "Udbyder type",
-    "adminProviderTypeHint": "SchedulesDirect eller XMLTV",
-    "adminUsernameOptional": "Brugernavn (valgfrit)",
-    "adminRefreshInterval": "Opdateringsinterval (timer)",
     "adminProviderAdded": "Udbyder tilføjet",
     "adminProviderAddFailed": "Kunne ikke tilføje udbyder: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "Ingen matchende linjer",
     "adminMetadataEditorTitle": "Metadata Editor",
-    "adminMetadataRemote": "Fjern",
     "adminMetadataType": "Type",
     "adminMetadataDetails": "Detaljer",
     "adminMetadataExternalIds": "Eksterne ID'er",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "Husk mit valg",
     "playHdr10Fallback": "Afspil HDR10 fallback",
     "requestTranscode": "Anmod om omkodning",
-    "homeScreenSectionsIntegrationDescription": "Registrer rækker afsløret af IAmParadox27's \"Home Screen Sections\" plugin. Rækker kan aktiveres og omarrangeres nedenfor.",
-    "homeScreenSectionsIntegrationNoServers": "Ingen Jellyfin-servere rapporterer pluginnet endnu.",
-    "integrationOpenHomeSections": "Åbn Home Sektioner",
-    "integrationOpenHomeSectionsSubtitle": "Aktiver, deaktiver og omarranger rækker",
-    "integrationInstalledButDisabled": "Installeret men deaktiveret",
-    "integrationNotInstalled": "Ikke installeret",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "Se alle",
     "noItems": "Ingen varer",
     "switchUser": "Skift bruger",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "AAC Stereo",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Passthrough (avanceret)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Slet gemt tema",
     "savedThemesManageSubtitle": "Administrer downloadede plugin-temaer på denne enhed",
-    "homeScreenSectionsTitle": "Sektioner på startskærmen",
     "themeEditor": "Tema redaktør",
     "themeEditorSubtitle": "Åbn Moonfin Theme Editor i din browser",
     "homeScreen": "Startskærm",
@@ -7370,5 +7325,68 @@
     "accountPreferences": "Kontoindstillinger",
     "@accountPreferences": {
         "description": "Section header for account preferences settings"
-    }
+    },
+    "themeGlass": "Glas",
+    "@themeGlass": {
+        "description": "Display name for the Glass theme"
+    },
+    "endsIn": "Slutter om {time}",
+    "@endsIn": {
+        "description": "Label showing remaining time for segment or timeout",
+        "placeholders": {
+            "time": {
+                "type": "String"
+            }
+        }
+    },
+    "directors": "INSTRUKTØRER",
+    "@directors": {
+        "description": "Metadata label for directors"
+    },
+    "writer": "FORFATTER",
+    "@writer": {
+        "description": "Metadata label for writer"
+    },
+    "settingsScrollWheelAction": "Scrollhjul",
+    "@settingsScrollWheelAction": {
+        "description": "Setting title for the mouse scroll wheel action during playback"
+    },
+    "settingsScrollWheelActionDescription": "Vælg hvad der sker når der scrolles på musens hjul.",
+    "@settingsScrollWheelActionDescription": {
+        "description": "Description for the mouse scroll wheel action setting"
+    },
+    "scrollWheelActionOff": "Fra",
+    "@scrollWheelActionOff": {
+        "description": "Scroll wheel action option: do nothing"
+    },
+    "scrollWheelActionSeek": "Søg (frem/tilbage)",
+    "@scrollWheelActionSeek": {
+        "description": "Scroll wheel action option: seek forward and back"
+    },
+    "scrollWheelActionVolume": "Volume",
+    "@scrollWheelActionVolume": {
+        "description": "Scroll wheel action option: adjust volume"
+    },
+    "playerTooltipVolume": "Volume",
+    "@playerTooltipVolume": {
+        "description": "Tooltip for the volume control button in the player OSD"
+    },
+    "settingsAudioOutputModeDescription": "Vælg hvordan lyd afkodes. AVR Passthrough sender rå Dolby/DTS spor til din receiver; Auto og Nedjuster afkoder lokalt.",
+    "@settingsAudioOutputModeDescription": {
+        "description": "Description for audio output mode setting"
+    },
+    "reportDownloadsActivity": "Vis downloads på serveren",
+    "reportDownloadsActivitySubtitle": "Lad serveradministratoren se dine transkodede downloads i kontrolpanelet",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "Grænse for billedcache",
+    "clearImageCache": "Ryd billedcache",
+    "imageCacheCleared": "Billedcachen er ryddet"
 }

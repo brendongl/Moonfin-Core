@@ -10,6 +10,10 @@ import '../../data/models/aggregated_item.dart';
 import '../../l10n/app_localizations.dart';
 import '../../util/focus/key_event_utils.dart';
 import '../../util/platform_detection.dart';
+import '../../auth/repositories/user_repository.dart';
+import '../../auth/repositories/session_repository.dart';
+import 'package:dio/dio.dart';
+import 'adaptive/adaptive_dialog.dart';
 import 'focus/focusable_wrapper.dart';
 import 'overlay_sheet.dart';
 
@@ -64,11 +68,15 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
   final FocusNode _closeFocusNode = FocusNode();
   final FocusNode _seriesFocusNode = FocusNode();
   final FocusNode _seasonFocusNode = FocusNode();
+  final FocusNode _gridBackFocusNode = FocusNode();
+  final FocusNode _firstResolutionFocusNode = FocusNode();
 
   bool get _isLibraryFolder =>
       _item.type?.toLowerCase() == 'collectionfolder' ||
       _item.type?.toLowerCase() == 'userview' ||
-      _item.type?.toLowerCase() == 'folder';
+      _item.type?.toLowerCase() == 'folder' ||
+      _item.type?.toLowerCase() == 'genre' ||
+      _item.type?.toLowerCase() == 'musicgenre';
 
   final Map<String, ScrollController> _scrollControllers = {};
   final Map<String, FocusNode> _headerFocusNodes = {};
@@ -166,6 +174,7 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
     _refreshItemMetadata();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusFirstItem();
+      _checkLibrariesWriteAccess();
     });
   }
 
@@ -179,6 +188,8 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
     _closeFocusNode.dispose();
     _seriesFocusNode.dispose();
     _seasonFocusNode.dispose();
+    _gridBackFocusNode.dispose();
+    _firstResolutionFocusNode.dispose();
     for (final controller in _scrollControllers.values) {
       controller.dispose();
     }
@@ -343,6 +354,8 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
       case 'folder':
       case 'collectionfolder':
       case 'userview':
+      case 'genre':
+      case 'musicgenre':
         return const ['Primary', 'Backdrop', 'Thumb'];
       default:
         return const ['Primary', 'Backdrop'];
@@ -467,8 +480,161 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
     return '${client.baseUrl}/Items/${_item.id}/Images/$category?tag=$tag&maxWidth=300$indexParam';
   }
 
+  Future<void> _checkLibrariesWriteAccess() async {
+    final isAdmin = GetIt.instance<UserRepository>().currentUser?.isAdministrator ?? false;
+    if (!isAdmin) return;
+
+    final sessionRepo = GetIt.instance<SessionRepository>();
+    if (sessionRepo.hasCheckedWriteAccess) return;
+
+    final client = GetIt.instance<MediaServerClient>();
+    final token = client.accessToken;
+    if (token == null) return;
+
+    final dio = Dio();
+    configureServerDio(dio);
+    try {
+      final response = await dio.get(
+        '${client.baseUrl}/Moonfin/Libraries/CheckWriteAccess',
+        options: Options(headers: {
+          'Authorization': 'MediaBrowser Token="$token"',
+        }),
+      );
+      sessionRepo.hasCheckedWriteAccess = true;
+
+      final data = response.data;
+      if (data is List) {
+        final reports = data.cast<Map<String, dynamic>>();
+        final itemPath = _item.rawData['Path'] as String?;
+        if (itemPath != null && itemPath.isNotEmpty) {
+          Map<String, dynamic>? matchingFailedReport;
+          String? matchingFailedPath;
+
+          for (final report in reports) {
+            final failedPaths = report['FailedPaths'] as List?;
+            if (failedPaths != null) {
+              for (final path in failedPaths) {
+                if (path is String && itemPath.startsWith(path)) {
+                  matchingFailedReport = report;
+                  matchingFailedPath = path;
+                  break;
+                }
+              }
+            }
+            if (matchingFailedReport != null) break;
+          }
+
+          if (matchingFailedReport != null && mounted) {
+            final libraryName = matchingFailedReport['LibraryName'] ?? 'Library';
+            final l10n = AppLocalizations.of(context);
+            await _showWriteAccessWarningDialog(
+              l10n.libraryWriteAccessProactiveBody(libraryName.toString(), matchingFailedPath ?? ''),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[Moonfin] Failed to check libraries write access: $e');
+    } finally {
+      dio.close(force: true);
+    }
+  }
+
+  Future<void> _handleActionError(dynamic error, String actionName) async {
+    bool isLocalMetadataEnabled = false;
+    try {
+      final client = GetIt.instance<MediaServerClient>();
+      final folders = await client.adminLibraryApi.getVirtualFolders();
+      final itemPath = _item.rawData['Path'] as String?;
+      if (itemPath != null && itemPath.isNotEmpty) {
+        for (final folder in folders) {
+          if (folder.locations.any((loc) => itemPath.startsWith(loc))) {
+            isLocalMetadataEnabled =
+                folder.libraryOptions?['SaveLocalMetadata'] as bool? ?? false;
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Failed to check virtual folders: $e');
+    }
+
+    if (!mounted) return;
+
+    if (isLocalMetadataEnabled) {
+      final l10n = AppLocalizations.of(context);
+      await _showWriteAccessWarningDialog(l10n.libraryWriteAccessReactiveBody);
+    } else {
+      final l10n = AppLocalizations.of(context);
+      final message = switch (actionName) {
+        'download' => l10n.imageDownloadFailed(error.toString()),
+        'delete' => l10n.imageDeleteFailed(error.toString()),
+        'clear' => l10n.clearAllArtworkFailed(error.toString()),
+        'upload' => l10n.imageUploadFailed(error.toString()),
+        _ => error.toString(),
+      };
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    }
+  }
+
+  Future<void> _showWriteAccessWarningDialog(String bodyText) async {
+    final l10n = AppLocalizations.of(context);
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColorScheme.surface,
+        title: Text(l10n.libraryWriteAccessWarningTitle),
+        content: Scrollbar(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(bodyText),
+                const SizedBox(height: 12),
+                Text(
+                  l10n.libraryWriteAccessHowToFix,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(l10n.libraryWriteAccessFixSteps),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          FocusableWrapper(
+            autofocus: true,
+            borderRadius: 8,
+            suppressFocusGlow: true,
+            onSelect: () => Navigator.of(context).pop(),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Text(
+                l10n.dismiss,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _fetchRemoteImages(String category) async {
     if (!mounted) return;
+    final isGenre = _item.type?.toLowerCase() == 'genre' ||
+        _item.type?.toLowerCase() == 'musicgenre';
+    if (isGenre) {
+      setState(() {
+        _remoteImages[category] = const [];
+        _loadingCategories[category] = false;
+      });
+      return;
+    }
     setState(() {
       _loadingCategories[category] = true;
       _categoryErrors[category] = null;
@@ -502,7 +668,6 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
     String category,
     Map<String, dynamic> remoteImage,
   ) async {
-    final l10n = AppLocalizations.of(context);
     final url = remoteImage['Url'] as String?;
     if (url == null || url.isEmpty) return;
 
@@ -538,9 +703,7 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
         setState(() {
           _actionInProgress.remove(category);
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.imageDownloadFailed(e.toString()))),
-        );
+        await _handleActionError(e, 'download');
       }
     }
   }
@@ -552,16 +715,16 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
 
     final result = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AlertDialog.adaptive(
         backgroundColor: AppColorScheme.surface,
         title: Text(l10n.confirmClear),
         content: Text(message),
         actions: [
-          TextButton(
+          adaptiveDialogAction(
             onPressed: () => Navigator.pop(context, false),
             child: Text(l10n.no),
           ),
-          TextButton(
+          adaptiveDialogAction(
             onPressed: () => Navigator.pop(context, true),
             child: Text(
               l10n.yes,
@@ -610,10 +773,7 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
         setState(() {
           _actionInProgress.remove(category);
         });
-        final l10n = AppLocalizations.of(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.imageDeleteFailed(e.toString()))),
-        );
+        await _handleActionError(e, 'delete');
       }
     }
   }
@@ -622,16 +782,16 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
     final l10n = AppLocalizations.of(context);
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AlertDialog.adaptive(
         backgroundColor: AppColorScheme.surface,
         title: Text(l10n.confirmClearAll),
         content: Text(l10n.clearAllArtworkWarning),
         actions: [
-          TextButton(
+          adaptiveDialogAction(
             onPressed: () => Navigator.pop(context, false),
             child: Text(l10n.no),
           ),
-          TextButton(
+          adaptiveDialogAction(
             onPressed: () => Navigator.pop(context, true),
             child: Text(
               l10n.yes,
@@ -691,10 +851,7 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
         setState(() {
           _actionInProgress.clear();
         });
-        final l10n = AppLocalizations.of(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.clearAllArtworkFailed(e.toString()))),
-        );
+        await _handleActionError(e, 'clear');
       }
     }
   }
@@ -752,9 +909,7 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
         setState(() {
           _actionInProgress.remove(category);
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.imageUploadFailed(e.toString()))),
-        );
+        await _handleActionError(e, 'upload');
       }
     }
   }
@@ -939,7 +1094,9 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
   }
 
   void _handleNavigateDownFromFilters() {
-    if (_supportedCategories.isNotEmpty) {
+    if (_focusedCategory != null) {
+      _gridBackFocusNode.requestFocus();
+    } else if (_supportedCategories.isNotEmpty) {
       _getHeaderFocusNode(_supportedCategories[0]).requestFocus();
     }
   }
@@ -953,7 +1110,7 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            return AlertDialog(
+            return AlertDialog.adaptive(
               backgroundColor: AppColorScheme.surface,
               title: Text(l10n.sources),
               content: SizedBox(
@@ -1059,7 +1216,7 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
         ),
         decoration: BoxDecoration(
           color: AppColorScheme.surface.withValues(alpha: 0.95),
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: AppRadius.circular(24),
           border: Border.fromBorderSide(
             ThemeRegistry.active.borders.chipBorder,
           ),
@@ -1405,9 +1562,12 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
         Row(
           children: [
             const SizedBox(width: 8),
-            IconButton(
-              icon: const Icon(Icons.arrow_back),
-              onPressed: () {
+            FocusableWrapper(
+              focusNode: _gridBackFocusNode,
+              borderRadius: 8,
+              suppressFocusGlow: true,
+              semanticLabel: l10n.back,
+              onSelect: () {
                 final categoryToFocus = _focusedCategory;
                 setState(() {
                   _focusedCategory = null;
@@ -1418,6 +1578,13 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
                   });
                 }
               },
+              onNavigateUp: () => _getFirstFilterFocusNode().requestFocus(),
+              onNavigateDown: () => _firstResolutionFocusNode.requestFocus(),
+              onNavigateRight: () => _closeFocusNode.requestFocus(),
+              child: const Padding(
+                padding: EdgeInsets.all(8),
+                child: Icon(Icons.arrow_back),
+              ),
             ),
             const SizedBox(width: 8),
             Text(
@@ -1487,31 +1654,46 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
                 final selected = _selectedResolution == res;
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: Text(_getResolutionDisplayName(res, l10n)),
-                    selected: selected,
-                    onSelected: (val) {
-                      if (val) {
-                        setState(() {
-                          _selectedResolution = res;
-                        });
-                      }
+                  child: FocusableWrapper(
+                    focusNode: res == 'All' ? _firstResolutionFocusNode : null,
+                    borderRadius: 16,
+                    suppressFocusGlow: true,
+                    onSelect: () {
+                      setState(() {
+                        _selectedResolution = res;
+                      });
                     },
-                    selectedColor: AppColorScheme.onSurface.withValues(
-                      alpha: 0.2,
-                    ),
-                    backgroundColor: AppColorScheme.onSurface.withValues(
-                      alpha: 0.06,
-                    ),
-                    labelStyle: TextStyle(
-                      color: selected
-                          ? AppColorScheme.onSurface
-                          : AppColorScheme.onSurface.withValues(alpha: 0.5),
-                      fontSize: 12,
-                    ),
-                    side: BorderSide.none,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                    onNavigateUp: () => _gridBackFocusNode.requestFocus(),
+                    onNavigateDown: () =>
+                        _getFirstCardFocusNode(category).requestFocus(),
+                    child: ExcludeFocus(
+                      child: ChoiceChip(
+                        label: Text(_getResolutionDisplayName(res, l10n)),
+                        selected: selected,
+                        onSelected: (val) {
+                          if (val) {
+                            setState(() {
+                              _selectedResolution = res;
+                            });
+                          }
+                        },
+                        selectedColor: AppColorScheme.onSurface.withValues(
+                          alpha: 0.2,
+                        ),
+                        backgroundColor: AppColorScheme.onSurface.withValues(
+                          alpha: 0.06,
+                        ),
+                        labelStyle: TextStyle(
+                          color: selected
+                              ? AppColorScheme.onSurface
+                              : AppColorScheme.onSurface.withValues(alpha: 0.5),
+                          fontSize: 12,
+                        ),
+                        side: BorderSide.none,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: AppRadius.circular(16),
+                        ),
+                      ),
                     ),
                   ),
                 );
@@ -1531,11 +1713,19 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
             ),
             itemCount: totalCount,
             itemBuilder: (context, i) {
+              final isFirst = (i == 0);
+              final cardNode = isFirst ? _getFirstCardFocusNode(category) : null;
+
               if (i < currentCount) {
                 if (currentTags.isEmpty) {
                   return Align(
                     alignment: Alignment.topCenter,
-                    child: _buildCurrentCard(category, null, dims),
+                    child: _buildCurrentCard(
+                      category,
+                      null,
+                      dims,
+                      focusNode: cardNode,
+                    ),
                   );
                 }
                 return Align(
@@ -1545,6 +1735,7 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
                     currentTags[i],
                     dims,
                     imageIndex: category == 'Backdrop' ? i : null,
+                    focusNode: cardNode,
                   ),
                 );
               }
@@ -1564,6 +1755,7 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
                   remoteImage,
                   dims,
                   isActionLoading,
+                  focusNode: cardNode,
                 ),
               );
             },
@@ -1885,7 +2077,7 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
       selectCallback = null;
       childWidget = Container(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: AppRadius.circular(8),
           border: Border.all(
             color: Colors.white24,
             width: 1.5,
@@ -1918,7 +2110,7 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
           ? null
           : () => _deleteImage(category, imageIndex: imageIndex);
       childWidget = ClipRRect(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: AppRadius.circular(8),
         child: Stack(
           children: [
             Positioned.fill(
@@ -2181,7 +2373,7 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: AppColorScheme.surface,
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: AppRadius.circular(16),
                     border: Border.all(color: Colors.white10, width: 1),
                   ),
                   child: Column(
@@ -2224,10 +2416,10 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
                           width: targetWidth,
                           height: targetHeight,
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: AppRadius.circular(8),
                           ),
                           child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: AppRadius.circular(8),
                             child: CachedNetworkImage(
                               imageUrl: previewUrl,
                               fit: BoxFit.contain,
@@ -2283,7 +2475,7 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
                                 vertical: 8,
                               ),
                               decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(8),
+                                borderRadius: AppRadius.circular(8),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -2324,7 +2516,7 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
                                 vertical: 8,
                               ),
                               decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(8),
+                                borderRadius: AppRadius.circular(8),
                                 border: Border.all(
                                   color: Colors.white24,
                                   width: 1,
@@ -2387,7 +2579,7 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
       category: category,
       dims: dims,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: AppRadius.circular(8),
         child: Stack(
           children: [
             Positioned.fill(

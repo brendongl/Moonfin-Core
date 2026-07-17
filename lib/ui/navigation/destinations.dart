@@ -76,11 +76,17 @@ class Destinations {
   static const collectionBrowse = '/collection/:collectionId';
   static const libraryViewRoute = '/library-view/:libraryId';
   static const musicBrowse = '/music/:libraryId';
+  static const bookBrowse = '/books/:libraryId';
   static const genreBrowse = '/genre/:genreName';
+  static const studioBrowse = '/studio/:studioName';
 
   // Item details
   static const itemDetail = '/item/:itemId';
-  static const musicFavorites = '/music-favorites/:parentId';
+
+  // Games (EmulatorJS)
+  static const gameLibrary = '/games/:libraryId';
+  static const gameDetail = '/game/:libraryId/:gameId';
+  static const gamePlayer = '/game-player/:libraryId/:gameId';
 
   // Live TV
   static const liveTv = '/live-tv';
@@ -109,6 +115,9 @@ class Destinations {
   static const adminLibrariesAdd = '/admin/libraries/add';
   static const adminLibrariesEdit = '/admin/libraries/:libraryId';
   static const adminSettings = '/admin/settings';
+  static const adminSettingsDisplay = '/admin/settings/display';
+  static const adminSettingsMetadata = '/admin/settings/metadata';
+  static const adminSettingsNfo = '/admin/settings/nfo';
   static const adminSettingsPlayback = '/admin/settings/playback';
   static const adminSettingsResume = '/admin/settings/resume';
   static const adminSettingsStreaming = '/admin/settings/streaming';
@@ -139,18 +148,12 @@ class Destinations {
   static const seerrBrowse = '/seerr/browse';
   static const seerrMediaDetail = '/seerr/media/:itemId';
   static const seerrPersonDetail = '/seerr/person/:personId';
-
-  // Downloads / Saved Media
-  static const downloads = '/downloads';
-  static const storageManagement = '/downloads/storage';
-  static const downloadsSeries = '/downloads/series/:seriesId';
-  static const downloadsSeason = '/downloads/series/:seriesId/season/:seasonId';
-  static const downloadsAlbum = '/downloads/music/:albumId';
+  static const seerrCollectionDetail = '/seerr/collection/:collectionId';
 
   static String library(
     String libraryId, {
     List<String>? includeItemTypes,
-    bool bookUi = false,
+    bool favorites = false,
   }) {
     final base = '/library/$libraryId';
     final params = <String>[];
@@ -158,9 +161,7 @@ class Destinations {
       final types = includeItemTypes.map(Uri.encodeComponent).join(',');
       params.add('types=$types');
     }
-    if (bookUi) {
-      params.add('bookUi=1');
-    }
+    if (favorites) params.add('favorites=1');
     if (params.isEmpty) return base;
     return '$base?${params.join('&')}';
   }
@@ -182,8 +183,33 @@ class Destinations {
   }
 
   static String itemListOf(String itemId) => '/item/$itemId/list';
-  static String musicFavoritesOf(String parentId) =>
-      '/music-favorites/$parentId';
+
+  // Games (EmulatorJS)
+  static String gamesLibrary(String libraryId) =>
+      '/games/${Uri.encodeComponent(libraryId)}';
+  static String gameDetailOf(String libraryId, String gameId) =>
+      '/game/${Uri.encodeComponent(libraryId)}/${Uri.encodeComponent(gameId)}';
+  static String gamePlayerOf(
+    String libraryId,
+    String gameId, {
+    required String core,
+    String? biosId,
+    String? name,
+    bool startFresh = false,
+  }) {
+    final base =
+        '/game-player/${Uri.encodeComponent(libraryId)}/${Uri.encodeComponent(gameId)}';
+    final params = <String>[
+      'core=${Uri.encodeQueryComponent(core)}',
+      if (biosId != null && biosId.isNotEmpty)
+        'bios=${Uri.encodeQueryComponent(biosId)}',
+      if (name != null && name.isNotEmpty)
+        'name=${Uri.encodeQueryComponent(name)}',
+      if (startFresh) 'fresh=1',
+    ];
+    return '$base?${params.join('&')}';
+  }
+
   static String genre(
     String genreName, {
     required String genreId,
@@ -197,6 +223,9 @@ class Destinations {
     return '$base?${params.join('&')}';
   }
 
+  static String studio(String studioName) =>
+      '/studio/${Uri.encodeComponent(studioName)}';
+
   static String folder(String folderId, {String? serverId}) {
     final base = '/folder/$folderId';
     return serverId != null && serverId.isNotEmpty
@@ -205,6 +234,12 @@ class Destinations {
   }
   static String collection(String collectionId) => '/collection/$collectionId';
   static String musicLibrary(String libraryId) => '/music/$libraryId';
+  static String bookLibrary(String libraryId, {String? collectionType}) {
+    final base = '/books/$libraryId';
+    return collectionType != null && collectionType.isNotEmpty
+        ? '$base?collectionType=${Uri.encodeComponent(collectionType)}'
+        : base;
+  }
   static String photo(String itemId) => '/player/photo/$itemId';
   static String trailer({String? videoId, String? url}) {
     final params = <String, String>{
@@ -221,8 +256,24 @@ class Destinations {
         : base;
   }
 
-  static String itemOrPhoto(String itemId, {String? serverId, String? type}) =>
-      type == 'Photo' ? photo(itemId) : item(itemId, serverId: serverId);
+  static bool isLiveTvChannelType(String? type) =>
+      type == 'TvChannel' || type == 'LiveTvChannel';
+
+  static bool isFolderType(String? type) =>
+      type == 'Folder' || type == 'CollectionFolder' || type == 'UserView';
+
+  static String liveTvChannel(String channelId) =>
+      '$liveTvPlayer?channelId=${Uri.encodeQueryComponent(channelId)}';
+
+  static String itemOrPhoto(String itemId, {String? serverId, String? type}) {
+    if (type == 'Photo') return photo(itemId);
+    // Channels have no detail screen worth landing on, so go straight to
+    // the live player, which resolves the lineup from the id.
+    if (isLiveTvChannelType(type)) return liveTvChannel(itemId);
+    // Folders open their contents rather than a detail screen.
+    if (isFolderType(type)) return folder(itemId, serverId: serverId);
+    return item(itemId, serverId: serverId);
+  }
   static String nextUpFor(String itemId) => '/player/next-up/$itemId';
   static String stillWatchingFor(String itemId) =>
       '/player/still-watching/$itemId';
@@ -236,21 +287,14 @@ class Destinations {
     return Uri(path: search, queryParameters: params).toString();
   }
 
-  static String seerrMedia(String itemId) => '/seerr/media/$itemId';
-  static String seerrPerson(String personId) => '/seerr/person/$personId';
-
-  static String downloadedSeries(String seriesId) =>
-      '/downloads/series/$seriesId';
-  static String downloadedSeason(String seriesId, String seasonId) =>
-      '/downloads/series/$seriesId/season/$seasonId';
-  static String downloadedAlbum(String albumId, {String? albumName}) {
-    final base = '/downloads/music/${Uri.encodeComponent(albumId)}';
-    if (albumName == null || albumName.isEmpty) {
-      return base;
-    }
-
-    return '$base?name=${Uri.encodeComponent(albumName)}';
+  static String seerrMedia(String itemId, {String? mediaType}) {
+    final base = '/seerr/media/$itemId';
+    if (mediaType == null || mediaType.trim().isEmpty) return base;
+    return Uri(path: base, queryParameters: {'mediaType': mediaType}).toString();
   }
+  static String seerrPerson(String personId) => '/seerr/person/$personId';
+  static String seerrCollection(String collectionId) =>
+      '/seerr/collection/$collectionId';
 
   static String adminUser(String userId) => '/admin/users/$userId';
   static String adminLibrary(String libraryId) => '/admin/libraries/$libraryId';

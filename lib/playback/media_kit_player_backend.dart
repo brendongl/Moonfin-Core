@@ -253,28 +253,47 @@ class MediaKitPlayerBackend extends PlayerBackend {
     }
   }
 
-  List<int> _extractSubtitleTrackIds(String? trackListRaw) {
-    if (trackListRaw == null || trackListRaw.isEmpty) return const <int>[];
+  /// A track entry from mpv's `track-list` property, in list order.
+  /// [externalFilename] is the URL/path a sub-added external track was
+  /// loaded from (null for demuxed embedded tracks).
+  static List<({int id, bool external, String? externalFilename})>
+      _extractTrackEntries(String? trackListRaw, {required String type}) {
+    if (trackListRaw == null || trackListRaw.isEmpty) return const [];
     try {
       final decoded = jsonDecode(trackListRaw);
-      if (decoded is! List) return const <int>[];
-      final ids = <int>[];
+      if (decoded is! List) return const [];
+      final entries = <({int id, bool external, String? externalFilename})>[];
       for (final item in decoded) {
         if (item is! Map) continue;
-        final type = item['type']?.toString();
-        if (type != 'sub') continue;
+        if (item['type']?.toString() != type) continue;
         final idValue = item['id'];
         final parsed = idValue is int
             ? idValue
             : int.tryParse(idValue?.toString() ?? '');
-        if (parsed != null && parsed > 0) {
-          ids.add(parsed);
-        }
+        if (parsed == null || parsed <= 0) continue;
+        entries.add((
+          id: parsed,
+          external: item['external'] == true,
+          externalFilename: item['external-filename']?.toString(),
+        ));
       }
-      return ids;
+      return entries;
     } catch (_) {
-      return const <int>[];
+      return const [];
     }
+  }
+
+  // Whether an mpv external track was sub-added from the requested URL. mpv can
+  // re-encode the URL it reports in `external-filename`, so an exact compare
+  // misses. Jellyfin external subtitle URLs carry the unique subtitle stream
+  // index in the path, so a decoded-path match still identifies the sub.
+  static bool _externalFilenameMatches(String? mpvFilename, String requestedUrl) {
+    if (mpvFilename == null || mpvFilename.isEmpty) return false;
+    if (mpvFilename == requestedUrl) return true;
+    final a = Uri.tryParse(mpvFilename);
+    final b = Uri.tryParse(requestedUrl);
+    if (a == null || b == null) return false;
+    return Uri.decodeFull(a.path) == Uri.decodeFull(b.path);
   }
 
   static Future<void> _nativeSetProperty(
@@ -326,9 +345,13 @@ class MediaKitPlayerBackend extends PlayerBackend {
   }
 
   static bool get _useLibass =>
-      PlatformDetection.isDesktop ||
       PlatformDetection.isAndroid ||
       PlatformDetection.isIOS;
+
+  // libass needs a font with CJK glyphs bundled or Asian subtitles show as
+  // tofu. The family name has to match the font's internal name.
+  static const String _libassFontAsset = 'assets/fonts/NotoSansCJK-Regular.otf';
+  static const String _libassFontFamily = 'Noto Sans CJK SC';
 
   static bool get _useNativeSurface => PlatformDetection.useNativeVideoSurface;
 
@@ -357,15 +380,22 @@ class MediaKitPlayerBackend extends PlayerBackend {
       configuration: PlayerConfiguration(
         libass: _useLibass,
         libassAndroidFont: PlatformDetection.isAndroid
-            ? 'assets/fonts/NotoSans-Regular.ttf'
+            ? _libassFontAsset
             : null,
-        libassAndroidFontName: PlatformDetection.isAndroid ? 'Noto Sans' : null,
+        libassAndroidFontName: PlatformDetection.isAndroid
+            ? _libassFontFamily
+            : null,
       ),
     );
     unawaited(player.setPlaylistMode(PlaylistMode.none));
     final platform = player.platform;
     if (platform is NativePlayer) {
       _nativeSetProperty(platform, 'network-timeout', '120');
+      _nativeSetProperty(
+        platform,
+        'stream-lavf-o',
+        'reconnect=1,reconnect_on_network_error=1,reconnect_streamed=1,reconnect_delay_max=5',
+      );
 
       final maxChannels = prefs.get(UserPreferences.maxAudioChannels);
       final audioChannelsLayout = (maxChannels == 0 || _passthroughActive(prefs))
@@ -439,7 +469,9 @@ class MediaKitPlayerBackend extends PlayerBackend {
 
   @override
   bool get canRenderBitmapSubtitles =>
-      PlatformDetection.isDesktop || PlatformDetection.isAndroid;
+      PlatformDetection.isDesktop ||
+      PlatformDetection.isAndroid ||
+      PlatformDetection.isIOS;
 
   Player get player => _player;
 
@@ -465,13 +497,7 @@ class MediaKitPlayerBackend extends PlayerBackend {
             allowDolbyVisionProfile7DirectPlay:
                 allowDolbyVisionProfile7DirectPlay,
           );
-    final audioCapabilityProfile = PlatformDetection.hasAudioCapabilities
-        ? AudioCapabilityProfile.fromMap(
-            PlatformDetection.audioCapabilitiesSnapshot,
-          )
-        : PlatformDetection.isIOS
-        ? const AudioCapabilityProfile.appleMobile()
-        : const AudioCapabilityProfile.optimistic();
+    final audioCapabilityProfile = _prefs.detectedAudioCapabilities;
 
     return DeviceProfileBuilder.build(
       maxBitrateMbps: maxBitrate,
@@ -488,6 +514,9 @@ class MediaKitPlayerBackend extends PlayerBackend {
       trueHdAtmosPassthroughEnabled: _prefs
           .resolveTrueHdAtmosPassthroughEnabled(),
       maxAudioChannels: _prefs.resolveMaxAudioChannels(),
+      // mpv decodes all advertised audio codecs in software and downmixes
+      // locally, so stereo routes never need a server-side audio transcode.
+      universalAudioDecode: true,
       maxResolution: maxResolution,
       pgsDirectPlay: _prefs.get(UserPreferences.pgsDirectPlay) && canRenderBitmapSubtitles,
       assDirectPlay: _prefs.get(UserPreferences.assDirectPlay),
@@ -549,9 +578,9 @@ class MediaKitPlayerBackend extends PlayerBackend {
       await _nativeSetProperty(native, 'sid', 'auto');
       await _nativeSetProperty(native, 'secondary-sid', 'no');
       await _nativeSetProperty(native, 'sub-visibility', 'yes');
-      if (_useLibass) {
-        await _nativeSetProperty(native, 'sub-ass', 'yes');
-      }
+      // PlayerConfiguration(libass: false) initializes mpv with sub-ass=no,
+      // which strips ASS styling on desktop, so always turn it back on.
+      await _nativeSetProperty(native, 'sub-ass', 'yes');
     }
 
     final media = Media(url);
@@ -1013,6 +1042,12 @@ class MediaKitPlayerBackend extends PlayerBackend {
     'audio-spdif',
     'audio-channels',
     'audio-normalize-downmix',
+    'volume-gain',
+    'volume-max',
+    'replaygain',
+    'replaygain-preamp',
+    'replaygain-clip',
+    'replaygain-fallback',
     'deinterlace',
     'keep-open',
   };
@@ -1052,15 +1087,17 @@ class MediaKitPlayerBackend extends PlayerBackend {
       );
       await fontsDirectory.create(recursive: true);
 
-      final fontFile = File('${fontsDirectory.path}/NotoSans-Regular.ttf');
+      final fontFile = File(
+        '${fontsDirectory.path}/${_libassFontAsset.split('/').last}',
+      );
       if (!await fontFile.exists()) {
-        final data = await rootBundle.load('assets/fonts/NotoSans-Regular.ttf');
+        final data = await rootBundle.load(_libassFontAsset);
         await fontFile.writeAsBytes(data.buffer.asUint8List(), flush: true);
       }
 
       final native = _player.platform as NativePlayer;
       await _nativeSetProperty(native, 'sub-fonts-dir', fontsDirectory.path);
-      await _nativeSetProperty(native, 'sub-font', 'Noto Sans');
+      await _nativeSetProperty(native, 'sub-font', _libassFontFamily);
       await _nativeSetProperty(native, 'sub-ass', 'yes');
       await _nativeSetProperty(native, 'sub-visibility', 'yes');
       _didConfigureAppleMobileLibassFont = true;
@@ -1068,7 +1105,6 @@ class MediaKitPlayerBackend extends PlayerBackend {
   }
 
   Future<void> _applyAssOverrideMode() async {
-    if (!_useLibass) return;
     try {
       final native = _player.platform as NativePlayer;
       final assEnabled = _prefs.get(UserPreferences.assDirectPlay);
@@ -1186,10 +1222,35 @@ class MediaKitPlayerBackend extends PlayerBackend {
     return _isStale ? false : completed;
   });
 
+  // Some errors are just the socket dropping mid-stream, like a connection
+  // reset or a broken pipe. The reconnect options quietly re-open the stream
+  // and playback keeps going, so we don't want these popping up as a fatal
+  // "playback failed". Real trouble reaching the stream (connection refused,
+  // timed out, 403/404, a TLS error) reads differently and still gets through.
+  static bool _isTransientReconnectError(String message) {
+    final lower = message.toLowerCase();
+    // ffmpeg's socket read or write dropped mid-stream.
+    if (lower.contains('ffurl_read') || lower.contains('ffurl_write')) {
+      return true;
+    }
+    // How most platforms word a dropped connection.
+    if (lower.contains('connection reset') ||
+        lower.contains('connection abort') ||
+        lower.contains('broken pipe')) {
+      return true;
+    }
+    // Windows reports the same drops as hex codes. 0xffffd8ba is WSAECONNRESET
+    // (10054) and 0xffffd8bb is WSAECONNABORTED (10053).
+    if (lower.contains('0xffffd8ba') || lower.contains('0xffffd8bb')) {
+      return true;
+    }
+    return false;
+  }
+
   @override
-  Stream<Map<String, dynamic>>? get errorStream => _player.stream.error.map(
-    (err) => <String, dynamic>{'event': 'error', 'message': err},
-  );
+  Stream<Map<String, dynamic>>? get errorStream => _player.stream.error
+      .where((err) => !_isTransientReconnectError(err))
+      .map((err) => <String, dynamic>{'event': 'error', 'message': err});
 
   @override
   Future<void> setPlaybackSpeed(double speed) async {
@@ -1214,12 +1275,26 @@ class MediaKitPlayerBackend extends PlayerBackend {
   @override
   Future<void> setAudioTrack(int mpvTrackId) async {
     if (mpvTrackId < 1) return;
-    final id = mpvTrackId.toString();
     try {
-      final tracks = _player.state.tracks.audio;
+      final native = _player.platform as NativePlayer;
+      // The incoming value is a 1-based position among the stream's audio
+      // tracks, not an mpv aid, so resolve it against the live track list
+      // like the subtitle path does (aids can have gaps or a shifted origin).
+      final trackList = await _tryNativeGetProperty(native, 'track-list');
+      final audioEntries = _extractTrackEntries(trackList, type: 'audio');
+      if (audioEntries.isNotEmpty && mpvTrackId > audioEntries.length) {
+        // The position doesn't exist in this stream (e.g. a stale Jellyfin
+        // ordinal against a single-track transcode); selecting a nonexistent
+        // aid would mute playback.
+        return;
+      }
+      final aidToApply = audioEntries.isNotEmpty
+          ? audioEntries[mpvTrackId - 1].id.toString()
+          : mpvTrackId.toString();
+
       AudioTrack? match;
-      for (final t in tracks) {
-        if (t.id == id) {
+      for (final t in _player.state.tracks.audio) {
+        if (t.id == aidToApply) {
           match = t;
           break;
         }
@@ -1227,14 +1302,13 @@ class MediaKitPlayerBackend extends PlayerBackend {
       if (match != null) {
         await _player.setAudioTrack(match);
       } else {
-        await _player.setAudioTrack(AudioTrack(id, null, null));
+        await _player.setAudioTrack(AudioTrack(aidToApply, null, null));
       }
-    } catch (e) {
-      try {
-        final native = _player.platform as NativePlayer;
-        await _nativeSetProperty(native, 'aid', id);
-      } catch (_) {}
-    }
+      final aidAfter = await _tryNativeGetProperty(native, 'aid');
+      if (aidAfter != aidToApply) {
+        await _nativeSetProperty(native, 'aid', aidToApply);
+      }
+    } catch (_) {}
   }
 
   @override
@@ -1266,6 +1340,12 @@ class MediaKitPlayerBackend extends PlayerBackend {
   Future<int?> getActiveSubtitleTrackIndexAsync() async => activeSubtitleTrackIndex;
 
 
+  static void _subtitleDebug(String message) {
+    if (kDebugMode) {
+      debugPrint('[subtitle_mpv] $message');
+    }
+  }
+
   @override
   Future<void> setSubtitleTrack(
     int mpvTrackId, {
@@ -1278,10 +1358,45 @@ class MediaKitPlayerBackend extends PlayerBackend {
     try {
       final native = _player.platform as NativePlayer;
       final trackListBefore = await _tryNativeGetProperty(native, 'track-list');
-      final subtitleIds = _extractSubtitleTrackIds(trackListBefore);
-      final sidToApply = (mpvTrackId <= subtitleIds.length)
-          ? subtitleIds[mpvTrackId - 1].toString()
-          : mpvTrackId.toString();
+      final subEntries = _extractTrackEntries(trackListBefore, type: 'sub');
+      final subtitleIds = subEntries.map((e) => e.id).toList();
+
+      // Resolve the 1-based position to a real mpv sid. External tracks are
+      // matched by the URL they were sub-added from, so a scrambled add order
+      // (external added before a slow embedded demux finished) can't select
+      // the wrong track. Embedded positions count only demuxed tracks for the
+      // same reason.
+      String? resolvedSid;
+      if (isExternalSubtitle && externalSubtitleUrl != null) {
+        for (final entry in subEntries) {
+          if (entry.external &&
+              _externalFilenameMatches(
+                  entry.externalFilename, externalSubtitleUrl)) {
+            resolvedSid = entry.id.toString();
+            break;
+          }
+        }
+        // If the URL match missed, pick among external tracks only, using the
+        // live demuxed embedded count so a miscounted ordinal can't shift into
+        // or across embedded tracks.
+        if (resolvedSid == null) {
+          final liveEmbedded = subEntries.where((e) => !e.external).length;
+          final externals = subEntries.where((e) => e.external).toList();
+          final externalPos = mpvTrackId - 1 - liveEmbedded;
+          if (externalPos >= 0 && externalPos < externals.length) {
+            resolvedSid = externals[externalPos].id.toString();
+          }
+        }
+      } else if (!isExternalSubtitle) {
+        final embedded = subEntries.where((e) => !e.external).toList();
+        if (mpvTrackId <= embedded.length) {
+          resolvedSid = embedded[mpvTrackId - 1].id.toString();
+        }
+      }
+      final sidToApply = resolvedSid ??
+          ((mpvTrackId <= subtitleIds.length)
+              ? subtitleIds[mpvTrackId - 1].toString()
+              : mpvTrackId.toString());
       final subtitleTracks = _player.state.tracks.subtitle;
       final playableSubtitleTracks = subtitleTracks
           .where((t) => t.id != 'auto' && t.id != 'no')
@@ -1289,22 +1404,20 @@ class MediaKitPlayerBackend extends PlayerBackend {
 
       var sidAfter = await _tryNativeGetProperty(native, 'sid');
 
-      if (PlatformDetection.isAndroid) {
-        SubtitleTrack? target;
-        for (final t in playableSubtitleTracks) {
-          if (t.id == sidToApply) {
-            target = t;
-            break;
-          }
+      SubtitleTrack? target;
+      for (final t in playableSubtitleTracks) {
+        if (t.id == sidToApply) {
+          target = t;
+          break;
         }
-        target ??=
-            (mpvTrackId <= playableSubtitleTracks.length && mpvTrackId > 0)
-            ? playableSubtitleTracks[mpvTrackId - 1]
-            : null;
-        if (target != null) {
-          await _player.setSubtitleTrack(target);
-          sidAfter = await _tryNativeGetProperty(native, 'sid');
-        }
+      }
+      target ??=
+          (mpvTrackId <= playableSubtitleTracks.length && mpvTrackId > 0)
+          ? playableSubtitleTracks[mpvTrackId - 1]
+          : null;
+      if (target != null) {
+        await _player.setSubtitleTrack(target);
+        sidAfter = await _tryNativeGetProperty(native, 'sid');
       }
 
       if (sidAfter != sidToApply) {
@@ -1317,12 +1430,21 @@ class MediaKitPlayerBackend extends PlayerBackend {
       }
 
       await _nativeSetProperty(native, 'secondary-sid', 'no');
+
+      // Moonfin never shows a Flutter subtitle overlay (media_kit disables its
+      // SubtitleView when libass is on, and it stays hidden otherwise), so mpv
+      // has to draw every subtitle including plain text like SRT and VTT.
       await _nativeSetProperty(native, 'sub-visibility', 'yes');
-      if (_useLibass) {
-        await _nativeSetProperty(native, 'sub-ass', 'yes');
-        await _applyAssOverrideMode();
-      }
-    } catch (_) {}
+      await _nativeSetProperty(native, 'sub-ass', 'yes');
+      await _applyAssOverrideMode();
+      _subtitleDebug(
+        'set track=$mpvTrackId sid_requested=$sidToApply sid_after=$sidAfter '
+        'codec=$subtitleCodec external=$isExternalSubtitle '
+        'bitmap=$isBitmapSubtitle mpv_sub_tracks=${subtitleIds.length}',
+      );
+    } catch (e) {
+      _subtitleDebug('set track=$mpvTrackId threw: $e');
+    }
   }
 
   @override
@@ -1353,21 +1475,27 @@ class MediaKitPlayerBackend extends PlayerBackend {
     } catch (_) {}
   }
 
+  // media_kit's track list includes the 'auto' and 'no' pseudo-tracks.
+  // Counting them lets waits finish early, so external sub-adds can race
+  // the embedded track demux and scramble the sid order.
+  static int _realSubtitleTrackCount(List<SubtitleTrack> tracks) =>
+      tracks.where((t) => t.id != 'auto' && t.id != 'no').length;
+
   @override
   Future<void> waitForEmbeddedSubtitleCount(int count) async {
     if (count <= 0) return;
     _updateStaleState();
-    if (!_isStale && _player.state.tracks.subtitle.length >= count) {
+    if (!_isStale &&
+        _realSubtitleTrackCount(_player.state.tracks.subtitle) >= count) {
       return;
     }
     try {
-      final tracks = await _player.stream.tracks
+      await _player.stream.tracks
           .firstWhere((t) {
             _updateStaleState();
-            return !_isStale && t.subtitle.length >= count;
+            return !_isStale && _realSubtitleTrackCount(t.subtitle) >= count;
           })
           .timeout(const Duration(seconds: 5));
-      if (tracks.subtitle.length < count) return;
     } catch (_) {}
   }
 
@@ -1403,6 +1531,10 @@ class MediaKitPlayerBackend extends PlayerBackend {
       title ?? 'external',
       language ?? '',
     ]);
+    _subtitleDebug(
+      'sub-add title=$title lang=$language codec=$codec '
+      'mpv_sub_tracks=${_realSubtitleTrackCount(_player.state.tracks.subtitle)}',
+    );
   }
 
   @override

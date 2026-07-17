@@ -31,6 +31,8 @@ body:
         - Android
         - Android TV
         - iOS
+        - tvOS
+        - Web
         - macOS
         - Windows
         - Linux

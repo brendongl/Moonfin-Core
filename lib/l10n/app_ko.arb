@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "즐겨찾는 트랙이 여기에 표시됩니다.",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "로드하지 못했습니다.",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "특정 사용자",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "항상 인증",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "원격 사람 검색",
     "adminNoRemoteMatches": "원격 일치 항목을 찾을 수 없습니다.",
     "adminRemoteResults": "원격 결과",
     "adminRemoteMetadataApplied": "원격 메타데이터가 적용됨",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "튜너 추가",
     "adminTunerType": "튜너 유형",
-    "adminTunerTypeHint": "HDHomeRun, M3U, 기타",
-    "adminUrlPath": "URL/경로",
-    "adminNameOptional": "이름(선택사항)",
     "adminTunerAdded": "튜너가 추가되었습니다",
     "adminTunerAddFailed": "Failed to add tuner: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "가이드 제공자 추가",
     "adminProviderType": "제공자 유형",
-    "adminProviderTypeHint": "일정직접 또는 XMLTV",
-    "adminUsernameOptional": "사용자 이름(선택 사항)",
-    "adminRefreshInterval": "새로 고침 간격(시간)",
     "adminProviderAdded": "제공업체가 추가됨",
     "adminProviderAddFailed": "Failed to add provider: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "일치하는 줄이 없습니다.",
     "adminMetadataEditorTitle": "메타데이터 편집기",
-    "adminMetadataRemote": "원격",
     "adminMetadataType": "유형",
     "adminMetadataDetails": "세부",
     "adminMetadataExternalIds": "외부 ID",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "내 선택을 기억해",
     "playHdr10Fallback": "HDR10 대체 재생",
     "requestTranscode": "트랜스코드 요청",
-    "homeScreenSectionsIntegrationDescription": "IAmParadox27의 \"홈 화면 섹션\" 플러그인에 의해 노출된 행을 감지합니다. 아래에서 행을 활성화하고 재정렬할 수 있습니다.",
-    "homeScreenSectionsIntegrationNoServers": "아직 플러그인을 보고하는 Jellyfin 서버가 없습니다.",
-    "integrationOpenHomeSections": "홈 섹션 열기",
-    "integrationOpenHomeSectionsSubtitle": "행 활성화, 비활성화 및 재정렬",
-    "integrationInstalledButDisabled": "설치되었지만 비활성화됨",
-    "integrationNotInstalled": "설치되지 않음",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "모두 보기",
     "noItems": "항목 없음",
     "switchUser": "사용자 전환",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "AAC Stereo",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Passthrough (Advanced)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Delete saved theme",
     "savedThemesManageSubtitle": "Manage downloaded plugin themes on this device",
-    "homeScreenSectionsTitle": "Home Screen Sections",
     "themeEditor": "Theme Editor",
     "themeEditorSubtitle": "Open the Moonfin Theme Editor in your browser",
     "homeScreen": "Home Screen",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "Automatically enable HDR for HDR video playback and restore display mode on exit.",
     "whenFullscreen": "When fullscreen",
     "transcodingLimits": "Transcoding Limits",
-    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer"
+    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer",
+    "reportDownloadsActivity": "서버에 다운로드 표시",
+    "reportDownloadsActivitySubtitle": "서버 관리자가 대시보드에서 내 트랜스코딩 다운로드를 볼 수 있도록 합니다",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "이미지 캐시 제한",
+    "clearImageCache": "이미지 캐시 지우기",
+    "imageCacheCleared": "이미지 캐시를 지웠습니다"
 }

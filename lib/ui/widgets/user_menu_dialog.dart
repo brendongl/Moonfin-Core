@@ -18,6 +18,8 @@ import '../../l10n/app_localizations.dart';
 import '../../util/platform_detection.dart';
 import '../../util/pin_code_util.dart';
 import '../navigation/destinations.dart';
+import 'adaptive/adaptive_dialog.dart';
+import '../screens/downloads/downloads_panel.dart';
 import '../screens/settings/settings_side_panel.dart';
 import 'overlay_sheet.dart';
 import 'pin_entry_dialog.dart';
@@ -100,7 +102,7 @@ class _AccountDialogState extends State<_AccountDialog> {
     if (apiKey.isEmpty) return null;
 
     final base =
-        '${account.server.address}/Users/${account.user.id}/Images/Primary?quality=90&maxHeight=180&api_key=$apiKey';
+        '${account.server.address}/Users/${account.user.id}/Images/Primary?quality=90&maxHeight=180&${account.server.serverType.tokenQueryParam}=$apiKey';
     final tag = account.user.imageTag;
     if (tag == null || tag.isEmpty) {
       return base;
@@ -243,7 +245,7 @@ class _AccountDialogState extends State<_AccountDialog> {
         ),
         decoration: BoxDecoration(
           color: AppColorScheme.surface.withValues(alpha: 0.9),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: AppRadius.circular(20),
           border: Border.fromBorderSide(ThemeRegistry.active.borders.chipBorder),
         ),
         padding: const EdgeInsets.symmetric(vertical: 20),
@@ -408,7 +410,7 @@ class _AccountDialogState extends State<_AccountDialog> {
                     ),
                   ),
                 ),
-                if (!PlatformDetection.isWeb) ...[
+                if (!PlatformDetection.isWeb && !PlatformDetection.isTV) ...[
                   const SizedBox(height: 8),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -420,7 +422,7 @@ class _AccountDialogState extends State<_AccountDialog> {
                             ? null
                             : () {
                                 Navigator.of(context).pop();
-                                context.navigateTopLevel(Destinations.downloads);
+                                showDownloadsDialog(context);
                               },
                         focusColor: focusColor,
                       ),
@@ -513,7 +515,7 @@ Future<String?> _promptQuickConnectCode(BuildContext context) async {
   final code = await showFocusRestoringDialog<String>(
     context: context,
     useRootNavigator: true,
-    builder: (ctx) => AlertDialog(
+    builder: (ctx) => AlertDialog.adaptive(
       backgroundColor: AppColorScheme.surface.withValues(alpha: 0.9),
       title: Text(
         l10n.quickConnect,
@@ -540,7 +542,7 @@ Future<String?> _promptQuickConnectCode(BuildContext context) async {
         },
       ),
       actions: [
-        TextButton(
+        adaptiveDialogAction(
           onPressed: () => Navigator.pop(ctx),
           child: Text(l10n.cancel),
         ),
@@ -703,7 +705,7 @@ class _ActionButtonState extends State<_ActionButton> {
                       ? widget.focusColor.withValues(alpha: 0.16)
                       : AppColorScheme.onSurface.withValues(alpha: 0.08))
                 : AppColorScheme.onSurface.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: AppRadius.circular(8),
             border: Border.fromBorderSide(
               enabled
                   ? (_focused

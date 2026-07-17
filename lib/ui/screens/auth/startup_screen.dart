@@ -4,17 +4,20 @@ import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:moonfin_design/moonfin_design.dart';
 import 'package:jellyfin_preference/jellyfin_preference.dart';
+import 'package:server_core/server_core.dart';
 
 import '../../../auth/repositories/server_repository.dart';
 import '../../../auth/repositories/session_repository.dart';
 import '../../../auth/store/authentication_preferences.dart';
 import '../../../auth/store/authentication_store.dart';
 import '../../../auth/store/credential_store.dart';
+import '../../../data/services/connectivity_service.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../sipflix/sipflix_servers.dart';
 import '../../../util/pin_code_util.dart';
 import '../../../preference/preference_constants.dart';
 import '../../navigation/destinations.dart';
+import '../../widgets/adaptive/adaptive_dialog.dart';
 import '../../widgets/overlay_sheet.dart';
 import '../../widgets/pin_entry_dialog.dart';
 import '../../widgets/focus/request_initial_focus.dart';
@@ -57,6 +60,24 @@ class _StartupScreenState extends State<StartupScreen>
     super.dispose();
   }
 
+  /// On a cold boot the app can win the race against Wi-Fi association and
+  /// see the device as offline for a few seconds. Waiting here keeps the
+  /// splash up briefly instead of bouncing the user to the offline fallback.
+  /// Once online, also settle server reachability (the boot-time check runs
+  /// before a client exists) so home loads in the right online/offline mode.
+  Future<void> _waitForNetworkSettle() async {
+    final connectivity = GetIt.instance<ConnectivityService>();
+    if (!connectivity.isOnline) {
+      await connectivity.waitForOnline(const Duration(seconds: 5));
+    }
+    if (connectivity.isOnline &&
+        GetIt.instance.isRegistered<MediaServerClient>()) {
+      try {
+        await connectivity.recheckNow();
+      } catch (_) {}
+    }
+  }
+
   Future<void> _initialize() async {
     final session = GetIt.instance<SessionRepository>();
     final serverRepo = GetIt.instance<ServerRepository>();
@@ -76,6 +97,7 @@ class _StartupScreenState extends State<StartupScreen>
     }
 
     if (widget.bootstrapActiveSession && session.activeUserId != null) {
+      await _waitForNetworkSettle();
       if (mounted) context.go(Destinations.home);
       return;
     }
@@ -136,6 +158,7 @@ class _StartupScreenState extends State<StartupScreen>
         }
       }
 
+      await _waitForNetworkSettle();
       if (mounted) context.go(Destinations.home);
     } else {
       if (mounted) {
@@ -155,13 +178,13 @@ class _StartupScreenState extends State<StartupScreen>
     await showFocusRestoringDialog<void>(
       context: context,
       barrierDismissible: true,
-      builder: (context) => AlertDialog(
+      builder: (context) => AlertDialog.adaptive(
         title: Text(l10n.secureStorageUnavailable),
         content: Text(
           l10n.secureStorageUnavailableMessage,
         ),
         actions: [
-          TextButton(
+          adaptiveDialogAction(
             onPressed: () => Navigator.of(context).pop(),
             child: Text(l10n.ok),
           ),

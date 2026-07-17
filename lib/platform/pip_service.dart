@@ -34,6 +34,8 @@ class PipService {
   bool _isInPiP = false;
   bool get isInPiP => _isInPiP;
 
+  Object? _autoPiPOwner;
+
   bool _didConfigureIosBackend = false;
   bool _isIosPiPInitialized = false;
 
@@ -83,7 +85,14 @@ class PipService {
     }
   }
 
-  Future<void> enableAutoPiP(bool enabled) async {
+  Future<void> enableAutoPiP(bool enabled, {Object? owner}) async {
+    if (enabled) {
+      _autoPiPOwner = owner;
+    } else if (owner != null && !identical(_autoPiPOwner, owner)) {
+      return;
+    } else {
+      _autoPiPOwner = null;
+    }
     final channel = _activeChannel;
     if (channel == null) return;
     try {
@@ -127,6 +136,21 @@ class PipService {
     } catch (_) {
       return false;
     }
+  }
+
+  Future<void> updateIosTimeline({
+    required int positionMs,
+    required int durationMs,
+    required bool isPlaying,
+  }) async {
+    if (!PlatformDetection.isIOS || !_isIosPiPInitialized) return;
+    try {
+      await _iosChannel.invokeMethod('updateTimeline', {
+        'positionMs': positionMs,
+        'durationMs': durationMs,
+        'isPlaying': isPlaying,
+      });
+    } catch (_) {}
   }
 
   Future<void> updatePiPActions({required bool isPlaying}) async {

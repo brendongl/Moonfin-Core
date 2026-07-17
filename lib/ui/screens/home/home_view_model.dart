@@ -1,4 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:path_provider/path_provider.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:get_it/get_it.dart';
@@ -7,9 +11,11 @@ import 'package:server_core/server_core.dart';
 import '../../../data/models/aggregated_item.dart';
 import '../../../data/models/home_row.dart';
 import '../../../data/repositories/multi_server_repository.dart';
+import '../../../data/services/connectivity_service.dart';
 import '../../../data/services/home_row_cache_store.dart';
 import '../../../data/services/row_data_source.dart';
 import '../../../data/services/topshelf_service.dart';
+import '../../../data/services/watch_next_service.dart';
 import '../../../data/viewmodels/media_bar_view_model.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../l10n/current_app_localizations.dart';
@@ -20,8 +26,11 @@ import '../../../data/repositories/seerr_repository.dart';
 import '../../../data/services/plugin_sync_service.dart';
 import '../../../data/services/seerr/seerr_api_models.dart';
 import '../../../data/utils/bounded_concurrency.dart';
+import '../../../util/platform_detection.dart';
 import '../../../preference/seerr_preferences.dart';
 import '../../../data/viewmodels/seerr_discover_view_model.dart';
+import 'package:dio/dio.dart';
+import '../../../data/services/custom_external_lists_service.dart';
 
 class HomeViewModel extends ChangeNotifier {
   final RowDataSource _dataSource;
@@ -35,6 +44,7 @@ class HomeViewModel extends ChangeNotifier {
   final Map<String, int> _rowOffsets = {};
 
   final TopShelfService _topShelf = TopShelfService();
+  final WatchNextService _watchNext = WatchNextService();
 
   List<HomeRow> _rows = [];
   List<HomeRow> get rows => _rows;
@@ -44,12 +54,20 @@ class HomeViewModel extends ChangeNotifier {
   bool _bgMergeInFlight = false;
   bool _reloadRequestedWhileLoading = false;
   bool _pendingReloadPreserveExisting = true;
+  bool _pendingReloadForceRefresh = false;
 
   String get _serverId => _client.baseUrl;
   MediaBarViewModel get mediaBarViewModel => _mediaBarViewModel;
 
+  // TV can't download, so it never enters offline browsing mode and keeps
+  // rendering its cached rows instead.
+  bool get _isOffline =>
+      !PlatformDetection.isTV &&
+      GetIt.instance.isRegistered<ConnectivityService>() &&
+      !GetIt.instance<ConnectivityService>().canReachServer;
+
   bool get _multiServerEnabled =>
-      _prefs.get(UserPreferences.enableMultiServerLibraries);
+      !_isOffline && _prefs.get(UserPreferences.enableMultiServerLibraries);
 
   String _homeCacheKey() {
     final userId = _ownerUserId;
@@ -57,7 +75,10 @@ class HomeViewModel extends ChangeNotifier {
     final multiServer = _prefs.get(UserPreferences.enableMultiServerLibraries);
     final merge = _prefs.get(UserPreferences.mergeContinueWatchingNextUp);
     final blocked = _prefs.get(UserPreferences.blockedParentalRatings);
-    return '$_serverId|$userId|$sections|$multiServer|$merge|$blocked';
+    // Offline rows are cached separately so cached online rows never hydrate
+    // an offline home (and vice versa).
+    final offline = _isOffline;
+    return '$_serverId|$userId|$sections|$multiServer|$merge|$blocked|offline:$offline';
   }
 
   static bool _isFavoriteSectionType(HomeSectionType type) {
@@ -95,6 +116,24 @@ class HomeViewModel extends ChangeNotifier {
     };
   }
 
+  /// Sections the offline downloads catalog can answer. Everything else
+  /// (live TV, seerr/tmdb/arr externals, server plugin rows) is skipped when
+  /// the server is unreachable.
+  static bool _isOfflineCapableSection(HomeSectionConfig c) {
+    if (!c.isBuiltin) return false;
+    return switch (c.type) {
+      HomeSectionType.liveTv ||
+      HomeSectionType.activeRecordings ||
+      HomeSectionType.playlists ||
+      HomeSectionType.audioPlaylists ||
+      HomeSectionType.radarrCalendar ||
+      HomeSectionType.sonarrCalendar =>
+        false,
+      final t when _isSeerrSectionType(t) || _isTmdbSectionType(t) => false,
+      _ => true,
+    };
+  }
+
   static bool _isSeerrSectionType(HomeSectionType type) {
     return type == HomeSectionType.seerrRecentRequests ||
         type == HomeSectionType.seerrRecentlyAdded ||
@@ -109,6 +148,126 @@ class HomeViewModel extends ChangeNotifier {
         type == HomeSectionType.seerrNetworks;
   }
 
+  static bool _isTmdbSectionType(HomeSectionType type) {
+    return type == HomeSectionType.tmdbPopularMovies ||
+        type == HomeSectionType.tmdbTopRatedMovies ||
+        type == HomeSectionType.tmdbNowPlayingMovies ||
+        type == HomeSectionType.tmdbUpcomingMovies ||
+        type == HomeSectionType.tmdbPopularTv ||
+        type == HomeSectionType.tmdbTopRatedTv ||
+        type == HomeSectionType.tmdbAiringTodayTv ||
+        type == HomeSectionType.tmdbOnTheAirTv ||
+        type == HomeSectionType.tmdbTrendingMovieDaily ||
+        type == HomeSectionType.tmdbTrendingMovieWeekly ||
+        type == HomeSectionType.tmdbTrendingTvDaily ||
+        type == HomeSectionType.tmdbTrendingTvWeekly ||
+        type == HomeSectionType.tmdbTrendingAllWeekly;
+  }
+
+  bool _isTmdbSectionEnabled(HomeSectionType type) {
+    switch (type) {
+      case HomeSectionType.tmdbPopularMovies:
+        return _prefs.get(UserPreferences.tmdbPopularMoviesEnabled);
+      case HomeSectionType.tmdbTopRatedMovies:
+        return _prefs.get(UserPreferences.tmdbTopRatedMoviesEnabled);
+      case HomeSectionType.tmdbNowPlayingMovies:
+        return _prefs.get(UserPreferences.tmdbNowPlayingMoviesEnabled);
+      case HomeSectionType.tmdbUpcomingMovies:
+        return _prefs.get(UserPreferences.tmdbUpcomingMoviesEnabled);
+      case HomeSectionType.tmdbPopularTv:
+        return _prefs.get(UserPreferences.tmdbPopularTvEnabled);
+      case HomeSectionType.tmdbTopRatedTv:
+        return _prefs.get(UserPreferences.tmdbTopRatedTvEnabled);
+      case HomeSectionType.tmdbAiringTodayTv:
+        return _prefs.get(UserPreferences.tmdbAiringTodayTvEnabled);
+      case HomeSectionType.tmdbOnTheAirTv:
+        return _prefs.get(UserPreferences.tmdbOnTheAirTvEnabled);
+      case HomeSectionType.tmdbTrendingMovieDaily:
+        return _prefs.get(UserPreferences.tmdbTrendingMovieDailyEnabled);
+      case HomeSectionType.tmdbTrendingMovieWeekly:
+        return _prefs.get(UserPreferences.tmdbTrendingMovieWeeklyEnabled);
+      case HomeSectionType.tmdbTrendingTvDaily:
+        return _prefs.get(UserPreferences.tmdbTrendingTvDailyEnabled);
+      case HomeSectionType.tmdbTrendingTvWeekly:
+        return _prefs.get(UserPreferences.tmdbTrendingTvWeeklyEnabled);
+      case HomeSectionType.tmdbTrendingAllWeekly:
+        return _prefs.get(UserPreferences.tmdbTrendingAllWeeklyEnabled);
+      default:
+        return false;
+    }
+  }
+
+  bool _isAnyTmdbSectionEnabled() {
+    return _prefs.get(UserPreferences.tmdbPopularMoviesEnabled) ||
+        _prefs.get(UserPreferences.tmdbTopRatedMoviesEnabled) ||
+        _prefs.get(UserPreferences.tmdbNowPlayingMoviesEnabled) ||
+        _prefs.get(UserPreferences.tmdbUpcomingMoviesEnabled) ||
+        _prefs.get(UserPreferences.tmdbPopularTvEnabled) ||
+        _prefs.get(UserPreferences.tmdbTopRatedTvEnabled) ||
+        _prefs.get(UserPreferences.tmdbAiringTodayTvEnabled) ||
+        _prefs.get(UserPreferences.tmdbOnTheAirTvEnabled) ||
+        _prefs.get(UserPreferences.tmdbTrendingMovieDailyEnabled) ||
+        _prefs.get(UserPreferences.tmdbTrendingMovieWeeklyEnabled) ||
+        _prefs.get(UserPreferences.tmdbTrendingTvDailyEnabled) ||
+        _prefs.get(UserPreferences.tmdbTrendingTvWeeklyEnabled) ||
+        _prefs.get(UserPreferences.tmdbTrendingAllWeeklyEnabled);
+  }
+
+  static bool _isImdbSectionType(HomeSectionType type) {
+    return type == HomeSectionType.imdbTop250Movies ||
+        type == HomeSectionType.imdbTop250TvShows ||
+        type == HomeSectionType.imdbMostPopularMovies ||
+        type == HomeSectionType.imdbMostPopularTvShows ||
+        type == HomeSectionType.imdbLowestRatedMovies ||
+        type == HomeSectionType.imdbTopEnglishMovies;
+  }
+
+  bool _isImdbSectionEnabled(HomeSectionType type) {
+    switch (type) {
+      case HomeSectionType.imdbTop250Movies:
+        return _prefs.get(UserPreferences.imdbTop250MoviesEnabled);
+      case HomeSectionType.imdbTop250TvShows:
+        return _prefs.get(UserPreferences.imdbTop250TvShowsEnabled);
+      case HomeSectionType.imdbMostPopularMovies:
+        return _prefs.get(UserPreferences.imdbMostPopularMoviesEnabled);
+      case HomeSectionType.imdbMostPopularTvShows:
+        return _prefs.get(UserPreferences.imdbMostPopularTvShowsEnabled);
+      case HomeSectionType.imdbLowestRatedMovies:
+        return _prefs.get(UserPreferences.imdbLowestRatedMoviesEnabled);
+      case HomeSectionType.imdbTopEnglishMovies:
+        return _prefs.get(UserPreferences.imdbTopEnglishMoviesEnabled);
+      default:
+        return false;
+    }
+  }
+
+  bool _isAnyImdbSectionEnabled() {
+    return _prefs.get(UserPreferences.imdbTop250MoviesEnabled) ||
+        _prefs.get(UserPreferences.imdbTop250TvShowsEnabled) ||
+        _prefs.get(UserPreferences.imdbMostPopularMoviesEnabled) ||
+        _prefs.get(UserPreferences.imdbMostPopularTvShowsEnabled) ||
+        _prefs.get(UserPreferences.imdbLowestRatedMoviesEnabled) ||
+        _prefs.get(UserPreferences.imdbTopEnglishMoviesEnabled);
+  }
+
+  static bool _isSinceYouWatchedSectionType(HomeSectionType type) {
+    return type == HomeSectionType.sinceYouWatched1 ||
+        type == HomeSectionType.sinceYouWatched2 ||
+        type == HomeSectionType.sinceYouWatched3 ||
+        type == HomeSectionType.sinceYouWatched4 ||
+        type == HomeSectionType.sinceYouWatched5;
+  }
+
+  static int _getSinceYouWatchedIndex(HomeSectionType type) {
+    switch (type) {
+      case HomeSectionType.sinceYouWatched1: return 1;
+      case HomeSectionType.sinceYouWatched2: return 2;
+      case HomeSectionType.sinceYouWatched3: return 3;
+      case HomeSectionType.sinceYouWatched4: return 4;
+      case HomeSectionType.sinceYouWatched5: return 5;
+      default: return 0;
+    }
+  }
   ImageApi imageApiForServer(String serverId) {
     if (!_multiServerEnabled) return _dataSource.imageApi;
     return _multiServerRepo.getImageApiForServer(serverId);
@@ -127,11 +286,14 @@ class HomeViewModel extends ChangeNotifier {
        _multiServerRepo = multiServerRepo,
        _ownerUserId = client.userId ?? '';
 
-  Future<void> load({bool preserveExisting = false}) async {
+  Future<void> load({bool preserveExisting = false, bool forceRefresh = false}) async {
+    _checkAndTriggerDailyExternalRowsRefresh();
     if (_isLoading) {
       _reloadRequestedWhileLoading = true;
       _pendingReloadPreserveExisting =
           _pendingReloadPreserveExisting && preserveExisting;
+      _pendingReloadForceRefresh =
+          _pendingReloadForceRefresh || forceRefresh;
       return;
     }
     _isLoading = true;
@@ -181,15 +343,24 @@ class HomeViewModel extends ChangeNotifier {
         UserPreferences.displayPlaylistsRows,
       );
       final showAudioRows = _prefs.get(UserPreferences.displayAudioRows);
-      final showSeerrRows =
-          _prefs.get(UserPreferences.displaySeerrRows) &&
-          GetIt.instance<PluginSyncService>().seerrAvailable;
+      final showSeerrRows = GetIt.instance<PluginSyncService>().seerrAvailable;
+      final seerrPrefs = GetIt.instance<SeerrPreferences>();
+      final showImdbRows = _isAnyImdbSectionEnabled();
+      final showTmdbRows = _isAnyTmdbSectionEnabled();
+      final showSinceYouWatched = _prefs.get(UserPreferences.displaySinceYouWatchedRows);
+      final sinceYouWatchedNum = _prefs.get(UserPreferences.sinceYouWatchedNumRows).value;
+      final showRewatch = _prefs.get(UserPreferences.displayRewatchRow);
 
       // Plugin-dynamic sections only make sense on the active server.
+      final offline = _isOffline;
       final visibleConfigsRaw = configs
           .where(
             (c) =>
+                // When offline, only sections the downloads catalog can
+                // answer are shown.
+                (!offline || _isOfflineCapableSection(c)) &&
                 (c.isBuiltin ||
+                    c.pluginSource == HomeSectionPluginSource.custom ||
                     (c.serverId != null && c.serverId == _serverId)) &&
                 (showFavoritesRows || !_isFavoriteSectionType(c.type)) &&
                 (showCollectionsRows ||
@@ -208,7 +379,13 @@ class HomeViewModel extends ChangeNotifier {
                             c.pluginSource ==
                                 HomeSectionPluginSource.playlists))) &&
                 (showAudioRows || !_isAudioSectionType(c.type)) &&
-                (showSeerrRows || !_isSeerrSectionType(c.type)),
+                (!_isSeerrSectionType(c.type) || (showSeerrRows && seerrPrefs.isSeerrHomeRowEnabled(c.type))) &&
+                (!_isImdbSectionType(c.type) || (showImdbRows && _isImdbSectionEnabled(c.type))) &&
+                (!_isTmdbSectionType(c.type) || (showTmdbRows && _isTmdbSectionEnabled(c.type))) &&
+                (c.type != HomeSectionType.radarrCalendar || _prefs.get(UserPreferences.enableRadarrCalendar)) &&
+                (c.type != HomeSectionType.sonarrCalendar || _prefs.get(UserPreferences.enableSonarrCalendar)) &&
+                (!_isSinceYouWatchedSectionType(c.type) || (showSinceYouWatched && _getSinceYouWatchedIndex(c.type) <= sinceYouWatchedNum)) &&
+                (c.type != HomeSectionType.rewatch || showRewatch),
           )
           .toList(growable: false);
 
@@ -290,11 +467,26 @@ class HomeViewModel extends ChangeNotifier {
         completers.add(() async {
           List<HomeRow> sectionRows;
           try {
-            sectionRows = await _loadConfig(cfg);
+            sectionRows = await _loadConfig(cfg, forceRefresh: forceRefresh);
           } catch (e) {
             debugPrint('[Home] Failed to load section $cfg: $e');
+            // A thrown load is a transient failure, not a genuinely empty
+            // result. When we are refreshing and a populated row is already on
+            // screen, keep it instead of wiping it. Only fall through to
+            // clearing when there is nothing to preserve, so a cold load still
+            // drops its loading placeholder.
+            final hasVisibleRow = _rowsForConfig(
+              _rows,
+              cfg,
+            ).any((r) => !r.isLoading);
+            if (preserveExisting && hasVisibleRow) {
+              return;
+            }
             sectionRows = const <HomeRow>[];
           }
+          final currentConfigs = _prefs.activeHomeSectionConfigs;
+          final isStillActive = currentConfigs.any((c) => c.stableId == cfg.stableId);
+          if (!isStillActive) return;
           // Cleanup runs even when the load failed, so the section's loading
           // placeholder is cleared instead of spinning forever.
           final loadedRows = sectionRows
@@ -326,7 +518,8 @@ class HomeViewModel extends ChangeNotifier {
               }
             }
           }
-          _rows.removeWhere(
+          final newRows = List<HomeRow>.from(_rows);
+          newRows.removeWhere(
             (r) =>
                 (placeholder != null && r.id == placeholder.id) ||
                 loadedIds.contains(r.id) ||
@@ -339,14 +532,15 @@ class HomeViewModel extends ChangeNotifier {
 
           if (loadedRows.isNotEmpty) {
             final insertIndex = anchorId != null
-                ? _rows.indexWhere((r) => r.id == anchorId)
+                ? newRows.indexWhere((r) => r.id == anchorId)
                 : -1;
             if (insertIndex < 0) {
-              _rows.addAll(loadedRows);
+              newRows.addAll(loadedRows);
             } else {
-              _rows.insertAll(insertIndex, loadedRows);
+              newRows.insertAll(insertIndex, loadedRows);
             }
           }
+          _rows = newRows;
           notifyListeners();
         }());
       }
@@ -355,6 +549,7 @@ class HomeViewModel extends ChangeNotifier {
 
       unawaited(_cacheStore.write(_homeCacheKey(), _rows));
       _topShelf.update(_rows);
+      _watchNext.update(_rows);
 
       if (showMergedResume) {
         _loadResumeAndNextUpInBackground();
@@ -364,9 +559,11 @@ class HomeViewModel extends ChangeNotifier {
       notifyListeners();
       if (_reloadRequestedWhileLoading) {
         final nextPreserveExisting = _pendingReloadPreserveExisting;
+        final nextForceRefresh = _pendingReloadForceRefresh;
         _reloadRequestedWhileLoading = false;
         _pendingReloadPreserveExisting = true;
-        await load(preserveExisting: nextPreserveExisting);
+        _pendingReloadForceRefresh = false;
+        await load(preserveExisting: nextPreserveExisting, forceRefresh: nextForceRefresh);
       }
     }
   }
@@ -427,7 +624,9 @@ class HomeViewModel extends ChangeNotifier {
         // Plugin-dynamic rows (per-collection, per-playlist, etc.) have IDs
         // starting with 'pluginDynamic:' and must NOT be claimed here.
         return row.rowType == HomeRowType.latestMedia &&
-            !row.id.startsWith('pluginDynamic:');
+            !row.id.startsWith('pluginDynamic:') &&
+            !row.id.startsWith('sinceYouWatched') &&
+            row.id != 'rewatch';
       case HomeSectionType.favoriteMovies:
       case HomeSectionType.favoriteSeries:
       case HomeSectionType.favoriteEpisodes:
@@ -487,8 +686,60 @@ class HomeViewModel extends ChangeNotifier {
         return row.id == 'seerr_series_genres';
       case HomeSectionType.seerrNetworks:
         return row.id == 'seerr_networks';
+      case HomeSectionType.imdbTop250Movies:
+        return row.id == 'imdb_top_250_movies';
+      case HomeSectionType.imdbTop250TvShows:
+        return row.id == 'imdb_top_250_tv_shows';
+      case HomeSectionType.imdbMostPopularMovies:
+        return row.id == 'imdb_most_popular_movies';
+      case HomeSectionType.imdbMostPopularTvShows:
+        return row.id == 'imdb_most_popular_tv_shows';
+      case HomeSectionType.imdbLowestRatedMovies:
+        return row.id == 'imdb_lowest_rated_movies';
+      case HomeSectionType.imdbTopEnglishMovies:
+        return row.id == 'imdb_top_english_movies';
+      case HomeSectionType.tmdbPopularMovies:
+        return row.id == 'tmdb_popular_movies';
+      case HomeSectionType.tmdbTopRatedMovies:
+        return row.id == 'tmdb_top_rated_movies';
+      case HomeSectionType.tmdbNowPlayingMovies:
+        return row.id == 'tmdb_now_playing_movies';
+      case HomeSectionType.tmdbUpcomingMovies:
+        return row.id == 'tmdb_upcoming_movies';
+      case HomeSectionType.tmdbPopularTv:
+        return row.id == 'tmdb_popular_tv';
+      case HomeSectionType.tmdbTopRatedTv:
+        return row.id == 'tmdb_top_rated_tv';
+      case HomeSectionType.tmdbAiringTodayTv:
+        return row.id == 'tmdb_airing_today_tv';
+      case HomeSectionType.tmdbOnTheAirTv:
+        return row.id == 'tmdb_on_the_air_tv';
+      case HomeSectionType.tmdbTrendingMovieDaily:
+        return row.id == 'tmdb_trending_movie_daily';
+      case HomeSectionType.tmdbTrendingMovieWeekly:
+        return row.id == 'tmdb_trending_movie_weekly';
+      case HomeSectionType.tmdbTrendingTvDaily:
+        return row.id == 'tmdb_trending_tv_daily';
+      case HomeSectionType.tmdbTrendingTvWeekly:
+        return row.id == 'tmdb_trending_tv_weekly';
+      case HomeSectionType.tmdbTrendingAllWeekly:
+        return row.id == 'tmdb_trending_all_weekly';
+      case HomeSectionType.radarrCalendar:
+        return row.id == 'radarr_calendar';
+      case HomeSectionType.sonarrCalendar:
+        return row.id == 'sonarr_calendar';
       case HomeSectionType.mediaBar:
       case HomeSectionType.recentlyReleased:
+        return row.rowType == HomeRowType.recentlyReleased;
+      case HomeSectionType.sinceYouWatched1:
+      case HomeSectionType.sinceYouWatched2:
+      case HomeSectionType.sinceYouWatched3:
+      case HomeSectionType.sinceYouWatched4:
+      case HomeSectionType.sinceYouWatched5:
+        final idx = _getSinceYouWatchedIndex(cfg.type);
+        return row.rowType == HomeRowType.latestMedia && row.id == 'sinceYouWatched$idx';
+      case HomeSectionType.rewatch:
+        return row.rowType == HomeRowType.latestMedia && row.id == 'rewatch';
       case HomeSectionType.resumeBook:
       case HomeSectionType.none:
         return false;
@@ -535,7 +786,7 @@ class HomeViewModel extends ChangeNotifier {
     }
   }
 
-  Future<List<HomeRow>> _loadConfig(HomeSectionConfig cfg) async {
+  Future<List<HomeRow>> _loadConfig(HomeSectionConfig cfg, {bool forceRefresh = false}) async {
     if (cfg.isPluginDynamic) {
       final section = cfg.pluginSection;
       if (section == null || section.isEmpty) return const [];
@@ -546,10 +797,11 @@ class HomeViewModel extends ChangeNotifier {
         serverId: cfg.serverId ?? _serverId,
         additionalData: cfg.pluginAdditionalData,
         pluginSource: cfg.pluginSource,
+        forceRefresh: forceRefresh,
       );
       return [row];
     }
-    return _loadSection(cfg.type);
+    return _loadSection(cfg.type, forceRefresh: forceRefresh);
   }
 
   HomeRow? _placeholderForConfig(HomeSectionConfig cfg) {
@@ -566,82 +818,11 @@ class HomeViewModel extends ChangeNotifier {
     return _placeholderForSection(cfg.type);
   }
 
-  /// Maps a Home Screen Sections plugin section name to the equivalent
-  /// built-in [HomeSectionType] when one exists. Used to suppress duplicate
-  /// rows when both the native section and its plugin counterpart are enabled.
-  static HomeSectionType? _builtinForPluginSection(String? section) {
-    if (section == null) return null;
-    switch (section) {
-      case 'ContinueWatching':
-        return HomeSectionType.resume;
-      case 'ContinueListening':
-      case 'ResumeAudio':
-        return HomeSectionType.resumeAudio;
-      case 'ContinueReading':
-      case 'ResumeBook':
-        return HomeSectionType.resumeBook;
-      case 'NextUp':
-        return HomeSectionType.nextUp;
-      case 'LiveTv':
-      case 'LiveTV':
-        return HomeSectionType.liveTv;
-      case 'MyMedia':
-        return HomeSectionType.libraryTilesSmall;
-      case 'MyMediaSmall':
-        return HomeSectionType.libraryButtons;
-      case 'LatestMovies':
-      case 'LatestShows':
-      case 'LatestMedia':
-        return HomeSectionType.latestMedia;
-      case 'RecentlyReleased':
-      case 'RecentlyReleasedMovies':
-      case 'RecentlyReleasedEpisodes':
-        return HomeSectionType.recentlyReleased;
-      case 'Playlists':
-        return HomeSectionType.playlists;
-      case 'FavoriteMovies':
-        return HomeSectionType.favoriteMovies;
-      case 'FavoriteSeries':
-        return HomeSectionType.favoriteSeries;
-      case 'FavoriteEpisodes':
-        return HomeSectionType.favoriteEpisodes;
-      case 'FavoritePeople':
-        return HomeSectionType.favoritePeople;
-      case 'FavoriteArtists':
-        return HomeSectionType.favoriteArtists;
-      case 'FavoriteMusicVideos':
-        return HomeSectionType.favoriteMusicVideos;
-      case 'FavoriteAlbums':
-        return HomeSectionType.favoriteAlbums;
-      case 'FavoriteSongs':
-        return HomeSectionType.favoriteSongs;
-      case 'Collections':
-        return HomeSectionType.collections;
-      case 'Genres':
-        return HomeSectionType.genres;
-      case 'ActiveRecordings':
-        return HomeSectionType.activeRecordings;
-      default:
-        return null;
-    }
-  }
-
   static Set<String> _duplicateKeysForConfig(HomeSectionConfig cfg) {
     if (cfg.isBuiltin) {
       return _duplicateKeysForBuiltin(cfg.type);
     }
-
-    switch (cfg.pluginSource) {
-      case HomeSectionPluginSource.collections:
-      case HomeSectionPluginSource.genres:
-      case HomeSectionPluginSource.playlists:
-        return const <String>{};
-      case HomeSectionPluginSource.hss:
-        final builtin = _builtinForPluginSection(cfg.pluginSection);
-        return builtin == null
-            ? const <String>{}
-            : _duplicateKeysForBuiltin(builtin);
-    }
+    return const <String>{};
   }
 
   static Set<String> _duplicateKeysForBuiltin(HomeSectionType type) {
@@ -716,14 +897,67 @@ class HomeViewModel extends ChangeNotifier {
         return const {'audioAlbums'};
       case HomeSectionType.audioPlaylists:
         return const {'audioPlaylists'};
+      case HomeSectionType.imdbTop250Movies:
+        return const {'imdbTop250Movies'};
+      case HomeSectionType.imdbTop250TvShows:
+        return const {'imdbTop250TvShows'};
+      case HomeSectionType.imdbMostPopularMovies:
+        return const {'imdbMostPopularMovies'};
+      case HomeSectionType.imdbMostPopularTvShows:
+        return const {'imdbMostPopularTvShows'};
+      case HomeSectionType.imdbLowestRatedMovies:
+        return const {'imdbLowestRatedMovies'};
+      case HomeSectionType.imdbTopEnglishMovies:
+        return const {'imdbTopEnglishMovies'};
+      case HomeSectionType.tmdbPopularMovies:
+        return const {'tmdbPopularMovies'};
+      case HomeSectionType.tmdbTopRatedMovies:
+        return const {'tmdbTopRatedMovies'};
+      case HomeSectionType.tmdbNowPlayingMovies:
+        return const {'tmdbNowPlayingMovies'};
+      case HomeSectionType.tmdbUpcomingMovies:
+        return const {'tmdbUpcomingMovies'};
+      case HomeSectionType.tmdbPopularTv:
+        return const {'tmdbPopularTv'};
+      case HomeSectionType.tmdbTopRatedTv:
+        return const {'tmdbTopRatedTv'};
+      case HomeSectionType.tmdbAiringTodayTv:
+        return const {'tmdbAiringTodayTv'};
+      case HomeSectionType.tmdbOnTheAirTv:
+        return const {'tmdbOnTheAirTv'};
+      case HomeSectionType.tmdbTrendingMovieDaily:
+        return const {'tmdbTrendingMovieDaily'};
+      case HomeSectionType.tmdbTrendingMovieWeekly:
+        return const {'tmdbTrendingMovieWeekly'};
+      case HomeSectionType.tmdbTrendingTvDaily:
+        return const {'tmdbTrendingTvDaily'};
+      case HomeSectionType.tmdbTrendingTvWeekly:
+        return const {'tmdbTrendingTvWeekly'};
+      case HomeSectionType.tmdbTrendingAllWeekly:
+        return const {'tmdbTrendingAllWeekly'};
+      case HomeSectionType.radarrCalendar:
+        return const {'radarrCalendar'};
+      case HomeSectionType.sonarrCalendar:
+        return const {'sonarrCalendar'};
+      case HomeSectionType.sinceYouWatched1:
+        return const {'sinceYouWatched1'};
+      case HomeSectionType.sinceYouWatched2:
+        return const {'sinceYouWatched2'};
+      case HomeSectionType.sinceYouWatched3:
+        return const {'sinceYouWatched3'};
+      case HomeSectionType.sinceYouWatched4:
+        return const {'sinceYouWatched4'};
+      case HomeSectionType.sinceYouWatched5:
+        return const {'sinceYouWatched5'};
+      case HomeSectionType.rewatch:
+        return const {'rewatch'};
       case HomeSectionType.mediaBar:
       case HomeSectionType.none:
         return const <String>{};
     }
   }
 
-
-  Future<List<HomeRow>> _loadSection(HomeSectionType section) async {
+  Future<List<HomeRow>> _loadSection(HomeSectionType section, {bool forceRefresh = false}) async {
     final l10n = currentAppLocalizations();
     final favoritesSortBy = _prefs
         .get(UserPreferences.favoritesRowSortBy)
@@ -738,23 +972,20 @@ class HomeViewModel extends ChangeNotifier {
     const sortOrder = 'Ascending';
     switch (section) {
       case HomeSectionType.resume:
-        return [
-          _multiServerEnabled
-              ? await _multiServerRepo.getAggregatedResume()
-              : await _dataSource.loadResume(_serverId),
-        ];
+        final row = _multiServerEnabled
+            ? await _multiServerRepo.getAggregatedResume()
+            : await _dataSource.loadResume(_serverId);
+        return [row.copyWith(items: _prefs.filterContinueWatching(row.items))];
       case HomeSectionType.resumeAudio:
-        return [
-          _multiServerEnabled
-              ? await _multiServerRepo.getAggregatedResumeAudio()
-              : await _dataSource.loadResumeAudio(_serverId),
-        ];
+        final row = _multiServerEnabled
+            ? await _multiServerRepo.getAggregatedResumeAudio()
+            : await _dataSource.loadResumeAudio(_serverId);
+        return [row.copyWith(items: _prefs.filterContinueWatching(row.items))];
       case HomeSectionType.nextUp:
-        return [
-          _multiServerEnabled
-              ? await _multiServerRepo.getAggregatedNextUp()
-              : await _dataSource.loadNextUp(_serverId),
-        ];
+        final row = _multiServerEnabled
+            ? await _multiServerRepo.getAggregatedNextUp()
+            : await _dataSource.loadNextUp(_serverId);
+        return [row.copyWith(items: _prefs.filterNextUp(row.items))];
       case HomeSectionType.latestMedia:
         return _multiServerEnabled
             ? await _multiServerRepo.getAggregatedLatestMediaRows()
@@ -776,7 +1007,9 @@ class HomeViewModel extends ChangeNotifier {
                 ),
         ];
       case HomeSectionType.audioArtists:
-        final audioSortBy = _prefs.get(UserPreferences.audioRowsSortBy).apiValue;
+        final audioSortBy = _prefs
+            .get(UserPreferences.audioRowsSortBy)
+            .apiValue;
         return [
           _multiServerEnabled
               ? await _multiServerRepo.getAggregatedAudioArtists(
@@ -790,7 +1023,9 @@ class HomeViewModel extends ChangeNotifier {
                 ),
         ];
       case HomeSectionType.audioAlbums:
-        final audioSortBy = _prefs.get(UserPreferences.audioRowsSortBy).apiValue;
+        final audioSortBy = _prefs
+            .get(UserPreferences.audioRowsSortBy)
+            .apiValue;
         return [
           _multiServerEnabled
               ? await _multiServerRepo.getAggregatedAudioAlbums(
@@ -804,7 +1039,9 @@ class HomeViewModel extends ChangeNotifier {
                 ),
         ];
       case HomeSectionType.audioPlaylists:
-        final audioSortBy = _prefs.get(UserPreferences.audioRowsSortBy).apiValue;
+        final audioSortBy = _prefs
+            .get(UserPreferences.audioRowsSortBy)
+            .apiValue;
         return [
           _multiServerEnabled
               ? await _multiServerRepo.getAggregatedAudioPlaylists(
@@ -992,7 +1229,85 @@ class HomeViewModel extends ChangeNotifier {
           l10n.networks,
           'seerr_networks',
         );
+      case HomeSectionType.radarrCalendar:
+        return _loadRadarrCalendarRow(forceRefresh: forceRefresh);
+      case HomeSectionType.sonarrCalendar:
+        return _loadSonarrCalendarRow(forceRefresh: forceRefresh);
+      case HomeSectionType.imdbTop250Movies:
+        return _loadImdbRow(
+          HomeSectionType.imdbTop250Movies,
+          l10n.imdbTop250Movies,
+          'imdb_top_250_movies',
+        );
+      case HomeSectionType.imdbTop250TvShows:
+        return _loadImdbRow(
+          HomeSectionType.imdbTop250TvShows,
+          l10n.imdbTop250TvShows,
+          'imdb_top_250_tv_shows',
+        );
+      case HomeSectionType.imdbMostPopularMovies:
+        return _loadImdbRow(
+          HomeSectionType.imdbMostPopularMovies,
+          l10n.imdbMostPopularMovies,
+          'imdb_most_popular_movies',
+        );
+      case HomeSectionType.imdbMostPopularTvShows:
+        return _loadImdbRow(
+          HomeSectionType.imdbMostPopularTvShows,
+          l10n.imdbMostPopularTvShows,
+          'imdb_most_popular_tv_shows',
+        );
+      case HomeSectionType.imdbLowestRatedMovies:
+        return _loadImdbRow(
+          HomeSectionType.imdbLowestRatedMovies,
+          l10n.imdbLowestRatedMovies,
+          'imdb_lowest_rated_movies',
+        );
+      case HomeSectionType.imdbTopEnglishMovies:
+        return _loadImdbRow(
+          HomeSectionType.imdbTopEnglishMovies,
+          l10n.imdbTopEnglishMovies,
+          'imdb_top_english_movies',
+        );
+      case HomeSectionType.tmdbPopularMovies:
+        return _loadTmdbChartRow(HomeSectionType.tmdbPopularMovies, 'Popular Movies', 'tmdb_popular_movies');
+      case HomeSectionType.tmdbTopRatedMovies:
+        return _loadTmdbChartRow(HomeSectionType.tmdbTopRatedMovies, 'Top Rated Movies', 'tmdb_top_rated_movies');
+      case HomeSectionType.tmdbNowPlayingMovies:
+        return _loadTmdbChartRow(HomeSectionType.tmdbNowPlayingMovies, 'Now Playing Movies', 'tmdb_now_playing_movies');
+      case HomeSectionType.tmdbUpcomingMovies:
+        return _loadTmdbChartRow(HomeSectionType.tmdbUpcomingMovies, 'Upcoming Movies', 'tmdb_upcoming_movies');
+      case HomeSectionType.tmdbPopularTv:
+        return _loadTmdbChartRow(HomeSectionType.tmdbPopularTv, 'Popular TV', 'tmdb_popular_tv');
+      case HomeSectionType.tmdbTopRatedTv:
+        return _loadTmdbChartRow(HomeSectionType.tmdbTopRatedTv, 'Top Rated TV', 'tmdb_top_rated_tv');
+      case HomeSectionType.tmdbAiringTodayTv:
+        return _loadTmdbChartRow(HomeSectionType.tmdbAiringTodayTv, 'Airing Today TV', 'tmdb_airing_today_tv');
+      case HomeSectionType.tmdbOnTheAirTv:
+        return _loadTmdbChartRow(HomeSectionType.tmdbOnTheAirTv, 'On The Air TV', 'tmdb_on_the_air_tv');
+      case HomeSectionType.tmdbTrendingMovieDaily:
+        return _loadTmdbChartRow(HomeSectionType.tmdbTrendingMovieDaily, 'Trending Movies (Daily)', 'tmdb_trending_movie_daily');
+      case HomeSectionType.tmdbTrendingMovieWeekly:
+        return _loadTmdbChartRow(HomeSectionType.tmdbTrendingMovieWeekly, 'Trending Movies (Weekly)', 'tmdb_trending_movie_weekly');
+      case HomeSectionType.tmdbTrendingTvDaily:
+        return _loadTmdbChartRow(HomeSectionType.tmdbTrendingTvDaily, 'Trending TV (Daily)', 'tmdb_trending_tv_daily');
+      case HomeSectionType.tmdbTrendingTvWeekly:
+        return _loadTmdbChartRow(HomeSectionType.tmdbTrendingTvWeekly, 'Trending TV (Weekly)', 'tmdb_trending_tv_weekly');
+      case HomeSectionType.tmdbTrendingAllWeekly:
+        return _loadTmdbChartRow(HomeSectionType.tmdbTrendingAllWeekly, 'Trending All (Weekly)', 'tmdb_trending_all_weekly');
       case HomeSectionType.recentlyReleased:
+        return _loadRecentlyReleasedRow();
+      case HomeSectionType.sinceYouWatched1:
+      case HomeSectionType.sinceYouWatched2:
+      case HomeSectionType.sinceYouWatched3:
+      case HomeSectionType.sinceYouWatched4:
+      case HomeSectionType.sinceYouWatched5:
+        final rowIndex = _getSinceYouWatchedIndex(section);
+        final row = await _dataSource.loadSinceYouWatchedRow(_serverId, rowIndex);
+        return [row];
+      case HomeSectionType.rewatch:
+        final row = await _dataSource.loadRewatchRow(_serverId);
+        return [row];
       case HomeSectionType.resumeBook:
       case HomeSectionType.none:
         return [];
@@ -1027,6 +1342,50 @@ class HomeViewModel extends ChangeNotifier {
       final collectionType = (data['CollectionType'] as String?)?.toLowerCase();
       try {
         final row = await _dataSource.loadLatestMedia(
+          id,
+          name,
+          _serverId,
+          collectionType,
+        );
+        return row.items.isNotEmpty ? row : null;
+      } catch (_) {
+        return null;
+      }
+    }).toList();
+
+    final resolved = await Future.wait(tasks);
+    final rows = resolved.whereType<HomeRow>().toList();
+    return rows;
+  }
+
+  Future<List<HomeRow>> _loadRecentlyReleasedRow() async {
+    final viewsFuture = _client.userViewsApi.getUserViews();
+    final configFuture = _client.usersApi
+        .getUserConfiguration()
+        .then<Set<String>>((config) => config.latestItemsExcludes.toSet())
+        .catchError((_) => const <String>{});
+
+    final viewsResponse = await viewsFuture;
+    final views = viewsResponse['Items'] as List? ?? [];
+    final Set<String> latestExcludes = await configFuture;
+
+    final filteredViews = views.cast<Map<String, dynamic>>().where((data) {
+      final id = data['Id']?.toString() ?? '';
+      final collectionType = (data['CollectionType'] as String?)?.toLowerCase();
+      if (collectionType == 'playlists' ||
+          collectionType == 'boxsets' ||
+          collectionType == 'livetv') {
+        return false;
+      }
+      return !latestExcludes.contains(id);
+    }).toList();
+
+    final tasks = filteredViews.map((data) async {
+      final id = data['Id']?.toString() ?? '';
+      final name = data['Name'] as String? ?? '';
+      final collectionType = (data['CollectionType'] as String?)?.toLowerCase();
+      try {
+        final row = await _dataSource.loadRecentlyReleased(
           id,
           name,
           _serverId,
@@ -1224,10 +1583,182 @@ class HomeViewModel extends ChangeNotifier {
           rowType: HomeRowType.pluginDynamic,
           isLoading: true,
         );
+      case HomeSectionType.radarrCalendar:
+        return HomeRow(
+          id: 'radarr_calendar',
+          title: 'Upcoming Movies (Radarr)',
+          rowType: HomeRowType.pluginDynamic,
+          isLoading: true,
+        );
+      case HomeSectionType.sonarrCalendar:
+        return HomeRow(
+          id: 'sonarr_calendar',
+          title: 'Upcoming TV Shows (Sonarr)',
+          rowType: HomeRowType.pluginDynamic,
+          isLoading: true,
+        );
+      case HomeSectionType.imdbTop250Movies:
+        return HomeRow(
+          id: 'imdb_top_250_movies',
+          title: l10n.imdbTop250Movies,
+          rowType: HomeRowType.pluginDynamic,
+          isLoading: true,
+        );
+      case HomeSectionType.imdbTop250TvShows:
+        return HomeRow(
+          id: 'imdb_top_250_tv_shows',
+          title: l10n.imdbTop250TvShows,
+          rowType: HomeRowType.pluginDynamic,
+          isLoading: true,
+        );
+      case HomeSectionType.imdbMostPopularMovies:
+        return HomeRow(
+          id: 'imdb_most_popular_movies',
+          title: l10n.imdbMostPopularMovies,
+          rowType: HomeRowType.pluginDynamic,
+          isLoading: true,
+        );
+      case HomeSectionType.imdbMostPopularTvShows:
+        return HomeRow(
+          id: 'imdb_most_popular_tv_shows',
+          title: l10n.imdbMostPopularTvShows,
+          rowType: HomeRowType.pluginDynamic,
+          isLoading: true,
+        );
+      case HomeSectionType.imdbLowestRatedMovies:
+        return HomeRow(
+          id: 'imdb_lowest_rated_movies',
+          title: l10n.imdbLowestRatedMovies,
+          rowType: HomeRowType.pluginDynamic,
+          isLoading: true,
+        );
+      case HomeSectionType.imdbTopEnglishMovies:
+        return HomeRow(
+          id: 'imdb_top_english_movies',
+          title: l10n.imdbTopEnglishMovies,
+          rowType: HomeRowType.pluginDynamic,
+          isLoading: true,
+        );
+      case HomeSectionType.tmdbPopularMovies:
+        return HomeRow(
+          id: 'tmdb_popular_movies',
+          title: 'Popular Movies',
+          rowType: HomeRowType.pluginDynamic,
+          isLoading: true,
+        );
+      case HomeSectionType.tmdbTopRatedMovies:
+        return HomeRow(
+          id: 'tmdb_top_rated_movies',
+          title: 'Top Rated Movies',
+          rowType: HomeRowType.pluginDynamic,
+          isLoading: true,
+        );
+      case HomeSectionType.tmdbNowPlayingMovies:
+        return HomeRow(
+          id: 'tmdb_now_playing_movies',
+          title: 'Now Playing Movies',
+          rowType: HomeRowType.pluginDynamic,
+          isLoading: true,
+        );
+      case HomeSectionType.tmdbUpcomingMovies:
+        return HomeRow(
+          id: 'tmdb_upcoming_movies',
+          title: 'Upcoming Movies',
+          rowType: HomeRowType.pluginDynamic,
+          isLoading: true,
+        );
+      case HomeSectionType.tmdbPopularTv:
+        return HomeRow(
+          id: 'tmdb_popular_tv',
+          title: 'Popular TV',
+          rowType: HomeRowType.pluginDynamic,
+          isLoading: true,
+        );
+      case HomeSectionType.tmdbTopRatedTv:
+        return HomeRow(
+          id: 'tmdb_top_rated_tv',
+          title: 'Top Rated TV',
+          rowType: HomeRowType.pluginDynamic,
+          isLoading: true,
+        );
+      case HomeSectionType.tmdbAiringTodayTv:
+        return HomeRow(
+          id: 'tmdb_airing_today_tv',
+          title: 'Airing Today TV',
+          rowType: HomeRowType.pluginDynamic,
+          isLoading: true,
+        );
+      case HomeSectionType.tmdbOnTheAirTv:
+        return HomeRow(
+          id: 'tmdb_on_the_air_tv',
+          title: 'On The Air TV',
+          rowType: HomeRowType.pluginDynamic,
+          isLoading: true,
+        );
+      case HomeSectionType.tmdbTrendingMovieDaily:
+        return HomeRow(
+          id: 'tmdb_trending_movie_daily',
+          title: 'Trending Movies (Daily)',
+          rowType: HomeRowType.pluginDynamic,
+          isLoading: true,
+        );
+      case HomeSectionType.tmdbTrendingMovieWeekly:
+        return HomeRow(
+          id: 'tmdb_trending_movie_weekly',
+          title: 'Trending Movies (Weekly)',
+          rowType: HomeRowType.pluginDynamic,
+          isLoading: true,
+        );
+      case HomeSectionType.tmdbTrendingTvDaily:
+        return HomeRow(
+          id: 'tmdb_trending_tv_daily',
+          title: 'Trending TV (Daily)',
+          rowType: HomeRowType.pluginDynamic,
+          isLoading: true,
+        );
+      case HomeSectionType.tmdbTrendingTvWeekly:
+        return HomeRow(
+          id: 'tmdb_trending_tv_weekly',
+          title: 'Trending TV (Weekly)',
+          rowType: HomeRowType.pluginDynamic,
+          isLoading: true,
+        );
+      case HomeSectionType.tmdbTrendingAllWeekly:
+        return HomeRow(
+          id: 'tmdb_trending_all_weekly',
+          title: 'Trending All (Weekly)',
+          rowType: HomeRowType.pluginDynamic,
+          isLoading: true,
+        );
       case HomeSectionType.liveTv:
       case HomeSectionType.activeRecordings:
       case HomeSectionType.mediaBar:
       case HomeSectionType.recentlyReleased:
+        return HomeRow(
+          id: 'recentlyReleased',
+          title: l10n.recentlyReleased,
+          rowType: HomeRowType.recentlyReleased,
+          isLoading: true,
+        );
+      case HomeSectionType.sinceYouWatched1:
+      case HomeSectionType.sinceYouWatched2:
+      case HomeSectionType.sinceYouWatched3:
+      case HomeSectionType.sinceYouWatched4:
+      case HomeSectionType.sinceYouWatched5:
+        final index = _getSinceYouWatchedIndex(section);
+        return HomeRow(
+          id: 'sinceYouWatched$index',
+          title: 'Since you watched',
+          rowType: HomeRowType.latestMedia,
+          isLoading: true,
+        );
+      case HomeSectionType.rewatch:
+        return HomeRow(
+          id: 'rewatch',
+          title: 'Rewatch',
+          rowType: HomeRowType.latestMedia,
+          isLoading: true,
+        );
       case HomeSectionType.resumeBook:
       case HomeSectionType.none:
         return null;
@@ -1286,11 +1817,13 @@ class HomeViewModel extends ChangeNotifier {
           }();
           final resumeRow = await resumeFuture;
           final nextUpRow = await nextUpFuture;
+          final filteredResume = _prefs.filterContinueWatching(resumeRow.items);
+          final filteredNextUp = _prefs.filterNextUp(nextUpRow?.items ?? []);
           final mergedItemsMap = <String, AggregatedItem>{};
-          for (final item in resumeRow.items) {
+          for (final item in filteredResume) {
             mergedItemsMap[item.id] = item;
           }
-          for (final item in nextUpRow?.items ?? []) {
+          for (final item in filteredNextUp) {
             mergedItemsMap.putIfAbsent(item.id, () => item);
           }
           int byLastPlayedDate(AggregatedItem a, AggregatedItem b) {
@@ -1308,11 +1841,13 @@ class HomeViewModel extends ChangeNotifier {
             _dataSource.loadResume(_serverId),
             _dataSource.loadNextUp(_serverId),
           ]);
+          final filteredResume = _prefs.filterContinueWatching(results[0].items);
+          final filteredNextUp = _prefs.filterNextUp(results[1].items);
           final mergedItemsMap = <String, AggregatedItem>{};
-          for (final item in results[0].items) {
+          for (final item in filteredResume) {
             mergedItemsMap[item.id] = item;
           }
-          for (final item in results[1].items) {
+          for (final item in filteredNextUp) {
             mergedItemsMap.putIfAbsent(item.id, () => item);
           }
           int byLastPlayedDate(AggregatedItem a, AggregatedItem b) {
@@ -1346,6 +1881,7 @@ class HomeViewModel extends ChangeNotifier {
       );
     }
     notifyListeners();
+    _watchNext.update(_rows);
   }
 
   static const _seerrEnrichConcurrency = 5;
@@ -1654,6 +2190,150 @@ class HomeViewModel extends ChangeNotifier {
     }
   }
 
+
+  Future<List<HomeRow>> _loadImdbRow(
+    HomeSectionType sectionType,
+    String title,
+    String rowId,
+  ) async {
+    try {
+      final customService = GetIt.instance<CustomExternalListsService>();
+      final config = HomeSectionConfig.pluginDynamic(
+        serverId: 'seerr', // placeholder
+        pluginSection: rowId,
+        pluginDisplayText: title,
+        pluginSource: HomeSectionPluginSource.custom,
+        pluginAdditionalData: jsonEncode({
+          'source': 'imdb',
+          'type': rowId,
+        }),
+      );
+
+      var items = await customService.loadCustomRowFromCache(config);
+      if (items.isEmpty) {
+        items = await customService.fetchCustomRow(config);
+      }
+
+      if (items.isEmpty) {
+        return const [];
+      }
+
+      final aggregatedItems = items.map((item) {
+        final itemId = item.imdbId.isNotEmpty ? item.imdbId : item.tmdbId;
+        return AggregatedItem(
+          id: itemId,
+          serverId: 'seerr',
+          rawData: {
+            'Name': item.title,
+            'Type': item.type,
+            'Overview': '',
+            'PosterPath': item.posterUrl ?? '',
+            'BackdropPath': item.backdropUrl ?? item.posterUrl ?? '',
+            'ProductionYear': item.year,
+            'SeerrMediaType': item.type == 'Series' ? 'tv' : 'movie',
+            'ProviderIds': {
+              if (item.imdbId.isNotEmpty) 'Imdb': item.imdbId,
+              if (item.tmdbId.isNotEmpty) 'Tmdb': item.tmdbId,
+            },
+          },
+        );
+      }).toList();
+
+      return [
+        HomeRow(
+          id: rowId,
+          title: title,
+          rowType: HomeRowType.pluginDynamic,
+          items: aggregatedItems,
+        )
+      ];
+    } catch (e) {
+      debugPrint('[ImdbRow] Failed to load IMDb row $sectionType: $e');
+      return const [];
+    }
+  }
+
+  Future<List<HomeRow>> _loadTmdbChartRow(
+    HomeSectionType sectionType,
+    String title,
+    String rowId,
+  ) async {
+    try {
+      final customService = GetIt.instance<CustomExternalListsService>();
+      final config = HomeSectionConfig.pluginDynamic(
+        serverId: 'seerr', // placeholder
+        pluginSection: rowId,
+        pluginDisplayText: title,
+        pluginSource: HomeSectionPluginSource.custom,
+        pluginAdditionalData: jsonEncode({
+          'source': 'tmdb_chart',
+          'type': _tmdbChartTypeForSection(sectionType),
+        }),
+      );
+
+      var items = await customService.loadCustomRowFromCache(config);
+      if (items.isEmpty) {
+        items = await customService.fetchCustomRow(config);
+      }
+
+      if (items.isEmpty) {
+        return const [];
+      }
+
+      final aggregatedItems = items.map((item) {
+        final itemId = item.imdbId.isNotEmpty ? item.imdbId : item.tmdbId;
+        return AggregatedItem(
+          id: itemId,
+          serverId: 'seerr',
+          rawData: {
+            'Name': item.title,
+            'Type': item.type,
+            'Overview': '',
+            'PosterPath': item.posterUrl ?? '',
+            'BackdropPath': item.backdropUrl ?? item.posterUrl ?? '',
+            'ProductionYear': item.year,
+            'SeerrMediaType': item.type == 'Series' ? 'tv' : 'movie',
+            'ProviderIds': {
+              if (item.imdbId.isNotEmpty) 'Imdb': item.imdbId,
+              if (item.tmdbId.isNotEmpty) 'Tmdb': item.tmdbId,
+            },
+          },
+        );
+      }).toList();
+
+      return [
+        HomeRow(
+          id: rowId,
+          title: title,
+          rowType: HomeRowType.pluginDynamic,
+          items: aggregatedItems,
+        )
+      ];
+    } catch (e) {
+      debugPrint('[TmdbChartRow] Failed to load TMDB chart row $sectionType: $e');
+      return const [];
+    }
+  }
+
+  String _tmdbChartTypeForSection(HomeSectionType sectionType) {
+    return switch (sectionType) {
+      HomeSectionType.tmdbPopularMovies => 'movie/popular',
+      HomeSectionType.tmdbTopRatedMovies => 'movie/top_rated',
+      HomeSectionType.tmdbNowPlayingMovies => 'movie/now_playing',
+      HomeSectionType.tmdbUpcomingMovies => 'movie/upcoming',
+      HomeSectionType.tmdbPopularTv => 'tv/popular',
+      HomeSectionType.tmdbTopRatedTv => 'tv/top_rated',
+      HomeSectionType.tmdbAiringTodayTv => 'tv/airing_today',
+      HomeSectionType.tmdbOnTheAirTv => 'tv/on_the_air',
+      HomeSectionType.tmdbTrendingMovieDaily => 'trending/movie/day',
+      HomeSectionType.tmdbTrendingMovieWeekly => 'trending/movie/week',
+      HomeSectionType.tmdbTrendingTvDaily => 'trending/tv/day',
+      HomeSectionType.tmdbTrendingTvWeekly => 'trending/tv/week',
+      HomeSectionType.tmdbTrendingAllWeekly => 'trending/all/week',
+      _ => 'movie/popular',
+    };
+  }
+
   int? _extractYear(String? dateString) {
     if (dateString == null || dateString.isEmpty) return null;
     try {
@@ -1664,4 +2344,748 @@ class HomeViewModel extends ChangeNotifier {
     } catch (_) {}
     return null;
   }
+
+  List<AggregatedItem> _filterAndFormatRadarrItems(List<AggregatedItem> rawItems) {
+    final now = DateTime.now();
+    final showCinema = _prefs.get(UserPreferences.radarrCalendarShowCinema);
+    final showDigital = _prefs.get(UserPreferences.radarrCalendarShowDigital);
+    final showPhysical = _prefs.get(UserPreferences.radarrCalendarShowPhysical);
+    final showDate = _prefs.get(UserPreferences.radarrCalendarShowDate);
+
+    final List<AggregatedItem> filtered = [];
+
+    for (final item in rawItems) {
+      final inCinemasStr = item.rawData['InCinemas'] as String?;
+      final digitalReleaseStr = item.rawData['DigitalRelease'] as String?;
+      final physicalReleaseStr = item.rawData['PhysicalRelease'] as String?;
+
+      final inCinemas = inCinemasStr != null ? DateTime.tryParse(inCinemasStr) : null;
+      final digitalRelease = digitalReleaseStr != null ? DateTime.tryParse(digitalReleaseStr) : null;
+      final physicalRelease = physicalReleaseStr != null ? DateTime.tryParse(physicalReleaseStr) : null;
+
+      final enabledReleases = <DateTime, String>{};
+      if (showCinema && inCinemas != null && inCinemas.isAfter(now.subtract(const Duration(days: 1)))) {
+        enabledReleases[inCinemas] = 'Cinema: ';
+      }
+      if (showDigital && digitalRelease != null && digitalRelease.isAfter(now.subtract(const Duration(days: 1)))) {
+        enabledReleases[digitalRelease] = 'Digital: ';
+      }
+      if (showPhysical && physicalRelease != null && physicalRelease.isAfter(now.subtract(const Duration(days: 1)))) {
+        enabledReleases[physicalRelease] = 'Physical: ';
+      }
+
+      if (enabledReleases.isEmpty) continue;
+
+      final sortedDates = enabledReleases.keys.toList()..sort();
+      final targetReleaseDate = sortedDates.first;
+      final releaseType = enabledReleases[targetReleaseDate]!;
+
+      String? subtitleText;
+      if (showDate) {
+        final dateStr = _formatDateHuman(targetReleaseDate);
+        subtitleText = '$releaseType$dateStr';
+      }
+
+      final newRawData = Map<String, dynamic>.from(item.rawData);
+      newRawData['Subtitle'] = subtitleText;
+      newRawData['CalendarDate'] = targetReleaseDate.toIso8601String();
+
+      filtered.add(AggregatedItem(
+        id: item.id,
+        serverId: item.serverId,
+        rawData: newRawData,
+      ));
+    }
+
+    filtered.sort((a, b) {
+      final dateA = a.rawData['CalendarDate'] as String? ?? '';
+      final dateB = b.rawData['CalendarDate'] as String? ?? '';
+      return dateA.compareTo(dateB);
+    });
+
+    return filtered;
+  }
+
+  List<AggregatedItem> _formatSonarrItems(List<AggregatedItem> rawItems) {
+    final showDate = _prefs.get(UserPreferences.sonarrCalendarShowDate);
+    final showEpisodeInfo = _prefs.get(UserPreferences.sonarrCalendarShowEpisodeInfo);
+
+    return rawItems.map((item) {
+      final airDateUtcStr = item.rawData['CalendarDate'] as String?;
+      final airDateUtc = airDateUtcStr != null ? DateTime.tryParse(airDateUtcStr) : null;
+      if (airDateUtc == null) return item;
+
+      final sNum = item.rawData['SeasonNumber'] as String? ?? '0';
+      final eNum = item.rawData['EpisodeNumber'] as String? ?? '0';
+
+      String? subtitleText;
+      if (showDate && showEpisodeInfo) {
+        final dateStr = _formatDateHuman(airDateUtc);
+        subtitleText = 'Next Episode: $dateStr (S$sNum:E$eNum)';
+      } else if (showDate) {
+        final dateStr = _formatDateHuman(airDateUtc);
+        subtitleText = 'Next Episode: $dateStr';
+      } else if (showEpisodeInfo) {
+        subtitleText = 'Next Episode: (S$sNum:E$eNum)';
+      }
+
+      final newRawData = Map<String, dynamic>.from(item.rawData);
+      newRawData['Subtitle'] = subtitleText;
+
+      return AggregatedItem(
+        id: item.id,
+        serverId: item.serverId,
+        rawData: newRawData,
+      );
+    }).toList();
+  }
+
+  Future<List<HomeRow>> _loadRadarrCalendarRow({bool forceRefresh = false}) async {
+    final merge = _prefs.get(UserPreferences.mergeRadarrSonarrCalendars);
+    if (merge) {
+      return _loadMergedCalendarRow(forceRefresh: forceRefresh);
+    }
+    try {
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      final lastFetch = _prefs.get(UserPreferences.lastRadarrCalendarFetchTime);
+      final cacheAge = nowMs - lastFetch;
+      final shouldFetch = forceRefresh || cacheAge > const Duration(days: 1).inMilliseconds;
+
+      List<AggregatedItem> items;
+      if (shouldFetch) {
+        final fetchedItems = await _fetchRadarrCalendarFromApi();
+        if (fetchedItems != null) {
+          await _saveRadarrCalendarToCache(fetchedItems);
+          await _prefs.set(UserPreferences.lastRadarrCalendarFetchTime, nowMs);
+          items = _filterAndFormatRadarrItems(fetchedItems);
+        } else {
+          final cached = await _loadRadarrCalendarFromCache();
+          items = _filterAndFormatRadarrItems(cached);
+        }
+      } else {
+        final cached = await _loadRadarrCalendarFromCache();
+        items = _filterAndFormatRadarrItems(cached);
+        if (items.isEmpty) {
+          final fetchedItems = await _fetchRadarrCalendarFromApi();
+          if (fetchedItems != null) {
+            await _saveRadarrCalendarToCache(fetchedItems);
+            await _prefs.set(UserPreferences.lastRadarrCalendarFetchTime, nowMs);
+            items = _filterAndFormatRadarrItems(fetchedItems);
+          }
+        }
+      }
+
+      return [
+        HomeRow(
+          id: 'radarr_calendar',
+          title: 'Upcoming Movies (Radarr)',
+          rowType: HomeRowType.pluginDynamic,
+          items: items,
+        )
+      ];
+    } catch (e) {
+      debugPrint('[RadarrCalendar] Failed to load: $e');
+      return const [];
+    }
+  }
+
+  Future<List<HomeRow>> _loadSonarrCalendarRow({bool forceRefresh = false}) async {
+    final merge = _prefs.get(UserPreferences.mergeRadarrSonarrCalendars);
+    if (merge) {
+      final hasRadarrConfig = _prefs.homeSectionsConfig.any((c) => c.enabled && c.type == HomeSectionType.radarrCalendar);
+      if (hasRadarrConfig) {
+        return const [];
+      } else {
+        return _loadMergedCalendarRow(forceRefresh: forceRefresh);
+      }
+    }
+    try {
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      final lastFetch = _prefs.get(UserPreferences.lastSonarrCalendarFetchTime);
+      final cacheAge = nowMs - lastFetch;
+      final shouldFetch = forceRefresh || cacheAge > const Duration(days: 1).inMilliseconds;
+
+      List<AggregatedItem> items;
+      if (shouldFetch) {
+        final fetchedItems = await _fetchSonarrCalendarFromApi();
+        if (fetchedItems != null) {
+          await _saveSonarrCalendarToCache(fetchedItems);
+          await _prefs.set(UserPreferences.lastSonarrCalendarFetchTime, nowMs);
+          items = _formatSonarrItems(fetchedItems);
+        } else {
+          final cached = await _loadSonarrCalendarFromCache();
+          items = _formatSonarrItems(cached);
+        }
+      } else {
+        final cached = await _loadSonarrCalendarFromCache();
+        items = _formatSonarrItems(cached);
+        if (items.isEmpty) {
+          final fetchedItems = await _fetchSonarrCalendarFromApi();
+          if (fetchedItems != null) {
+            await _saveSonarrCalendarToCache(fetchedItems);
+            await _prefs.set(UserPreferences.lastSonarrCalendarFetchTime, nowMs);
+            items = _formatSonarrItems(fetchedItems);
+          }
+        }
+      }
+
+      return [
+        HomeRow(
+          id: 'sonarr_calendar',
+          title: 'Upcoming TV Shows (Sonarr)',
+          rowType: HomeRowType.pluginDynamic,
+          items: items,
+        )
+      ];
+    } catch (e) {
+      debugPrint('[SonarrCalendar] Failed to load: $e');
+      return const [];
+    }
+  }
+
+  Future<List<AggregatedItem>> _loadRadarrCalendarFromCache() async {
+    try {
+      final dir = await getApplicationSupportDirectory();
+      final file = File('${dir.path}/radarr_calendar_cache.json');
+      if (await file.exists()) {
+        final content = await file.readAsString();
+        final list = jsonDecode(content) as List;
+        final items = list.map((x) => _aggregatedItemFromJson(x as Map<String, dynamic>)).toList();
+        final hasOldCache = items.any((x) => !x.rawData.containsKey('CalendarDate') || x.rawData['PosterPath'] == '' || !x.rawData.containsKey('CacheVerV2'));
+        if (hasOldCache) {
+          debugPrint('[RadarrCalendarCache] Old cache detected, invalidating to force fresh fetch');
+          return const [];
+        }
+        return items;
+      }
+    } catch (e) {
+      debugPrint('[RadarrCalendarCache] Failed to load: $e');
+    }
+    return const [];
+  }
+
+  Future<void> _saveRadarrCalendarToCache(List<AggregatedItem> items) async {
+    try {
+      final dir = await getApplicationSupportDirectory();
+      final file = File('${dir.path}/radarr_calendar_cache.json');
+      final content = jsonEncode(items.map((x) => _aggregatedItemToJson(x)).toList());
+      await file.writeAsString(content, flush: true);
+    } catch (e) {
+      debugPrint('[RadarrCalendarCache] Failed to save: $e');
+    }
+  }
+
+  Future<List<AggregatedItem>> _loadSonarrCalendarFromCache() async {
+    try {
+      final dir = await getApplicationSupportDirectory();
+      final file = File('${dir.path}/sonarr_calendar_cache.json');
+      if (await file.exists()) {
+        final content = await file.readAsString();
+        final list = jsonDecode(content) as List;
+        final items = list.map((x) => _aggregatedItemFromJson(x as Map<String, dynamic>)).toList();
+        final hasOldCache = items.any((x) => !x.rawData.containsKey('CalendarDate') || x.rawData['PosterPath'] == '' || !x.rawData.containsKey('CacheVerV2'));
+        if (hasOldCache) {
+          debugPrint('[SonarrCalendarCache] Old cache detected, invalidating to force fresh fetch');
+          return const [];
+        }
+        return items;
+      }
+    } catch (e) {
+      debugPrint('[SonarrCalendarCache] Failed to load: $e');
+    }
+    return const [];
+  }
+
+  Future<void> _saveSonarrCalendarToCache(List<AggregatedItem> items) async {
+    try {
+      final dir = await getApplicationSupportDirectory();
+      final file = File('${dir.path}/sonarr_calendar_cache.json');
+      final content = jsonEncode(items.map((x) => _aggregatedItemToJson(x)).toList());
+      await file.writeAsString(content, flush: true);
+    } catch (e) {
+      debugPrint('[SonarrCalendarCache] Failed to save: $e');
+    }
+  }
+
+  Map<String, dynamic> _aggregatedItemToJson(AggregatedItem item) {
+    return {
+      'id': item.id,
+      'serverId': item.serverId,
+      'rawData': item.rawData,
+    };
+  }
+
+  AggregatedItem _aggregatedItemFromJson(Map<String, dynamic> json) {
+    return AggregatedItem(
+      id: json['id'] as String,
+      serverId: json['serverId'] as String,
+      rawData: Map<String, dynamic>.from(json['rawData'] as Map),
+    );
+  }
+
+  Future<List<AggregatedItem>?> _fetchRadarrCalendarFromApi() async {
+    try {
+      final repo = await GetIt.instance.getAsync<SeerrRepository>();
+      final radarrServers = await repo.getRadarrSettings();
+      if (radarrServers.isEmpty) return null;
+      final server = radarrServers.first;
+
+      final protocol = server.useSsl ? 'https' : 'http';
+      final host = server.hostname;
+      final port = server.port;
+      final basePath = server.baseUrl ?? '';
+      final cleanBasePath = basePath.endsWith('/') ? basePath.substring(0, basePath.length - 1) : basePath;
+      final apiKey = server.apiKey;
+
+      final now = DateTime.now();
+      final start = now.toIso8601String().substring(0, 10);
+      final end = now.add(const Duration(days: 90)).toIso8601String().substring(0, 10);
+
+      final dio = Dio();
+      final url = '$protocol://$host:$port$cleanBasePath/api/v3/calendar';
+      final response = await dio.get(
+        url,
+        queryParameters: {
+          'apikey': apiKey,
+          'start': start,
+          'end': end,
+        },
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode != 200 || response.data == null) {
+        return null;
+      }
+
+      final results = response.data as List;
+
+      final enrichCompleters = await mapBounded(
+        results,
+        5,
+        (res) async {
+          if (res is! Map) return null;
+          final tmdbIdVal = res['tmdbId'];
+          if (tmdbIdVal == null || tmdbIdVal == 0) return null;
+          final tmdbId = tmdbIdVal.toString();
+
+          final title = res['title'] as String? ?? 'Unknown';
+          final overview = res['overview'] as String? ?? '';
+          final year = res['year'] as int?;
+
+          final inCinemasStr = res['inCinemas'] as String?;
+          final digitalReleaseStr = res['digitalRelease'] as String?;
+          final physicalReleaseStr = res['physicalRelease'] as String?;
+
+          final inCinemas = inCinemasStr != null ? DateTime.tryParse(inCinemasStr) : null;
+          final digitalRelease = digitalReleaseStr != null ? DateTime.tryParse(digitalReleaseStr) : null;
+          final physicalRelease = physicalReleaseStr != null ? DateTime.tryParse(physicalReleaseStr) : null;
+
+          final allReleases = <DateTime>[];
+          if (inCinemas != null && inCinemas.isAfter(now.subtract(const Duration(days: 1)))) {
+            allReleases.add(inCinemas);
+          }
+          if (digitalRelease != null && digitalRelease.isAfter(now.subtract(const Duration(days: 1)))) {
+            allReleases.add(digitalRelease);
+          }
+          if (physicalRelease != null && physicalRelease.isAfter(now.subtract(const Duration(days: 1)))) {
+            allReleases.add(physicalRelease);
+          }
+
+          if (allReleases.isEmpty) return null;
+
+          final sortedDates = allReleases..sort();
+          final defaultReleaseDate = sortedDates.first;
+
+          String? posterPath;
+          String? backdropPath;
+          final images = res['images'] as List?;
+          if (images != null) {
+            for (final img in images) {
+              if (img is! Map) continue;
+              final type = img['coverType'] as String?;
+              final remoteUrl = img['remoteUrl'] as String? ?? img['url'] as String?;
+              if (remoteUrl != null && remoteUrl.isNotEmpty) {
+                final fullUrl = remoteUrl.startsWith('http')
+                    ? remoteUrl
+                    : '$protocol://$host:$port$cleanBasePath$remoteUrl${remoteUrl.contains('?') ? '&' : '?'}apikey=$apiKey';
+                if (type == 'poster') {
+                  posterPath = fullUrl;
+                } else if (type == 'fanart') {
+                  backdropPath = fullUrl;
+                }
+              }
+            }
+          }
+
+          if (posterPath == null || posterPath.isEmpty) {
+            try {
+              final details = await repo.getMovieDetails(int.parse(tmdbId));
+              posterPath = _tmdbImageUrl(details.posterPath, 300) ?? '';
+              backdropPath = _tmdbImageUrl(details.backdropPath, 1280) ?? '';
+            } catch (_) {}
+          }
+
+          return _CalendarItemWithDate(
+            item: AggregatedItem(
+              id: tmdbId,
+              serverId: 'seerr',
+              rawData: {
+                'Name': title,
+                'Type': 'Movie',
+                'Overview': overview,
+                'PosterPath': posterPath,
+                'BackdropPath': backdropPath,
+                'ProductionYear': year,
+                'SeerrMediaType': 'movie',
+                'InCinemas': inCinemasStr,
+                'DigitalRelease': digitalReleaseStr,
+                'PhysicalRelease': physicalReleaseStr,
+                'CalendarDate': defaultReleaseDate.toIso8601String(),
+                'CacheVerV2': true,
+              },
+            ),
+            date: defaultReleaseDate,
+          );
+        },
+      );
+
+      final calendarItems = enrichCompleters.whereType<_CalendarItemWithDate>().toList()
+        ..sort((a, b) => a.date.compareTo(b.date));
+
+      return calendarItems.map((c) => c.item).toList();
+    } catch (e) {
+      debugPrint('[RadarrCalendarApi] Failed to fetch: $e');
+      return null;
+    }
+  }
+
+  Future<List<AggregatedItem>?> _fetchSonarrCalendarFromApi() async {
+    try {
+      final repo = await GetIt.instance.getAsync<SeerrRepository>();
+      final sonarrServers = await repo.getSonarrSettings();
+      if (sonarrServers.isEmpty) return null;
+      final server = sonarrServers.first;
+
+      final protocol = server.useSsl ? 'https' : 'http';
+      final host = server.hostname;
+      final port = server.port;
+      final basePath = server.baseUrl ?? '';
+      final cleanBasePath = basePath.endsWith('/') ? basePath.substring(0, basePath.length - 1) : basePath;
+      final apiKey = server.apiKey;
+
+      final now = DateTime.now();
+      final start = now.toIso8601String().substring(0, 10);
+      final end = now.add(const Duration(days: 90)).toIso8601String().substring(0, 10);
+
+      final dio = Dio();
+      final url = '$protocol://$host:$port$cleanBasePath/api/v3/calendar';
+      final response = await dio.get(
+        url,
+        queryParameters: {
+          'apikey': apiKey,
+          'start': start,
+          'end': end,
+          'includeSeries': 'true',
+        },
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode != 200 || response.data == null) {
+        return null;
+      }
+
+      final results = response.data as List;
+
+      final groupedEpisodes = <int, Map<String, dynamic>>{};
+      for (final res in results) {
+        if (res is! Map) continue;
+        final seriesMap = res['series'];
+        if (seriesMap is! Map) continue;
+
+        final tvdbIdVal = seriesMap['tvdbId'];
+        if (tvdbIdVal == null || tvdbIdVal == 0) continue;
+        final tvdbId = tvdbIdVal as int;
+
+        final airDateUtcStr = res['airDateUtc'] as String?;
+        final airDateUtc = airDateUtcStr != null ? DateTime.tryParse(airDateUtcStr) : null;
+        if (airDateUtc == null) continue;
+
+        final existing = groupedEpisodes[tvdbId];
+        if (existing == null) {
+          groupedEpisodes[tvdbId] = {
+            'series': seriesMap,
+            'airDate': airDateUtc,
+            'seasonNumber': res['seasonNumber'],
+            'episodeNumber': res['episodeNumber'],
+          };
+        } else {
+          final existingAirDate = existing['airDate'] as DateTime;
+          if (airDateUtc.isBefore(existingAirDate)) {
+            existing['airDate'] = airDateUtc;
+            existing['seasonNumber'] = res['seasonNumber'];
+            existing['episodeNumber'] = res['episodeNumber'];
+          }
+        }
+      }
+
+      final enrichCompleters = await mapBounded(
+        groupedEpisodes.values.toList(),
+        5,
+        (episodeInfo) async {
+          final seriesMap = episodeInfo['series'] as Map;
+          final tvdbId = seriesMap['tvdbId'] as int;
+          final seriesTitle = seriesMap['title'] as String? ?? 'Unknown';
+          final overview = seriesMap['overview'] as String? ?? '';
+          final airDateUtc = episodeInfo['airDate'] as DateTime;
+
+          int? tmdbId;
+          final tmdbIdVal = seriesMap['tmdbId'];
+          if (tmdbIdVal != null && tmdbIdVal != 0) {
+            tmdbId = tmdbIdVal as int;
+          } else {
+            try {
+              final tvDetails = await repo.getTvDetailsByTvdb(tvdbId);
+              tmdbId = tvDetails.id;
+            } catch (_) {}
+          }
+
+          if (tmdbId == null || tmdbId == 0) return null;
+
+          String? posterPath;
+          String? backdropPath;
+          final images = seriesMap['images'] as List?;
+          if (images != null) {
+            for (final img in images) {
+              if (img is! Map) continue;
+              final type = img['coverType'] as String?;
+              final remoteUrl = img['remoteUrl'] as String? ?? img['url'] as String?;
+              if (remoteUrl != null && remoteUrl.isNotEmpty) {
+                final fullUrl = remoteUrl.startsWith('http')
+                    ? remoteUrl
+                    : '$protocol://$host:$port$cleanBasePath$remoteUrl${remoteUrl.contains('?') ? '&' : '?'}apikey=$apiKey';
+                if (type == 'poster') {
+                  posterPath = fullUrl;
+                } else if (type == 'fanart') {
+                  backdropPath = fullUrl;
+                }
+              }
+            }
+          }
+
+          if (posterPath == null || posterPath.isEmpty) {
+            try {
+              final details = await repo.getTvDetails(tmdbId);
+              posterPath = _tmdbImageUrl(details.posterPath, 300) ?? '';
+              backdropPath = _tmdbImageUrl(details.backdropPath, 1280) ?? '';
+            } catch (_) {}
+          }
+
+          final sNum = (episodeInfo['seasonNumber'] ?? 0).toString();
+          final eNum = (episodeInfo['episodeNumber'] ?? 0).toString();
+
+          return _CalendarItemWithDate(
+            item: AggregatedItem(
+              id: tmdbId.toString(),
+              serverId: 'seerr',
+              rawData: {
+                'Name': seriesTitle,
+                'Type': 'Series',
+                'Overview': overview,
+                'PosterPath': posterPath,
+                'BackdropPath': backdropPath,
+                'SeerrMediaType': 'tv',
+                'SeasonNumber': sNum,
+                'EpisodeNumber': eNum,
+                'CalendarDate': airDateUtc.toIso8601String(),
+                'CacheVerV2': true,
+              },
+            ),
+            date: airDateUtc,
+          );
+        },
+      );
+
+      final calendarItems = enrichCompleters.whereType<_CalendarItemWithDate>().toList()
+        ..sort((a, b) => a.date.compareTo(b.date));
+
+      return calendarItems.map((c) => c.item).toList();
+    } catch (e) {
+      debugPrint('[SonarrCalendarApi] Failed to fetch: $e');
+      return null;
+    }
+  }
+
+  String? _tmdbImageUrl(String? path, int width) {
+    if (path == null || path.isEmpty) return null;
+    if (path.startsWith('http')) return path;
+    return 'https://image.tmdb.org/t/p/w$width$path';
+  }
+
+  String _formatDateHuman(DateTime date) {
+    final months = [
+      'Jan.',
+      'Feb.',
+      'Mar.',
+      'Apr.',
+      'May',
+      'Jun.',
+      'Jul.',
+      'Aug.',
+      'Sep.',
+      'Oct.',
+      'Nov.',
+      'Dec.'
+    ];
+    final month = months[date.month - 1];
+    final day = date.day;
+    final suffix = switch (day) {
+      1 || 21 || 31 => 'st',
+      2 || 22 => 'nd',
+      3 || 23 => 'rd',
+      _ => 'th',
+    };
+    return '$month $day$suffix';
+  }
+
+  Future<List<HomeRow>> _loadMergedCalendarRow({bool forceRefresh = false}) async {
+    try {
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+
+      // 1. Load Radarr items
+      final lastRadarrFetch = _prefs.get(UserPreferences.lastRadarrCalendarFetchTime);
+      final radarrCacheAge = nowMs - lastRadarrFetch;
+      final shouldFetchRadarr = forceRefresh || radarrCacheAge > const Duration(days: 1).inMilliseconds;
+
+      List<AggregatedItem> radarrItems;
+      if (shouldFetchRadarr) {
+        final fetched = await _fetchRadarrCalendarFromApi();
+        if (fetched != null) {
+          radarrItems = fetched;
+          await _saveRadarrCalendarToCache(radarrItems);
+          await _prefs.set(UserPreferences.lastRadarrCalendarFetchTime, nowMs);
+        } else {
+          radarrItems = await _loadRadarrCalendarFromCache();
+        }
+      } else {
+        radarrItems = await _loadRadarrCalendarFromCache();
+        if (radarrItems.isEmpty) {
+          final fetched = await _fetchRadarrCalendarFromApi();
+          if (fetched != null) {
+            radarrItems = fetched;
+            await _saveRadarrCalendarToCache(radarrItems);
+            await _prefs.set(UserPreferences.lastRadarrCalendarFetchTime, nowMs);
+          }
+        }
+      }
+
+      // 2. Load Sonarr items
+      final lastSonarrFetch = _prefs.get(UserPreferences.lastSonarrCalendarFetchTime);
+      final sonarrCacheAge = nowMs - lastSonarrFetch;
+      final shouldFetchSonarr = forceRefresh || sonarrCacheAge > const Duration(days: 1).inMilliseconds;
+
+      List<AggregatedItem> sonarrItems;
+      if (shouldFetchSonarr) {
+        final fetched = await _fetchSonarrCalendarFromApi();
+        if (fetched != null) {
+          sonarrItems = fetched;
+          await _saveSonarrCalendarToCache(sonarrItems);
+          await _prefs.set(UserPreferences.lastSonarrCalendarFetchTime, nowMs);
+        } else {
+          sonarrItems = await _loadSonarrCalendarFromCache();
+        }
+      } else {
+        sonarrItems = await _loadSonarrCalendarFromCache();
+        if (sonarrItems.isEmpty) {
+          final fetched = await _fetchSonarrCalendarFromApi();
+          if (fetched != null) {
+            sonarrItems = fetched;
+            await _saveSonarrCalendarToCache(sonarrItems);
+            await _prefs.set(UserPreferences.lastSonarrCalendarFetchTime, nowMs);
+          }
+        }
+      }
+
+      // 3. Merge and sort
+      final filteredRadarr = _filterAndFormatRadarrItems(radarrItems);
+      final filteredSonarr = _formatSonarrItems(sonarrItems);
+      final mergedItems = [...filteredRadarr, ...filteredSonarr];
+      mergedItems.sort((a, b) {
+        final dateA = a.rawData['CalendarDate'] as String? ?? '';
+        final dateB = b.rawData['CalendarDate'] as String? ?? '';
+        return dateA.compareTo(dateB);
+      });
+
+      return [
+        HomeRow(
+          id: 'merged_calendar',
+          title: 'Upcoming Releases',
+          rowType: HomeRowType.pluginDynamic,
+          items: mergedItems,
+        )
+      ];
+    } catch (e) {
+      debugPrint('[MergedCalendar] Failed to load merged calendar: $e');
+      return const [];
+    }
+  }
+
+  Future<void> _checkAndTriggerDailyExternalRowsRefresh() async {
+    final lastRefreshMs = _prefs.get(UserPreferences.lastExternalRowsRefreshTime);
+    final now = DateTime.now();
+    final lastRefreshDate = DateTime.fromMillisecondsSinceEpoch(lastRefreshMs);
+    final isDifferentDay = lastRefreshMs == 0 ||
+        now.year != lastRefreshDate.year ||
+        now.month != lastRefreshDate.month ||
+        now.day != lastRefreshDate.day ||
+        now.difference(lastRefreshDate).inHours >= 24;
+
+    if (!isDifferentDay) return;
+
+    final syncService = GetIt.instance<PluginSyncService>();
+    if (!syncService.seerrAvailable) return;
+
+    debugPrint('[DailyRefresh] Day changed or first run. Triggering background cache refresh of enabled lists...');
+
+    await _prefs.set(UserPreferences.lastExternalRowsRefreshTime, now.millisecondsSinceEpoch);
+
+    unawaited(() async {
+      try {
+        // Let the initial home load settle before this network sweep and its
+        // follow-up load() run.
+        await Future.delayed(const Duration(seconds: 15));
+        if (_client.userId != _ownerUserId) return;
+
+        final futures = <Future<void>>[];
+
+        final customService = GetIt.instance<CustomExternalListsService>();
+        final configs = _prefs.homeSectionsConfig;
+        for (final config in configs) {
+          if (config.pluginSource == HomeSectionPluginSource.custom && config.enabled) {
+            futures.add(() async {
+              try {
+                final items = await customService.fetchCustomRow(config);
+                if (items.isNotEmpty) {
+                  await customService.saveCustomRowToCache(config, items);
+                }
+              } catch (e) {
+                debugPrint('[DailyRefresh] Failed to refresh custom row ${config.pluginSection}: $e');
+              }
+            }());
+          }
+        }
+
+        if (futures.isNotEmpty) {
+          await Future.wait(futures);
+          debugPrint('[DailyRefresh] Background cache refresh complete. Reloading HomeViewModel rows...');
+          await load(preserveExisting: true);
+        }
+      } catch (e) {
+        debugPrint('[DailyRefresh] Error during background refresh: $e');
+      }
+    }());
+  }
+}
+
+class _CalendarItemWithDate {
+  final AggregatedItem item;
+  final DateTime date;
+  _CalendarItemWithDate({required this.item, required this.date});
 }

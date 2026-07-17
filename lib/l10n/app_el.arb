@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "Τα αγαπημένα κομμάτια θα εμφανιστούν εδώ",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "Αποτυχία φόρτωσης",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "Συγκεκριμένος χρήστης",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "Πάντα έλεγχος ταυτότητας",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "Αναζήτηση απομακρυσμένου ατόμου",
     "adminNoRemoteMatches": "Δεν βρέθηκαν απομακρυσμένες αντιστοιχίσεις",
     "adminRemoteResults": "Απομακρυσμένα αποτελέσματα",
     "adminRemoteMetadataApplied": "Εφαρμόστηκαν απομακρυσμένα μεταδεδομένα",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "Προσθήκη δέκτη",
     "adminTunerType": "Τύπος δέκτη",
-    "adminTunerTypeHint": "HDHomeRun, M3U, Άλλο",
-    "adminUrlPath": "URL / Διαδρομή",
-    "adminNameOptional": "Όνομα (προαιρετικό)",
     "adminTunerAdded": "Προστέθηκε ο δέκτης",
     "adminTunerAddFailed": "Αποτυχία προσθήκης δέκτη: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "Προσθήκη παρόχου οδηγού",
     "adminProviderType": "Τύπος παρόχου",
-    "adminProviderTypeHint": "SchedulesDirect ή XMLTV",
-    "adminUsernameOptional": "Όνομα χρήστη (προαιρετικό)",
-    "adminRefreshInterval": "Διάστημα ανανέωσης (ώρες)",
     "adminProviderAdded": "Προστέθηκε πάροχος",
     "adminProviderAddFailed": "Αποτυχία προσθήκης παρόχου: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "Δεν υπάρχουν αντίστοιχες γραμμές",
     "adminMetadataEditorTitle": "Επεξεργαστής Μεταδεδομένων",
-    "adminMetadataRemote": "Μακρινός",
     "adminMetadataType": "Τύπος",
     "adminMetadataDetails": "Καθέκαστα",
     "adminMetadataExternalIds": "Εξωτερικές ταυτότητες",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "Θυμηθείτε την επιλογή μου",
     "playHdr10Fallback": "Παίξτε εναλλακτικά HDR10",
     "requestTranscode": "Ζητήστε διακωδικοποίηση",
-    "homeScreenSectionsIntegrationDescription": "Εντοπίστε σειρές που εκτίθενται από την προσθήκη \"Ενότητες αρχικής οθόνης\" του IAmParadox27. Οι σειρές μπορούν να ενεργοποιηθούν και να αναδιαταχθούν παρακάτω.",
-    "homeScreenSectionsIntegrationNoServers": "Δεν υπάρχουν ακόμη διακομιστές Jellyfin που να αναφέρουν την προσθήκη.",
-    "integrationOpenHomeSections": "Ανοίξτε τις Αρχικές Ενότητες",
-    "integrationOpenHomeSectionsSubtitle": "Ενεργοποίηση, απενεργοποίηση και αναδιάταξη σειρών",
-    "integrationInstalledButDisabled": "Εγκατεστημένο αλλά απενεργοποιημένο",
-    "integrationNotInstalled": "Δεν έχει εγκατασταθεί",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "Δείτε όλα",
     "noItems": "Δεν υπάρχουν στοιχεία",
     "switchUser": "Εναλλαγή χρήστη",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "Στερεοφωνικό AAC",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Passthrough (Για προχωρημένους)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Διαγραφή αποθηκευμένου θέματος",
     "savedThemesManageSubtitle": "Διαχειριστείτε τα ληφθέντα θέματα προσθηκών σε αυτήν τη συσκευή",
-    "homeScreenSectionsTitle": "Ενότητες αρχικής οθόνης",
     "themeEditor": "Επεξεργαστής θεμάτων",
     "themeEditorSubtitle": "Ανοίξτε το πρόγραμμα επεξεργασίας θεμάτων Moonfin στο πρόγραμμα περιήγησής σας",
     "homeScreen": "Αρχική οθόνη",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "Ενεργοποιήστε αυτόματα το HDR για αναπαραγωγή βίντεο HDR και επαναφέρετε τη λειτουργία προβολής κατά την έξοδο.",
     "whenFullscreen": "Σε πλήρη οθόνη",
     "transcodingLimits": "Όρια διακωδικοποίησης",
-    "settingsSupportMoonfinSubtitle": "Δωρίστε έναν καφέ στον προγραμματιστή"
+    "settingsSupportMoonfinSubtitle": "Δωρίστε έναν καφέ στον προγραμματιστή",
+    "reportDownloadsActivity": "Εμφάνιση λήψεων στον διακομιστή",
+    "reportDownloadsActivitySubtitle": "Επιτρέψτε στον διαχειριστή του διακομιστή να βλέπει τις διακωδικοποιημένες λήψεις σας στον πίνακα ελέγχου",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "Όριο προσωρινής μνήμης εικόνων",
+    "clearImageCache": "Εκκαθάριση προσωρινής μνήμης εικόνων",
+    "imageCacheCleared": "Η προσωρινή μνήμη εικόνων εκκαθαρίστηκε"
 }

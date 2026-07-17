@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
+import 'offline_aware_image.dart';
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
 import 'package:moonfin_design/moonfin_design.dart';
@@ -232,12 +232,12 @@ class _ArtThumbnail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(4),
+      borderRadius: AppRadius.circular(4),
       child: SizedBox(
         width: 44,
         height: 44,
         child: artUrl != null
-            ? CachedNetworkImage(
+            ? OfflineAwareImage(
                 imageUrl: artUrl!,
                 fit: BoxFit.cover,
                 placeholder: (_, _) => _placeholder(),
@@ -478,7 +478,7 @@ class _TvTrackInfo extends StatelessWidget {
       duration: const Duration(milliseconds: 90),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppRadius.circular(12),
         color: focused ? AppColorScheme.onSurface : Colors.transparent,
       ),
       child: Row(

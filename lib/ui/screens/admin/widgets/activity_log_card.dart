@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:moonfin_design/moonfin_design.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../../../l10n/app_localizations.dart';
+import 'admin_form_styles.dart';
 import 'activity_log_ui.dart';
 
 class ActivityLogCard extends StatelessWidget {
@@ -22,62 +24,73 @@ class ActivityLogCard extends StatelessWidget {
     }).length;
     final listItems = buildActivityListItems(items, l10n);
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
           children: [
-            Row(
-              children: [
-                Icon(Icons.history, color: theme.colorScheme.primary),
-                const SizedBox(width: 8),
-                Text(l10n.adminRecentActivity, style: theme.textTheme.titleMedium),
-                const Spacer(),
-                if (errorCount > 0) ...[
-                  Icon(Icons.error_outline,
-                      size: 14, color: theme.colorScheme.error),
-                  const SizedBox(width: 3),
-                  Text(
-                    '$errorCount',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: theme.colorScheme.error,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-                if (warnCount > 0) ...[
-                  const Icon(Icons.warning_amber,
-                      size: 14, color: Colors.orange),
-                  const SizedBox(width: 3),
-                  Text(
-                    '$warnCount',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.orange,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ],
+            Expanded(
+              child: adminSectionLabel(context, l10n.adminRecentActivity,
+                  icon: Icons.history),
             ),
-            const SizedBox(height: 12),
-            if (items.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                child: Center(child: Text(l10n.adminNoRecentActivity)),
-              )
-            else
-              for (final item in listItems)
-                if (item is String)
-                  _groupHeader(item, theme)
-                else
-                  _entryRow(item as ActivityLogEntry, theme, l10n),
+            if (errorCount > 0) ...[
+              Icon(Icons.error_outline,
+                  size: 14, color: theme.colorScheme.error),
+              const SizedBox(width: 3),
+              Text(
+                '$errorCount',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: theme.colorScheme.error,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+            if (warnCount > 0) ...[
+              const Icon(Icons.warning_amber, size: 14, color: Colors.orange),
+              const SizedBox(width: 3),
+              Text(
+                '$warnCount',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.orange,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+            const SizedBox(width: AppSpacing.spaceXs),
           ],
         ),
-      ),
+        adminGlassGroup(
+          context,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.spaceLg,
+                vertical: AppSpacing.spaceMd,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (items.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child:
+                          Center(child: Text(l10n.adminNoRecentActivity)),
+                    )
+                  else
+                    for (final item in listItems)
+                      if (item is String)
+                        _groupHeader(item, theme)
+                      else
+                        _entryRow(item as ActivityLogEntry, theme, l10n),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -108,7 +121,7 @@ class ActivityLogCard extends StatelessWidget {
               margin: const EdgeInsets.only(right: 10),
               decoration: BoxDecoration(
                 color: rail,
-                borderRadius: BorderRadius.circular(2),
+                borderRadius: AppRadius.circular(2),
               ),
             ),
             icon,

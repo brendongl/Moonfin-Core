@@ -1,18 +1,25 @@
+import 'package:animated_reorderable_list/animated_reorderable_list.dart';
 import 'package:custom_tv_text_field/custom_tv_text_field.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:get_it/get_it.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../../data/repositories/seerr_repository.dart';
+import '../../../data/services/local_notification_bootstrap.dart';
 import '../../../data/services/plugin_sync_service.dart';
+import '../../../data/services/seerr/seerr_api_models.dart';
 import '../../../data/services/seerr/seerr_models.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../preference/preference_constants.dart';
 import '../../../preference/seerr_preferences.dart';
 import '../../../preference/seerr_row_config.dart';
 import '../../../preference/user_preferences.dart';
+import '../../../util/focus/scroll_utils.dart';
+import '../../../util/extensions.dart';
 import '../../../util/focus/dpad_keys.dart';
 import '../../../util/platform_detection.dart';
 import 'package:moonfin_design/moonfin_design.dart';
@@ -39,6 +46,7 @@ class _SeerrConfigScreenState extends State<SeerrConfigScreen> {
 
   MoonfinStatusResponse? _seerrStatus;
   bool _statusLoading = false;
+  bool _canManageRequests = false;
   late List<SeerrRowConfig> _rows;
   final _focusNodes = <FocusNode>[];
 
@@ -51,7 +59,19 @@ class _SeerrConfigScreenState extends State<SeerrConfigScreen> {
     super.initState();
     _syncService = GetIt.instance<PluginSyncService>();
     _seerrPrefs = GetIt.instance<SeerrPreferences>();
-    _rows = List.of(_seerrPrefs.rowsConfig);
+    _rows = List.of(_seerrPrefs.rowsConfig)..sort((a, b) => a.order.compareTo(b.order));
+    final beforeTypes = _rows.map((r) => r.type).toList();
+    _sortRowsEnabledAboveDisabled();
+    var orderChanged = false;
+    for (var i = 0; i < beforeTypes.length; i++) {
+      if (beforeTypes[i] != _rows[i].type) {
+        orderChanged = true;
+        break;
+      }
+    }
+    if (orderChanged) {
+      _saveRows();
+    }
     _rebuildFocusNodes();
     _syncService.addListener(_onSyncStateChanged);
     _loadSeerrStatus(showLoading: true);
@@ -104,7 +124,8 @@ class _SeerrConfigScreenState extends State<SeerrConfigScreen> {
   void _onSyncStateChanged() {
     if (!mounted) return;
     setState(() {
-      _rows = List.of(_seerrPrefs.rowsConfig);
+      _rows = List.of(_seerrPrefs.rowsConfig)..sort((a, b) => a.order.compareTo(b.order));
+      _sortRowsEnabledAboveDisabled();
       _rebuildFocusNodes();
     });
     _loadSeerrStatus();
@@ -125,14 +146,23 @@ class _SeerrConfigScreenState extends State<SeerrConfigScreen> {
     }
 
     MoonfinStatusResponse? status = _seerrStatus;
+    var canManageRequests = _canManageRequests;
     try {
       final repo = await GetIt.instance.getAsync<SeerrRepository>();
       status = await repo.checkMoonfinStatus();
+      try {
+        final user = await repo.getCurrentUser();
+        canManageRequests =
+            user.hasPermission(SeerrPermission.manageRequests);
+      } catch (_) {
+        canManageRequests = false;
+      }
     } catch (_) {}
 
     if (!mounted) return;
     setState(() {
       _seerrStatus = status;
+      _canManageRequests = canManageRequests;
       _statusLoading = false;
     });
   }
@@ -224,6 +254,52 @@ class _SeerrConfigScreenState extends State<SeerrConfigScreen> {
     setState(() {});
   }
 
+  Future<void> _setNotifyOnNewRequests(bool value) async {
+    await _seerrPrefs.setNotifyOnNewRequests(value);
+    if (mounted) setState(() {});
+    if (value) await _requestNotificationPermission();
+    await _pushNotificationPrefs();
+  }
+
+  Future<void> _setNotifyOnLibraryAdded(bool value) async {
+    await _seerrPrefs.setNotifyOnLibraryAdded(value);
+    if (mounted) setState(() {});
+    if (value) await _requestNotificationPermission();
+    await _pushNotificationPrefs();
+  }
+
+  Future<void> _setNotifyOnIssues(bool value) async {
+    await _seerrPrefs.setNotifyOnIssues(value);
+    if (mounted) setState(() {});
+    if (value) await _requestNotificationPermission();
+    await _pushNotificationPrefs();
+  }
+
+  Future<void> _pushNotificationPrefs() async {
+    if (!_syncService.pluginAvailable) return;
+    if (!GetIt.instance.isRegistered<MediaServerClient>()) return;
+    final client = GetIt.instance<MediaServerClient>();
+    await _syncService.pushNotificationPrefs(client);
+  }
+
+  Future<void> _requestNotificationPermission() async {
+    if (!PlatformDetection.isMobile) return;
+    try {
+      final plugin = LocalNotificationBootstrap.instance.plugin;
+      if (PlatformDetection.isAndroid) {
+        await plugin
+            .resolvePlatformSpecificImplementation<
+                AndroidFlutterLocalNotificationsPlugin>()
+            ?.requestNotificationsPermission();
+      } else if (PlatformDetection.isIOS) {
+        await plugin
+            .resolvePlatformSpecificImplementation<
+                IOSFlutterLocalNotificationsPlugin>()
+            ?.requestPermissions(alert: true, badge: true, sound: true);
+      }
+    } catch (_) {}
+  }
+
   Future<void> _setSeerrEnabled(bool value) async {
     await _seerrPrefs.setEnabled(value);
     await GetIt.instance<UserPreferences>().set(
@@ -234,9 +310,56 @@ class _SeerrConfigScreenState extends State<SeerrConfigScreen> {
     await _loadSeerrStatus(showLoading: true);
   }
 
+  void _sortRowsEnabledAboveDisabled() {
+    _rows = _rows.sortedEnabledAboveDisabled((r) => r.enabled);
+  }
+
+  void _toggleSeerrRow(int index, bool enabled) {
+    final toggledType = _rows[index].type;
+    final nodeMap = <SeerrRowType, FocusNode>{};
+    for (var i = 0; i < _rows.length; i++) {
+      nodeMap[_rows[i].type] = _focusNodes[i];
+    }
+
+    setState(() {
+      _rows[index] = _rows[index].copyWith(enabled: enabled);
+      _sortRowsEnabledAboveDisabled();
+
+      final newNodes = <FocusNode>[];
+      for (final row in _rows) {
+        final node = nodeMap[row.type];
+        if (node != null) {
+          newNodes.add(node);
+        } else {
+          newNodes.add(FocusNode(debugLabel: 'seerr_row_new'));
+        }
+      }
+      _focusNodes.clear();
+      _focusNodes.addAll(newNodes);
+    });
+
+    _saveRows();
+
+    // Keep focus on the neighbor that slid into the toggled row's old slot so
+    // the viewport stays put. If the row didn't move (it was the last row),
+    // step to the previous neighbor instead.
+    final newIndex = _rows.indexWhere((r) => r.type == toggledType);
+    final targetIndex = (newIndex == index && index > 0) ? index - 1 : index;
+    _focusRowAndEnsureVisible(targetIndex);
+  }
+
+  void _focusRowAndEnsureVisible(int index) {
+    focusItemAndEnsureVisible(
+      isMounted: () => mounted,
+      focusNodes: _focusNodes,
+      index: index,
+    );
+  }
+
   Future<void> _resetRows() async {
     setState(() {
       _rows = SeerrRowConfig.defaults();
+      _sortRowsEnabledAboveDisabled();
       _rebuildFocusNodes();
     });
     await _saveRows();
@@ -264,11 +387,7 @@ class _SeerrConfigScreenState extends State<SeerrConfigScreen> {
       _focusNodes.insert(newIndex, node);
     });
     _saveRows();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _focusNodes[newIndex].requestFocus();
-      }
-    });
+    _focusRowAndEnsureVisible(newIndex);
   }
 
   String _rowLabel(SeerrRowType type, AppLocalizations l10n) => switch (type) {
@@ -291,23 +410,24 @@ class _SeerrConfigScreenState extends State<SeerrConfigScreen> {
     final seerrAvailable =
         _syncService.pluginAvailable && _syncService.seerrEnabled;
     final showSeerrSettings = seerrAvailable && _seerrPrefs.enabled;
+    final seerrLabel = _seerrPrefs.labelOrDefault(l10n.seerr);
 
     return RequestInitialFocus(
       targetNode: _enableSeerrFocusNode,
       child: Scaffold(
         appBar: buildSettingsAppBar(
           context,
-          Text(l10n.seerr),
+          Text(seerrLabel),
           actions: showSeerrSettings
-            ? [
-                IconButton(
-                  focusNode: _refreshFocusNode,
-                  icon: const Icon(Icons.restore),
-                  tooltip: l10n.resetRowsToDefaults,
-                  onPressed: _resetRows,
-                ),
-              ]
-            : const [],
+              ? [
+                  IconButton(
+                    focusNode: _refreshFocusNode,
+                    icon: const Icon(Icons.restore),
+                    tooltip: l10n.resetRowsToDefaults,
+                    onPressed: _resetRows,
+                  ),
+                ]
+              : const [],
         ),
         body: withCleanSettingsTypography(
           context,
@@ -329,13 +449,11 @@ class _SeerrConfigScreenState extends State<SeerrConfigScreen> {
       children: [
         if (seerrAvailable)
           TvFocusHighlight(
-            builder: (context, focused) => SwitchListTile(
+            builder: (context, focused) => SwitchListTile.adaptive(
               focusNode: _enableSeerrFocusNode,
               secondary: Icon(
                 Icons.movie_filter,
-                color: focused
-                    ? AppColors.black.withValues(alpha: 0.54)
-                    : null,
+                color: focused ? AppColors.black.withValues(alpha: 0.54) : null,
               ),
               title: Text(
                 l10n.enableSeerr,
@@ -377,12 +495,10 @@ class _SeerrConfigScreenState extends State<SeerrConfigScreen> {
           ),
         if (showSeerrSettings)
           TvFocusHighlight(
-            builder: (context, focused) => SwitchListTile(
+            builder: (context, focused) => SwitchListTile.adaptive(
               secondary: Icon(
                 Icons.visibility_off,
-                color: focused
-                    ? AppColors.black.withValues(alpha: 0.54)
-                    : null,
+                color: focused ? AppColors.black.withValues(alpha: 0.54) : null,
               ),
               title: Text(
                 l10n.nsfwFilter,
@@ -407,6 +523,44 @@ class _SeerrConfigScreenState extends State<SeerrConfigScreen> {
               onChanged: _setBlockNsfw,
             ),
           ),
+        if (showSeerrSettings) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                l10n.seerrNotificationsSection.toUpperCase(),
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ),
+          ),
+          if (_canManageRequests)
+            _buildNotificationToggle(
+              icon: Icons.playlist_add_check,
+              title: l10n.seerrNotifyNewRequestsTitle,
+              subtitle: l10n.seerrNotifyNewRequestsSubtitle,
+              value: _seerrPrefs.notifyOnNewRequests,
+              onChanged: _setNotifyOnNewRequests,
+            ),
+          _buildNotificationToggle(
+            icon: Icons.library_add_check_outlined,
+            title: l10n.seerrNotifyLibraryAddedTitle,
+            subtitle: l10n.seerrNotifyLibraryAddedSubtitle,
+            value: _seerrPrefs.notifyOnLibraryAdded,
+            onChanged: _setNotifyOnLibraryAdded,
+          ),
+          _buildNotificationToggle(
+            icon: Icons.report_problem_outlined,
+            title: l10n.seerrNotifyIssuesTitle,
+            subtitle: l10n.seerrNotifyIssuesSubtitle,
+            value: _seerrPrefs.notifyOnIssues,
+            onChanged: _setNotifyOnIssues,
+          ),
+        ],
         if (showSeerrSettings)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
@@ -415,10 +569,10 @@ class _SeerrConfigScreenState extends State<SeerrConfigScreen> {
               child: Text(
                 l10n.discoverRows.toUpperCase(),
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.2,
-                    ),
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.2,
+                ),
               ),
             ),
           ),
@@ -439,51 +593,97 @@ class _SeerrConfigScreenState extends State<SeerrConfigScreen> {
     );
   }
 
+  Widget _buildNotificationToggle({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return TvFocusHighlight(
+      builder: (context, focused) => SwitchListTile.adaptive(
+        secondary: Icon(
+          icon,
+          color: focused ? AppColors.black.withValues(alpha: 0.54) : null,
+        ),
+        title: Text(
+          title,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: focused
+                ? AppColors.black.withValues(alpha: 0.87)
+                : AppColorScheme.onSurface,
+          ),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: TextStyle(
+            fontSize: 12,
+            color: focused
+                ? AppColors.black.withValues(alpha: 0.54)
+                : AppColorScheme.onSurface.withValues(alpha: 0.7),
+          ),
+        ),
+        value: value,
+        onChanged: onChanged,
+      ),
+    );
+  }
+
   Widget _buildTvRows(
     AppLocalizations l10n,
     bool seerrAvailable,
     bool showSeerrSettings,
   ) {
-    return ListView.builder(
-      itemCount: (showSeerrSettings ? _rows.length : 0) + 1,
-      itemBuilder: (context, index) {
-        if (index == 0) {
-          return _buildRowsHeader(
+    return CustomScrollView(
+      scrollCacheExtent: const ScrollCacheExtent.pixels(3000.0),
+      slivers: [
+        SliverToBoxAdapter(
+          child: _buildRowsHeader(
             context,
             l10n,
             seerrAvailable,
             showSeerrSettings,
-          );
-        }
-        final rowIndex = index - 1;
-        final row = _rows[rowIndex];
-        return _SeerrReorderableTile(
-          key: ValueKey(row.type),
-          focusNode: _focusNodes[rowIndex],
-          label: _rowLabel(row.type, l10n),
-          enabled: row.enabled,
-          enabledLabel: l10n.enabled,
-          hiddenLabel: l10n.hidden,
-          isFirst: rowIndex == 0,
-          isLast: rowIndex == _rows.length - 1,
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (rowIndex != 0) const Icon(Icons.arrow_left, size: 18),
-              if (rowIndex != _rows.length - 1)
-                const Icon(Icons.arrow_right, size: 18),
-            ],
           ),
-          onToggle: (enabled) {
-            setState(() {
-              _rows[rowIndex] = row.copyWith(enabled: enabled);
-            });
-            _saveRows();
-          },
-          onMoveUp: () => _moveSeerrRowTo(rowIndex, rowIndex - 1),
-          onMoveDown: () => _moveSeerrRowTo(rowIndex, rowIndex + 1),
-        );
-      },
+        ),
+        if (showSeerrSettings)
+          ReorderableAnimatedListImpl<SeerrRowConfig>(
+            items: _rows,
+            scrollDirection: Axis.vertical,
+            // Comparing the enabled state and turning off swap detection makes
+            // a toggled row read as a removal from its old slot and an insert
+            // at its sorted slot, so it animates instead of jumping.
+            isSameItem: (a, b) => a.type == b.type && a.enabled == b.enabled,
+            enableSwap: true,
+            enterTransition: [FadeIn(), SizeAnimation()],
+            exitTransition: [FadeIn(), SizeAnimation()],
+            itemBuilder: (context, rowIndex) {
+              final row = _rows[rowIndex];
+              return _SeerrReorderableTile(
+                key: ValueKey('${row.type}:${row.enabled}'),
+                focusNode: _focusNodes[rowIndex],
+                label: _rowLabel(row.type, l10n),
+                enabled: row.enabled,
+                enabledLabel: l10n.enabled,
+                hiddenLabel: l10n.hidden,
+                isFirst: rowIndex == 0,
+                isLast: rowIndex == _rows.length - 1,
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (rowIndex != 0) const Icon(Icons.arrow_left, size: 18),
+                    if (rowIndex != _rows.length - 1)
+                      const Icon(Icons.arrow_right, size: 18),
+                  ],
+                ),
+                onToggle: (enabled) => _toggleSeerrRow(rowIndex, enabled),
+                onMoveUp: () => _moveSeerrRowTo(rowIndex, rowIndex - 1),
+                onMoveDown: () => _moveSeerrRowTo(rowIndex, rowIndex + 1),
+              );
+            },
+          ),
+      ],
     );
   }
 
@@ -539,12 +739,7 @@ class _SeerrConfigScreenState extends State<SeerrConfigScreen> {
                           color: colorScheme.onSurfaceVariant,
                         ),
                       ),
-                onToggle: (enabled) {
-                  setState(() {
-                    _rows[rowIndex] = row.copyWith(enabled: enabled);
-                  });
-                  _saveRows();
-                },
+                onToggle: (enabled) => _toggleSeerrRow(rowIndex, enabled),
                 onMoveUp: () => _moveSeerrRowTo(rowIndex, rowIndex - 1),
                 onMoveDown: () => _moveSeerrRowTo(rowIndex, rowIndex + 1),
               );
@@ -584,8 +779,14 @@ class _SeerrLoginCardState extends State<_SeerrLoginCard> {
   final _passwordFocus = FocusNode(debugLabel: 'seerr_password');
   final _localAuthFocus = FocusNode(debugLabel: 'seerr_auth_local');
   final _signInFocus = FocusNode(debugLabel: 'seerr_sign_in');
-  final _signInButtonFocus = FocusNode(canRequestFocus: false, debugLabel: 'seerr_sign_in_btn');
-  final _signOutButtonFocus = FocusNode(canRequestFocus: false, debugLabel: 'seerr_sign_out_btn');
+  final _signInButtonFocus = FocusNode(
+    canRequestFocus: false,
+    debugLabel: 'seerr_sign_in_btn',
+  );
+  final _signOutButtonFocus = FocusNode(
+    canRequestFocus: false,
+    debugLabel: 'seerr_sign_out_btn',
+  );
   final _usernameTvFieldKey = GlobalKey<CustomTVTextFieldState>();
   final _passwordTvFieldKey = GlobalKey<CustomTVTextFieldState>();
 
@@ -603,7 +804,7 @@ class _SeerrLoginCardState extends State<_SeerrLoginCard> {
 
     return BoxDecoration(
       color: colorScheme.surfaceContainerLow.withValues(alpha: 0.82),
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: AppRadius.circular(16),
       border: Border.fromBorderSide(
         (focused ? borderTokens.focusBorder : borderTokens.cardBorder).copyWith(
           color: focused
@@ -654,12 +855,13 @@ class _SeerrLoginCardState extends State<_SeerrLoginCard> {
         if (!mounted) return;
         final scope = FocusScope.of(context);
         final focusedChild = scope.focusedChild;
-        final hasFocusInside = focusedChild != null &&
+        final hasFocusInside =
+            focusedChild != null &&
             (focusedChild == widget.firstFocusNode ||
-             focusedChild == _usernameFocus ||
-             focusedChild == _passwordFocus ||
-             focusedChild == _localAuthFocus ||
-             focusedChild == _signInFocus);
+                focusedChild == _usernameFocus ||
+                focusedChild == _passwordFocus ||
+                focusedChild == _localAuthFocus ||
+                focusedChild == _signInFocus);
 
         if (!hasFocusInside) return;
 
@@ -978,7 +1180,7 @@ class _SeerrLoginCardState extends State<_SeerrLoginCard> {
               filled: true,
               fillColor: focused
                   ? colorScheme.primaryContainer
-                  : colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                  : colorScheme.surfaceContainerHighest.scaleAlpha(0.6),
               borderColor: colorScheme.outline,
               focusedBorderColor: AppColorScheme.accent,
               hintStyle: TextStyle(
@@ -1012,7 +1214,7 @@ class _SeerrLoginCardState extends State<_SeerrLoginCard> {
           : autofillHints,
       decoration: InputDecoration(
         labelText: label,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        border: OutlineInputBorder(borderRadius: AppRadius.circular(12)),
       ),
     );
   }
@@ -1045,11 +1247,15 @@ class _SeerrLoginCardState extends State<_SeerrLoginCard> {
         builder: (_, _) {
           final selected = _authType == authType;
           final focused = focusNode.hasFocus;
-          final selectedBackground = AppColorScheme.accent.withValues(alpha: 0.22);
+          final selectedBackground = AppColorScheme.accent.withValues(
+            alpha: 0.22,
+          );
           final idleBackground = colorScheme.surfaceContainerHighest.withValues(
             alpha: 0.65,
           );
-          final focusedBackground = AppColorScheme.accent.withValues(alpha: 0.16);
+          final focusedBackground = AppColorScheme.accent.withValues(
+            alpha: 0.16,
+          );
           final selectedBorder = AppColorScheme.accent;
           final focusedBorder = AppColorScheme.accent;
 
@@ -1060,7 +1266,7 @@ class _SeerrLoginCardState extends State<_SeerrLoginCard> {
               color: selected
                   ? selectedBackground
                   : (focused ? focusedBackground : idleBackground),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: AppRadius.circular(12),
               border: Border.all(
                 color: focused
                     ? focusedBorder
@@ -1069,7 +1275,7 @@ class _SeerrLoginCardState extends State<_SeerrLoginCard> {
               ),
             ),
             child: InkWell(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: AppRadius.circular(12),
               onTap: _submitting
                   ? null
                   : () {
@@ -1187,95 +1393,114 @@ class _SeerrLoginCardState extends State<_SeerrLoginCard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  l10n.seerrAccountType,
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: colorScheme.onSurface.withValues(alpha: 0.82),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 10),
                 Row(
                   children: [
-                    const Icon(Icons.account_circle_outlined),
-                    const SizedBox(width: 12),
                     Expanded(
-                      child: Text(
-                        l10n.loggedInAs(username),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: colorScheme.onSurface,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            l10n.seerrAccountType,
+                            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                              color: colorScheme.onSurface.withValues(alpha: 0.82),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              const Icon(Icons.account_circle_outlined),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  l10n.loggedInAs(username),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.titleMedium
+                                      ?.copyWith(
+                                        color: colorScheme.onSurface,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    FocusTraversalOrder(
+                      order: const NumericFocusOrder(1),
+                      child: ListenableBuilder(
+                        listenable: widget.firstFocusNode,
+                        builder: (context, _) {
+                          final isFocused = widget.firstFocusNode.hasFocus;
+                          return Focus(
+                            focusNode: widget.firstFocusNode,
+                            onKeyEvent: (node, event) {
+                              if (event is! KeyDownEvent) {
+                                return KeyEventResult.ignored;
+                              }
+                              if (event.logicalKey ==
+                                  LogicalKeyboardKey.arrowUp) {
+                                widget.onMoveUp();
+                                return KeyEventResult.handled;
+                              }
+                              return PlatformDetection.isTV
+                                  ? _onSignOutKey(node, event)
+                                  : KeyEventResult.ignored;
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 120),
+                              decoration: BoxDecoration(
+                                borderRadius: AppRadius.circular(24),
+                                boxShadow: isFocused
+                                    ? [
+                                        BoxShadow(
+                                          color: AppColorScheme.onSurface
+                                              .withValues(alpha: 0.35),
+                                          blurRadius: 10,
+                                          spreadRadius: 1.5,
+                                        ),
+                                      ]
+                                    : null,
+                              ),
+                              child: FilledButton(
+                                focusNode: PlatformDetection.isTV
+                                    ? _signOutButtonFocus
+                                    : null,
+                                style: FilledButton.styleFrom(
+                                  foregroundColor: colorScheme.onPrimary,
+                                  backgroundColor: colorScheme.primary,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: AppRadius.circular(24),
+                                  ),
+                                  side: isFocused
+                                      ? BorderSide(
+                                          color: AppColorScheme.onSurface
+                                              .withValues(alpha: 0.72),
+                                          width: 2.0,
+                                        )
+                                      : BorderSide.none,
+                                ),
+                                onPressed: _submitting ? null : _submitSignOut,
+                                child: _submitting
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : Text(l10n.signOut),
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: FocusTraversalOrder(
-                    order: const NumericFocusOrder(1),
-                    child: ListenableBuilder(
-                      listenable: widget.firstFocusNode,
-                      builder: (context, _) {
-                        final isFocused = widget.firstFocusNode.hasFocus;
-                        return Focus(
-                          focusNode: widget.firstFocusNode,
-                          onKeyEvent: (node, event) {
-                            if (event is! KeyDownEvent) return KeyEventResult.ignored;
-                            if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                              widget.onMoveUp();
-                              return KeyEventResult.handled;
-                            }
-                            return PlatformDetection.isTV ? _onSignOutKey(node, event) : KeyEventResult.ignored;
-                          },
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 120),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(24),
-                              boxShadow: isFocused
-                                  ? [
-                                      BoxShadow(
-                                        color: AppColorScheme.onSurface.withValues(alpha: 0.35),
-                                        blurRadius: 10,
-                                        spreadRadius: 1.5,
-                                      ),
-                                    ]
-                                  : null,
-                            ),
-                            child: FilledButton(
-                              focusNode: PlatformDetection.isTV ? _signOutButtonFocus : null,
-                              style: FilledButton.styleFrom(
-                                foregroundColor: colorScheme.onPrimary,
-                                backgroundColor: colorScheme.primary,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(24),
-                                ),
-                                side: isFocused
-                                    ? BorderSide(
-                                        color: AppColorScheme.onSurface.withValues(alpha: 0.72),
-                                        width: 2.0,
-                                      )
-                                    : BorderSide.none,
-                              ),
-                              onPressed: _submitting ? null : _submitSignOut,
-                              child: _submitting
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : Text(l10n.signOut),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
                 ),
                 if (_errorMessage != null) ...[
                   const SizedBox(height: 10),
@@ -1376,15 +1601,18 @@ class _SeerrLoginCardState extends State<_SeerrLoginCard> {
                         final isFocused = _signInFocus.hasFocus;
                         return Focus(
                           focusNode: _signInFocus,
-                          onKeyEvent: PlatformDetection.isTV ? _onSignInKey : null,
+                          onKeyEvent: PlatformDetection.isTV
+                              ? _onSignInKey
+                              : null,
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 120),
                             decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(24),
+                              borderRadius: AppRadius.circular(24),
                               boxShadow: isFocused
                                   ? [
                                       BoxShadow(
-                                        color: AppColorScheme.onSurface.withValues(alpha: 0.35),
+                                        color: AppColorScheme.onSurface
+                                            .withValues(alpha: 0.35),
                                         blurRadius: 10,
                                         spreadRadius: 1.5,
                                       ),
@@ -1392,15 +1620,18 @@ class _SeerrLoginCardState extends State<_SeerrLoginCard> {
                                   : null,
                             ),
                             child: FilledButton(
-                              focusNode: PlatformDetection.isTV ? _signInButtonFocus : null,
+                              focusNode: PlatformDetection.isTV
+                                  ? _signInButtonFocus
+                                  : null,
                               onPressed: _canSignIn ? _submitSignIn : null,
                               style: FilledButton.styleFrom(
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(24),
+                                  borderRadius: AppRadius.circular(24),
                                 ),
                                 side: isFocused
                                     ? BorderSide(
-                                        color: AppColorScheme.onSurface.withValues(alpha: 0.72),
+                                        color: AppColorScheme.onSurface
+                                            .withValues(alpha: 0.72),
                                         width: 2.0,
                                       )
                                     : BorderSide.none,
@@ -1509,12 +1740,50 @@ class _SeerrReorderableTileState extends State<_SeerrReorderableTile> {
     });
   }
 
+  BoxDecoration _tileDecoration(BuildContext context, {required bool focused}) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final borderTokens = ThemeRegistry.active.borders;
+    final baseBorder = borderTokens.cardBorder.color;
+    final unfocusedBorderColor = baseBorder.a == 0
+        ? AppColorScheme.onSurface.withValues(alpha: 0.16)
+        : baseBorder.withValues(alpha: 0.55);
+
+    return BoxDecoration(
+      color: focused
+          ? AppColorScheme.onSurface
+          : colorScheme.surfaceContainerLow.withValues(alpha: 0.82),
+      borderRadius: AppRadius.circular(12),
+      border: Border.fromBorderSide(
+        (focused ? borderTokens.focusBorder : borderTokens.cardBorder).copyWith(
+          color: focused
+              ? AppColorScheme.accent.withValues(alpha: 0.72)
+              : unfocusedBorderColor,
+          width: 1.0,
+        ),
+      ),
+      boxShadow: focused
+          ? (borderTokens.focusGlow.isNotEmpty
+                ? borderTokens.focusGlow
+                : [
+                    BoxShadow(
+                      color: AppColorScheme.accent.withValues(alpha: 0.22),
+                      blurRadius: 14,
+                      spreadRadius: 0.5,
+                    ),
+                  ])
+          : null,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final bg = _focused
-        ? colorScheme.primary.withValues(alpha: 0.18)
-        : Colors.transparent;
+    final textColor = _focused
+        ? AppColors.black.withValues(alpha: 0.87)
+        : colorScheme.onSurface;
+    final iconColor = _focused
+        ? AppColors.black.withValues(alpha: 0.54)
+        : colorScheme.onSurfaceVariant;
 
     return Focus(
       focusNode: widget.focusNode,
@@ -1545,20 +1814,36 @@ class _SeerrReorderableTileState extends State<_SeerrReorderableTile> {
         }
         return KeyEventResult.ignored;
       },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 90),
-        color: bg,
-        child: ListTile(
-          onTap: () => widget.onToggle(!widget.enabled),
-          leading: Icon(
-            widget.enabled ? Icons.check_box : Icons.check_box_outline_blank,
-            color: widget.enabled ? colorScheme.primary : null,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 90),
+          decoration: _tileDecoration(context, focused: _focused),
+          child: Material(
+            type: MaterialType.transparency,
+            child: ListTile(
+              onTap: () => widget.onToggle(!widget.enabled),
+              leading: Icon(
+                widget.enabled ? Icons.check_box : Icons.check_box_outline_blank,
+                color: widget.enabled
+                    ? (_focused ? AppColors.black : colorScheme.primary)
+                    : iconColor,
+              ),
+              title: Text(
+                widget.label,
+                style: TextStyle(color: textColor, fontWeight: FontWeight.w600),
+              ),
+              subtitle: Text(
+                widget.enabled ? widget.enabledLabel : widget.hiddenLabel,
+                style: TextStyle(
+                  color: _focused
+                      ? AppColors.black.withValues(alpha: 0.6)
+                      : colorScheme.onSurfaceVariant,
+                ),
+              ),
+              trailing: widget.trailing,
+            ),
           ),
-          title: Text(widget.label),
-          subtitle: Text(
-            widget.enabled ? widget.enabledLabel : widget.hiddenLabel,
-          ),
-          trailing: widget.trailing,
         ),
       ),
     );

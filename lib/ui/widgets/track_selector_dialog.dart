@@ -17,10 +17,12 @@ Future<T?> showStyledPlayerDialog<T>(
   bool showCancel = false,
   double maxWidth = 440,
   bool useRootNavigator = true,
+  bool barrierDismissible = true,
 }) {
   return showFocusRestoringDialog<T>(
     context: context,
     useRootNavigator: useRootNavigator,
+    barrierDismissible: barrierDismissible,
     builder: (dialogContext) {
       final mediaQuery = MediaQuery.of(dialogContext);
       final maxDialogHeight = mediaQuery.size.height -
@@ -38,7 +40,7 @@ Future<T?> showStyledPlayerDialog<T>(
               ? null
               : BoxDecoration(
                   color: AppColorScheme.surface.withValues(alpha: 0.9),
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: AppRadius.circular(20),
                   border: Border.fromBorderSide(
                     ThemeRegistry.active.borders.chipBorder,
                   ),

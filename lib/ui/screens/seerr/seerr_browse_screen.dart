@@ -9,6 +9,7 @@ import '../../../data/viewmodels/seerr_browse_view_model.dart';
 import '../../../preference/preference_constants.dart';
 import '../../../preference/user_preferences.dart';
 import '../../../ui/mixins/focus_state_mixin.dart';
+import '../../../util/focus/dpad_keys.dart';
 import '../../../util/platform_detection.dart';
 import '../../navigation/destinations.dart';
 import '../../widgets/media_card.dart';
@@ -50,6 +51,8 @@ class _SeerrBrowseScreenState extends State<SeerrBrowseScreen> {
   final _scrollController = ScrollController();
   final _prefs = GetIt.instance<UserPreferences>();
   SeerrDiscoverItem? _focusedItem;
+
+  final _allLetterFocusNode = FocusNode(debugLabel: 'seerr_alpha_all_letter');
 
   @override
   void initState() {
@@ -93,6 +96,7 @@ class _SeerrBrowseScreenState extends State<SeerrBrowseScreen> {
 
   @override
   void dispose() {
+    _allLetterFocusNode.dispose();
     _vm?.removeListener(_onChanged);
     _vm?.dispose();
     _prefs.removeListener(_onChanged);
@@ -101,7 +105,24 @@ class _SeerrBrowseScreenState extends State<SeerrBrowseScreen> {
   }
 
   void _onChanged() {
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {});
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final vm = _vm;
+        if (vm == null ||
+            vm.state.isLoading ||
+            vm.state.isLoadingMore ||
+            !vm.state.canLoadMore) {
+          return;
+        }
+        if (!_scrollController.hasClients) return;
+        final pos = _scrollController.position;
+        if (pos.maxScrollExtent <= 0) {
+          vm.loadMore();
+        }
+      });
+    }
   }
 
   @override
@@ -119,6 +140,7 @@ class _SeerrBrowseScreenState extends State<SeerrBrowseScreen> {
             focusedItem: _focusedItem,
             filter: _vm?.state.filter ?? SeerrBrowseFilter.all,
             letterFilter: _vm?.state.letterFilter ?? '',
+            allLetterFocusNode: _allLetterFocusNode,
             onFilterChanged: (f) => _vm?.setFilter(f),
             onLetterChanged: (l) => _vm?.setLetterFilter(l),
             onHome: () => context.go(Destinations.home),
@@ -244,10 +266,27 @@ class _SeerrBrowseScreenState extends State<SeerrBrowseScreen> {
                     focusColor: resolvedFocusColor,
                     cardFocusExpansion: cardExpansion,
                     suppressFocusGlow: suppressFocusGlow,
-                    onFocus:
-                        isMobile
-                            ? null
-                            : () => setState(() => _focusedItem = item),
+                    onKeyEvent: (_, event) {
+                      // On TV, Back on a grid card sends focus up to the alpha
+                      // bar's All chip when it's shown. The next Back, now on
+                      // the bar, leaves the screen as usual.
+                      if (PlatformDetection.isTV &&
+                          event.isActionable &&
+                          event.logicalKey.isBackKey &&
+                          _allLetterFocusNode.context != null) {
+                        _allLetterFocusNode.requestFocus();
+                        return KeyEventResult.handled;
+                      }
+                      return KeyEventResult.ignored;
+                    },
+                    onFocus: isMobile
+                        ? null
+                        : () {
+                            setState(() => _focusedItem = item);
+                            if (index >= s.items.length - 8) {
+                              _vm?.loadMore();
+                            }
+                          },
                     onHoverStart:
                         isMobile
                             ? null
@@ -312,6 +351,7 @@ class _SeerrBrowseHeader extends StatelessWidget {
   final SeerrDiscoverItem? focusedItem;
   final SeerrBrowseFilter filter;
   final String letterFilter;
+  final FocusNode? allLetterFocusNode;
   final ValueChanged<SeerrBrowseFilter> onFilterChanged;
   final ValueChanged<String> onLetterChanged;
   final VoidCallback onHome;
@@ -323,6 +363,7 @@ class _SeerrBrowseHeader extends StatelessWidget {
     this.focusedItem,
     required this.filter,
     required this.letterFilter,
+    this.allLetterFocusNode,
     required this.onFilterChanged,
     required this.onLetterChanged,
     required this.onHome,
@@ -390,6 +431,7 @@ class _SeerrBrowseHeader extends StatelessWidget {
             _AlphaPickerBar(
               selected: letterFilter,
               onChanged: onLetterChanged,
+              allFocusNode: allLetterFocusNode,
             ),
           ],
           if (showBelowFilters) ...[
@@ -401,6 +443,7 @@ class _SeerrBrowseHeader extends StatelessWidget {
             _AlphaPickerBar(
               selected: letterFilter,
               onChanged: onLetterChanged,
+              allFocusNode: allLetterFocusNode,
             ),
           ],
         ],
@@ -511,7 +554,7 @@ class _MetadataRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: AppRadius.circular(4),
       ),
       child: Text(
         label,
@@ -556,7 +599,7 @@ class _SeerrFilterChips extends StatelessWidget {
           color: selected
               ? _seerrAccent
               : AppColorScheme.onSurface.withAlpha(20),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: AppRadius.circular(14),
         ),
         child: Text(
           label,
@@ -576,8 +619,13 @@ class _SeerrFilterChips extends StatelessWidget {
 class _AlphaPickerBar extends StatelessWidget {
   final String selected;
   final ValueChanged<String> onChanged;
+  final FocusNode? allFocusNode;
 
-  const _AlphaPickerBar({required this.selected, required this.onChanged});
+  const _AlphaPickerBar({
+    required this.selected,
+    required this.onChanged,
+    this.allFocusNode,
+  });
 
   static const _letters = [
     '',
@@ -623,6 +671,7 @@ class _AlphaPickerBar extends StatelessWidget {
                 label: letter.isEmpty ? l10n.all : letter,
                 isSelected: isSelected,
                 onTap: () => onChanged(letter),
+                focusNode: letter.isEmpty ? allFocusNode : null,
               );
             }).toList(),
       ),
@@ -634,11 +683,13 @@ class _AlphaLetterButton extends StatefulWidget {
   final String label;
   final bool isSelected;
   final VoidCallback onTap;
+  final FocusNode? focusNode;
 
   const _AlphaLetterButton({
     required this.label,
     required this.isSelected,
     required this.onTap,
+    this.focusNode,
   });
 
   @override
@@ -658,6 +709,7 @@ class _AlphaLetterButtonState extends State<_AlphaLetterButton>
       onEnter: (_) => setHovered(true),
       onExit: (_) => setHovered(false),
       child: Focus(
+        focusNode: widget.focusNode,
         onFocusChange: (f) => setFocused(f),
         child: GestureDetector(
           onTap: widget.onTap,
@@ -670,7 +722,7 @@ class _AlphaLetterButtonState extends State<_AlphaLetterButton>
               color: widget.isSelected
                   ? AppColorScheme.onSurface.withAlpha(26)
                   : null,
-              borderRadius: BorderRadius.circular(4),
+              borderRadius: AppRadius.circular(4),
               border:
                   showFocusBorder
                       ? Border.fromBorderSide(
@@ -732,7 +784,7 @@ class _ToolbarButtonState extends State<_ToolbarButton> with FocusStateMixin {
               color: focused
                   ? AppColorScheme.buttonFocused
                   : Colors.transparent,
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: AppRadius.circular(6),
               border: showFocusBorder
                   ? Border.fromBorderSide(
                       ThemeRegistry.active.borders.focusBorder.copyWith(
@@ -834,7 +886,7 @@ class _SeerrSortDialogState extends State<_SeerrSortDialog> {
     return Dialog(
       backgroundColor: AppColorScheme.surface.withValues(alpha: 0.9),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: AppRadius.circular(20),
         side: ThemeRegistry.active.borders.chipBorder,
       ),
       child: SizedBox(
@@ -946,7 +998,7 @@ class _SeerrSettingsDialog extends StatelessWidget {
     return Dialog(
       backgroundColor: AppColorScheme.surface.withValues(alpha: 0.9),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: AppRadius.circular(20),
         side: ThemeRegistry.active.borders.chipBorder,
       ),
       child: SizedBox(

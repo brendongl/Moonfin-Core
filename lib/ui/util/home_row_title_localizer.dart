@@ -38,6 +38,10 @@ String localizeHomeRowTitle({
       return l10n.onNow;
     case 'activeRecordings':
       return l10n.activeRecordings;
+    case 'radarr_calendar':
+      return 'Upcoming Movies (Radarr)';
+    case 'sonarr_calendar':
+      return 'Upcoming TV Shows (Sonarr)';
     case 'seerr_recent_requests':
       return l10n.recentRequests;
     case 'seerr_recently_added':
@@ -60,6 +64,8 @@ String localizeHomeRowTitle({
       return l10n.seriesGenres;
     case 'seerr_networks':
       return l10n.networks;
+    case 'rewatch':
+      return 'Rewatch';
   }
 
   if (row.id.startsWith('resume_')) return l10n.continueWatching;
@@ -73,6 +79,9 @@ String localizeHomeRowTitle({
     return _localizeLatestRowTitle(row.title, l10n);
   }
 
+  if (row.id.startsWith('imdb_')) {
+    return row.title.replaceAll('IMDb ', '').replaceAll('IMDb', '').trim();
+  }
   return row.title;
 }
 

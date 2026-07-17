@@ -1,6 +1,7 @@
 import 'package:jellyfin_preference/jellyfin_preference.dart';
 
 import '../auth/repositories/session_repository.dart';
+import 'home_section_config.dart';
 import 'preference_constants.dart';
 import 'seerr_row_config.dart';
 
@@ -17,8 +18,8 @@ class SeerrPreferences {
 
     static String normalizeVariant(String? value) {
         final normalized = value?.trim().toLowerCase() ?? '';
-        if (normalized == 'jellyseerr' || normalized == 'jelly') {
-            return 'jellyseerr';
+        if (normalized == 'seerr' || normalized == 'jelly') {
+            return 'seerr';
         }
         return 'seerr';
     }
@@ -42,6 +43,13 @@ class SeerrPreferences {
   Future<void> setMoonfinDisplayName(String value) =>
       _store.setString(_userKey('moonfin_display_name'), value);
 
+  /// Label for the Seerr integration: the moonbase display name when one is set,
+  /// otherwise [fallback] (typically l10n.seerr).
+  String labelOrDefault(String fallback) {
+    final name = moonfinDisplayName.trim();
+    return name.isNotEmpty ? name : fallback;
+  }
+
   String get moonfinVariant => normalizeVariant(_store.getString(_userKey('moonfin_variant')));
   bool get isSeerrVariant => moonfinVariant == 'seerr';
   Future<void> setMoonfinVariant(String value) =>
@@ -64,12 +72,28 @@ class SeerrPreferences {
   Future<void> setShowInToolbar(bool value) =>
       _store.setBool(_userKey('show_in_toolbar'), value);
 
+  String get requestsFilter => _store.getString(_userKey('requests_filter')) ?? '';
+  Future<void> setRequestsFilter(String value) =>
+      _store.setString(_userKey('requests_filter'), value);
+
   bool get showRequestStatus => _store.getBool(_userKey('show_request_status')) ?? true;
   Future<void> setShowRequestStatus(bool value) =>
       _store.setBool(_userKey('show_request_status'), value);
 
   bool get blockNsfw => _store.getBool(_userKey('block_nsfw')) ?? true;
   Future<void> setBlockNsfw(bool value) => _store.setBool(_userKey('block_nsfw'), value);
+
+  bool get notifyOnNewRequests => _store.getBool(_userKey('notify_new_requests')) ?? true;
+  Future<void> setNotifyOnNewRequests(bool value) =>
+      _store.setBool(_userKey('notify_new_requests'), value);
+
+  bool get notifyOnLibraryAdded => _store.getBool(_userKey('notify_library_added')) ?? true;
+  Future<void> setNotifyOnLibraryAdded(bool value) =>
+      _store.setBool(_userKey('notify_library_added'), value);
+
+  bool get notifyOnIssues => _store.getBool(_userKey('notify_issues')) ?? true;
+  Future<void> setNotifyOnIssues(bool value) =>
+      _store.setBool(_userKey('notify_issues'), value);
 
   SeerrFetchLimit get fetchLimit {
     final stored = _store.getString(_userKey('fetch_limit'));
@@ -88,6 +112,41 @@ class SeerrPreferences {
 
   Future<void> setRowsConfig(List<SeerrRowConfig> value) =>
       _store.setString(_userKey('rows_config'), SeerrRowConfig.toJsonString(value));
+
+  List<SeerrRowConfig> get homeRowsConfig {
+    final raw = _store.getString(_userKey('home_rows_config'));
+    if (raw != null && raw.isNotEmpty) {
+      return SeerrRowConfig.fromJsonString(raw);
+    }
+    // Fall back to the old home_sections_config state when this has never been
+    // saved, so upgrades keep the rows the user already chose.
+    return _homeRowsConfigFromSections();
+  }
+
+  Future<void> setHomeRowsConfig(List<SeerrRowConfig> value) =>
+      _store.setString(_userKey('home_rows_config'), SeerrRowConfig.toJsonString(value));
+
+  List<SeerrRowConfig> _homeRowsConfigFromSections() {
+    final sectionsJson = _store.getString('home_sections_config');
+    if (sectionsJson == null || sectionsJson.isEmpty) {
+      return SeerrRowConfig.defaults();
+    }
+    final sections = HomeSectionConfig.fromJsonString(sectionsJson);
+    return SeerrRowConfig.defaults().map((row) {
+      final idx = sections.indexWhere((s) => s.type == row.type.homeSectionType);
+      return idx >= 0 ? row.copyWith(enabled: sections[idx].enabled) : row;
+    }).toList();
+  }
+
+  bool isSeerrHomeRowEnabled(HomeSectionType type) {
+    final seerrType = type.seerrRowType;
+    if (seerrType == null || !enabled) return false;
+    final config = homeRowsConfig.firstWhere(
+      (c) => c.type == seerrType,
+      orElse: () => SeerrRowConfig(type: seerrType, enabled: true, order: 0),
+    );
+    return config.enabled;
+  }
 
   List<SeerrRowType> get activeRows {
     final configs = rowsConfig.where((c) => c.enabled).toList()
@@ -150,7 +209,10 @@ class SeerrPreferences {
       'moonfin_mode', 'moonfin_display_name', 'moonfin_variant', 'moonfin_user_id',
       'last_connection_success',
       'show_in_navigation', 'show_in_toolbar', 'show_request_status',
-      'block_nsfw', 'fetch_limit', 'rows_config',
+      'requests_filter',
+      'block_nsfw', 'notify_new_requests', 'notify_library_added',
+      'notify_issues',
+      'fetch_limit', 'rows_config', 'home_rows_config',
       'hd_movie_profile_id', '4k_movie_profile_id',
       'hd_tv_profile_id', '4k_tv_profile_id',
       'hd_movie_root_folder_id', '4k_movie_root_folder_id',

@@ -923,10 +923,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "Favoritspår kommer att visas här",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "Det gick inte att ladda",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3675,10 +3671,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "Specifik användare",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "Autentisera alltid",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -5286,7 +5278,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "Sök fjärrperson",
     "adminNoRemoteMatches": "Inga fjärrmatchningar hittades",
     "adminRemoteResults": "Fjärrresultat",
     "adminRemoteMetadataApplied": "Fjärrmetadata tillämpas",
@@ -5382,9 +5373,6 @@
     },
     "adminAddTuner": "Lägg till tuner",
     "adminTunerType": "Tuner typ",
-    "adminTunerTypeHint": "HDHomeRun, M3U, Övrigt",
-    "adminUrlPath": "URL / sökväg",
-    "adminNameOptional": "Namn (valfritt)",
     "adminTunerAdded": "Tuner tillagd",
     "adminTunerAddFailed": "Failed to add tuner: {error}",
     "@adminTunerAddFailed": {
@@ -5396,9 +5384,6 @@
     },
     "adminAddGuideProvider": "Lägg till guideleverantör",
     "adminProviderType": "Typ av leverantör",
-    "adminProviderTypeHint": "SchedulesDirect eller XMLTV",
-    "adminUsernameOptional": "Användarnamn (valfritt)",
-    "adminRefreshInterval": "Uppdateringsintervall (timmar)",
     "adminProviderAdded": "Leverantör har lagts till",
     "adminProviderAddFailed": "Failed to add provider: {error}",
     "@adminProviderAddFailed": {
@@ -5567,7 +5552,6 @@
     },
     "adminLogViewerNoMatches": "Inga matchande linjer",
     "adminMetadataEditorTitle": "Metadataredigerare",
-    "adminMetadataRemote": "Avlägsen",
     "adminMetadataType": "Typ",
     "adminMetadataDetails": "Detaljer",
     "adminMetadataExternalIds": "Externa ID:n",
@@ -6014,7 +5998,6 @@
     "folders": "Mappar",
     "libraries": "Bibliotek",
     "syncPlay": "SyncPlay",
-    "jellyseerr": "Seerr",
     "seeAll": "Se alla",
     "noItems": "Inga föremål",
     "switchUser": "Byt användare",
@@ -6328,7 +6311,7 @@
     "@libraryVisibilityDescription": {
         "description": "Explanation shown on the library visibility settings screen"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -6523,21 +6506,6 @@
     "rememberMyChoice": "Kom ihåg mitt val",
     "playHdr10Fallback": "Spela HDR10 reserv",
     "requestTranscode": "Begär omkodning",
-    "homeScreenSectionsIntegrationDescription": "Upptäck rader exponerade av IAmParadox27:s \"Home Screen Sections\"-plugin. Rader kan aktiveras och omordnas nedan.",
-    "homeScreenSectionsIntegrationNoServers": "Inga Jellyfin-servrar rapporterar plugin-programmet ännu.",
-    "integrationOpenHomeSections": "Öppna Home Sektioner",
-    "integrationOpenHomeSectionsSubtitle": "Aktivera, inaktivera och ändra ordning på rader",
-    "integrationInstalledButDisabled": "Installerad men inaktiverad",
-    "integrationNotInstalled": "Ej installerad",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "AAC Stereo",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Passthrough (Advanced)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Delete saved theme",
     "savedThemesManageSubtitle": "Manage downloaded plugin themes on this device",
-    "homeScreenSectionsTitle": "Home Screen Sections",
     "themeEditor": "Theme Editor",
     "themeEditorSubtitle": "Open the Moonfin Theme Editor in your browser",
     "homeScreen": "Home Screen",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "Automatically enable HDR for HDR video playback and restore display mode on exit.",
     "whenFullscreen": "When fullscreen",
     "transcodingLimits": "Transcoding Limits",
-    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer"
+    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer",
+    "reportDownloadsActivity": "Visa nedladdningar på servern",
+    "reportDownloadsActivitySubtitle": "Låt serveradministratören se dina omkodade nedladdningar i kontrollpanelen",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "Gräns för bildcache",
+    "clearImageCache": "Rensa bildcache",
+    "imageCacheCleared": "Bildcachen har rensats"
 }

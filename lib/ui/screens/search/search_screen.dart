@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:custom_tv_text_field/custom_tv_text_field.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
@@ -17,15 +18,21 @@ import '../../../data/services/voice_search_controller.dart';
 import '../../../data/viewmodels/search_view_model.dart';
 import '../../../preference/preference_constants.dart';
 import '../../../preference/user_preferences.dart';
+import '../../../preference/seerr_preferences.dart';
 import '../../navigation/destinations.dart';
 import '../../../util/platform_detection.dart';
+import '../../../util/game_library.dart';
 import '../../../util/focus/dpad_keys.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../util/search_group_title_localizer.dart';
+import '../../../util/focus/grid_focus_node_mixin.dart';
+import '../../../util/focus/row_focus_coordinator.dart';
 import '../../widgets/library_row.dart';
 import '../../widgets/media_card.dart';
 import '../../widgets/navigation_layout.dart';
 import '../../widgets/focus/context_menu_sheet.dart';
+import '../../widgets/focus/request_initial_focus.dart';
+import '../../widgets/sliding_pill_tabs.dart';
 
 class SearchScreen extends StatefulWidget {
   final String? initialQuery;
@@ -37,17 +44,22 @@ class SearchScreen extends StatefulWidget {
   State<SearchScreen> createState() => _SearchScreenState();
 }
 
-class _SearchScreenState extends State<SearchScreen> {
+class _SearchScreenState extends State<SearchScreen> with GridFocusNodeMixin {
   final _searchController = TextEditingController();
   final _voiceFocus = FocusNode();
   final _searchFocus = FocusNode();
   final _searchInputFocus = FocusNode();
   final _searchTvFieldKey = GlobalKey<CustomTVTextFieldState>();
   final _resultsScrollController = ScrollController();
-  final Map<String, FocusNode> _resultFocusNodes = <String, FocusNode>{};
-  final Map<int, ScrollController> _resultRowControllers =
-      <int, ScrollController>{};
-  final Set<FocusNode> _pendingResultFocusRetries = <FocusNode>{};
+  // Per-card focus nodes for the All tab's row layout, keyed 'row:col'.
+  final Map<String, FocusNode> _allRowNodes = <String, FocusNode>{};
+  // Per-row keys so focusing a card can scroll its whole row (title included)
+  // into view rather than just the card.
+  final Map<int, GlobalKey> _allRowKeys = <int, GlobalKey>{};
+  // The results tab pill is a single focus stop.
+  final _tabsFocusNode = FocusNode(debugLabel: 'search_tabs');
+  // Vertical focus model: search field, then the tabs pill. Rebuilt each build.
+  final _coordinator = RowFocusCoordinator();
   final _voiceController = VoiceSearchController();
   late final SearchViewModel _vm;
   late final SearchRepository _searchRepository;
@@ -55,7 +67,22 @@ class _SearchScreenState extends State<SearchScreen> {
   late final UserPreferences _userPreferences;
   List<String> _recentSearches = const [];
   static const _tmdbPosterBase = 'https://image.tmdb.org/t/p/w342';
-  bool _isFirstRowFocused = false;
+  int _selectedTab = 0;
+  String? _tabSelectionQuery;
+  bool _focusTabsAfterResults = false;
+
+  // Tracks the current grid tab's content so async refreshes can restore focus
+  // without stealing it from the search field.
+  int _lastGridCount = -1;
+  Object? _lastGridFirstId;
+
+  /// D-pad/keyboard focus navigation applies on TV and desktop; mobile is touch.
+  bool get _usesDpad =>
+      PlatformDetection.isTV || PlatformDetection.useDesktopUi;
+
+  /// The focus node that owns the search field on this platform.
+  FocusNode get _fieldNode =>
+      PlatformDetection.isTV ? _searchFocus : _searchInputFocus;
 
   @override
   void initState() {
@@ -84,11 +111,11 @@ class _SearchScreenState extends State<SearchScreen> {
     _searchInputFocus.addListener(_onFocusChanged);
     _voiceController.addListener(_onVoiceControllerChanged);
 
-    if (PlatformDetection.isTV) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _searchFocus.requestFocus();
-      });
+    // Desktop keyboard/d-pad: let arrow Down/Up leave the plain text field.
+    if (PlatformDetection.useDesktopUi) {
+      _searchInputFocus.onKeyEvent = _onSearchInputKey;
     }
+    // Initial focus is granted by the RequestInitialFocus wrapper in build().
   }
 
   Future<void> _initSeerr() async {
@@ -105,8 +132,64 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   void _onViewModelChanged() {
-    _syncResultFocusCache();
+    final query = _searchController.text.trim();
+    if (_tabCount > 0 && query != _tabSelectionQuery) {
+      _tabSelectionQuery = query;
+      _selectedTab = _leadingTabCount;
+    } else if (_selectedTab >= _tabCount) {
+      _selectedTab = _tabCount == 0 ? 0 : _leadingTabCount;
+    }
+    if (_focusTabsAfterResults && _tabCount > 0) {
+      _focusTabsAfterResults = false;
+      _selectedTab = _leadingTabCount;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _tabsFocusNode.canRequestFocus) {
+          _tabsFocusNode.requestFocus();
+        }
+      });
+    }
+    _maybeBumpGridVersion();
     if (mounted) setState(() {});
+  }
+
+  // Detect when the current grid tab's content changed (async results arriving)
+  // and restore focus into the grid, mirroring library_browse_screen. The guard
+  // keeps a debounced refresh from yanking focus off the search field while the
+  // user is still typing.
+  void _maybeBumpGridVersion() {
+    final count = _currentTabItemCount();
+    final firstId = _currentGridFirstId();
+    if (count == _lastGridCount && firstId == _lastGridFirstId) return;
+    _lastGridCount = count;
+    _lastGridFirstId = firstId;
+    gridContentVersion++;
+    cleanupGridFocusNodes(count);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final primary = FocusManager.instance.primaryFocus;
+      final inGrid =
+          primary != null &&
+          gridItemFocusNodes.values.any((n) => identical(n, primary));
+      if (primary == null || inGrid) {
+        restoreGridFocusIfNeeded();
+      }
+    });
+  }
+
+  Object? _currentGridFirstId() {
+    if (_tabIsAll(_selectedTab)) return null;
+    if (_tabIsSeerr(_selectedTab)) {
+      return _vm.seerrResults.isEmpty ? null : _vm.seerrResults.first.id;
+    }
+    if (_tabIsGames(_selectedTab)) {
+      return _vm.gameResults.isEmpty ? null : _vm.gameResults.first.game.id;
+    }
+    final gi = _groupIndex(_selectedTab);
+    if (gi >= 0 && gi < _vm.results.length) {
+      final items = _vm.results[gi].items;
+      return items.isEmpty ? null : items.first.id;
+    }
+    return null;
   }
 
   void _onSearchTextChanged() {
@@ -142,12 +225,7 @@ class _SearchScreenState extends State<SearchScreen> {
     unawaited(_saveRecentSearch(trimmed));
 
     if (PlatformDetection.isTV) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        if (_searchFocus.canRequestFocus) {
-          _searchFocus.requestFocus();
-        }
-      });
+      _focusTabsAfterResults = true;
     }
   }
 
@@ -174,51 +252,144 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  String _resultNodeKey(int rowIndex, int itemIndex) =>
-      '$rowIndex:$itemIndex';
+  // Seerr and Games are leading special tabs (when they have results), then the
+  // All tab, then the group tabs.
+  bool get _hasSeerr => _vm.seerrResults.isNotEmpty;
+  bool get _hasGames => _vm.gameResults.isNotEmpty;
 
-  FocusNode _resultFocusNode(int rowIndex, int itemIndex) {
-    final key = _resultNodeKey(rowIndex, itemIndex);
-    return _resultFocusNodes.putIfAbsent(
-      key,
-      () => FocusNode(debugLabel: 'search_result_${rowIndex}_$itemIndex'),
+  int get _tabCount {
+    final hasContent = _vm.results.isNotEmpty || _hasSeerr || _hasGames;
+    return hasContent ? _leadingTabCount + 1 + _vm.results.length : 0;
+  }
+
+  // How many special tabs sit before the All tab. This is also the All index.
+  int get _leadingTabCount => (_hasSeerr ? 1 : 0) + (_hasGames ? 1 : 0);
+
+  bool _tabIsSeerr(int index) => _hasSeerr && index == 0;
+
+  bool _tabIsGames(int index) => _hasGames && index == (_hasSeerr ? 1 : 0);
+
+  bool _tabIsAll(int index) => index == _leadingTabCount;
+
+  // The _vm.results index for a group tab, which follow the All tab.
+  int _groupIndex(int tab) => tab - _leadingTabCount - 1;
+
+  void _selectTab(int index) {
+    if (index == _selectedTab) return;
+    setState(() => _selectedTab = index);
+    cleanupGridFocusNodes(_currentTabItemCount());
+    _lastGridCount = -1;
+    _lastGridFirstId = null;
+    if (_resultsScrollController.hasClients) {
+      _resultsScrollController.jumpTo(0);
+    }
+  }
+
+  // Moves focus up/down between the search field and the tabs pill, falling
+  // back to the navbar at the top edge. Mirrors book_browse_screen.
+  bool _moveVertical(int fromIndex, bool isUp) {
+    if (_coordinator.moveVertical(fromIndex: fromIndex, isUp: isUp)) {
+      return true;
+    }
+    if (isUp) {
+      final focusNavbar = NavigationLayout.focusNavbarNotifier.value;
+      if (focusNavbar != null) {
+        focusNavbar();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void _focusFirstResult() {
+    if (!_usesDpad) return;
+    if (_tabIsAll(_selectedTab)) {
+      _focusAllCard(0, 0);
+    } else {
+      _focusGridCell(0);
+    }
+  }
+
+  void _ensureVisibleNode(FocusNode node) {
+    final nodeContext = node.context;
+    if (nodeContext == null) return;
+    unawaited(
+      Scrollable.ensureVisible(
+        nodeContext,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        alignment: 0.2,
+        alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+      ),
     );
   }
 
-  int get _resultRowCount =>
-      _vm.results.length + (_vm.seerrResults.isNotEmpty ? 1 : 0);
-
-  int _rowItemCount(int rowIndex) {
-    if (rowIndex < 0) {
-      return 0;
+  void _focusGridCell(int index) {
+    final node = getGridItemFocusNode(index);
+    if (node.context != null) {
+      node.requestFocus();
+      _ensureVisibleNode(node);
+      return;
     }
-    if (rowIndex < _vm.results.length) {
-      return _vm.results[rowIndex].items.length;
-    }
-    if (rowIndex == _vm.results.length && _vm.seerrResults.isNotEmpty) {
-      return _vm.seerrResults.length;
-    }
-    return 0;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final target = getGridItemFocusNode(index);
+      if (target.canRequestFocus) {
+        target.requestFocus();
+        _ensureVisibleNode(target);
+      }
+    });
   }
 
-  int? _firstFocusableRowIndex() {
-    for (var rowIndex = 0; rowIndex < _resultRowCount; rowIndex++) {
-      if (_rowItemCount(rowIndex) > 0) {
-        return rowIndex;
-      }
-    }
-    return null;
-  }
+  bool _isPlayKey(LogicalKeyboardKey key) =>
+      key == LogicalKeyboardKey.play ||
+      key == LogicalKeyboardKey.mediaPlay ||
+      key == LogicalKeyboardKey.mediaPlayPause;
 
-  int? _adjacentFocusableRow(int fromRowIndex, int direction) {
-    var rowIndex = fromRowIndex + direction;
-    while (rowIndex >= 0 && rowIndex < _resultRowCount) {
-      if (_rowItemCount(rowIndex) > 0) {
-        return rowIndex;
+  KeyEventResult _onGridKey({
+    required int index,
+    required int columns,
+    required int count,
+    required KeyEvent event,
+  }) {
+    if (!event.isActionable) return KeyEventResult.ignored;
+    final key = event.logicalKey;
+    final column = index % columns;
+
+    if (key.isLeftKey) {
+      if (column == 0) {
+        if (event is KeyDownEvent) {
+          return _tryFocusSidebar()
+              ? KeyEventResult.handled
+              : KeyEventResult.ignored;
+        }
+        return KeyEventResult.ignored;
       }
-      rowIndex += direction;
+      _focusGridCell(index - 1);
+      return KeyEventResult.handled;
     }
-    return null;
+    if (key.isRightKey) {
+      if (column == columns - 1 || index >= count - 1) {
+        return KeyEventResult.handled;
+      }
+      _focusGridCell(index + 1);
+      return KeyEventResult.handled;
+    }
+    if (key.isUpKey) {
+      if (index < columns) {
+        _tabsFocusNode.requestFocus();
+        return KeyEventResult.handled;
+      }
+      _focusGridCell(index - columns);
+      return KeyEventResult.handled;
+    }
+    if (key.isDownKey) {
+      final target = index + columns;
+      if (target >= count) return KeyEventResult.handled;
+      _focusGridCell(target);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
   }
 
   bool _tryFocusSidebar() {
@@ -241,224 +412,6 @@ class _SearchScreenState extends State<SearchScreen> {
       return true;
     }
     return FocusScope.of(context).previousFocus();
-  }
-
-  void _focusSearchField() {
-    if (_searchFocus.canRequestFocus) {
-      _searchFocus.requestFocus();
-    }
-  }
-
-  ScrollController _rowScrollController(int rowIndex) {
-    return _resultRowControllers.putIfAbsent(rowIndex, ScrollController.new);
-  }
-
-  void _resetRowHorizontalOffset(int rowIndex) {
-    final controller = _resultRowControllers[rowIndex];
-    if (controller == null || !controller.hasClients) {
-      return;
-    }
-    final minOffset = controller.position.minScrollExtent;
-    if ((controller.offset - minOffset).abs() > 0.5) {
-      controller.jumpTo(minOffset);
-    }
-  }
-
-  bool _isLaidOutFocusNode(FocusNode node) {
-    if (!node.canRequestFocus) {
-      return false;
-    }
-    final context = node.context;
-    if (context == null) {
-      return false;
-    }
-    final renderObject = context.findRenderObject();
-    return renderObject is RenderBox &&
-        renderObject.attached &&
-        renderObject.hasSize;
-  }
-
-  BuildContext? _rowContainerContext(int rowIndex) {
-    final controller = _resultRowControllers[rowIndex];
-    if (controller == null || !controller.hasClients) {
-      return null;
-    }
-    return controller.position.context.storageContext;
-  }
-
-  Future<void> _ensureVisible(BuildContext context) {
-    return Scrollable.ensureVisible(
-      context,
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOut,
-      alignment: 0.2,
-      alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
-    );
-  }
-
-  void _focusResultNode(FocusNode node) {
-    node.requestFocus();
-    final context = node.context;
-    if (context != null) {
-      unawaited(_ensureVisible(context));
-    }
-  }
-
-  void _scheduleSingleResultFocusRetry(FocusNode target, int rowIndex) {
-    if (!_pendingResultFocusRetries.add(target)) {
-      return;
-    }
-
-    final rowContext = _rowContainerContext(rowIndex);
-    if (rowContext != null) {
-      unawaited(_ensureVisible(rowContext));
-    }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _pendingResultFocusRetries.remove(target);
-      if (!mounted || !_isLaidOutFocusNode(target)) {
-        return;
-      }
-      _focusResultNode(target);
-    });
-  }
-
-  KeyEventResult _requestResultFocus(int rowIndex, int itemIndex) {
-    final targetNode = _resultFocusNode(rowIndex, itemIndex);
-    if (_isLaidOutFocusNode(targetNode)) {
-      _focusResultNode(targetNode);
-      return KeyEventResult.handled;
-    }
-    _scheduleSingleResultFocusRetry(targetNode, rowIndex);
-    return KeyEventResult.ignored;
-  }
-
-  KeyEventResult _onResultCardKeyEvent({
-    required int rowIndex,
-    required int itemIndex,
-    required int itemCount,
-    required KeyEvent event,
-  }) {
-    if (!PlatformDetection.isTV || !event.isActionable) {
-      return KeyEventResult.ignored;
-    }
-
-    final key = event.logicalKey;
-
-    if (key == LogicalKeyboardKey.play ||
-        key == LogicalKeyboardKey.mediaPlay ||
-        key == LogicalKeyboardKey.mediaPlayPause) {
-      if (event is KeyDownEvent) {
-        if (rowIndex < _vm.results.length &&
-            itemIndex < _vm.results[rowIndex].items.length) {
-          final group = _vm.results[rowIndex];
-          final item = group.items[itemIndex];
-          context.push(
-            Destinations.item(
-              item.id,
-              serverId: item.serverId,
-              autoPlay: true,
-            ),
-          );
-        }
-      }
-      return KeyEventResult.handled;
-    }
-
-    if (key.isLeftKey && itemIndex <= 0) {
-      if (event is KeyDownEvent) {
-        return _tryFocusSidebar()
-            ? KeyEventResult.handled
-            : KeyEventResult.ignored;
-      }
-      return KeyEventResult.ignored;
-    }
-
-    if (key.isRightKey && itemIndex >= itemCount - 1) {
-      return KeyEventResult.handled;
-    }
-
-    if (key.isUpKey) {
-      _resetRowHorizontalOffset(rowIndex);
-      final targetRow = _adjacentFocusableRow(rowIndex, -1);
-      if (targetRow == null) {
-        _focusSearchField();
-        return KeyEventResult.handled;
-      }
-      final targetItemCount = _rowItemCount(targetRow);
-      if (targetItemCount <= 0) {
-        return KeyEventResult.ignored;
-      }
-      final targetIndex = itemIndex.clamp(0, targetItemCount - 1);
-      return _requestResultFocus(targetRow, targetIndex);
-    }
-
-    if (key.isDownKey) {
-      _resetRowHorizontalOffset(rowIndex);
-      final targetRow = _adjacentFocusableRow(rowIndex, 1);
-      if (targetRow == null) {
-        return KeyEventResult.handled;
-      }
-      final targetItemCount = _rowItemCount(targetRow);
-      if (targetItemCount <= 0) {
-        return KeyEventResult.ignored;
-      }
-      final targetIndex = itemIndex.clamp(0, targetItemCount - 1);
-      return _requestResultFocus(targetRow, targetIndex);
-    }
-
-    return KeyEventResult.ignored;
-  }
-
-  void _syncResultFocusCache() {
-    final validKeys = <String>{};
-    final validRows = <int>{};
-
-    for (var rowIndex = 0; rowIndex < _resultRowCount; rowIndex++) {
-      final itemCount = _rowItemCount(rowIndex);
-      if (itemCount <= 0) {
-        continue;
-      }
-      validRows.add(rowIndex);
-      for (var itemIndex = 0; itemIndex < itemCount; itemIndex++) {
-        validKeys.add(_resultNodeKey(rowIndex, itemIndex));
-      }
-    }
-
-    final staleNodeKeys = _resultFocusNodes.keys
-        .where((key) => !validKeys.contains(key))
-        .toList();
-    for (final key in staleNodeKeys) {
-      final node = _resultFocusNodes.remove(key);
-      if (node != null) {
-        _pendingResultFocusRetries.remove(node);
-        node.dispose();
-      }
-    }
-
-    final staleRows = _resultRowControllers.keys
-        .where((rowIndex) => !validRows.contains(rowIndex))
-        .toList();
-    for (final rowIndex in staleRows) {
-      _resultRowControllers.remove(rowIndex)?.dispose();
-    }
-
-    if (_firstFocusableRowIndex() == null) {
-      _isFirstRowFocused = false;
-    }
-  }
-
-  KeyEventResult _onContentKeyEvent(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent) return KeyEventResult.ignored;
-    if (!event.logicalKey.isUpKey) return KeyEventResult.ignored;
-    if (!_isFirstRowFocused) return KeyEventResult.ignored;
-
-    if (PlatformDetection.isTV) {
-      _searchFocus.requestFocus();
-    } else {
-      _searchInputFocus.requestFocus();
-    }
-    return KeyEventResult.handled;
   }
 
   void _applyVoiceSearchResult(String result, {required bool isFinal}) {
@@ -519,15 +472,12 @@ class _SearchScreenState extends State<SearchScreen> {
     _searchFocus.dispose();
     _searchInputFocus.dispose();
     _resultsScrollController.dispose();
-    for (final node in _resultFocusNodes.values) {
+    _tabsFocusNode.dispose();
+    for (final node in _allRowNodes.values) {
       node.dispose();
     }
-    _resultFocusNodes.clear();
-    for (final controller in _resultRowControllers.values) {
-      controller.dispose();
-    }
-    _resultRowControllers.clear();
-    _pendingResultFocusRetries.clear();
+    _allRowNodes.clear();
+    disposeGridFocusNodes();
     _vm.dispose();
     _searchController.dispose();
     super.dispose();
@@ -604,12 +554,12 @@ class _SearchScreenState extends State<SearchScreen> {
   void _showVoiceSearchError(
     String message, {
     bool showSettingsAction = false,
-  }) {
+  }) async {
     if (!mounted) return;
 
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
+    final controller = messenger.showSnackBar(
       SnackBar(
         content: Text(message),
         action: showSettingsAction
@@ -622,6 +572,11 @@ class _SearchScreenState extends State<SearchScreen> {
             : null,
       ),
     );
+
+    // A screen reader can keep the snackbar from auto-dismissing, so close this
+    // specific snackbar after a delay rather than whatever is current then.
+    await Future.delayed(const Duration(seconds: 5));
+    controller.close();
   }
 
   KeyEventResult _onVoiceKey(FocusNode node, KeyEvent event) {
@@ -670,11 +625,11 @@ class _SearchScreenState extends State<SearchScreen> {
       return KeyEventResult.handled;
     }
     if (event.logicalKey.isDownKey) {
-      final firstRow = _firstFocusableRowIndex();
-      if (firstRow == null) {
+      if (_tabCount == 0) {
         return KeyEventResult.ignored;
       }
-      return _requestResultFocus(firstRow, 0);
+      _tabsFocusNode.requestFocus();
+      return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
       if (PlatformDetection.isAppleTV) {
@@ -694,11 +649,31 @@ class _SearchScreenState extends State<SearchScreen> {
     return KeyEventResult.ignored;
   }
 
-  String? _imageUrl(
-    AggregatedItem item, {
-    int? maxWidth,
-    int? maxHeight,
-  }) {
+  // Desktop key handling for the plain TextField, attached directly to
+  // _searchInputFocus (the login-screen pattern) so it fires before the field
+  // consumes the key. Only Up/Down leave the field; Left/Right stay caret moves.
+  KeyEventResult _onSearchInputKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey.isDownKey) {
+      if (_tabCount == 0) return KeyEventResult.ignored;
+      _tabsFocusNode.requestFocus();
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey.isUpKey) {
+      if (_userPreferences.get(UserPreferences.navbarPosition) ==
+          NavbarPosition.top) {
+        return _tryFocusNavbar()
+            ? KeyEventResult.handled
+            : KeyEventResult.ignored;
+      }
+      return KeyEventResult.ignored;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  String? _imageUrl(AggregatedItem item, {int? maxWidth, int? maxHeight}) {
     final api = _vm.imageApi;
     final type = item.type;
     if (type == 'Episode' || type == 'Program' || type == 'Recording') {
@@ -736,7 +711,7 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Widget _buildVoiceActivation() {
-    final hasFocus = PlatformDetection.isTV && _voiceFocus.hasFocus;
+    final hasFocus = _usesDpad && _voiceFocus.hasFocus;
     final isListening = _voiceController.isListening;
     final isInitializing = _voiceController.isInitializing;
     final backgroundColor = isListening
@@ -793,10 +768,12 @@ class _SearchScreenState extends State<SearchScreen> {
       ),
     );
 
-    if (!PlatformDetection.isTV) {
+    if (!_usesDpad) {
       return button;
     }
 
+    // On TV, _onVoiceKey drives directional focus; on desktop the button just
+    // joins the Tab traversal order (the handler no-ops off-TV).
     return Focus(
       focusNode: _voiceFocus,
       onKeyEvent: _onVoiceKey,
@@ -824,14 +801,28 @@ class _SearchScreenState extends State<SearchScreen> {
         : AppColorScheme.onSurface.withValues(alpha: 0.7);
     const searchBorderRadius = 28.0;
 
-    return Scaffold(
+    // Vertical focus order: search field, then the tabs pill when results exist.
+    // Results themselves are a 2D grid handled by their own key handlers.
+    _coordinator.entries = [
+      RowFocusEntry.node(_fieldNode),
+      if (_tabCount > 0) RowFocusEntry.node(_tabsFocusNode),
+    ];
+
+    final topbar =
+        _userPreferences.get(UserPreferences.navbarPosition) ==
+        NavbarPosition.top;
+
+    final scaffold = Scaffold(
       backgroundColor: AppColorScheme.background,
       body: NavigationLayout(
         showBackButton: true,
+        pinTopToolbar: true,
         child: SafeArea(
           child: Column(
             children: [
-              const SizedBox(height: 80),
+              const SizedBox(height: 30),
+              if (topbar || !PlatformDetection.isTV)
+                const SizedBox(height: 50),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 48),
                 child: Row(
@@ -887,6 +878,7 @@ class _SearchScreenState extends State<SearchScreen> {
                                   horizontal: 14,
                                   vertical: 12,
                                 ),
+                                popParentOnKeyboardClose: false,
                                 onFieldSubmitted: _onSearchSubmitted,
                               ),
                             )
@@ -954,23 +946,14 @@ class _SearchScreenState extends State<SearchScreen> {
                   ],
                 ),
               ),
-              Divider(
-                color: ThemeRegistry.active.borders.chipBorder.color,
-                height: 1,
-              ),
-              Expanded(
-                child: Focus(
-                  canRequestFocus: false,
-                  skipTraversal: true,
-                  onKeyEvent: _onContentKeyEvent,
-                  child: _buildBody(),
-                ),
-              ),
+              Expanded(child: _buildBody()),
             ],
           ),
         ),
       ),
     );
+
+    return RequestInitialFocus(targetNode: _fieldNode, child: scaffold);
   }
 
   Widget _buildBody() {
@@ -1005,203 +988,636 @@ class _SearchScreenState extends State<SearchScreen> {
     }
   }
 
+  int _currentTabItemCount() {
+    if (_tabIsAll(_selectedTab)) return 0;
+    if (_tabIsSeerr(_selectedTab)) return _vm.seerrResults.length;
+    if (_tabIsGames(_selectedTab)) return _vm.gameResults.length;
+    final gi = _groupIndex(_selectedTab);
+    if (gi >= 0 && gi < _vm.results.length) {
+      return _vm.results[gi].items.length;
+    }
+    return 0;
+  }
+
   Widget _buildResults() {
+    final tabCount = _tabCount;
+    if (tabCount == 0) return const SizedBox.shrink();
+    if (_selectedTab >= tabCount) _selectedTab = tabCount - 1;
+
+    final l10n = AppLocalizations.of(context);
+    final seerrLabel = GetIt.instance<SeerrPreferences>().labelOrDefault(
+      l10n.seerr,
+    );
+    final totalCount =
+        _vm.results.fold<int>(0, (s, g) => s + g.items.length) +
+        _vm.seerrResults.length +
+        _vm.gameResults.length;
+    final labels = <String>[
+      if (_hasSeerr) '$seerrLabel: ${_vm.seerrResults.length}',
+      if (_hasGames) '${l10n.games}: ${_vm.gameResults.length}',
+      '${l10n.all}: $totalCount',
+      for (final group in _vm.results)
+        '${localizeSearchGroupTitle(group.title, l10n)}: ${group.items.length}',
+    ];
+
+    final isMobile = PlatformDetection.useMobileUi;
+    final horizontalPadding = isMobile ? 20.0 : 48.0;
+    // Index of the tabs pill in the coordinator's entries (field is 0).
+    const tabsIndex = 1;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            12,
+            horizontalPadding,
+            4,
+          ),
+          child: SlidingPillTabs(
+            labels: labels,
+            selectedIndex: _selectedTab,
+            onChanged: _selectTab,
+            focusNode: _tabsFocusNode,
+            onExitLeft: _tryFocusSidebar,
+            onVerticalNavigation: (isUp) {
+              if (_moveVertical(tabsIndex, isUp)) return true;
+              if (!isUp) {
+                _focusFirstResult();
+                return true;
+              }
+              return false;
+            },
+          ),
+        ),
+        Expanded(
+          child: _tabIsAll(_selectedTab)
+              ? _buildAllRows(horizontalPadding)
+              : _buildGrid(horizontalPadding),
+        ),
+      ],
+    );
+  }
+
+  FocusNode _allCardNode(int row, int col) => _allRowNodes.putIfAbsent(
+    '$row:$col',
+    () => FocusNode(debugLabel: 'search_all_$row:$col'),
+  );
+
+  GlobalKey _allRowKey(int row) =>
+      _allRowKeys.putIfAbsent(row, () => GlobalKey());
+
+  void _focusAllCard(int row, int col, {bool changedRow = true}) {
+    final node = _allCardNode(row, col);
+    if (node.context != null) {
+      node.requestFocus();
+      _ensureAllCardVisible(row, node, changedRow: changedRow);
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final target = _allCardNode(row, col);
+      if (target.canRequestFocus) {
+        target.requestFocus();
+        _ensureAllCardVisible(row, target, changedRow: changedRow);
+      }
+    });
+  }
+
+  // Bring the focused card into view horizontally within its row. Only nudge the
+  // outer list vertically when the row actually changed. Scrolling vertically on
+  // every left/right press is what makes the page bounce up and down.
+  void _ensureAllCardVisible(
+    int row,
+    FocusNode node, {
+    required bool changedRow,
+  }) {
+    final cardContext = node.context;
+    if (cardContext != null) {
+      _revealInNearestScrollable(cardContext, alignment: 0.5);
+    }
+    if (!changedRow) return;
+    final rowContext = _allRowKey(row).currentContext;
+    if (rowContext != null) {
+      unawaited(
+        Scrollable.ensureVisible(
+          rowContext,
+          alignment: 0.05,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        ),
+      );
+    }
+  }
+
+  // Reveal a widget inside its nearest scrollable only, leaving any enclosing
+  // scrollable on the other axis alone. Scrollable.ensureVisible walks up every
+  // ancestor viewport, so on the horizontal row it would also tug the vertical
+  // list.
+  void _revealInNearestScrollable(
+    BuildContext context, {
+    required double alignment,
+  }) {
+    final scrollable = Scrollable.maybeOf(context);
+    final renderObject = context.findRenderObject();
+    if (scrollable == null || renderObject == null) return;
+    final position = scrollable.position;
+    final target = RenderAbstractViewport.of(renderObject)
+        .getOffsetToReveal(renderObject, alignment)
+        .offset
+        .clamp(position.minScrollExtent, position.maxScrollExtent);
+    unawaited(
+      position.animateTo(
+        target,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      ),
+    );
+  }
+
+  KeyEventResult _onAllCardKey(
+    int row,
+    int col,
+    List<int> rowLens,
+    KeyEvent event,
+  ) {
+    if (!event.isActionable) return KeyEventResult.ignored;
+    final key = event.logicalKey;
+    if (key.isLeftKey) {
+      if (col == 0) {
+        if (event is KeyDownEvent) {
+          return _tryFocusSidebar()
+              ? KeyEventResult.handled
+              : KeyEventResult.ignored;
+        }
+        return KeyEventResult.ignored;
+      }
+      _focusAllCard(row, col - 1, changedRow: false);
+      return KeyEventResult.handled;
+    }
+    if (key.isRightKey) {
+      if (col < rowLens[row] - 1) {
+        _focusAllCard(row, col + 1, changedRow: false);
+      }
+      return KeyEventResult.handled;
+    }
+    if (key.isUpKey) {
+      if (row == 0) {
+        _tabsFocusNode.requestFocus();
+      } else {
+        _focusAllCard(row - 1, col.clamp(0, rowLens[row - 1] - 1));
+      }
+      return KeyEventResult.handled;
+    }
+    if (key.isDownKey) {
+      if (row < rowLens.length - 1) {
+        _focusAllCard(row + 1, col.clamp(0, rowLens[row + 1] - 1));
+      }
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  Widget _buildAllRows(double horizontalPadding) {
     final prefs = _userPreferences;
     final focusColor = Color(prefs.get(UserPreferences.focusColor).colorValue);
     final cardFocusExpansion = prefs.get(UserPreferences.cardFocusExpansion);
-    final posterSize = prefs.get(UserPreferences.posterSize);
-    final navbarIsLeft =
-        prefs.get(UserPreferences.navbarPosition) == NavbarPosition.left;
-    final rowLeftInset = (navbarIsLeft && !PlatformDetection.useMobileUi)
-        ? 56.0
-        : 0.0;
+    final l10n = AppLocalizations.of(context);
+
+    final groups = _vm.results;
+
     final hasSeerr = _vm.seerrResults.isNotEmpty;
-    final totalCount = _vm.results.length + (hasSeerr ? 1 : 0);
-    return ListView.builder(
-      controller: _resultsScrollController,
-      padding: const EdgeInsets.only(bottom: 32),
-      itemCount: totalCount,
-      itemBuilder: (context, index) {
-        if (index < _vm.results.length) {
-          final group = _vm.results[index];
-          final rowIndex = index;
-          final rowItemCount = group.items.length;
-          return Padding(
-            padding: EdgeInsets.only(top: 8, left: rowLeftInset),
-            child: LibraryRow(
-              title: localizeSearchGroupTitle(
-                group.title,
-                AppLocalizations.of(context),
+    final hasGames = _vm.gameResults.isNotEmpty;
+    // Library groups come first, then the Seerr and Games rows when present.
+    final rowLens = <int>[
+      for (final g in groups) g.items.length,
+      if (hasSeerr) _vm.seerrResults.length,
+      if (hasGames) _vm.gameResults.length,
+    ];
+
+    final rows = <Widget>[];
+    for (var r = 0; r < groups.length; r++) {
+      final group = groups[r];
+      final ar = MediaCard.aspectRatioForType(group.items.first.type);
+      final cardWidth = (ar == 2/3) ? 108.0 : 150.0;
+      rows.add(
+        LibraryRow(
+          key: _allRowKey(r),
+          title: localizeSearchGroupTitle(group.title, l10n),
+          rowHeight: cardWidth / ar + 56,
+          children: [
+            for (var c = 0; c < group.items.length; c++)
+              _buildAllItemCard(
+                r,
+                r,
+                c,
+                cardWidth,
+                ar,
+                rowLens,
+                focusColor,
+                cardFocusExpansion,
               ),
-              rowHeight: _rowHeight(group, posterSize),
-              scrollController: PlatformDetection.isTV
-                  ? _rowScrollController(rowIndex)
-                  : null,
-              children: group.items.asMap().entries.map((entry) {
-                final itemIndex = entry.key;
-                final item = entry.value;
-                final ar = MediaCard.aspectRatioForType(item.type);
-                final height = _searchImageHeight(ar, posterSize);
-                final width = height * ar;
-                return MediaCard(
-                  title: item.name,
-                  subtitle: _subtitle(item),
-                  imageUrl: _imageUrl(
-                    item,
-                    maxWidth: width.toInt(),
-                    maxHeight: height.toInt(),
-                  ),
-                  width: width,
-                  aspectRatio: ar,
-                  isFavorite: item.isFavorite,
-                  isPlayed: item.isPlayed,
-                  unplayedCount: item.unplayedItemCount,
-                  playedPercentage: item.playedPercentage,
-                  itemType: item.type,
-                  focusNode: PlatformDetection.isTV
-                      ? _resultFocusNode(rowIndex, itemIndex)
-                      : null,
-                  onKeyEvent: PlatformDetection.isTV
-                      ? (node, event) => _onResultCardKeyEvent(
-                            rowIndex: rowIndex,
-                            itemIndex: itemIndex,
-                            itemCount: rowItemCount,
-                            event: event,
-                          )
-                      : null,
-                  focusColor: focusColor,
-                  cardFocusExpansion: cardFocusExpansion,
-                  onFocus: () {
-                    if (PlatformDetection.isTV) {
-                      final firstRow = _firstFocusableRowIndex();
-                      _isFirstRowFocused =
-                          firstRow != null && rowIndex == firstRow;
-                      if (_isFirstRowFocused) {
-                        _restoreNavbarToNormalPosition();
-                      }
-                    }
-                  },
-                  onFocusLost: () {
-                    if (PlatformDetection.isTV) {
-                      final firstRow = _firstFocusableRowIndex();
-                      if (firstRow != null && rowIndex == firstRow) {
-                        _isFirstRowFocused = false;
-                      }
-                    }
-                  },
-                  onTap: () => context.push(
-                    Destinations.itemOrPhoto(
+          ],
+        ),
+      );
+    }
+    if (hasSeerr) {
+      final seerrRow = groups.length;
+      final cardWidth = 108.0;
+      final seerrLabel = GetIt.instance<SeerrPreferences>().labelOrDefault(
+        l10n.seerr,
+      );
+      rows.add(
+        LibraryRow(
+          key: _allRowKey(seerrRow),
+          title: seerrLabel,
+          rowHeight: cardWidth / (2 / 3) + 56,
+          children: [
+            for (var c = 0; c < _vm.seerrResults.length; c++)
+              _buildAllSeerrCard(
+                seerrRow,
+                c,
+                cardWidth,
+                rowLens,
+                focusColor,
+                cardFocusExpansion,
+              ),
+          ],
+        ),
+      );
+    }
+    if (hasGames) {
+      final gamesRow = groups.length + (hasSeerr ? 1 : 0);
+      final cardWidth = 108.0;
+      rows.add(
+        LibraryRow(
+          key: _allRowKey(gamesRow),
+          title: l10n.games,
+          rowHeight: cardWidth / (2 / 3) + 56,
+          children: [
+            for (var c = 0; c < _vm.gameResults.length; c++)
+              _buildAllGameCard(
+                gamesRow,
+                c,
+                cardWidth,
+                rowLens,
+                focusColor,
+                cardFocusExpansion,
+              ),
+          ],
+        ),
+      );
+    }
+
+    return ListView(
+      controller: _resultsScrollController,
+      padding: EdgeInsets.fromLTRB(horizontalPadding, 8, 0, 32),
+      children: rows,
+    );
+  }
+
+  Widget _buildAllItemCard(
+    int row,
+    int groupIndex,
+    int col,
+    double cardWidth,
+    double ar,
+    List<int> rowLens,
+    Color focusColor,
+    bool cardFocusExpansion,
+  ) {
+    return _resultItemCard(
+      item: _vm.results[groupIndex].items[col],
+      width: cardWidth,
+      ar: ar,
+      focusColor: focusColor,
+      cardFocusExpansion: cardFocusExpansion,
+      focusNode: _usesDpad ? _allCardNode(row, col) : null,
+      onNavKey: _usesDpad
+          ? (node, event) => _onAllCardKey(row, col, rowLens, event)
+          : null,
+    );
+  }
+
+  Widget _buildAllSeerrCard(
+    int row,
+    int col,
+    double cardWidth,
+    List<int> rowLens,
+    Color focusColor,
+    bool cardFocusExpansion,
+  ) {
+    return _seerrResultCard(
+      index: col,
+      width: cardWidth,
+      focusColor: focusColor,
+      cardFocusExpansion: cardFocusExpansion,
+      focusNode: _usesDpad ? _allCardNode(row, col) : null,
+      onNavKey: _usesDpad
+          ? (node, event) => _onAllCardKey(row, col, rowLens, event)
+          : null,
+    );
+  }
+
+  Widget _buildAllGameCard(
+    int row,
+    int col,
+    double cardWidth,
+    List<int> rowLens,
+    Color focusColor,
+    bool cardFocusExpansion,
+  ) {
+    return _gameResultCard(
+      index: col,
+      width: cardWidth,
+      focusColor: focusColor,
+      cardFocusExpansion: cardFocusExpansion,
+      focusNode: _usesDpad ? _allCardNode(row, col) : null,
+      onNavKey: _usesDpad
+          ? (node, event) => _onAllCardKey(row, col, rowLens, event)
+          : null,
+    );
+  }
+
+  // Shared card body for a library result, used by both the grid and the
+  // All-tab rows; only the width, focus node, and directional handler differ.
+  Widget _resultItemCard({
+    required AggregatedItem item,
+    required double width,
+    required double ar,
+    required Color focusColor,
+    required bool cardFocusExpansion,
+    required FocusNode? focusNode,
+    required KeyEventResult Function(FocusNode, KeyEvent)? onNavKey,
+  }) {
+    return MediaCard(
+      title: item.name,
+      subtitle: _subtitle(item),
+      imageUrl: _imageUrl(
+        item,
+        maxWidth: width.toInt(),
+        maxHeight: (width / ar).toInt(),
+      ),
+      width: width,
+      aspectRatio: ar,
+      isFavorite: item.isFavorite,
+      isPlayed: item.isPlayed,
+      unplayedCount: item.unplayedItemCount,
+      playedPercentage: item.playedPercentage,
+      itemType: item.type,
+      focusColor: focusColor,
+      cardFocusExpansion: cardFocusExpansion,
+      focusNode: focusNode,
+      onKeyEvent: onNavKey == null
+          ? null
+          : (node, event) {
+              if (event.isActionable && _isPlayKey(event.logicalKey)) {
+                if (event is KeyDownEvent) {
+                  context.push(
+                    Destinations.item(
                       item.id,
                       serverId: item.serverId,
-                      type: item.type,
+                      autoPlay: true,
                     ),
-                  ),
-                  onLongPress: () => showContextMenu(
-                    context,
-                    item,
-                    onChanged: () {
-                      if (mounted) setState(() {});
-                    },
-                  ),
-                );
-              }).toList(),
-            ),
+                  );
+                }
+                return KeyEventResult.handled;
+              }
+              return onNavKey(node, event);
+            },
+      onTap: () => context.push(
+        Destinations.itemOrPhoto(
+          item.id,
+          serverId: item.serverId,
+          type: item.type,
+        ),
+      ),
+      onLongPress: () => showContextMenu(
+        context,
+        item,
+        onChanged: () {
+          if (mounted) setState(() {});
+        },
+      ),
+    );
+  }
+
+  // Shared Seerr card body, used by both the grid and the All-tab rows.
+  Widget _seerrResultCard({
+    required int index,
+    required double width,
+    required Color focusColor,
+    required bool cardFocusExpansion,
+    required FocusNode? focusNode,
+    required KeyEventResult Function(FocusNode, KeyEvent)? onNavKey,
+  }) {
+    final item = _vm.seerrResults[index];
+    final year = item.releaseDate ?? item.firstAirDate;
+    final yearStr = (year != null && year.length >= 4)
+        ? year.substring(0, 4)
+        : null;
+    return MediaCard(
+      title: item.displayTitle,
+      subtitle: yearStr,
+      imageUrl: item.posterPath != null
+          ? '$_tmdbPosterBase${item.posterPath}'
+          : null,
+      width: width,
+      aspectRatio: 2 / 3,
+      itemType: item.mediaType == 'tv' ? 'Series' : 'Movie',
+      focusColor: focusColor,
+      cardFocusExpansion: cardFocusExpansion,
+      focusNode: focusNode,
+      onKeyEvent: onNavKey,
+      onTap: () => switch (item.mediaType) {
+        'person' => context.push(Destinations.seerrPerson(item.id.toString())),
+        'collection' =>
+          context.push(Destinations.seerrCollection(item.id.toString())),
+        _ => context.push(
+          Destinations.seerrMedia(item.id.toString()),
+          extra: {'mediaType': item.mediaType ?? 'movie'},
+        ),
+      },
+    );
+  }
+
+  Widget _buildGrid(double horizontalPadding) {
+    final prefs = _userPreferences;
+    final focusColor = Color(prefs.get(UserPreferences.focusColor).colorValue);
+    final cardFocusExpansion = prefs.get(UserPreferences.cardFocusExpansion);
+    final isSeerr = _tabIsSeerr(_selectedTab);
+    final isGames = _tabIsGames(_selectedTab);
+    final count = _currentTabItemCount();
+    if (count == 0) return const SizedBox.shrink();
+
+    final imageAspect = (isSeerr || isGames)
+        ? 2 / 3
+        : MediaCard.aspectRatioForType(
+            _vm.results[_groupIndex(_selectedTab)].items.first.type,
           );
-        }
-        return Padding(
-          padding: EdgeInsets.only(top: 8, left: rowLeftInset),
-          child: _buildSeerrRow(
-            rowIndex: index,
-            focusColor: focusColor,
-            cardFocusExpansion: cardFocusExpansion,
-            posterSize: posterSize,
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const spacing = 12.0;
+        final targetWidth = (imageAspect == 2/3) ? 108.0 : 150.0;
+        final available = constraints.maxWidth - horizontalPadding * 2;
+        final columns = ((available + spacing) / (targetWidth + spacing))
+            .floor()
+            .clamp(3, 20);
+        final cellWidth = (available - (columns - 1) * spacing) / columns;
+        final imageHeight = cellWidth / imageAspect;
+        final childAspectRatio = cellWidth / (imageHeight + 48);
+
+        return GridView.builder(
+          controller: _resultsScrollController,
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            12,
+            horizontalPadding,
+            32,
           ),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            mainAxisSpacing: spacing,
+            crossAxisSpacing: spacing,
+            childAspectRatio: childAspectRatio,
+          ),
+          itemCount: count,
+          itemBuilder: (context, index) => isSeerr
+              ? _buildSeerrCell(
+                  index,
+                  columns,
+                  count,
+                  cellWidth,
+                  focusColor,
+                  cardFocusExpansion,
+                )
+              : isGames
+              ? _buildGameCell(
+                  index,
+                  columns,
+                  count,
+                  cellWidth,
+                  focusColor,
+                  cardFocusExpansion,
+                )
+              : _buildItemCell(
+                  index,
+                  columns,
+                  count,
+                  cellWidth,
+                  focusColor,
+                  cardFocusExpansion,
+                ),
         );
       },
     );
   }
 
-  Widget _buildSeerrRow({
-    required int rowIndex,
-    required Color focusColor,
-    required bool cardFocusExpansion,
-    required PosterSize posterSize,
-  }) {
-    final height = _searchImageHeight(2.0 / 3.0, posterSize);
-    const ar = 2.0 / 3.0;
-    final width = height * ar;
-    final rowItemCount = _vm.seerrResults.length;
-    return LibraryRow(
-      title: AppLocalizations.of(context).seerr,
-      rowHeight: height + 56,
-      scrollController: PlatformDetection.isTV
-          ? _rowScrollController(rowIndex)
+  Widget _buildItemCell(
+    int index,
+    int columns,
+    int count,
+    double cellWidth,
+    Color focusColor,
+    bool cardFocusExpansion,
+  ) {
+    final item = _vm.results[_groupIndex(_selectedTab)].items[index];
+    final ar = MediaCard.aspectRatioForType(item.type);
+    return _resultItemCard(
+      item: item,
+      width: cellWidth,
+      ar: ar,
+      focusColor: focusColor,
+      cardFocusExpansion: cardFocusExpansion,
+      focusNode: _usesDpad ? getGridItemFocusNode(index) : null,
+      onNavKey: _usesDpad
+          ? (node, event) => _onGridKey(
+              index: index,
+              columns: columns,
+              count: count,
+              event: event,
+            )
           : null,
-      children: _vm.seerrResults.asMap().entries.map((entry) {
-        final itemIndex = entry.key;
-        final item = entry.value;
-        final year = (item.releaseDate ?? item.firstAirDate);
-        final yearStr = (year != null && year.length >= 4)
-            ? year.substring(0, 4)
-            : null;
-        return MediaCard(
-          title: item.displayTitle,
-          subtitle: yearStr,
-          imageUrl: item.posterPath != null
-              ? '$_tmdbPosterBase${item.posterPath}'
-              : null,
-          width: width,
-          aspectRatio: ar,
-          focusColor: focusColor,
-          cardFocusExpansion: cardFocusExpansion,
-          itemType: item.mediaType == 'tv' ? 'Series' : 'Movie',
-          focusNode: PlatformDetection.isTV
-              ? _resultFocusNode(rowIndex, itemIndex)
-              : null,
-          onKeyEvent: PlatformDetection.isTV
-              ? (node, event) => _onResultCardKeyEvent(
-                    rowIndex: rowIndex,
-                    itemIndex: itemIndex,
-                    itemCount: rowItemCount,
-                    event: event,
-                  )
-              : null,
-          onFocus: () {
-            if (PlatformDetection.isTV) {
-              final firstRow = _firstFocusableRowIndex();
-              _isFirstRowFocused = firstRow != null && rowIndex == firstRow;
-              if (_isFirstRowFocused) {
-                _restoreNavbarToNormalPosition();
-              }
-            }
-          },
-          onFocusLost: () {
-            if (PlatformDetection.isTV) {
-              final firstRow = _firstFocusableRowIndex();
-              if (firstRow != null && rowIndex == firstRow) {
-                _isFirstRowFocused = false;
-              }
-            }
-          },
-          onTap: () => context.push(
-            Destinations.seerrMedia(item.id.toString()),
-            extra: {'mediaType': item.mediaType ?? 'movie'},
-          ),
-        );
-      }).toList(),
     );
   }
 
-  double _searchImageHeight(double aspectRatio, PosterSize posterSize) {
-    final tvScale = PlatformDetection.isTV ? 0.8 : 1.0;
-    final baseHeight = aspectRatio >= 1
-        ? posterSize.landscapeHeight.toDouble()
-        : posterSize.portraitHeight.toDouble();
-    return baseHeight * tvScale;
+  Widget _buildSeerrCell(
+    int index,
+    int columns,
+    int count,
+    double cellWidth,
+    Color focusColor,
+    bool cardFocusExpansion,
+  ) {
+    return _seerrResultCard(
+      index: index,
+      width: cellWidth,
+      focusColor: focusColor,
+      cardFocusExpansion: cardFocusExpansion,
+      focusNode: _usesDpad ? getGridItemFocusNode(index) : null,
+      onNavKey: _usesDpad
+          ? (node, event) => _onGridKey(
+              index: index,
+              columns: columns,
+              count: count,
+              event: event,
+            )
+          : null,
+    );
   }
 
-  double _rowHeight(SearchResultGroup group, PosterSize posterSize) {
-    final ar = MediaCard.aspectRatioForType(group.items.first.type);
-    return _searchImageHeight(ar, posterSize) + 56;
+  // Shared game card body, used by both the grid and the All-tab rows.
+  Widget _gameResultCard({
+    required int index,
+    required double width,
+    required Color focusColor,
+    required bool cardFocusExpansion,
+    required FocusNode? focusNode,
+    required KeyEventResult Function(FocusNode, KeyEvent)? onNavKey,
+  }) {
+    final result = _vm.gameResults[index];
+    final game = result.game;
+    return MediaCard(
+      title: gameDisplayTitle(game.title, game.fileName),
+      subtitle: game.system,
+      imageUrl: gameThumbUrl(result.libraryId, game.id),
+      width: width,
+      aspectRatio: 2 / 3,
+      itemType: 'Game',
+      focusColor: focusColor,
+      cardFocusExpansion: cardFocusExpansion,
+      focusNode: focusNode,
+      onKeyEvent: onNavKey,
+      onTap: () => context.push(
+        Destinations.gameDetailOf(result.libraryId, game.id),
+      ),
+    );
+  }
+
+  Widget _buildGameCell(
+    int index,
+    int columns,
+    int count,
+    double cellWidth,
+    Color focusColor,
+    bool cardFocusExpansion,
+  ) {
+    return _gameResultCard(
+      index: index,
+      width: cellWidth,
+      focusColor: focusColor,
+      cardFocusExpansion: cardFocusExpansion,
+      focusNode: _usesDpad ? getGridItemFocusNode(index) : null,
+      onNavKey: _usesDpad
+          ? (node, event) => _onGridKey(
+              index: index,
+              columns: columns,
+              count: count,
+              event: event,
+            )
+          : null,
+    );
   }
 }

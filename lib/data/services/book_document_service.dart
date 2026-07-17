@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
+import 'package:kindle_unpack/kindle_unpack.dart';
 
 import 'book_reader_service.dart';
 
@@ -10,6 +11,36 @@ enum BookDocumentTheme {
   light,
   dark,
   sepia,
+}
+
+@immutable
+class BookDocumentStyle {
+  final String fontFamilyCss;
+  final int fontSizePx;
+  final double lineHeight;
+  final int marginPx;
+  final int maxWidthPx;
+  final bool justify;
+  final bool bold;
+
+  final String? backgroundCss;
+  final String? foregroundCss;
+  final String? linkCss;
+
+  const BookDocumentStyle({
+    this.fontFamilyCss = 'Georgia, serif',
+    this.fontSizePx = 18,
+    this.lineHeight = 1.6,
+    this.marginPx = 16,
+    this.maxWidthPx = 800,
+    this.justify = false,
+    this.bold = false,
+    this.backgroundCss,
+    this.foregroundCss,
+    this.linkCss,
+  });
+
+  static const BookDocumentStyle defaults = BookDocumentStyle();
 }
 
 class BookDocumentService {
@@ -48,6 +79,14 @@ class BookDocumentService {
     } finally {
       client.close(force: true);
     }
+  }
+
+  /// Convert a Kindle document (MOBI/AZW/AZW3/KF8) into EPUB bytes so it can be
+  /// rendered through the normal EPUB pipeline. Parsing is CPU heavy, so run
+  /// this off the UI isolate with compute(). Throws if the file is DRM
+  /// protected or an unsupported Kindle variant.
+  static Uint8List convertKindleToEpub(Uint8List bytes) {
+    return KindleBook.fromBytes(bytes).toEpub();
   }
 
   static Future<String?> probeExtensionFromResponse(
@@ -109,8 +148,9 @@ class BookDocumentService {
   static List<String> extractEpubChapterHtml(
     Uint8List bytes, {
     BookDocumentTheme theme = BookDocumentTheme.light,
+    BookDocumentStyle? style,
   }) {
-    return _extractEpubChapterHtmlInternal(bytes, theme: theme);
+    return _extractEpubChapterHtmlInternal(bytes, theme: theme, style: style);
   }
 
   /// Parses the table of contents from an EPUB (NCX or EPUB3 nav).
@@ -269,6 +309,7 @@ class BookDocumentService {
   static List<String> _extractEpubChapterHtmlInternal(
     Uint8List bytes, {
     BookDocumentTheme theme = BookDocumentTheme.light,
+    BookDocumentStyle? style,
   }) {
     final archive = ZipDecoder().decodeBytes(bytes);
 
@@ -313,12 +354,16 @@ class BookDocumentService {
         continue;
       }
 
+      final chapterDir = chapterPath.contains('/')
+          ? chapterPath.substring(0, chapterPath.lastIndexOf('/'))
+          : '';
       final chapterBody = _extractHtmlBody(utf8.decode(chapterBytes));
-      final sanitized = _stripLocalImages(chapterBody);
+      final sanitized = _inlineLocalImages(chapterBody, chapterDir, files);
       chapters.add(_wrapEpubChapterHtml(
         cssBuffer.toString(),
         sanitized,
         theme: theme,
+        style: style,
       ));
     }
 
@@ -383,14 +428,33 @@ class BookDocumentService {
     return match?.group(1) ?? html;
   }
 
-  static String _stripLocalImages(String body) {
-    var sanitized = body.replaceAllMapped(
+  /// Images that would inflate the chapter HTML beyond reason are dropped
+  /// instead of inlined so a single oversized scan cannot crash the webview.
+  static const _maxInlineImageBytes = 10 * 1024 * 1024;
+
+  static final _imgSrcAttr =
+      RegExp(r'''src\s*=\s*["']([^"']*)["']''', caseSensitive: false);
+  static final _svgImageHref = RegExp(
+    r'''(?:xlink:)?href\s*=\s*["']([^"']*)["']''',
+    caseSensitive: false,
+  );
+
+  /// The chapter HTML is loaded into the webview as a bare string with no
+  /// base URL, so relative image paths have nothing to resolve against.
+  /// Embedded images are inlined as data URIs instead. Images that cannot be
+  /// resolved are dropped so no broken icon renders, and leftover local links
+  /// are neutralized so taps stay inside the reader.
+  static String _inlineLocalImages(
+    String body,
+    String baseDir,
+    Map<String, List<int>> files,
+  ) {
+    var resolved = body.replaceAllMapped(
       RegExp(r'<img\b[^>]*>', caseSensitive: false),
       (match) {
         final tag = match.group(0) ?? '';
-        final src = RegExp(r'src="([^"]*)"', caseSensitive: false)
-            .firstMatch(tag)
-            ?.group(1);
+        final srcMatch = _imgSrcAttr.firstMatch(tag);
+        final src = srcMatch?.group(1);
         if (src == null) {
           return '';
         }
@@ -398,11 +462,45 @@ class BookDocumentService {
         final isRemote = src.startsWith('http://') ||
             src.startsWith('https://') ||
             src.startsWith('data:');
-        return isRemote ? tag : '';
+        if (isRemote) {
+          return tag;
+        }
+
+        final dataUri = _imageDataUri(src, baseDir, files);
+        if (dataUri == null) {
+          return '';
+        }
+        return tag.replaceFirst(srcMatch!.group(0)!, 'src="$dataUri"');
       },
     );
 
-    sanitized = sanitized.replaceAllMapped(
+    // SVG image elements, the usual markup for EPUB cover pages.
+    resolved = resolved.replaceAllMapped(
+      RegExp(r'<image\b[^>]*>', caseSensitive: false),
+      (match) {
+        final tag = match.group(0) ?? '';
+        final hrefMatch = _svgImageHref.firstMatch(tag);
+        final href = hrefMatch?.group(1);
+        if (href == null ||
+            href.startsWith('http://') ||
+            href.startsWith('https://') ||
+            href.startsWith('data:')) {
+          return tag;
+        }
+
+        final dataUri = _imageDataUri(href, baseDir, files);
+        if (dataUri == null) {
+          return '';
+        }
+        final attr = hrefMatch!.group(0)!;
+        final attrName = attr.toLowerCase().startsWith('xlink:')
+            ? 'xlink:href'
+            : 'href';
+        return tag.replaceFirst(attr, '$attrName="$dataUri"');
+      },
+    );
+
+    resolved = resolved.replaceAllMapped(
       RegExp(
         r'(src|href)="(?!https?://|data:|#|mailto:)([^"]+)"',
         caseSensitive: false,
@@ -410,15 +508,94 @@ class BookDocumentService {
       (match) => '${match.group(1)}="#"',
     );
 
-    return sanitized;
+    return resolved;
+  }
+
+  static String? _imageDataUri(
+    String href,
+    String baseDir,
+    Map<String, List<int>> files,
+  ) {
+    var path = href.trim();
+    final fragment = path.indexOf('#');
+    if (fragment >= 0) path = path.substring(0, fragment);
+    final query = path.indexOf('?');
+    if (query >= 0) path = path.substring(0, query);
+    try {
+      path = Uri.decodeFull(path);
+    } catch (_) {}
+    if (path.isEmpty) return null;
+
+    final mime = _imageMimeFor(path);
+    if (mime == null) return null;
+
+    final bytes = files[_resolveZipPath(baseDir, path)] ??
+        _findByBasename(path, files);
+    if (bytes == null || bytes.length > _maxInlineImageBytes) return null;
+    return 'data:$mime;base64,${base64Encode(bytes)}';
+  }
+
+  /// Resolves a relative href against a directory inside the zip, collapsing
+  /// any . and .. segments.
+  static String _resolveZipPath(String baseDir, String relative) {
+    if (relative.startsWith('/')) return relative.substring(1);
+    final segments = [
+      if (baseDir.isNotEmpty) ...baseDir.split('/'),
+      ...relative.split('/'),
+    ];
+    final resolved = <String>[];
+    for (final segment in segments) {
+      if (segment.isEmpty || segment == '.') continue;
+      if (segment == '..') {
+        if (resolved.isNotEmpty) resolved.removeLast();
+        continue;
+      }
+      resolved.add(segment);
+    }
+    return resolved.join('/');
+  }
+
+  /// Fallback for EPUBs whose hrefs do not resolve cleanly against the base
+  /// directory, so a plain filename still finds its bytes.
+  static List<int>? _findByBasename(
+    String path,
+    Map<String, List<int>> files,
+  ) {
+    final basename =
+        path.contains('/') ? path.substring(path.lastIndexOf('/') + 1) : path;
+    if (basename.isEmpty) return null;
+    for (final entry in files.entries) {
+      if (entry.key == basename || entry.key.endsWith('/$basename')) {
+        return entry.value;
+      }
+    }
+    return null;
+  }
+
+  static String? _imageMimeFor(String path) {
+    final dot = path.lastIndexOf('.');
+    if (dot < 0) return null;
+    return switch (path.substring(dot + 1).toLowerCase()) {
+      'jpg' || 'jpeg' => 'image/jpeg',
+      'png' => 'image/png',
+      'gif' => 'image/gif',
+      'webp' => 'image/webp',
+      'svg' => 'image/svg+xml',
+      'bmp' => 'image/bmp',
+      'avif' => 'image/avif',
+      _ => null,
+    };
   }
 
   static String _wrapEpubChapterHtml(
     String css,
     String body, {
     required BookDocumentTheme theme,
+    BookDocumentStyle? style,
   }) {
-    final colors = switch (theme) {
+    final s = style ?? BookDocumentStyle.defaults;
+
+    final themeColors = switch (theme) {
       BookDocumentTheme.light => (
           background: '#fafafa',
           foreground: '#222222',
@@ -436,26 +613,50 @@ class BookDocumentService {
         ),
     };
 
+    final background = s.backgroundCss ?? themeColors.background;
+    final foreground = s.foregroundCss ?? themeColors.foreground;
+    final link = s.linkCss ?? themeColors.link;
+    final textAlign = s.justify ? 'justify' : 'initial';
+    final fontWeight = s.bold ? '600' : 'normal';
+
     return '''<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    * { box-sizing: border-box; }
-    body {
-      font-family: Georgia, serif;
-      line-height: 1.6;
-      padding: 16px;
-      margin: 0 auto;
-      max-width: 800px;
-      color: ${colors.foreground};
-      background: ${colors.background};
-      overflow-wrap: anywhere;
-    }
-    a { color: ${colors.link}; }
-    img { max-width: 100%; height: auto; }
     $css
+
+    * { box-sizing: border-box; }
+    html {
+      -webkit-text-size-adjust: 100%;
+      background: $background !important;
+    }
+    body {
+      font-family: ${s.fontFamilyCss} !important;
+      font-size: ${s.fontSizePx}px !important;
+      font-weight: $fontWeight;
+      line-height: ${s.lineHeight} !important;
+      text-align: $textAlign;
+      padding: ${s.marginPx}px;
+      margin: 0 auto;
+      max-width: ${s.maxWidthPx}px;
+      background: $background !important;
+      overflow-wrap: anywhere;
+      -webkit-hyphens: auto;
+      hyphens: auto;
+    }
+    body, body *:not(a) {
+      color: $foreground !important;
+      -webkit-text-fill-color: $foreground !important;
+      background-color: transparent !important;
+      border-color: $foreground !important;
+    }
+    a, a * {
+      color: $link !important;
+      -webkit-text-fill-color: $link !important;
+    }
+    img, svg, picture { max-width: 100%; height: auto; }
   </style>
 </head>
 <body>

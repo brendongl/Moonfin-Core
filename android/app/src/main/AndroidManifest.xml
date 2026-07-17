@@ -55,6 +55,14 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- Impeller renderer, set per flavor in build.gradle.kts. Off on TV
+             boxes, whose GPUs (often PowerVR) stutter on the Impeller GLES
+             fallback. This manifest flag is the value the Android engine
+             actually reads. -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="${enableImpeller}" />
         <meta-data
             android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
             android:value="org.moonfin.androidtv.MoonfinCastOptionsProvider" />
@@ -64,6 +72,11 @@
             android:exported="false"
             android:foregroundServiceType="dataSync"
             android:stopWithTask="true" />
+
+        <!-- Delivers notification action-button taps (approve/deny) to the plugin. -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver"
+            android:exported="false" />
 
         <service
             android:name="com.ryanheise.audioservice.AudioService"
@@ -81,6 +94,15 @@
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>
         </receiver>
+
+        <provider
+            android:name="org.moonfin.androidtv.MoonfinArtProvider"
+            android:authorities="${applicationId}.artwork"
+            android:exported="true"
+            android:grantUriPermissions="true" />
+
+        <meta-data android:name="com.google.android.gms.car.application"
+                   android:resource="@xml/automotive_app_desc"/>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

@@ -34,8 +34,13 @@ class StreamResolutionResult {
   final List<ExternalSubtitle> externalSubtitles;
   final List<Map<String, dynamic>> mediaStreams;
   final int? selectedAudioStreamIndex;
+  final int? selectedSubtitleStreamIndex;
   final List<String> transcodingReasons;
   final String? hybridAudioUrl;
+
+  /// True when [streamUrl] is a local file path served from the downloads
+  /// store rather than a server stream URL.
+  final bool isLocalMedia;
 
   const StreamResolutionResult({
     required this.streamUrl,
@@ -51,7 +56,9 @@ class StreamResolutionResult {
     this.externalSubtitles = const [],
     this.mediaStreams = const [],
     this.selectedAudioStreamIndex,
+    this.selectedSubtitleStreamIndex,
     this.transcodingReasons = const [],
     this.hybridAudioUrl,
+    this.isLocalMedia = false,
   });
 }

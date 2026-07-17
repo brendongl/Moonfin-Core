@@ -1,17 +1,20 @@
+import 'package:animated_reorderable_list/animated_reorderable_list.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:get_it/get_it.dart';
-import 'package:jellyfin_preference/jellyfin_preference.dart';
 import 'package:server_core/server_core.dart';
 import 'package:moonfin_design/moonfin_design.dart';
 
 import '../../../data/services/plugin_sync_service.dart';
 import '../../../preference/user_preferences.dart';
+import '../../../util/extensions.dart';
 import '../../../util/platform_detection.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../widgets/settings/clean_settings_typography.dart';
 import 'settings_app_bar.dart';
 import '../../widgets/focus/request_initial_focus.dart';
+import '../../../util/focus/scroll_utils.dart';
 
 const _allSources = [
   'tomatoes',
@@ -57,7 +60,6 @@ class _RatingsConfigScreenState extends State<RatingsConfigScreen> {
     _ => key,
   };
 
-  final _store = GetIt.instance<PreferenceStore>();
   final _prefs = GetIt.instance<UserPreferences>();
   String _lastEnabledRatingsCsv = '';
   late List<_RatingItem> _items;
@@ -83,31 +85,30 @@ class _RatingsConfigScreenState extends State<RatingsConfigScreen> {
 
   void _onPrefsChanged() {
     if (!mounted) return;
-    final currentCsv = _store.get(UserPreferences.enabledRatings);
+    final currentCsv = _prefs.get(UserPreferences.enabledRatings);
     if (currentCsv == _lastEnabledRatingsCsv) return;
     setState(_loadFromPrefs);
   }
 
   void _loadFromPrefs() {
-    final csv = _store.get(UserPreferences.enabledRatings);
+    final csv = _prefs.get(UserPreferences.enabledRatings);
     _lastEnabledRatingsCsv = csv;
-    final enabled = csv
-        .split(',')
-        .where((s) => s.isNotEmpty)
-        .toList();
+    final enabled = csv.split(',').where((s) => s.isNotEmpty).toList();
 
     final items = <_RatingItem>[];
-    for (final key in enabled) {
-      if (_allSources.contains(key)) {
-        items.add(_RatingItem(key: key, enabled: true));
-      }
-    }
-    final addedKeys = items.map((i) => i.key).toSet();
     for (final key in _allSources) {
-      if (!addedKeys.contains(key)) {
-        items.add(_RatingItem(key: key, enabled: false));
-      }
+      items.add(_RatingItem(key: key, enabled: enabled.contains(key)));
     }
+    // Sorting by position in the enabled CSV already yields enabled-first
+    // (disabled keys resolve to -1 and sink to the bottom) in saved order.
+    items.sort((a, b) {
+      final indexA = enabled.indexOf(a.key);
+      final indexB = enabled.indexOf(b.key);
+      if (indexA == -1 && indexB == -1) return 0;
+      if (indexA == -1) return 1;
+      if (indexB == -1) return -1;
+      return indexA.compareTo(indexB);
+    });
     _items = items;
     _rebuildFocusNodes();
   }
@@ -123,14 +124,11 @@ class _RatingsConfigScreenState extends State<RatingsConfigScreen> {
   }
 
   void _save() {
-    final csv = _items
-        .where((i) => i.enabled)
-        .map((i) => i.key)
-        .join(',');
+    final csv = _items.where((i) => i.enabled).map((i) => i.key).join(',');
     // Keep local ordering/focus stable for in-screen edits; external updates
     // still refresh via _onPrefsChanged when the stored CSV differs.
     _lastEnabledRatingsCsv = csv;
-    _store.set(UserPreferences.enabledRatings, csv);
+    _prefs.set(UserPreferences.enabledRatings, csv);
 
     final syncService = GetIt.instance<PluginSyncService>();
     if (syncService.pluginAvailable) {
@@ -162,9 +160,10 @@ class _RatingsConfigScreenState extends State<RatingsConfigScreen> {
                 tooltip: l10n.resetToDefaults,
                 onPressed: () {
                   setState(() {
-                    _store.set(
-                        UserPreferences.enabledRatings,
-                        UserPreferences.enabledRatings.defaultValue);
+                    _prefs.set(
+                      UserPreferences.enabledRatings,
+                      UserPreferences.enabledRatings.defaultValue,
+                    );
                     _loadFromPrefs();
                   });
                   _save();
@@ -172,7 +171,9 @@ class _RatingsConfigScreenState extends State<RatingsConfigScreen> {
               ),
             ],
           ),
-          body: PlatformDetection.isTV ? _buildTvList(l10n) : _buildReorderableList(l10n),
+          body: PlatformDetection.isTV
+              ? _buildTvList(l10n)
+              : _buildReorderableList(l10n),
         ),
       ),
     );
@@ -214,16 +215,12 @@ class _RatingsConfigScreenState extends State<RatingsConfigScreen> {
                 index: index,
                 child: Icon(
                   Icons.drag_handle,
-                  color: Theme.of(context)
-                      .colorScheme
-                      .onSurface
-                      .withValues(alpha: 0.7),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.7),
                 ),
               ),
-              onToggle: (enabled) {
-                setState(() => item.enabled = enabled);
-                _save();
-              },
+              onToggle: (enabled) => _toggleRatingItem(index, enabled),
               onMoveUp: () => _moveItemTo(index, index - 1),
               onMoveDown: () => _moveItemTo(index, index + 1),
             );
@@ -234,38 +231,86 @@ class _RatingsConfigScreenState extends State<RatingsConfigScreen> {
   }
 
   Widget _buildTvList(AppLocalizations l10n) {
-    return ListView.builder(
-      itemCount: _items.length + 1,
-      itemBuilder: (context, index) {
-        if (index == 0) {
-          return _buildHeader(l10n);
-        }
-        final itemIndex = index - 1;
-        final item = _items[itemIndex];
-        return _ReorderableTile(
-          key: ValueKey(item.key),
-          focusNode: _focusNodes[itemIndex],
-          label: _sourceLabel(item.key, l10n),
-          enabled: item.enabled,
-          isFirst: itemIndex == 0,
-          isLast: itemIndex == _items.length - 1,
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (itemIndex != 0)
-                const Icon(Icons.arrow_left, size: 18),
-              if (itemIndex != _items.length - 1)
-                const Icon(Icons.arrow_right, size: 18),
-            ],
-          ),
-          onToggle: (enabled) {
-            setState(() => item.enabled = enabled);
-            _save();
+    return CustomScrollView(
+      scrollCacheExtent: const ScrollCacheExtent.pixels(3000.0),
+      slivers: [
+        SliverToBoxAdapter(child: _buildHeader(l10n)),
+        ReorderableAnimatedListImpl<_RatingItem>(
+          items: _items,
+          scrollDirection: Axis.vertical,
+          // Comparing the enabled state and turning off swap detection makes a
+          // toggled row read as a removal from its old slot and an insert at
+          // its sorted slot, so it animates instead of jumping.
+          isSameItem: (a, b) => a.key == b.key && a.enabled == b.enabled,
+          enableSwap: true,
+          enterTransition: [FadeIn(), SizeAnimation()],
+          exitTransition: [FadeIn(), SizeAnimation()],
+          itemBuilder: (context, itemIndex) {
+            final item = _items[itemIndex];
+            return _ReorderableTile(
+              key: ValueKey('${item.key}:${item.enabled}'),
+              focusNode: _focusNodes[itemIndex],
+              label: _sourceLabel(item.key, l10n),
+              enabled: item.enabled,
+              isFirst: itemIndex == 0,
+              isLast: itemIndex == _items.length - 1,
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (itemIndex != 0) const Icon(Icons.arrow_left, size: 18),
+                  if (itemIndex != _items.length - 1)
+                    const Icon(Icons.arrow_right, size: 18),
+                ],
+              ),
+              onToggle: (enabled) => _toggleRatingItem(itemIndex, enabled),
+              onMoveUp: () => _moveItemTo(itemIndex, itemIndex - 1),
+              onMoveDown: () => _moveItemTo(itemIndex, itemIndex + 1),
+            );
           },
-          onMoveUp: () => _moveItemTo(itemIndex, itemIndex - 1),
-          onMoveDown: () => _moveItemTo(itemIndex, itemIndex + 1),
-        );
-      },
+        ),
+      ],
+    );
+  }
+
+  void _toggleRatingItem(int index, bool enabled) {
+    final toggledKey = _items[index].key;
+    final nodeMap = <String, FocusNode>{};
+    for (var i = 0; i < _items.length; i++) {
+      nodeMap[_items[i].key] = _focusNodes[i];
+    }
+
+    setState(() {
+      _items[index].enabled = enabled;
+      _items = _items.sortedEnabledAboveDisabled((i) => i.enabled);
+
+      final newNodes = <FocusNode>[];
+      for (final item in _items) {
+        final node = nodeMap[item.key];
+        if (node != null) {
+          newNodes.add(node);
+        } else {
+          newNodes.add(FocusNode(debugLabel: 'rating_new'));
+        }
+      }
+      _focusNodes.clear();
+      _focusNodes.addAll(newNodes);
+    });
+
+    _save();
+
+    // Keep focus on the neighbor that slid into the toggled row's old slot so
+    // the viewport stays put. If the item didn't move (it was the last row),
+    // step to the previous neighbor instead.
+    final newIndex = _items.indexWhere((i) => i.key == toggledKey);
+    final targetIndex = (newIndex == index && index > 0) ? index - 1 : index;
+    _focusItemAndEnsureVisible(targetIndex);
+  }
+
+  void _focusItemAndEnsureVisible(int index) {
+    focusItemAndEnsureVisible(
+      isMounted: () => mounted,
+      focusNodes: _focusNodes,
+      index: index,
     );
   }
 
@@ -278,11 +323,7 @@ class _RatingsConfigScreenState extends State<RatingsConfigScreen> {
       _focusNodes.insert(newIndex, node);
     });
     _save();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _focusNodes[newIndex].requestFocus();
-      }
-    });
+    _focusItemAndEnsureVisible(newIndex);
   }
 }
 
@@ -350,7 +391,7 @@ class _ReorderableTileState extends State<_ReorderableTile> {
     final colorScheme = Theme.of(context).colorScheme;
     final bg = _focused
         ? colorScheme.primary.withValues(alpha: 0.18)
-      : Colors.transparent;
+        : Colors.transparent;
 
     return Focus(
       focusNode: widget.focusNode,
@@ -364,11 +405,13 @@ class _ReorderableTileState extends State<_ReorderableTile> {
       },
       onKeyEvent: (node, event) {
         if (event is! KeyDownEvent) return KeyEventResult.ignored;
-        if (event.logicalKey == LogicalKeyboardKey.arrowLeft && !widget.isFirst) {
+        if (event.logicalKey == LogicalKeyboardKey.arrowLeft &&
+            !widget.isFirst) {
           widget.onMoveUp();
           return KeyEventResult.handled;
         }
-        if (event.logicalKey == LogicalKeyboardKey.arrowRight && !widget.isLast) {
+        if (event.logicalKey == LogicalKeyboardKey.arrowRight &&
+            !widget.isLast) {
           widget.onMoveDown();
           return KeyEventResult.handled;
         }
@@ -382,14 +425,17 @@ class _ReorderableTileState extends State<_ReorderableTile> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 90),
         color: bg,
-        child: ListTile(
-          onTap: () => widget.onToggle(!widget.enabled),
-          leading: Icon(
-            widget.enabled ? Icons.check_box : Icons.check_box_outline_blank,
-            color: widget.enabled ? colorScheme.primary : null,
+        child: Material(
+          type: MaterialType.transparency,
+          child: ListTile(
+            onTap: () => widget.onToggle(!widget.enabled),
+            leading: Icon(
+              widget.enabled ? Icons.check_box : Icons.check_box_outline_blank,
+              color: widget.enabled ? colorScheme.primary : null,
+            ),
+            title: Text(widget.label),
+            trailing: widget.trailing,
           ),
-          title: Text(widget.label),
-          trailing: widget.trailing,
         ),
       ),
     );

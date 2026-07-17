@@ -19,7 +19,7 @@ const neonPulseThemeSpec = ThemeSpec(
     accent: Color(0xFFFF2E92),
     onAccent: Color(0xFFFFFFFF),
     buttonNormal: Color(0x00000000),
-    buttonFocused: Color(0x33FF2E92),
+    buttonFocused: Color(0xFF00E5FF),
     buttonDisabled: Color(0x22FFFFFF),
     buttonActive: Color(0x33FF2E92),
     onButtonNormal: Color(0xFFFF2E92),
@@ -39,6 +39,7 @@ const neonPulseThemeSpec = ThemeSpec(
     badgeWatched: Color(0xFFFF2E92),
     recordingActive: Color(0xFFFF2E92),
     recordingScheduled: Color(0xFF00E5FF),
+    error: Color(0xFFFF003C),
   ),
   borders: ThemeBorderTokens(
     cardBorder: BorderSide(color: Color(0x66FF2E92)),

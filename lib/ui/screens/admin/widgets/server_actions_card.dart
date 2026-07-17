@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:moonfin_design/moonfin_design.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../../../l10n/app_localizations.dart';
+import '../../../widgets/adaptive/adaptive_dialog.dart';
+import 'admin_form_styles.dart';
 
 class ServerActionsCard extends StatelessWidget {
   final MediaServerClient client;
@@ -18,26 +21,24 @@ class ServerActionsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        adminSectionLabel(context, l10n.adminServerActions,
+            icon: Icons.settings_power),
+        adminGlassGroup(
+          context,
           children: [
-            Row(
-              children: [
-                Icon(Icons.settings_power, color: theme.colorScheme.primary),
-                const SizedBox(width: 8),
-                Text(l10n.adminServerActions, style: theme.textTheme.titleMedium),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                if (canSelfRestart)
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.spaceLg,
+                vertical: AppSpacing.spaceMd,
+              ),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if (canSelfRestart)
                   FilledButton.tonalIcon(
                     icon: const Icon(Icons.restart_alt),
                     label: Text(l10n.adminRestartServer),
@@ -85,11 +86,12 @@ class ServerActionsCard extends StatelessWidget {
                     }
                   },
                 ),
-              ],
+                ],
+              ),
             ),
           ],
         ),
-      ),
+      ],
     );
   }
 
@@ -100,11 +102,11 @@ class ServerActionsCard extends StatelessWidget {
       barrierDismissible: true,
       builder: (ctx) => PopScope(
         canPop: true,
-        child: AlertDialog(
+        child: AlertDialog.adaptive(
           title: Text(l10n.adminServerRebootInProgress),
           content: Text(l10n.adminServerRebootMessage),
           actions: [
-            TextButton(
+            adaptiveDialogAction(
               onPressed: () => Navigator.of(ctx).pop(),
               child: Text(l10n.ok),
             ),
@@ -123,11 +125,11 @@ class ServerActionsCard extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => AlertDialog.adaptive(
         title: Text(title),
         content: Text(message),
         actions: [
-          TextButton(
+          adaptiveDialogAction(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: Text(l10n.cancel),
           ),

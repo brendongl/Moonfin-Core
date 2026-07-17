@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:moonfin_design/moonfin_design.dart';
 
 import '../../../../l10n/app_localizations.dart';
+import 'admin_form_styles.dart';
 
 class ServerInfoCard extends StatelessWidget {
   final Map<String, dynamic> systemInfo;
@@ -17,35 +19,40 @@ class ServerInfoCard extends StatelessWidget {
       fallback: l10n.unknown,
     );
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        adminSectionLabel(context, l10n.adminServerInfo, icon: Icons.dns),
+        adminGlassGroup(
+          context,
           children: [
-            Row(
-              children: [
-                Icon(Icons.dns, color: theme.colorScheme.primary),
-                const SizedBox(width: 8),
-                Text(l10n.adminServerInfo, style: theme.textTheme.titleMedium),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _row(l10n.name, systemInfo['ServerName'] as String? ?? ''),
-            _row(l10n.version, systemInfo['Version'] as String? ?? ''),
-            _row(l10n.os, os),
-            if (systemInfo['HasPendingRestart'] == true)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Chip(
-                  avatar: Icon(Icons.warning, size: 16, color: theme.colorScheme.error),
-                  label: Text(l10n.adminRestartPending),
-                  backgroundColor: theme.colorScheme.errorContainer,
-                ),
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.spaceLg,
+                vertical: AppSpacing.spaceMd,
               ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _row(l10n.name, systemInfo['ServerName'] as String? ?? ''),
+                  _row(l10n.version, systemInfo['Version'] as String? ?? ''),
+                  _row(l10n.os, os),
+                  if (systemInfo['HasPendingRestart'] == true)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Chip(
+                        avatar: Icon(Icons.warning,
+                            size: 16, color: theme.colorScheme.error),
+                        label: Text(l10n.adminRestartPending),
+                        backgroundColor: theme.colorScheme.errorContainer,
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ],
         ),
-      ),
+      ],
     );
   }
 

@@ -7,6 +7,7 @@ import 'package:server_core/server_core.dart';
 
 import '../../../../l10n/app_localizations.dart';
 import '../../../../util/download_utils.dart';
+import '../../../widgets/adaptive/adaptive_dialog.dart';
 
 class AdminBackupsScreen extends StatefulWidget {
   const AdminBackupsScreen({super.key});
@@ -101,15 +102,79 @@ class _AdminBackupsScreenState extends State<AdminBackupsScreen> {
         '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
   }
 
+  Future<Map<String, dynamic>?> _promptBackupOptions() {
+    final l10n = AppLocalizations.of(context);
+    var metadata = true;
+    var subtitles = true;
+    var trickplay = true;
+    return showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog.adaptive(
+          title: Text(l10n.adminBackupOptionsTitle),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(l10n.adminBackupInclude),
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(l10n.adminBackupDatabase),
+                subtitle: Text(l10n.adminBackupDatabaseAlways),
+                value: true,
+                onChanged: null,
+              ),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(l10n.adminBackupMetadata),
+                value: metadata,
+                onChanged: (v) => setLocal(() => metadata = v ?? false),
+              ),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(l10n.adminBackupSubtitles),
+                value: subtitles,
+                onChanged: (v) => setLocal(() => subtitles = v ?? false),
+              ),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(l10n.adminBackupTrickplay),
+                value: trickplay,
+                onChanged: (v) => setLocal(() => trickplay = v ?? false),
+              ),
+            ],
+          ),
+          actions: [
+            adaptiveDialogAction(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(l10n.cancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, {
+                'Metadata': metadata,
+                'Subtitles': subtitles,
+                'Trickplay': trickplay,
+              }),
+              child: Text(l10n.create),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _createBackup() async {
     if (_creating) return;
+    final options = await _promptBackupOptions();
+    if (options == null || !mounted) return;
     setState(() => _creating = true);
 
     showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder:
-          (ctx) => AlertDialog(
+          (ctx) => AlertDialog.adaptive(
             content: Row(
               children: [
                 const CircularProgressIndicator(),
@@ -121,7 +186,7 @@ class _AdminBackupsScreenState extends State<AdminBackupsScreen> {
     );
 
     try {
-      await _api.createBackup();
+      await _api.createBackup(options);
       if (mounted) {
         Navigator.of(context, rootNavigator: true).pop();
       }
@@ -161,7 +226,7 @@ class _AdminBackupsScreenState extends State<AdminBackupsScreen> {
       await showDialog<void>(
         context: context,
         builder:
-            (ctx) => AlertDialog(
+            (ctx) => AlertDialog.adaptive(
               title: Text(AppLocalizations.of(context).adminBackupManifest(_backupName(backup))),
               content: SizedBox(
                 width: (MediaQuery.sizeOf(ctx).width - 32).clamp(280.0, 640.0),
@@ -176,7 +241,7 @@ class _AdminBackupsScreenState extends State<AdminBackupsScreen> {
                 ),
               ),
               actions: [
-                TextButton(
+                adaptiveDialogAction(
                   onPressed: () => Navigator.pop(ctx),
                   child: Text(AppLocalizations.of(context).close),
                 ),
@@ -195,11 +260,11 @@ class _AdminBackupsScreenState extends State<AdminBackupsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder:
-          (ctx) => AlertDialog(
+          (ctx) => AlertDialog.adaptive(
             title: Text(AppLocalizations.of(context).adminConfirmRestore),
             content: Text(message),
             actions: [
-              TextButton(
+              adaptiveDialogAction(
                 onPressed: () => Navigator.pop(ctx, false),
                 child: Text(AppLocalizations.of(context).cancel),
               ),
@@ -250,7 +315,7 @@ class _AdminBackupsScreenState extends State<AdminBackupsScreen> {
       context: context,
       barrierDismissible: false,
       builder:
-          (ctx) => AlertDialog(
+          (ctx) => AlertDialog.adaptive(
             content: Row(
               children: [
                 const CircularProgressIndicator(),

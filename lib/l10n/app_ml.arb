@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "പ്രിയപ്പെട്ട ട്രാക്കുകൾ ഇവിടെ ദൃശ്യമാകും",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "ലോഡ് ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "നിർദ്ദിഷ്ട ഉപയോക്താവ്",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "എപ്പോഴും പ്രാമാണീകരിക്കുക",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "വിദൂര വ്യക്തിയെ തിരയുക",
     "adminNoRemoteMatches": "വിദൂര പൊരുത്തങ്ങളൊന്നും കണ്ടെത്തിയില്ല",
     "adminRemoteResults": "റിമോട്ട് ഫലങ്ങൾ",
     "adminRemoteMetadataApplied": "റിമോട്ട് മെറ്റാഡാറ്റ പ്രയോഗിച്ചു",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "ട്യൂണർ ചേർക്കുക",
     "adminTunerType": "ട്യൂണർ തരം",
-    "adminTunerTypeHint": "HDHomeRun, M3U, മറ്റുള്ളവ",
-    "adminUrlPath": "URL / പാത",
-    "adminNameOptional": "പേര് (ഓപ്ഷണൽ)",
     "adminTunerAdded": "ട്യൂണർ കൂട്ടിച്ചേർത്തു",
     "adminTunerAddFailed": "ട്യൂണർ ചേർക്കുന്നതിൽ പരാജയപ്പെട്ടു: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "ഗൈഡ് ദാതാവിനെ ചേർക്കുക",
     "adminProviderType": "ദാതാവിൻ്റെ തരം",
-    "adminProviderTypeHint": "ഷെഡ്യൂൾസ്ഡയറക്ട് അല്ലെങ്കിൽ XMLTV",
-    "adminUsernameOptional": "ഉപയോക്തൃനാമം (ഓപ്ഷണൽ)",
-    "adminRefreshInterval": "പുതുക്കിയ ഇടവേള (മണിക്കൂറുകൾ)",
     "adminProviderAdded": "ദാതാവ് ചേർത്തു",
     "adminProviderAddFailed": "ദാതാവിനെ ചേർക്കുന്നതിൽ പരാജയപ്പെട്ടു: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "പൊരുത്തപ്പെടുന്ന വരികളൊന്നുമില്ല",
     "adminMetadataEditorTitle": "മെറ്റാഡാറ്റ എഡിറ്റർ",
-    "adminMetadataRemote": "റിമോട്ട്",
     "adminMetadataType": "ടൈപ്പ് ചെയ്യുക",
     "adminMetadataDetails": "വിശദാംശങ്ങൾ",
     "adminMetadataExternalIds": "ബാഹ്യ ഐഡികൾ",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "എൻ്റെ തിരഞ്ഞെടുപ്പ് ഓർക്കുക",
     "playHdr10Fallback": "HDR10 ഫാൾബാക്ക് പ്ലേ ചെയ്യുക",
     "requestTranscode": "ട്രാൻസ്കോഡ് അഭ്യർത്ഥിക്കുക",
-    "homeScreenSectionsIntegrationDescription": "IAmParadox27-ൻ്റെ \"ഹോം സ്‌ക്രീൻ സെക്ഷൻസ്\" പ്ലഗിൻ മുഖേന തുറന്നുകാട്ടപ്പെട്ട വരികൾ കണ്ടെത്തുക. വരികൾ പ്രവർത്തനക്ഷമമാക്കാനും ചുവടെ പുനഃക്രമീകരിക്കാനും കഴിയും.",
-    "homeScreenSectionsIntegrationNoServers": "Jellyfin സെർവറുകളൊന്നും ഇതുവരെ പ്ലഗിൻ റിപ്പോർട്ട് ചെയ്യുന്നില്ല.",
-    "integrationOpenHomeSections": "ഹോം സെക്ഷനുകൾ തുറക്കുക",
-    "integrationOpenHomeSectionsSubtitle": "വരികൾ പ്രവർത്തനക്ഷമമാക്കുക, പ്രവർത്തനരഹിതമാക്കുക, പുനഃക്രമീകരിക്കുക",
-    "integrationInstalledButDisabled": "ഇൻസ്റ്റാൾ ചെയ്‌തെങ്കിലും പ്രവർത്തനരഹിതമാക്കി",
-    "integrationNotInstalled": "ഇൻസ്റ്റാൾ ചെയ്തിട്ടില്ല",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "എല്ലാം കാണുക",
     "noItems": "ഇനങ്ങളില്ല",
     "switchUser": "ഉപയോക്താവിനെ മാറ്റുക",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "AAC Stereo",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Passthrough (Advanced)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "സംരക്ഷിച്ച തീം ഇല്ലാതാക്കുക",
     "savedThemesManageSubtitle": "ഈ ഉപകരണത്തിൽ ഡൗൺലോഡ് ചെയ്‌ത പ്ലഗിൻ തീമുകൾ നിയന്ത്രിക്കുക",
-    "homeScreenSectionsTitle": "ഹോം സ്‌ക്രീൻ വിഭാഗങ്ങൾ",
     "themeEditor": "തീം എഡിറ്റർ",
     "themeEditorSubtitle": "നിങ്ങളുടെ ബ്രൗസറിൽ Moonfin തീം എഡിറ്റർ തുറക്കുക",
     "homeScreen": "ഹോം സ്‌ക്രീൻ",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "HDR വീഡിയോ പ്ലേബാക്കിനായി HDR സ്വയമേവ പ്രവർത്തനക്ഷമമാക്കുകയും പുറത്തുകടക്കുമ്പോൾ ഡിസ്പ്ലേ മോഡ് പുനഃസ്ഥാപിക്കുകയും ചെയ്യുക.",
     "whenFullscreen": "ഫുൾസ്ക്രീൻ ആയിരിക്കുമ്പോൾ",
     "transcodingLimits": "ട്രാൻസ്കോഡിംഗ് പരിധികൾ",
-    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer"
+    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer",
+    "reportDownloadsActivity": "സെർവറിൽ ഡൗൺലോഡുകൾ കാണിക്കുക",
+    "reportDownloadsActivitySubtitle": "ഡാഷ്ബോർഡിൽ നിങ്ങളുടെ ട്രാൻസ്കോഡ് ചെയ്ത ഡൗൺലോഡുകൾ കാണാൻ സെർവർ അഡ്മിനെ അനുവദിക്കുക",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "ചിത്ര കാഷെ പരിധി",
+    "clearImageCache": "ചിത്ര കാഷെ മായ്ക്കുക",
+    "imageCacheCleared": "ചിത്ര കാഷെ മായ്ച്ചു"
 }

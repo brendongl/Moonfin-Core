@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "ಮೆಚ್ಚಿನ ಟ್ರ್ಯಾಕ್‌ಗಳು ಇಲ್ಲಿ ಗೋಚರಿಸುತ್ತವೆ",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "ಲೋಡ್ ಮಾಡಲು ವಿಫಲವಾಗಿದೆ",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "ನಿರ್ದಿಷ್ಟ ಬಳಕೆದಾರ",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "ಯಾವಾಗಲೂ ಪ್ರಮಾಣೀಕರಿಸಿ",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "ದೂರಸ್ಥ ವ್ಯಕ್ತಿಯನ್ನು ಹುಡುಕಿ",
     "adminNoRemoteMatches": "ಯಾವುದೇ ರಿಮೋಟ್ ಹೊಂದಾಣಿಕೆಗಳು ಕಂಡುಬಂದಿಲ್ಲ",
     "adminRemoteResults": "ರಿಮೋಟ್ ಫಲಿತಾಂಶಗಳು",
     "adminRemoteMetadataApplied": "ರಿಮೋಟ್ ಮೆಟಾಡೇಟಾ ಅನ್ವಯಿಸಲಾಗಿದೆ",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "ಟ್ಯೂನರ್ ಸೇರಿಸಿ",
     "adminTunerType": "ಟ್ಯೂನರ್ ಪ್ರಕಾರ",
-    "adminTunerTypeHint": "HDHomeRun, M3U, ಇತರೆ",
-    "adminUrlPath": "URL / ಮಾರ್ಗ",
-    "adminNameOptional": "ಹೆಸರು (ಐಚ್ಛಿಕ)",
     "adminTunerAdded": "ಟ್ಯೂನರ್ ಸೇರಿಸಲಾಗಿದೆ",
     "adminTunerAddFailed": "Failed to add tuner: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "ಮಾರ್ಗದರ್ಶಿ ಪೂರೈಕೆದಾರರನ್ನು ಸೇರಿಸಿ",
     "adminProviderType": "ಪೂರೈಕೆದಾರರ ಪ್ರಕಾರ",
-    "adminProviderTypeHint": "ವೇಳಾಪಟ್ಟಿಗಳು ಡೈರೆಕ್ಟ್ ಅಥವಾ XMLTV",
-    "adminUsernameOptional": "ಬಳಕೆದಾರ ಹೆಸರು (ಐಚ್ಛಿಕ)",
-    "adminRefreshInterval": "ರಿಫ್ರೆಶ್ ಮಧ್ಯಂತರ (ಗಂಟೆಗಳು)",
     "adminProviderAdded": "ಪೂರೈಕೆದಾರರನ್ನು ಸೇರಿಸಲಾಗಿದೆ",
     "adminProviderAddFailed": "Failed to add provider: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "ಹೊಂದಾಣಿಕೆಯ ಸಾಲುಗಳಿಲ್ಲ",
     "adminMetadataEditorTitle": "ಮೆಟಾಡೇಟಾ ಸಂಪಾದಕ",
-    "adminMetadataRemote": "ರಿಮೋಟ್",
     "adminMetadataType": "ಟೈಪ್ ಮಾಡಿ",
     "adminMetadataDetails": "ವಿವರಗಳು",
     "adminMetadataExternalIds": "ಬಾಹ್ಯ ID ಗಳು",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "ನನ್ನ ಆಯ್ಕೆಯನ್ನು ನೆನಪಿಡಿ",
     "playHdr10Fallback": "HDR10 ಫಾಲ್ಬ್ಯಾಕ್ ಅನ್ನು ಪ್ಲೇ ಮಾಡಿ",
     "requestTranscode": "ಟ್ರಾನ್ಸ್‌ಕೋಡ್ ಅನ್ನು ವಿನಂತಿಸಿ",
-    "homeScreenSectionsIntegrationDescription": "IAmParadox27 ನ \"ಹೋಮ್ ಸ್ಕ್ರೀನ್ ಸೆಕ್ಷನ್ಸ್\" ಪ್ಲಗಿನ್ ಮೂಲಕ ತೆರೆದಿರುವ ಸಾಲುಗಳನ್ನು ಪತ್ತೆ ಮಾಡಿ. ಸಾಲುಗಳನ್ನು ಸಕ್ರಿಯಗೊಳಿಸಬಹುದು ಮತ್ತು ಕೆಳಗೆ ಮರುಕ್ರಮಗೊಳಿಸಬಹುದು.",
-    "homeScreenSectionsIntegrationNoServers": "ಯಾವುದೇ Jellyfin ಸರ್ವರ್‌ಗಳು ಇನ್ನೂ ಪ್ಲಗಿನ್ ಅನ್ನು ವರದಿ ಮಾಡುತ್ತಿಲ್ಲ.",
-    "integrationOpenHomeSections": "ಹೋಮ್ ವಿಭಾಗಗಳನ್ನು ತೆರೆಯಿರಿ",
-    "integrationOpenHomeSectionsSubtitle": "ಸಾಲುಗಳನ್ನು ಸಕ್ರಿಯಗೊಳಿಸಿ, ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಿ ಮತ್ತು ಮರುಕ್ರಮಗೊಳಿಸಿ",
-    "integrationInstalledButDisabled": "ಸ್ಥಾಪಿಸಲಾಗಿದೆ ಆದರೆ ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಲಾಗಿದೆ",
-    "integrationNotInstalled": "ಸ್ಥಾಪಿಸಲಾಗಿಲ್ಲ",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "ಎಲ್ಲವನ್ನೂ ನೋಡಿ",
     "noItems": "ಯಾವುದೇ ಐಟಂಗಳಿಲ್ಲ",
     "switchUser": "ಬಳಕೆದಾರರನ್ನು ಬದಲಿಸಿ",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "AAC Stereo",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Passthrough (Advanced)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Delete saved theme",
     "savedThemesManageSubtitle": "Manage downloaded plugin themes on this device",
-    "homeScreenSectionsTitle": "Home Screen Sections",
     "themeEditor": "Theme Editor",
     "themeEditorSubtitle": "Open the Moonfin Theme Editor in your browser",
     "homeScreen": "Home Screen",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "Automatically enable HDR for HDR video playback and restore display mode on exit.",
     "whenFullscreen": "When fullscreen",
     "transcodingLimits": "Transcoding Limits",
-    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer"
+    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer",
+    "reportDownloadsActivity": "ಸರ್ವರ್‌ನಲ್ಲಿ ಡೌನ್‌ಲೋಡ್‌ಗಳನ್ನು ತೋರಿಸಿ",
+    "reportDownloadsActivitySubtitle": "ಡ್ಯಾಶ್‌ಬೋರ್ಡ್‌ನಲ್ಲಿ ನಿಮ್ಮ ಟ್ರಾನ್ಸ್‌ಕೋಡ್ ಮಾಡಿದ ಡೌನ್‌ಲೋಡ್‌ಗಳನ್ನು ಸರ್ವರ್ ನಿರ್ವಾಹಕರು ನೋಡಲು ಅನುಮತಿಸಿ",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "ಚಿತ್ರ ಕ್ಯಾಶ್ ಮಿತಿ",
+    "clearImageCache": "ಚಿತ್ರ ಕ್ಯಾಶ್ ತೆರವುಗೊಳಿಸಿ",
+    "imageCacheCleared": "ಚಿತ್ರ ಕ್ಯಾಶ್ ತೆರವುಗೊಳಿಸಲಾಗಿದೆ"
 }

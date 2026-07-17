@@ -9,30 +9,30 @@ class AppLocalizationsLt extends AppLocalizations {
   AppLocalizationsLt([String locale = 'lt']) : super(locale);
 
   @override
-  String get appTitle => 'Mėnulio pelekas';
+  String get appTitle => 'Moonfin';
 
   @override
-  String get accountPreferences => 'ACCOUNT PREFERENCES';
+  String get accountPreferences => 'PASKYROS NUOSTATOS';
 
   @override
-  String get interfaceLanguage => 'Interface Language';
+  String get interfaceLanguage => 'Sąsajos kalba';
 
   @override
-  String get systemLanguageDefault => 'System Default';
+  String get systemLanguageDefault => 'Sistemos numatytoji';
 
   @override
   String get signIn => 'Prisijunkite';
 
   @override
-  String get empty => 'Empty';
+  String get empty => 'Tuščia';
 
   @override
   String connectingToServer(String serverName) {
-    return 'Connecting to $serverName';
+    return 'Jungiamasi prie $serverName';
   }
 
   @override
-  String get quickConnect => 'Greitas prisijungimas';
+  String get quickConnect => 'Quick Connect';
 
   @override
   String get password => 'Slaptažodis';
@@ -61,12 +61,12 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String quickConnectUnavailable(String detail) {
-    return 'QuickConnect unavailable: $detail';
+    return 'QuickConnect nepasiekiamas: $detail';
   }
 
   @override
   String quickConnectUnavailableWithStatus(String status, String detail) {
-    return 'QuickConnect unavailable ($status): $detail';
+    return 'QuickConnect nepasiekiamas ($status): $detail';
   }
 
   @override
@@ -80,7 +80,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String appVersionFooter(String version) {
-    return 'Moonfin version $version';
+    return 'Moonfin versija $version';
   }
 
   @override
@@ -106,7 +106,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String removeServerConfirmation(String serverName) {
-    return 'Remove \"$serverName\" from your servers?';
+    return 'Pašalinti „$serverName“ iš jūsų serverių?';
   }
 
   @override
@@ -141,18 +141,105 @@ class AppLocalizationsLt extends AppLocalizations {
   String get settingsAppearanceTheme => 'Programos tema';
 
   @override
+  String get detailScreenStyle => 'Detalių ekrano stilius';
+
+  @override
+  String get detailScreenStyleSubtitle =>
+      'Klasikinis – originalus centruotas Moonfin išdėstymas. Modernus – prisitaikantis kinematografinis išdėstymas.';
+
+  @override
+  String get detailScreenStyleMoonfin => 'Klasikinis';
+
+  @override
+  String get detailScreenStyleModern => 'Modernus';
+
+  @override
+  String get expandedTabs => 'Išskleisti skirtukai';
+
+  @override
+  String get expandedTabsSubtitle =>
+      'Automatiškai rodyti skirtuko turinį naršant skirtukus. Išjunkite, kad kiekvieną skirtuką atidarytumėte ir uždarytumėte rankiniu būdu.';
+
+  @override
+  String get showTechnicalDetails => 'Rodyti techninę informaciją?';
+
+  @override
+  String get showTechnicalDetailsSubtitle =>
+      'Rodyti kodeko, raiškos ir srauto informaciją antraštės santraukoje';
+
+  @override
+  String get recommendationSystem => 'Rekomendacijų sistema';
+
+  @override
+  String get recommendationSystemSubtitle =>
+      'Naudokite Moonfin Recommends vietinės bibliotekos algoritmą arba internetinius TMDB panašumo rodiklius. Pastaba: internetinėms rekomendacijoms reikia Seerr integracijos.';
+
+  @override
+  String get recommendationSystemMoonfin => 'Moonfin Recommends';
+
+  @override
+  String get recommendationSystemTmdb => 'TMDb panašumas';
+
+  @override
+  String get recommendationsApplyParentalRatingCap =>
+      'Taikyti amžiaus cenzo ribą?';
+
+  @override
+  String get recommendationsApplyParentalRatingCapSubtitle =>
+      'Riboti Moonfin Recommends pasiūlymus pagal pasirinktos medijos amžiaus cenzą';
+
+  @override
+  String get interfaceStyle => 'Sąsajos stilius';
+
+  @override
+  String get interfaceStyleSubtitle =>
+      'Automatinis prisitaiko prie jūsų įrenginio. Pasirinkite Apple arba Material, kad nustatytumėte konkrečią išvaizdą.';
+
+  @override
+  String get interfaceStyleAutomatic => 'Automatinis';
+
+  @override
+  String get interfaceStyleApple => 'Apple';
+
+  @override
+  String get interfaceStyleMaterial => 'Material';
+
+  @override
+  String get glassQuality => 'Stiklo kokybė';
+
+  @override
+  String get glassQualitySubtitle =>
+      'Automatinis parenka geriausią stiklo efektą šiam įrenginiui. Visas įjungia tikrą suliejimą; Sumažintas naudoja lengvą stiklą, taupantį GPU energiją.';
+
+  @override
+  String get glassQualityAuto => 'Automatinis';
+
+  @override
+  String get glassQualityFull => 'Visas';
+
+  @override
+  String get glassQualityReduced => 'Sumažintas';
+
+  @override
   String get settingsAppearanceThemeSubtitle =>
       'Perjunkite „Moonfin“ ir „Neon Pulse“ iš naujo nepaleidę programos';
 
   @override
-  String get keyboardPreferSystemIme => 'Prefer system keyboard';
+  String get customThemeTitle => 'Pasirinktinė tema';
+
+  @override
+  String get customThemeSubtitle =>
+      'Pasirinktinės temos keičia vaizdo elementus visoje Moonfin programoje. Pasirinkite vieną iš šių parinkčių pagal savo stilių.';
+
+  @override
+  String get keyboardPreferSystemIme => 'Pirmenybė sistemos klaviatūrai';
 
   @override
   String get keyboardPreferSystemImeDescription =>
-      'Use your device input method by default for text entry';
+      'Tekstui įvesti pagal numatytuosius nustatymus naudoti įrenginio įvesties metodą';
 
   @override
-  String get themeMoonfin => 'Mėnulio pelekas';
+  String get themeMoonfin => 'Moonfin';
 
   @override
   String get themeMoonfinSubtitle =>
@@ -166,11 +253,18 @@ class AppLocalizationsLt extends AppLocalizations {
       'Synthwave stilius su purpuriniu švytėjimu, žalsvai mėlynu tekstu ir stipresniu chromo kontrastu';
 
   @override
-  String get themeGlass => 'Glass';
+  String get themeGlass => 'Stiklas';
 
   @override
   String get themeGlassSubtitle =>
-      'Liquid-glass styling with a drifting gradient backdrop, frosted surfaces, and Apple-blue accent';
+      'Skysto stiklo stilius su slenkančiu gradiento fonu, matiniais paviršiais ir Apple mėlynu akcentu';
+
+  @override
+  String get theme8BitHero => '8 bitų herojus';
+
+  @override
+  String get theme8BitHeroSubtitle =>
+      'Retro pikselių meno stilius su stambia palete, blokiniais rėmeliais, ryškiais šešėliais ir pikselių šriftu';
 
   @override
   String get embyConnectSignInSubtitle =>
@@ -220,7 +314,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String unableToConnectTo(String target) {
-    return 'Unable to connect to $target';
+    return 'Nepavyko prisijungti prie $target';
   }
 
   @override
@@ -231,6 +325,37 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String get exit => 'Išeiti';
+
+  @override
+  String get gameMenu => 'Meniu';
+
+  @override
+  String get gamePaused => 'Pristabdyta';
+
+  @override
+  String get gameSaveState => 'Įrašyti būseną';
+
+  @override
+  String get games => 'Žaidimai';
+
+  @override
+  String get gameLoadState => 'Įkelti būseną';
+
+  @override
+  String get gameFastForward => 'Pagreitinti';
+
+  @override
+  String get gameEmulatorSettings => 'Emuliatoriaus nustatymai';
+
+  @override
+  String get gameNoCoreOptions => 'Šis branduolys neturi keičiamų parinkčių.';
+
+  @override
+  String get gameHoldToOpenMenu => 'Palaikykite, kad atidarytumėte meniu';
+
+  @override
+  String get gamePlaybackUnsupported =>
+      'Žaidimai šiame įrenginyje kol kas nepalaikomi.';
 
   @override
   String get noHomeRowsLoaded => 'Nepavyko įkelti jokių pradinių eilučių';
@@ -252,7 +377,7 @@ class AppLocalizationsLt extends AppLocalizations {
   String get schedule => 'Tvarkaraštis';
 
   @override
-  String get series => 'Serija';
+  String get series => 'Serialai';
 
   @override
   String get noItemsFound => 'Elementų nerasta';
@@ -288,7 +413,7 @@ class AppLocalizationsLt extends AppLocalizations {
   String get noLibrariesFound => 'Bibliotekų nerasta';
 
   @override
-  String get library => 'biblioteka';
+  String get library => 'Biblioteka';
 
   @override
   String get displaySettings => 'Ekrano nustatymai';
@@ -301,7 +426,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String failedToLoadFolderError(String error) {
-    return 'Failed to load folder: $error';
+    return 'Nepavyko įkelti aplanko: $error';
   }
 
   @override
@@ -309,7 +434,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String itemCountLabel(int count) {
-    return '$count items';
+    return 'Elementų: $count';
   }
 
   @override
@@ -326,7 +451,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String totalCountItems(int count) {
-    return '$count Items';
+    return 'Elementų: $count';
   }
 
   @override
@@ -367,7 +492,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String libraryGenresTitle(String name) {
-    return '$name — Genres';
+    return '$name — žanrai';
   }
 
   @override
@@ -380,7 +505,7 @@ class AppLocalizationsLt extends AppLocalizations {
   String get albumArtists => 'Albumo menininkai';
 
   @override
-  String get artists => 'Menininkai';
+  String get artists => 'Atlikėjai';
 
   @override
   String get bookmarks => 'Žymės';
@@ -405,17 +530,17 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String minutesAgo(int count) {
-    return '${count}m ago';
+    return 'prieš $count min.';
   }
 
   @override
   String hoursAgo(int count) {
-    return '${count}h ago';
+    return 'prieš $count val.';
   }
 
   @override
   String daysAgo(int count) {
-    return '${count}d ago';
+    return 'prieš $count d.';
   }
 
   @override
@@ -450,7 +575,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String titlesCount(int count) {
-    return '$count titles';
+    return 'Pavadinimų: $count';
   }
 
   @override
@@ -537,17 +662,17 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String authorsCount(int count) {
-    return '$count authors';
+    return 'Autorių: $count';
   }
 
   @override
   String genresCount(int count) {
-    return '$count genres';
+    return 'Žanrų: $count';
   }
 
   @override
   String percentCompleted(int percent) {
-    return '$percent% completed';
+    return 'Užbaigta $percent%';
   }
 
   @override
@@ -564,7 +689,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String titlesArrangedForBrowsing(int count) {
-    return '$count titles arranged for reading-first browsing.';
+    return 'Pavadinimų: $count. Išdėstyta patogiam skaitymui.';
   }
 
   @override
@@ -601,7 +726,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String noLabelFound(String label) {
-    return 'No $label found';
+    return '$label nerasta';
   }
 
   @override
@@ -620,13 +745,13 @@ class AppLocalizationsLt extends AppLocalizations {
   String get readStatus => 'Skaityti';
 
   @override
-  String get watched => 'Žiūrėjo';
+  String get watched => 'Žiūrėta';
 
   @override
   String get unread => 'Neskaityta';
 
   @override
-  String get unwatched => 'Nežiūrėtas';
+  String get unwatched => 'Nežiūrėta';
 
   @override
   String get seriesStatus => 'Serijos būsena';
@@ -636,6 +761,47 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String get books => 'Knygos';
+
+  @override
+  String get latestBooks => 'Naujausios knygos';
+
+  @override
+  String get latestAudiobooks => 'Naujausios garso knygos';
+
+  @override
+  String bookSeriesItemCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count knygų',
+      many: '$count knygos',
+      few: '$count knygos',
+      one: '$count knyga',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get bookFormatBook => 'Knyga';
+
+  @override
+  String get bookFormatAudiobook => 'Garso knyga';
+
+  @override
+  String bookPercentRead(int percent) {
+    return 'Perskaityta $percent%';
+  }
+
+  @override
+  String bookTimeLeft(String time) {
+    return 'Liko $time';
+  }
+
+  @override
+  String get bookHeroRead => 'Skaityti';
+
+  @override
+  String get bookHeroListen => 'Klausyti';
 
   @override
   String get author => 'Autorius';
@@ -673,12 +839,12 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String sectionCountLabel(int count) {
-    return '$count sections';
+    return 'Skyrių: $count';
   }
 
   @override
   String firstPublished(int year) {
-    return 'First published $year';
+    return 'Pirmą kartą išleista $year';
   }
 
   @override
@@ -693,7 +859,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String booksCount(int count) {
-    return '$count books';
+    return 'Knygų: $count';
   }
 
   @override
@@ -704,7 +870,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String authorsCountTitle(int count) {
-    return '$count Authors';
+    return 'Autorių: $count';
   }
 
   @override
@@ -712,8 +878,10 @@ class AppLocalizationsLt extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count audiobooks',
-      one: '1 audiobook',
+      other: '$count garso knygų',
+      many: '$count garso knygos',
+      few: '$count garso knygos',
+      one: '$count garso knyga',
     );
     return '$_temp0';
   }
@@ -723,10 +891,6 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String get itemListPlaceholder => 'Čia pasirodys prekių sąrašas';
-
-  @override
-  String get favoriteTracksPlaceholder =>
-      'Mėgstamiausi takeliai bus rodomi čia';
 
   @override
   String get failedToLoad => 'Nepavyko įkelti';
@@ -753,7 +917,7 @@ class AppLocalizationsLt extends AppLocalizations {
   String get nextUp => 'Kitas';
 
   @override
-  String get seasons => 'Metų laikai';
+  String get seasons => 'Sezonai';
 
   @override
   String get chapters => 'Skyriai';
@@ -765,7 +929,7 @@ class AppLocalizationsLt extends AppLocalizations {
   String get movies => 'Filmai';
 
   @override
-  String get musicVideos => 'Music Videos';
+  String get musicVideos => 'Muzikiniai vaizdo klipai';
 
   @override
   String get other => 'Kita';
@@ -780,11 +944,11 @@ class AppLocalizationsLt extends AppLocalizations {
   String get tableOfContents => 'Turinys';
 
   @override
-  String get tracklist => 'Tracklist';
+  String get tracklist => 'Takelių sąrašas';
 
   @override
   String discNumber(int number) {
-    return 'Disc $number';
+    return '$number diskas';
   }
 
   @override
@@ -808,7 +972,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String published(int year) {
-    return 'Published $year';
+    return 'Išleista $year';
   }
 
   @override
@@ -819,20 +983,54 @@ class AppLocalizationsLt extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count Seasons',
-      one: '1 Season',
+      other: '$count sezonų',
+      many: '$count sezono',
+      few: '$count sezonai',
+      one: '$count sezonas',
     );
     return '$_temp0';
   }
 
   @override
   String endsAt(String time) {
-    return 'Ends at $time';
+    return 'Baigsis $time';
+  }
+
+  @override
+  String get items => 'Elementai';
+
+  @override
+  String get extras => 'Priedai';
+
+  @override
+  String get behindTheScenes => 'Užkulisiai';
+
+  @override
+  String get deletedScenes => 'Iškirptos scenos';
+
+  @override
+  String get featurettes => 'Apžvalginiai filmukai';
+
+  @override
+  String get interviews => 'Interviu';
+
+  @override
+  String get scenes => 'Scenos';
+
+  @override
+  String get shorts => 'Trumpametražiai filmai';
+
+  @override
+  String get trailers => 'Anonsai';
+
+  @override
+  String timeRemaining(String time) {
+    return 'Liko $time';
   }
 
   @override
   String endsIn(String time) {
-    return 'Ends in $time';
+    return 'Baigsis po $time';
   }
 
   @override
@@ -846,11 +1044,11 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String resumeFrom(String position) {
-    return 'Resume from $position';
+    return 'Tęsti nuo $position';
   }
 
   @override
-  String get play => 'Žaisti';
+  String get play => 'Leisti';
 
   @override
   String get startOver => 'Pradėti iš naujo';
@@ -874,10 +1072,10 @@ class AppLocalizationsLt extends AppLocalizations {
   String get version => 'Versija';
 
   @override
-  String get cast => 'Aktoriai';
+  String get cast => 'Transliuoti';
 
   @override
-  String get trailer => 'Priekaba';
+  String get trailer => 'Anonsas';
 
   @override
   String get finished => 'Baigta';
@@ -944,7 +1142,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String deleteDownloadedTracksMessage(String title) {
-    return 'Delete downloaded tracks for \"$title\"?';
+    return 'Ištrinti atsisiųstus „$title“ takelius?';
   }
 
   @override
@@ -959,17 +1157,17 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String noItemsLoaded(String itemLabel) {
-    return 'No $itemLabel loaded';
+    return '$itemLabel neįkelta';
   }
 
   @override
   String downloadingTitle(String title, int count) {
-    return 'Downloading $title ($count items)...';
+    return 'Atsisiunčiama $title ($count elem.)...';
   }
 
   @override
   String deleteConfirmMessage(String name) {
-    return 'Are you sure you want to delete \"$name\" from the server? This action cannot be undone.';
+    return 'Ar tikrai norite ištrinti „$name“ iš serverio? Šio veiksmo anuliuoti nepavyks.';
   }
 
   @override
@@ -980,7 +1178,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String unsupportedBookFormat(String extension) {
-    return 'Unsupported book format: .$extension';
+    return 'Nepalaikomas knygos formatas: .$extension';
   }
 
   @override
@@ -1007,7 +1205,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String subtitleDownloadedSelected(String name) {
-    return 'Subtitle downloaded and selected: $name';
+    return 'Subtitrai atsisiųsti ir pasirinkti: $name';
   }
 
   @override
@@ -1016,7 +1214,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String noRemoteSubtitlesFound(String language) {
-    return 'No remote subtitles found for $language.';
+    return 'Nuotolinių subtitrų ($language) nerasta.';
   }
 
   @override
@@ -1024,7 +1222,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String versionNumber(int number) {
-    return 'Version $number';
+    return '$number versija';
   }
 
   @override
@@ -1044,7 +1242,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String downloadingItem(String name, String quality) {
-    return 'Downloading $name ($quality)...';
+    return 'Atsisiunčiama $name ($quality)...';
   }
 
   @override
@@ -1052,7 +1250,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String deleteLocalFilesMessage(String typeLabel) {
-    return 'Delete local files for $typeLabel?\n\nThis will free up storage space. You can re-download later.';
+    return 'Ištrinti vietinius failus: $typeLabel?\n\nTaip atlaisvinsite vietos saugykloje. Vėliau galėsite atsisiųsti iš naujo.';
   }
 
   @override
@@ -1068,25 +1266,25 @@ class AppLocalizationsLt extends AppLocalizations {
   String get director => 'DIREKTORIAUS';
 
   @override
-  String get directors => 'DIRECTORS';
+  String get directors => 'REŽISIERIAI';
 
   @override
-  String get writer => 'WRITER';
+  String get writer => 'SCENARISTAS';
 
   @override
-  String get writers => 'RAŠYTOJAI';
+  String get writers => 'SCENARISTAI';
 
   @override
   String get studio => 'STUDIJA';
 
   @override
   String studioMoreCount(int count) {
-    return '+$count more';
+    return '+$count daugiau';
   }
 
   @override
   String totalEpisodes(int count) {
-    return '$count Episodes';
+    return 'Serijų: $count';
   }
 
   @override
@@ -1096,12 +1294,12 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String episodeLabel(int number) {
-    return 'Episode $number';
+    return '$number serija';
   }
 
   @override
   String chapterNumber(int number) {
-    return 'Chapter $number';
+    return '$number skyrius';
   }
 
   @override
@@ -1109,8 +1307,10 @@ class AppLocalizationsLt extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count tracks',
-      one: '1 track',
+      other: '$count takelių',
+      many: '$count takelio',
+      few: '$count takeliai',
+      one: '$count takelis',
     );
     return '$_temp0';
   }
@@ -1120,25 +1320,27 @@ class AppLocalizationsLt extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count chapters',
-      one: '1 chapter',
+      other: '$count skyrių',
+      many: '$count skyriaus',
+      few: '$count skyriai',
+      one: '$count skyrius',
     );
     return '$_temp0';
   }
 
   @override
   String born(String date) {
-    return 'Born $date';
+    return 'Gimė $date';
   }
 
   @override
   String died(String date) {
-    return 'Died $date';
+    return 'Mirė $date';
   }
 
   @override
   String age(int age) {
-    return 'Age $age';
+    return 'Amžius: $age';
   }
 
   @override
@@ -1151,8 +1353,17 @@ class AppLocalizationsLt extends AppLocalizations {
   String get shuffle => 'Maišyti';
 
   @override
+  String get shuffleAllMusic => 'Maišyti visą muziką';
+
+  @override
+  String get carSignInPrompt => 'Prisijunkite prie Moonfin telefone';
+
+  @override
+  String get carServerUnreachable => 'Nepavyksta pasiekti serverio';
+
+  @override
   String downloadsCount(int count) {
-    return '$count downloads';
+    return 'Atsisiuntimų: $count';
   }
 
   @override
@@ -1160,7 +1371,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String channelsCount(int count) {
-    return '${count}ch';
+    return '$count kan.';
   }
 
   @override
@@ -1171,32 +1382,32 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String remoteSubtitlePermissionError(String action) {
-    return 'Remote subtitle $action requires the Jellyfin subtitle management permission for this user.';
+    return 'Nuotolinių subtitrų veiksmui „$action“ šiam naudotojui reikia Jellyfin subtitrų valdymo teisės.';
   }
 
   @override
   String remoteSubtitleNotFoundError(String action) {
-    return 'This item could not be found on the server for remote subtitle $action.';
+    return 'Šio elemento serveryje rasti nepavyko, todėl nuotolinių subtitrų veiksmas „$action“ neįmanomas.';
   }
 
   @override
   String remoteSubtitleDetailError(String action, String detail) {
-    return 'Remote subtitle $action failed: $detail';
+    return 'Nuotolinių subtitrų veiksmas „$action“ nepavyko: $detail';
   }
 
   @override
   String remoteSubtitleHttpError(String action, int status) {
-    return 'Remote subtitle $action failed (HTTP $status).';
+    return 'Nuotolinių subtitrų veiksmas „$action“ nepavyko (HTTP $status).';
   }
 
   @override
   String remoteSubtitleGenericError(String action) {
-    return 'Failed to $action remote subtitles.';
+    return 'Nepavyko atlikti nuotolinių subtitrų veiksmo „$action“.';
   }
 
   @override
   String deleteSeriesFiles(String name) {
-    return 'all downloaded episodes for \"$name\"';
+    return 'visos atsisiųstos „$name“ serijos';
   }
 
   @override
@@ -1225,17 +1436,17 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String castActionFailed(String label, String error) {
-    return '$label action failed: $error';
+    return '$label veiksmas nepavyko: $error';
   }
 
   @override
   String failedToSetCastVolume(String error) {
-    return 'Failed to set cast volume: $error';
+    return 'Nepavyko nustatyti transliavimo garsumo: $error';
   }
 
   @override
   String castControlsTitle(String label) {
-    return '$label Controls';
+    return '$label valdikliai';
   }
 
   @override
@@ -1252,7 +1463,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String stopCast(String label) {
-    return 'Stop $label';
+    return 'Sustabdyti $label';
   }
 
   @override
@@ -1260,7 +1471,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String trackNumber(int number) {
-    return 'Track $number';
+    return '$number takelis';
   }
 
   @override
@@ -1277,7 +1488,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String secondsCount(int seconds) {
-    return '$seconds seconds';
+    return '$seconds sek.';
   }
 
   @override
@@ -1292,7 +1503,7 @@ class AppLocalizationsLt extends AppLocalizations {
   }
 
   @override
-  String get auto => 'Auto';
+  String get auto => 'Automatinis';
 
   @override
   String bitrateValueMbps(int mbps) {
@@ -1307,19 +1518,19 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String delayMinusMs(int value) {
-    return '-${value}ms';
+    return '-$value ms';
   }
 
   @override
   String delayPlusMs(int value) {
-    return '+${value}ms';
+    return '+$value ms';
   }
 
   @override
   String get subtitleDelay => 'Subtitrų vėlavimas';
 
   @override
-  String get reset => 'Nustatyti iš naujo';
+  String get reset => 'Atstatyti';
 
   @override
   String get unknown => 'Nežinoma';
@@ -1346,13 +1557,13 @@ class AppLocalizationsLt extends AppLocalizations {
   String get transcodeReasons => 'Perkodavimo priežastys';
 
   @override
-  String get player => 'Žaidėjas';
+  String get player => 'Grotuvas';
 
   @override
   String get container => 'Konteineris';
 
   @override
-  String get bitrate => 'Bitrate';
+  String get bitrate => 'Bitų sparta';
 
   @override
   String get video => 'Vaizdo įrašas';
@@ -1370,7 +1581,7 @@ class AppLocalizationsLt extends AppLocalizations {
   String get videoBitrate => 'Vaizdo įrašo pralaidumas';
 
   @override
-  String get track => 'Trasa';
+  String get track => 'Takelis';
 
   @override
   String get channels => 'Kanalai';
@@ -1392,12 +1603,12 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String castSessionError(String protocol) {
-    return '$protocol session error';
+    return '$protocol seanso klaida';
   }
 
   @override
   String failedToLoadBookDetails(String error) {
-    return 'Failed to load book details: $error';
+    return 'Nepavyko įkelti knygos informacijos: $error';
   }
 
   @override
@@ -1406,7 +1617,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String formatCannotRenderInApp(String extension) {
-    return 'This format (.$extension) cannot be rendered in-app yet.';
+    return 'Šis formatas (.$extension) programoje kol kas nerodomas.';
   }
 
   @override
@@ -1419,17 +1630,17 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String failedToOpenInAppReader(String error) {
-    return 'Failed to open in-app reader: $error';
+    return 'Nepavyko atidaryti programos skaityklės: $error';
   }
 
   @override
   String bookmarkAlreadySaved(String label) {
-    return 'Bookmark already saved at $label.';
+    return 'Žymė ties $label jau išsaugota.';
   }
 
   @override
   String bookmarkAdded(String label) {
-    return 'Bookmark added: $label';
+    return 'Žymė pridėta: $label';
   }
 
   @override
@@ -1441,7 +1652,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String pageLabel(int number) {
-    return 'Page $number';
+    return '$number psl.';
   }
 
   @override
@@ -1452,12 +1663,12 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String formatExtension(String extension) {
-    return 'Format: .$extension';
+    return 'Formatas: .$extension';
   }
 
   @override
   String percentRead(String percent) {
-    return '$percent% read';
+    return 'Perskaityta $percent%';
   }
 
   @override
@@ -1480,7 +1691,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String resetZoom(String zoom) {
-    return 'Reset Zoom (${zoom}x)';
+    return 'Atstatyti mastelį (${zoom}x)';
   }
 
   @override
@@ -1503,7 +1714,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String failedToUpdateReadState(String error) {
-    return 'Failed to update read state: $error';
+    return 'Nepavyko atnaujinti skaitymo būsenos: $error';
   }
 
   @override
@@ -1537,7 +1748,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String platformCannotHostDocumentEngine(String extension) {
-    return 'This platform cannot host the embedded document engine for $extension files.';
+    return 'Ši platforma negali paleisti integruoto $extension failų dokumentų variklio.';
   }
 
   @override
@@ -1576,7 +1787,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String failedToLoadGuide(String error) {
-    return 'Failed to load guide: $error';
+    return 'Nepavyko įkelti programų gido: $error';
   }
 
   @override
@@ -1584,6 +1795,26 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String get liveBadge => 'GYVAI';
+
+  @override
+  String guideNextProgram(String time, String title) {
+    return 'Toliau: $time  $title';
+  }
+
+  @override
+  String guideMinutesLeft(int minutes) {
+    return 'Liko $minutes min.';
+  }
+
+  @override
+  String guideHoursLeft(int hours) {
+    return 'Liko $hours val.';
+  }
+
+  @override
+  String guideHoursMinutesLeft(int hours, int minutes) {
+    return 'Liko $hours val. $minutes min.';
+  }
 
   @override
   String get movie => 'Filmas';
@@ -1605,19 +1836,19 @@ class AppLocalizationsLt extends AppLocalizations {
   String get favoriteChannel => 'Mėgstamiausias kanalas';
 
   @override
-  String get record => 'Record';
+  String get record => 'Įrašyti';
 
   @override
-  String get cancelRecordingAction => 'Cancel Recording';
+  String get cancelRecordingAction => 'Atšaukti įrašymą';
 
   @override
-  String get programSetToRecord => 'Program set to record';
+  String get programSetToRecord => 'Laida suplanuota įrašyti';
 
   @override
-  String get recordingCancelled => 'Recording cancelled';
+  String get recordingCancelled => 'Įrašymas atšauktas';
 
   @override
-  String get unableToCreateRecording => 'Unable to create recording';
+  String get unableToCreateRecording => 'Nepavyko sukurti įrašo';
 
   @override
   String get watch => 'Žiūrėti';
@@ -1627,7 +1858,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String failedToPlayChannel(String name) {
-    return 'Failed to play $name';
+    return 'Nepavyko paleisti $name';
   }
 
   @override
@@ -1653,11 +1884,11 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String cancelScheduledRecordingOf(String name) {
-    return 'Cancel scheduled recording of \"$name\"?';
+    return 'Atšaukti suplanuotą „$name“ įrašymą?';
   }
 
   @override
-  String get no => 'Nr';
+  String get no => 'Ne';
 
   @override
   String get yesCancel => 'Taip, atšaukti';
@@ -1679,7 +1910,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String stopRecordingName(String name) {
-    return 'Stop recording \"$name\"?';
+    return 'Nutraukti „$name“ įrašymą?';
   }
 
   @override
@@ -1694,19 +1925,19 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String noResultsForQuery(String query) {
-    return 'No results for \"$query\"';
+    return 'Nieko nerasta pagal „$query“';
   }
 
   @override
   String searchFailedError(String error) {
-    return 'Search failed: $error';
+    return 'Paieška nepavyko: $error';
   }
 
   @override
   String get seerr => 'Seerr';
 
   @override
-  String get seerrAccountType => 'Serr paskyros tipas';
+  String get seerrAccountType => 'Seerr paskyros tipas';
 
   @override
   String get jellyfinAccount => 'Jellyfin';
@@ -1740,12 +1971,12 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String removeItemAndFiles(String name) {
-    return 'Remove \"$name\" and its files?';
+    return 'Pašalinti „$name“ ir susijusius failus?';
   }
 
   @override
   String tracksCount(int count) {
-    return '$count tracks';
+    return 'Takelių: $count';
   }
 
   @override
@@ -1756,12 +1987,12 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String failedToLoadAlbum(String error) {
-    return 'Failed to load album: $error';
+    return 'Nepavyko įkelti albumo: $error';
   }
 
   @override
   String noDownloadedTracksForAlbum(String name) {
-    return 'No downloaded tracks found for $name.';
+    return 'Atsisiųstų „$name“ takelių nerasta.';
   }
 
   @override
@@ -1778,7 +2009,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String removeName(String name) {
-    return 'Remove \"$name\"?';
+    return 'Pašalinti „$name“?';
   }
 
   @override
@@ -1793,7 +2024,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String episodeNumber(int number) {
-    return 'Episode $number';
+    return '$number serija';
   }
 
   @override
@@ -1807,12 +2038,12 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String seasonNumber(int number) {
-    return 'Season $number';
+    return '$number sezonas';
   }
 
   @override
   String seasonChip(int number) {
-    return 'S$number';
+    return '$number sez.';
   }
 
   @override
@@ -1823,7 +2054,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String deleteAllEpisodesInSeason(String season) {
-    return 'Delete all downloaded episodes in $season?';
+    return 'Ištrinti visas atsisiųstas $season serijas?';
   }
 
   @override
@@ -1831,8 +2062,10 @@ class AppLocalizationsLt extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count episodes',
-      one: '1 episode',
+      other: '$count serijų',
+      many: '$count serijos',
+      few: '$count serijos',
+      one: '$count serija',
     );
     return '$_temp0';
   }
@@ -1867,7 +2100,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String deleteSelectedCount(int count) {
-    return 'Delete $count downloaded items?';
+    return 'Ištrinti atsisiųstus elementus ($count)?';
   }
 
   @override
@@ -1881,7 +2114,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String ofStorageLimit(String limit) {
-    return 'of $limit limit';
+    return 'iš $limit limito';
   }
 
   @override
@@ -1966,7 +2199,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String optionsCount(int count) {
-    return '$count options';
+    return 'Parinkčių: $count';
   }
 
   @override
@@ -2059,6 +2292,10 @@ class AppLocalizationsLt extends AppLocalizations {
   String get themeMusicVolume => 'Tema Muzikos tomas';
 
   @override
+  String get themeMusicSettingsSubtitle =>
+      'Išsamios informacijos puslapiai, pradžios ekrano eilutės ir garsumas';
+
+  @override
   String percentValue(int value) {
     return '$value%';
   }
@@ -2071,11 +2308,18 @@ class AppLocalizationsLt extends AppLocalizations {
       'Leisti naršant pagrindiniame ekrane';
 
   @override
+  String get loopThemeMusic => 'Kartoti temos muziką';
+
+  @override
+  String get loopThemeMusicSubtitle =>
+      'Kartoti takelį, o ne paleisti jį vieną kartą';
+
+  @override
   String get detailsBackgroundBlur => 'Išsami informacija Fono suliejimas';
 
   @override
   String pixelValue(int value) {
-    return '${value}px';
+    return '$value px';
   }
 
   @override
@@ -2091,23 +2335,23 @@ class AppLocalizationsLt extends AppLocalizations {
   String get playerZoomMode => 'Grotuvo mastelio keitimo režimas';
 
   @override
-  String get settingsScrollWheelAction => 'Mouse scroll wheel';
+  String get settingsScrollWheelAction => 'Pelės slinkties ratukas';
 
   @override
   String get settingsScrollWheelActionDescription =>
-      'Choose what scrolling the mouse wheel over the video does during playback.';
+      'Pasirinkite, ką atlieka pelės ratuko sukimas virš vaizdo įrašo atkūrimo metu.';
 
   @override
-  String get scrollWheelActionOff => 'Off';
+  String get scrollWheelActionOff => 'Išjungta';
 
   @override
-  String get scrollWheelActionSeek => 'Seek (forward / back)';
+  String get scrollWheelActionSeek => 'Peršokti (pirmyn / atgal)';
 
   @override
-  String get scrollWheelActionVolume => 'Volume';
+  String get scrollWheelActionVolume => 'Garsumas';
 
   @override
-  String get playerTooltipVolume => 'Volume';
+  String get playerTooltipVolume => 'Garsumas';
 
   @override
   String get fit => 'Tinka';
@@ -2159,6 +2403,40 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String get defaultAudioLanguage => 'Numatytoji garso kalba';
+
+  @override
+  String get fallbackAudioLanguage => 'Atsarginė garso takelio kalba';
+
+  @override
+  String get preferDefaultAudioTrack => 'Pirmenybė numatytajam garso takeliui';
+
+  @override
+  String get preferDefaultAudioTrackDescription =>
+      'Teikti pirmenybę originaliam garso takeliui, o ne lokalizuotam įgarsinimui.';
+
+  @override
+  String get preferAudioDescription =>
+      'Pirmenybė garsinio vaizdavimo takeliams';
+
+  @override
+  String get preferAudioDescriptionDescription =>
+      'Teikti pirmenybę garsinio vaizdavimo takeliams, o ne įprastiems.';
+
+  @override
+  String get transcodingAudio => 'Perkodavimas (garsas)';
+
+  @override
+  String get directStreamRemux => 'Tiesioginis srautas (Remux)';
+
+  @override
+  String get transcodingBitrateOrResolution =>
+      'Perkodavimas (bitų sparta arba raiška)';
+
+  @override
+  String get transcodingVideoAndAudio => 'Perkodavimas (vaizdas ir garsas)';
+
+  @override
+  String get transcodingVideo => 'Perkodavimas (vaizdas)';
 
   @override
   String get autoServerDefault => 'Automatinis (numatytasis serveris)';
@@ -2235,27 +2513,29 @@ class AppLocalizationsLt extends AppLocalizations {
       'Įgalinti „TrueHD“ garsą (gali veikti ne visose platformose)';
 
   @override
-  String get settingsAudioOutputMode => 'Audio Output Mode';
+  String get settingsAudioOutputMode => 'Garso išvesties režimas';
 
   @override
   String get settingsAudioOutputModeDescription =>
-      'Choose how audio is decoded. AVR Passthrough sends raw Dolby/DTS streams to your receiver; Auto or Downmix decodes locally.';
+      'Pasirinkite, kaip dekoduojamas garsas. „AVR tiesioginis perdavimas“ siunčia neapdorotus Dolby / DTS srautus į imtuvą; „Automatinis“ arba „Sumaišymas“ dekoduoja vietoje.';
 
   @override
-  String get settingsAudioOutputModeAvrPassthrough => 'AVR Passthrough';
+  String get settingsAudioOutputModeAvrPassthrough =>
+      'AVR tiesioginis perdavimas';
 
   @override
-  String get settingsAudioFallbackCodec => 'Audio Fallback Codec';
+  String get settingsAudioFallbackCodec => 'Atsarginis garso kodekas';
 
   @override
   String get settingsAudioFallbackCodecDescription =>
-      'Select the target format to transcode multi-channel audio when the source stream cannot be direct-played or passed through.';
+      'Pasirinkite formatą, į kurį bus perkoduojamas daugiakanalis garsas, kai šaltinio srauto negalima paleisti tiesiogiai ar perduoti be pakeitimų.';
 
   @override
-  String get settingsAudioFallbackCodecAuto => 'Auto Detect\n(Recommended)';
+  String get settingsAudioFallbackCodecAuto =>
+      'Aptikti automatiškai\n(rekomenduojama)';
 
   @override
-  String get settingsAudioFallbackCodecAac => 'AAC\n(Default)';
+  String get settingsAudioFallbackCodecAac => 'AAC\n(numatytasis)';
 
   @override
   String get settingsAudioFallbackCodecAc3 => 'AC3\n(Dolby Digital)';
@@ -2264,26 +2544,27 @@ class AppLocalizationsLt extends AppLocalizations {
   String get settingsAudioFallbackCodecEac3 => 'EAC3\n(Dolby Digital Plus)';
 
   @override
-  String get settingsAudioFallbackCodecTrueHd => 'TrueHD\n(Lossless)';
+  String get settingsAudioFallbackCodecTrueHd => 'TrueHD\n(be nuostolių)';
 
   @override
-  String get settingsAudioFallbackCodecMp3 => 'MP3\n(Stereo Only)';
+  String get settingsAudioFallbackCodecMp3 => 'MP3\n(tik stereo)';
 
   @override
-  String get settingsAudioFallbackCodecOpus => 'Opus\n(Efficient)';
+  String get settingsAudioFallbackCodecOpus => 'Opus\n(efektyvus)';
 
   @override
-  String get settingsAudioFallbackCodecFlac => 'FLAC\n(Lossless)';
+  String get settingsAudioFallbackCodecFlac => 'FLAC\n(be nuostolių)';
 
   @override
-  String get settingsMaxAudioChannels => 'Max Audio Channels';
+  String get settingsMaxAudioChannels => 'Daugiausia garso kanalų';
 
   @override
   String get settingsMaxAudioChannelsDescription =>
-      'Configure the maximum channels of your audio setup. Multichannel streams exceeding this limit will downmix or transcode.';
+      'Nurodykite didžiausią garso sistemos kanalų skaičių. Šią ribą viršijantys daugiakanaliai srautai bus sumaišyti arba perkoduoti.';
 
   @override
-  String get settingsMaxAudioChannelsAuto => 'Auto Detect\n(Hardware Default)';
+  String get settingsMaxAudioChannelsAuto =>
+      'Aptikti automatiškai\n(įrangos numatytasis)';
 
   @override
   String get settingsMaxAudioChannelsMono => '1.0 Mono';
@@ -2292,85 +2573,90 @@ class AppLocalizationsLt extends AppLocalizations {
   String get settingsMaxAudioChannelsStereo => '2.0 Stereo';
 
   @override
-  String get settingsMaxAudioChannels3_0 => '3.0 / 2.1 Surround';
+  String get settingsMaxAudioChannels3_0 => '3.0 / 2.1 erdvinis';
 
   @override
-  String get settingsMaxAudioChannels4_0 => '4.0 / 3.1 Quadraphonic';
+  String get settingsMaxAudioChannels4_0 => '4.0 / 3.1 kvadrofoninis';
 
   @override
-  String get settingsMaxAudioChannels5_0 => '5.0 / 4.1 Surround';
+  String get settingsMaxAudioChannels5_0 => '5.0 / 4.1 erdvinis';
 
   @override
-  String get settingsMaxAudioChannels5_1 => '5.1 Surround';
+  String get settingsMaxAudioChannels5_1 => '5.1 erdvinis';
 
   @override
-  String get settingsMaxAudioChannels6_1 => '6.1 Surround';
+  String get settingsMaxAudioChannels6_1 => '6.1 erdvinis';
 
   @override
-  String get settingsMaxAudioChannels7_1 => '7.1 Surround';
+  String get settingsMaxAudioChannels7_1 => '7.1 erdvinis';
 
   @override
-  String get settingsAudioPassthroughAdvanced => 'Passthrough (Advanced)';
+  String get settingsAudioPassthroughAdvanced =>
+      'Tiesioginis perdavimas (išplėstiniai)';
 
   @override
-  String get settingsAudioCodecPassthrough => 'Codec Passthrough';
+  String get settingsAudioCodecPassthrough => 'Kodekų tiesioginis perdavimas';
 
   @override
   String get settingsAudioCodecPassthroughDescription =>
-      'Enable only formats your AVR or HDMI sink supports.';
+      'Įjunkite tik tuos formatus, kuriuos palaiko jūsų AVR arba HDMI imtuvas.';
 
   @override
-  String get settingsAudioEac3Passthrough => 'EAC3 Passthrough';
+  String get settingsAudioEac3Passthrough => 'EAC3 tiesioginis perdavimas';
 
   @override
-  String get settingsAudioEac3JocPassthrough => 'EAC3 JOC (Atmos) Passthrough';
+  String get settingsAudioEac3JocPassthrough =>
+      'EAC3 JOC (Atmos) tiesioginis perdavimas';
 
   @override
-  String get settingsAudioDtsCorePassthrough => 'DTS Core Passthrough';
+  String get settingsAudioDtsCorePassthrough =>
+      'DTS Core tiesioginis perdavimas';
 
   @override
-  String get settingsAudioDtsHdPassthrough => 'DTS-HD MA Passthrough';
+  String get settingsAudioDtsHdPassthrough =>
+      'DTS-HD MA tiesioginis perdavimas';
 
   @override
-  String get settingsAudioTrueHdPassthrough => 'TrueHD Passthrough';
+  String get settingsAudioTrueHdPassthrough => 'TrueHD tiesioginis perdavimas';
 
   @override
-  String get settingsAudioTrueHdAtmosPassthrough => 'TrueHD Atmos Passthrough';
+  String get settingsAudioTrueHdAtmosPassthrough =>
+      'TrueHD Atmos tiesioginis perdavimas';
 
   @override
   String get settingsAudioBitstreamEac3ToExternalDecoder =>
-      'Bitstream Dolby Digital Plus (EAC3) to external decoder.';
+      'Perduoti Dolby Digital Plus (EAC3) bitų srautą į išorinį dekoderį.';
 
   @override
   String get settingsAudioBitstreamEac3JocToExternalDecoder =>
-      'Bitstream Dolby Atmos over EAC3 (JOC) to external decoder.';
+      'Perduoti Dolby Atmos per EAC3 (JOC) bitų srautą į išorinį dekoderį.';
 
   @override
   String get settingsAudioBitstreamDtsHdToExternalDecoder =>
-      'Bitstream DTS-HD MA (includes DTS core) to external decoder.';
+      'Perduoti DTS-HD MA (įskaitant DTS Core) bitų srautą į išorinį dekoderį.';
 
   @override
   String get settingsAudioBitstreamTrueHdAtmosToExternalDecoder =>
-      'Bitstream Dolby TrueHD with Atmos metadata to external decoder.';
+      'Perduoti Dolby TrueHD su Atmos metaduomenimis bitų srautą į išorinį dekoderį.';
 
   @override
-  String get settingsDetectedAudioCapabilities => 'Detected Audio Capabilities';
+  String get settingsDetectedAudioCapabilities => 'Aptiktos garso galimybės';
 
   @override
   String get settingsDetectedAudioCapabilitiesUnavailable =>
-      'No runtime capability snapshot available yet.';
+      'Vykdymo aplinkos galimybių momentinė kopija dar nepasiekiama.';
 
   @override
-  String get settingsAudioRouteLabel => 'Route';
+  String get settingsAudioRouteLabel => 'Maršrutas';
 
   @override
-  String get settingsAudioDecodeLabel => 'Decode';
+  String get settingsAudioDecodeLabel => 'Dekodavimas';
 
   @override
-  String get settingsAudioPassthroughLabel => 'Passthrough';
+  String get settingsAudioPassthroughLabel => 'Tiesioginis perdavimas';
 
   @override
-  String get settingsAudioHdRoute => 'HD audio route';
+  String get settingsAudioHdRoute => 'HD garso maršrutas';
 
   @override
   String get settingsAudioRouteHdmi => 'HDMI';
@@ -2385,47 +2671,51 @@ class AppLocalizationsLt extends AppLocalizations {
   String get settingsAudioRouteBluetooth => 'Bluetooth';
 
   @override
-  String get settingsAudioRouteSpeaker => 'Speaker';
+  String get settingsAudioRouteSpeaker => 'Garsiakalbis';
+
+  @override
+  String get settingsAudioRouteHeadphones => 'Ausinės';
 
   @override
   String settingsAudioPcmChannels(int count) {
-    return '${count}ch PCM';
+    return '$count kan. PCM';
   }
 
   @override
-  String get settingsAudioDiagnostics => 'Diagnostics';
+  String get settingsAudioDiagnostics => 'Diagnostika';
 
   @override
-  String get settingsAudioDiagnosticsVideoLevel => 'Video Level';
+  String get settingsAudioDiagnosticsVideoLevel => 'Vaizdo lygis';
 
   @override
-  String get settingsAudioDiagnosticsVideoRange => 'Video Range';
+  String get settingsAudioDiagnosticsVideoRange => 'Vaizdo diapazonas';
 
   @override
-  String get settingsAudioDiagnosticsSubtitleCodec => 'Subtitle Codec';
+  String get settingsAudioDiagnosticsSubtitleCodec => 'Subtitrų kodekas';
 
   @override
   String get settingsAudioDiagnosticsAllowedAudioCodecs =>
-      'Allowed Audio Codecs';
+      'Leidžiami garso kodekai';
 
   @override
   String get settingsAudioDiagnosticsHlsMpegTsAudioCodecs =>
-      'HLS MPEG-TS Audio Codecs';
+      'HLS MPEG-TS garso kodekai';
 
   @override
   String get settingsAudioDiagnosticsHlsFmp4AudioCodecs =>
-      'HLS fMP4 Audio Codecs';
+      'HLS fMP4 garso kodekai';
 
   @override
   String get settingsAudioDiagnosticsAudioSpdifPassthrough =>
-      'audio-spdif passthrough';
+      'audio-spdif tiesioginis perdavimas';
 
   @override
-  String get settingsAudioDiagnosticsActiveAudioRoute => 'Active Audio Route';
+  String get settingsAudioDiagnosticsActiveAudioRoute =>
+      'Aktyvus garso maršrutas';
 
   @override
   String get settingsAudioDiagnosticsRouteHdAudioSupport =>
-      'Route HD Audio Support';
+      'Maršruto HD garso palaikymas';
 
   @override
   String get nightMode => 'Naktinis režimas';
@@ -2474,7 +2764,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String secondsValue(int value) {
-    return '${value}s';
+    return '$value s';
   }
 
   @override
@@ -2488,7 +2778,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String afterEpisodesAndHours(int episodes, double hours) {
-    return 'After $episodes episodes / ${hours}h';
+    return 'Po $episodes serijų / $hours val.';
   }
 
   @override
@@ -2565,6 +2855,47 @@ class AppLocalizationsLt extends AppLocalizations {
   String get subtitleCustomizationDescription => 'Tinkinkite subtitrų išvaizdą';
 
   @override
+  String get subtitleMode => 'Subtitrų režimas';
+
+  @override
+  String get subtitleModeFlagged => 'Pažymėti';
+
+  @override
+  String get subtitleModeAlways => 'Visada';
+
+  @override
+  String get subtitleModeForeign => 'Užsienio kalba';
+
+  @override
+  String get subtitleModeForced => 'Priverstiniai';
+
+  @override
+  String get subtitleModeFlaggedDescription =>
+      'Rodo takelius, kurie medijos failo metaduomenyse pažymėti kaip „default“ arba „forced“.';
+
+  @override
+  String get subtitleModeAlwaysDescription =>
+      'Automatiškai įkelia ir rodo subtitrus kaskart, kai pradedamas vaizdo įrašas.';
+
+  @override
+  String get subtitleModeForeignDescription =>
+      'Automatiškai įjungia subtitrus, jei numatytasis garso takelis yra užsienio kalba.';
+
+  @override
+  String get subtitleModeForcedDescription =>
+      'Įkelia tik subtitrus, aiškiai pažymėtus „forced“ metaduomenų žyme.';
+
+  @override
+  String get subtitleModeNoneDescription =>
+      'Visiškai išjungia automatinį subtitrų įkėlimą.';
+
+  @override
+  String get fallbackSubtitleLanguage => 'Atsarginė subtitrų kalba';
+
+  @override
+  String get subtitleStream => 'Subtitrų srautas';
+
+  @override
   String get subtitlePreviewText =>
       'Greita rudoji lapė peršoka per tinginį šunį';
 
@@ -2622,17 +2953,17 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String loadedProfileSettings(String profile) {
-    return 'Loaded $profile profile settings.';
+    return 'Įkelti $profile profilio nustatymai.';
   }
 
   @override
   String failedToLoadProfileSettings(String profile) {
-    return 'Failed to load $profile profile settings.';
+    return 'Nepavyko įkelti $profile profilio nustatymų.';
   }
 
   @override
   String syncedSettingsToProfile(String profile) {
-    return 'Synced local settings to $profile profile.';
+    return 'Vietiniai nustatymai sinchronizuoti su $profile profiliu.';
   }
 
   @override
@@ -2669,6 +3000,13 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String get wifiOnlyDownloads => 'Atsisiuntimai tik per WiFi';
+
+  @override
+  String get reportDownloadsActivity => 'Rodyti atsisiuntimus serveryje';
+
+  @override
+  String get reportDownloadsActivitySubtitle =>
+      'Leisti serverio administratoriui matyti jūsų perkoduotus atsisiuntimus valdymo skydelyje';
 
   @override
   String get onlyDownloadOnWifi => 'Atsisiųskite tik prisijungę prie „WiFi“.';
@@ -2760,7 +3098,11 @@ class AppLocalizationsLt extends AppLocalizations {
   String get showLibrariesInToolbar => 'Rodyti bibliotekas įrankių juostoje';
 
   @override
-  String get showSeerrButton => 'Show Seerr Button';
+  String get navbarAlwaysExpanded =>
+      'Visada rodyti naršymo juostos pavadinimus';
+
+  @override
+  String get showSeerrButton => 'Rodyti Seerr mygtuką';
 
   @override
   String get navbarOpacity => 'Navigacijos juostos neskaidrumas';
@@ -2781,7 +3123,7 @@ class AppLocalizationsLt extends AppLocalizations {
   String get teal => 'žalsvai mėlyna';
 
   @override
-  String get navy => 'Navy';
+  String get navy => 'Tamsiai mėlyna';
 
   @override
   String get charcoal => 'Anglis';
@@ -2834,6 +3176,21 @@ class AppLocalizationsLt extends AppLocalizations {
   String get showFolderBrowsingOption => 'Rodyti aplanko naršymo parinktį';
 
   @override
+  String get groupItemsIntoCollections => 'Grupuoti elementus į rinkinius';
+
+  @override
+  String get hideCollectionAssociatedItems =>
+      'Naršant bibliotekas slėpti su rinkiniais susietus bibliotekos elementus';
+
+  @override
+  String get groupItemsIntoCollectionsDialogTitle =>
+      'Pranešimas apie bibliotekos grupavimą';
+
+  @override
+  String get groupItemsIntoCollectionsDialogMessage =>
+      'Kad galėtumėte naudoti šį nustatymą, savo Jellyfin arba Emby serveryje, bibliotekos rodymo nustatymuose, įjunkite bibliotekos parinktį „Grupuoti filmus į rinkinius“ ir (arba) „Grupuoti serialus į rinkinius“.';
+
+  @override
   String get libraryVisibility => 'Bibliotekos matomumas';
 
   @override
@@ -2860,7 +3217,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String itemsSelected(int count) {
-    return '$count selected';
+    return 'Pasirinkta: $count';
   }
 
   @override
@@ -2890,7 +3247,7 @@ class AppLocalizationsLt extends AppLocalizations {
       'Pasirinkite iš įvairių medijos juostos stilių arba išjunkite medijos juostą';
 
   @override
-  String get mediaBarModeMoonfin => 'Mėnulio pelekas';
+  String get mediaBarModeMoonfin => 'Moonfin';
 
   @override
   String get mediaBarModeMakd => 'MakD';
@@ -2927,13 +3284,13 @@ class AppLocalizationsLt extends AppLocalizations {
   String get noneExcluded => 'Nė vienas neįtrauktas';
 
   @override
-  String get autoAdvance => 'Auto Advance';
+  String get autoAdvance => 'Automatinis perėjimas';
 
   @override
   String get autoAdvanceSlides => 'Automatiškai pereiti prie kitos skaidrės';
 
   @override
-  String get autoAdvanceInterval => 'Auto Advance Interval';
+  String get autoAdvanceInterval => 'Automatinio perėjimo intervalas';
 
   @override
   String get trailerPreview => 'Anonso peržiūra';
@@ -2941,6 +3298,12 @@ class AppLocalizationsLt extends AppLocalizations {
   @override
   String get autoPlayTrailers =>
       'Automatiškai paleiskite anonsus medijos juostoje po 3 sekundžių';
+
+  @override
+  String get trailerAudio => 'Anonsų garsas';
+
+  @override
+  String get enableTrailerAudio => 'Įjungti anonsų garsą medijos juostoje';
 
   @override
   String get episodePreview => 'Epizodo peržiūra';
@@ -3017,10 +3380,11 @@ class AppLocalizationsLt extends AppLocalizations {
   String get combineBothRows => 'Sujunkite abi eilutes į vieną namų skyrių';
 
   @override
-  String get fullScreenRows => 'Expanded Home Rows';
+  String get fullScreenRows => 'Išplėstos pradžios ekrano eilutės';
 
   @override
-  String get fullScreenRowsDescription => 'Limit home rows to 1 row per screen';
+  String get fullScreenRowsDescription =>
+      'Rodyti tik po vieną pradžios ekrano eilutę';
 
   @override
   String get perRowImageType => 'Eilutės vaizdo tipas';
@@ -3035,7 +3399,7 @@ class AppLocalizationsLt extends AppLocalizations {
   String get lastUser => 'Paskutinis vartotojas';
 
   @override
-  String get currentUser => 'Current User';
+  String get currentUser => 'Dabartinis naudotojas';
 
   @override
   String get alwaysAuthenticate => 'Visada autentifikuoti';
@@ -3143,10 +3507,10 @@ class AppLocalizationsLt extends AppLocalizations {
       'Rodyti laikrodį ekrano užsklandos metu';
 
   @override
-  String get clockModeStatic => 'Static';
+  String get clockModeStatic => 'Statiškas';
 
   @override
-  String get clockModeBouncing => 'Bouncing';
+  String get clockModeBouncing => 'Šokinėjantis';
 
   @override
   String get rottenTomatoesCritics => 'Supuvę pomidorai (kritikai)';
@@ -3218,7 +3582,7 @@ class AppLocalizationsLt extends AppLocalizations {
       'Įgalinkite ir pertvarkykite įvertinimo šaltinius, rodomus visoje programoje';
 
   @override
-  String get pluginLabel => 'Papildinys';
+  String get pluginLabel => 'Moonbase papildinys';
 
   @override
   String get pluginDetected => 'Papildinys aptiktas';
@@ -3236,7 +3600,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String pluginStatusVersion(String status, String version) {
-    return '$status\nVersion: $version';
+    return '$status\nVersija: $version';
   }
 
   @override
@@ -3290,7 +3654,7 @@ class AppLocalizationsLt extends AppLocalizations {
   String get networks => 'Tinklai';
 
   @override
-  String get seerrDiscoveryRows => 'Seerr Discovery Rows';
+  String get seerrDiscoveryRows => 'Seerr atradimų eilutės';
 
   @override
   String get resetRowsToDefaults =>
@@ -3315,20 +3679,44 @@ class AppLocalizationsLt extends AppLocalizations {
       'Slėpti suaugusiesiems skirtą turinį rezultatuose';
 
   @override
+  String get seerrNotificationsSection => 'Pranešimai';
+
+  @override
+  String get seerrNotifyNewRequestsTitle => 'Pranešimai apie naujas užklausas';
+
+  @override
+  String get seerrNotifyNewRequestsSubtitle =>
+      'Pranešti, kai kas nors pateikia užklausą';
+
+  @override
+  String get seerrNotifyLibraryAddedTitle => 'Užklausų naujienos';
+
+  @override
+  String get seerrNotifyLibraryAddedSubtitle =>
+      'Patvirtinta, atmesta ir įtraukta į jūsų biblioteką';
+
+  @override
+  String get seerrNotifyIssuesTitle => 'Problemų naujienos';
+
+  @override
+  String get seerrNotifyIssuesSubtitle =>
+      'Naujos problemos, atsakymai ir sprendimai';
+
+  @override
   String loggedInAs(String username) {
-    return 'Logged in as: $username';
+    return 'Prisijungta kaip: $username';
   }
 
   @override
-  String get discoverRows => 'Atraskite eilutes';
+  String get discoverRows => 'Seerr atradimų puslapis';
 
   @override
   String get discoverRowsDescriptionPlugin =>
-      'Norėdami pertvarkyti, vilkite. Įjungti arba išjungti eilutes. Įjungta eilučių tvarka sinchronizuojama su „Moonfin“ papildiniu.';
+      'Įjunkite eilutes, kurias norite matyti Seerr pagrindiniame puslapyje. Vilkite, kad pertvarkytumėte. Pasirinktinė tvarka sinchronizuojama su Moonbase.';
 
   @override
   String get discoverRowsDescription =>
-      'Norėdami pertvarkyti, vilkite. Įjungti arba išjungti eilutes.';
+      'Įjunkite eilutes, kurias norite matyti Seerr pagrindiniame puslapyje. Vilkite, kad pertvarkytumėte. Pasirinktinė tvarka sinchronizuojama su Moonbase.';
 
   @override
   String get enabled => 'Įjungta';
@@ -3341,7 +3729,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String versionValue(String version) {
-    return 'Version $version';
+    return '$version versija';
   }
 
   @override
@@ -3351,8 +3739,7 @@ class AppLocalizationsLt extends AppLocalizations {
   String get sourceCode => 'Šaltinio kodas';
 
   @override
-  String get sourceCodeUrl =>
-      'https://github.com/Moonfin-Client/Mobile-Desktop';
+  String get sourceCodeUrl => 'https://github.com/Moonfin-Client/Moonfin-Core';
 
   @override
   String get checkForUpdatesNow => 'Patikrinkite, ar nėra atnaujinimų dabar';
@@ -3393,7 +3780,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String updateAvailableVersion(String version) {
-    return 'Update available: v$version';
+    return 'Galimas naujinys: v$version';
   }
 
   @override
@@ -3404,7 +3791,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String updateAvailableTitle(String version) {
-    return 'v$version Available';
+    return 'Galima v$version';
   }
 
   @override
@@ -3454,7 +3841,21 @@ class AppLocalizationsLt extends AppLocalizations {
   }
 
   @override
-  String get clear => 'Aišku';
+  String mbValue(int value) {
+    return '$value MB';
+  }
+
+  @override
+  String get imageCacheLimit => 'Vaizdų talpyklos limitas';
+
+  @override
+  String get clearImageCache => 'Išvalyti vaizdų talpyklą';
+
+  @override
+  String get imageCacheCleared => 'Vaizdų talpykla išvalyta';
+
+  @override
+  String get clear => 'Išvalyti';
 
   @override
   String get browse => 'Naršyti';
@@ -3469,12 +3870,20 @@ class AppLocalizationsLt extends AppLocalizations {
   String get seerrRequestedStatus => 'Paprašyta';
 
   @override
-  String itemsCount(int count) {
-    return '$count Items';
+  String seerrDownloadingPercent(int percent) {
+    return 'Atsisiunčiama · $percent%';
   }
 
   @override
-  String get seerrSettings => 'Seller nustatymai';
+  String get seerrImportingStatus => 'Importuojama';
+
+  @override
+  String itemsCount(int count) {
+    return 'Elementų: $count';
+  }
+
+  @override
+  String get seerrSettings => 'Seerr nustatymai';
 
   @override
   String get requestMore => 'Prašyti daugiau';
@@ -3490,7 +3899,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String requestedByName(String name) {
-    return 'Requested by $name';
+    return 'Užklausą pateikė $name';
   }
 
   @override
@@ -3507,12 +3916,12 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String cancelRequestForTitle(String title) {
-    return 'Cancel request for \"$title\"?';
+    return 'Atšaukti „$title“ užklausą?';
   }
 
   @override
   String cancelCountRequestsForTitle(int count, String title) {
-    return 'Cancel $count requests for \"$title\"?';
+    return 'Atšaukti „$title“ užklausas ($count)?';
   }
 
   @override
@@ -3527,12 +3936,12 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String budgetAmount(String amount) {
-    return 'Budget: \$$amount';
+    return 'Biudžetas: $amount \$';
   }
 
   @override
   String revenueAmount(String amount) {
-    return 'Revenue: \$$amount';
+    return 'Pajamos: $amount \$';
   }
 
   @override
@@ -3542,7 +3951,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String requestSeriesOrMovie(String type) {
-    return 'Request $type';
+    return 'Pateikti $type užklausą';
   }
 
   @override
@@ -3571,14 +3980,14 @@ class AppLocalizationsLt extends AppLocalizations {
   String get showMore => 'Rodyti daugiau';
 
   @override
-  String get appearances => 'Išvaizdos';
+  String get appearances => 'Filmografija';
 
   @override
   String get crewSection => 'Įgula';
 
   @override
   String ageValue(int age) {
-    return 'age $age';
+    return 'amžius $age';
   }
 
   @override
@@ -3609,6 +4018,152 @@ class AppLocalizationsLt extends AppLocalizations {
   String get deletedStatus => 'Ištrinta';
 
   @override
+  String get failedStatus => 'Nepavyko';
+
+  @override
+  String get processingStatus => 'Apdorojama';
+
+  @override
+  String modifiedByName(String name) {
+    return 'Pakeitė $name';
+  }
+
+  @override
+  String get completedStatus => 'Užbaigta';
+
+  @override
+  String get requestErrorDuplicate => 'Šio pavadinimo užklausa jau pateikta';
+
+  @override
+  String get requestErrorQuota => 'Pasiektas užklausų limitas';
+
+  @override
+  String get requestErrorBlocklisted =>
+      'Šis pavadinimas įtrauktas į blokuojamųjų sąrašą';
+
+  @override
+  String get requestErrorNoSeasons =>
+      'Nebeliko sezonų, kuriems būtų galima pateikti užklausą';
+
+  @override
+  String get requestErrorPermission =>
+      'Neturite teisės pateikti šios užklausos';
+
+  @override
+  String get seerrRequestsTitle => 'Užklausos';
+
+  @override
+  String get seerrIssuesTitle => 'Problemos';
+
+  @override
+  String get sortNewest => 'Naujausi';
+
+  @override
+  String get sortLastModified => 'Paskutinį kartą keista';
+
+  @override
+  String get noIssues => 'Problemų nėra';
+
+  @override
+  String movieQuotaRemaining(int remaining, int limit) {
+    return 'Liko $remaining iš $limit filmų užklausų';
+  }
+
+  @override
+  String seasonQuotaRemaining(int remaining, int limit) {
+    return 'Liko $remaining iš $limit sezonų užklausų';
+  }
+
+  @override
+  String partOfCollectionName(String name) {
+    return 'Priklauso rinkiniui $name';
+  }
+
+  @override
+  String get viewCollection => 'Peržiūrėti rinkinį';
+
+  @override
+  String get requestCollection => 'Pateikti rinkinio užklausą';
+
+  @override
+  String collectionMoviesSummary(int total, int available) {
+    return 'Filmų: $total · pasiekiama: $available';
+  }
+
+  @override
+  String requestMoviesCount(int count) {
+    return 'Pateikti užklausą dėl $count filmų';
+  }
+
+  @override
+  String requestingProgress(int current, int total) {
+    return 'Pateikiama $current iš $total...';
+  }
+
+  @override
+  String requestedMoviesCount(int count) {
+    return 'Pateikta užklausų dėl $count filmų';
+  }
+
+  @override
+  String requestedMoviesPartial(int ok, int total) {
+    return 'Pateikta $ok iš $total filmų užklausų';
+  }
+
+  @override
+  String get collectionAllRequested =>
+      'Visi filmai jau pasiekiami arba jų užklausos pateiktos';
+
+  @override
+  String get reportIssue => 'Pranešti apie problemą';
+
+  @override
+  String get issueTypeVideo => 'Vaizdas';
+
+  @override
+  String get issueTypeAudio => 'Garsas';
+
+  @override
+  String get whatsWrong => 'Kas negerai?';
+
+  @override
+  String get allEpisodes => 'Visos serijos';
+
+  @override
+  String get episode => 'Serija';
+
+  @override
+  String get openStatus => 'Atvira';
+
+  @override
+  String get resolvedStatus => 'Išspręsta';
+
+  @override
+  String get resolveAction => 'Išspręsti';
+
+  @override
+  String get reopenAction => 'Atidaryti iš naujo';
+
+  @override
+  String reportedByName(String name) {
+    return 'Pranešė $name';
+  }
+
+  @override
+  String commentsCount(int count) {
+    return 'Komentarų: $count';
+  }
+
+  @override
+  String get addComment => 'Pridėti komentarą';
+
+  @override
+  String get deleteIssueConfirm => 'Ištrinti šią problemą?';
+
+  @override
+  String get submitReport => 'Pateikti pranešimą';
+
+  @override
   String get tmdbScore => 'TMDB balas';
 
   @override
@@ -3630,7 +4185,7 @@ class AppLocalizationsLt extends AppLocalizations {
   String get originalLanguageLabel => 'Originalo kalba';
 
   @override
-  String get seasonsLabel => 'Metų laikai';
+  String get seasonsLabel => 'Sezonai';
 
   @override
   String get episodesLabel => 'Epizodai';
@@ -3678,7 +4233,7 @@ class AppLocalizationsLt extends AppLocalizations {
   String get forward => 'Pirmyn';
 
   @override
-  String get general => 'Generolas';
+  String get general => 'Bendra';
 
   @override
   String get go => 'Eik';
@@ -3759,7 +4314,7 @@ class AppLocalizationsLt extends AppLocalizations {
   String get status => 'Būsena';
 
   @override
-  String get stop => 'Sustok';
+  String get stop => 'Stabdyti';
 
   @override
   String get streaming => 'Srautinis perdavimas';
@@ -3808,6 +4363,15 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String get adminDrawerLibraries => 'Bibliotekos';
+
+  @override
+  String get adminDrawerDisplay => 'Rodymas';
+
+  @override
+  String get adminDrawerMetadata => 'Metaduomenys';
+
+  @override
+  String get adminDrawerNfo => 'NFO nustatymai';
 
   @override
   String get adminDrawerTranscoding => 'Perkodavimas';
@@ -3989,7 +4553,7 @@ class AppLocalizationsLt extends AppLocalizations {
   String get sessionRewind => 'Atsukti atgal';
 
   @override
-  String get sessionForward => 'Pirmyn';
+  String get sessionForward => 'Prasukti pirmyn';
 
   @override
   String get sessionNext => 'Kitas';
@@ -3998,7 +4562,7 @@ class AppLocalizationsLt extends AppLocalizations {
   String get sessionVolumeDown => 'tomas –';
 
   @override
-  String get sessionVolumeUp => 'Vol +';
+  String get sessionVolumeUp => 'Gars. +';
 
   @override
   String get uhd4k => '4K';
@@ -4007,7 +4571,7 @@ class AppLocalizationsLt extends AppLocalizations {
   String get nowPlaying => 'Dabar žaidžiama';
 
   @override
-  String get volume => 'Apimtis';
+  String get volume => 'Garsumas';
 
   @override
   String get actions => 'Veiksmai';
@@ -4019,7 +4583,7 @@ class AppLocalizationsLt extends AppLocalizations {
   String get audioCodec => 'Garso kodekas';
 
   @override
-  String get hwAccel => 'HW Accel';
+  String get hwAccel => 'Aparat. spartinimas';
 
   @override
   String get completion => 'Užbaigimas';
@@ -4032,6 +4596,12 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String get adminClearDates => 'Aiškios datos';
+
+  @override
+  String get adminActivitySeverityAll => 'Visi svarbumo lygiai';
+
+  @override
+  String get adminActivityDateRange => 'Datų intervalas';
 
   @override
   String adminActivityLoadFailed(String error) {
@@ -4064,6 +4634,27 @@ class AppLocalizationsLt extends AppLocalizations {
   @override
   String adminDeviceDeleteFailed(String error) {
     return 'Nepavyko ištrinti įrenginio: $error';
+  }
+
+  @override
+  String adminRemoveDeviceConfirm(String name) {
+    return 'Pašalinti įrenginį „$name“? Naudotojui reikės iš naujo prisijungti šiame įrenginyje.';
+  }
+
+  @override
+  String get adminDeleteAllDevices => 'Ištrinti visus įrenginius';
+
+  @override
+  String adminDeleteAllDevicesConfirm(int count) {
+    return 'Pašalinti įrenginius ($count)? Paveiktiems naudotojams reikės prisijungti iš naujo. Jūsų dabartinis įrenginys nebus paveiktas.';
+  }
+
+  @override
+  String get adminDevicesDeletedAll => 'Įrenginiai pašalinti';
+
+  @override
+  String adminDevicesDeletedPartial(int count) {
+    return 'Kai kurie įrenginiai pašalinti; $count pašalinti nepavyko.';
   }
 
   @override
@@ -4176,6 +4767,251 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String get adminMetadataCountryHint => 'pvz. JAV, DE, FR';
+
+  @override
+  String get adminLibraryTabPaths => 'Keliai';
+
+  @override
+  String get adminLibraryTabOptions => 'Parinktys';
+
+  @override
+  String get adminLibraryTabDownloaders => 'Atsisiuntimo šaltiniai';
+
+  @override
+  String get adminLibMetadataSavers => 'Metaduomenų saugotojai';
+
+  @override
+  String get adminLibSubtitleDownloaders => 'Subtitrų atsisiuntimo šaltiniai';
+
+  @override
+  String get adminLibLyricDownloaders => 'Dainų tekstų atsisiuntimo šaltiniai';
+
+  @override
+  String adminLibMetadataDownloadersFor(String type) {
+    return 'Metaduomenų atsisiuntimo šaltiniai: $type';
+  }
+
+  @override
+  String adminLibImageFetchersFor(String type) {
+    return 'Vaizdų šaltiniai: $type';
+  }
+
+  @override
+  String get adminLibNoDownloaders =>
+      'Šis serveris nesiūlo atsisiuntimo šaltinių šio tipo bibliotekai.';
+
+  @override
+  String get adminLibrarySectionGeneral => 'Bendra';
+
+  @override
+  String get adminLibrarySectionMetadata => 'Metaduomenys';
+
+  @override
+  String get adminLibrarySectionEmbedded => 'Įterptoji informacija';
+
+  @override
+  String get adminLibrarySectionSubtitles => 'Subtitrai';
+
+  @override
+  String get adminLibrarySectionImages => 'Vaizdai';
+
+  @override
+  String get adminLibrarySectionSeries => 'Serialai';
+
+  @override
+  String get adminLibrarySectionMusic => 'Muzika';
+
+  @override
+  String get adminLibrarySectionMovies => 'Filmai';
+
+  @override
+  String get adminLibRealtimeMonitor => 'Įjungti stebėjimą realiuoju laiku';
+
+  @override
+  String get adminLibRealtimeMonitorHint =>
+      'Aptikti failų pakeitimus ir apdoroti juos automatiškai.';
+
+  @override
+  String get adminLibArchiveMediaFiles => 'Laikyti archyvus medijos failais';
+
+  @override
+  String get adminLibEnablePhotos => 'Rodyti nuotraukas';
+
+  @override
+  String get adminLibSaveLocalMetadata =>
+      'Įrašyti viršelius į medijos aplankus';
+
+  @override
+  String get adminLibRefreshInterval => 'Automatinis metaduomenų atnaujinimas';
+
+  @override
+  String get adminLibRefreshNever => 'Niekada';
+
+  @override
+  String get adminLibDefault => 'Numatytasis';
+
+  @override
+  String get adminLibDisplayTitle => 'Rodymas';
+
+  @override
+  String get adminLibDisplaySection => 'Bibliotekos rodymas';
+
+  @override
+  String get adminLibFolderView =>
+      'Rodyti aplankų rodinį su paprastais medijos aplankais';
+
+  @override
+  String get adminLibSpecialsInSeasons =>
+      'Rodyti specialiąsias serijas tuose sezonuose, kuriuose jos buvo rodomos';
+
+  @override
+  String get adminLibGroupMovies => 'Grupuoti filmus į rinkinius';
+
+  @override
+  String get adminLibGroupShows => 'Grupuoti serialus į rinkinius';
+
+  @override
+  String get adminLibExternalSuggestions =>
+      'Rodyti išorinį turinį pasiūlymuose';
+
+  @override
+  String get adminLibDateAddedSection => 'Pridėjimo datos veikimas';
+
+  @override
+  String get adminLibDateAddedLabel => 'Pridėjimo datą imti iš';
+
+  @override
+  String get adminLibDateAddedImport => 'Nuskaitymo į biblioteką data';
+
+  @override
+  String get adminLibDateAddedFile => 'Failo sukūrimo data';
+
+  @override
+  String get adminLibMetadataTitle => 'Metaduomenys ir vaizdai';
+
+  @override
+  String get adminLibMetadataLangSection => 'Pageidaujama metaduomenų kalba';
+
+  @override
+  String get adminLibChaptersSection => 'Skyriai';
+
+  @override
+  String get adminLibDummyChapterDuration =>
+      'Fiktyvių skyrių trukmė (sekundėmis)';
+
+  @override
+  String get adminLibDummyChapterDurationHint =>
+      'Skyrių, sugeneruotų medijai, kuri jų neturi, trukmė. Nustatykite 0, kad išjungtumėte.';
+
+  @override
+  String get adminLibChapterImageResolution => 'Skyrių vaizdų raiška';
+
+  @override
+  String get adminLibNfoTitle => 'NFO nustatymai';
+
+  @override
+  String get adminLibNfoHelp =>
+      'NFO metaduomenys suderinami su Kodi ir panašiomis programomis. Nustatymai taikomi visoms bibliotekoms, kurios įrašo NFO metaduomenis.';
+
+  @override
+  String get adminLibKodiUser =>
+      'Naudotojas, kurio žiūrėjimo duomenys bus įrašomi į NFO failus';
+
+  @override
+  String get adminLibSaveImagePaths => 'Įrašyti vaizdų kelius į NFO failus';
+
+  @override
+  String get adminLibPathSubstitution => 'Įjungti NFO vaizdų kelių pakeitimą';
+
+  @override
+  String get adminLibExtraThumbs =>
+      'Kopijuoti extrafanart vaizdus į extrathumbs aplanką';
+
+  @override
+  String get adminLibNone => 'Nėra';
+
+  @override
+  String adminLibRefreshDays(int days) {
+    return '$days d.';
+  }
+
+  @override
+  String get adminLibEmbeddedTitles => 'Naudoti įterptuosius pavadinimus';
+
+  @override
+  String get adminLibEmbeddedExtrasTitles =>
+      'Naudoti įterptuosius priedų pavadinimus';
+
+  @override
+  String get adminLibEmbeddedEpisodeInfos =>
+      'Naudoti įterptąją serijų informaciją';
+
+  @override
+  String get adminLibAllowEmbeddedSubtitles => 'Leisti įterptuosius subtitrus';
+
+  @override
+  String get adminLibEmbeddedAllowAll => 'Leisti visus';
+
+  @override
+  String get adminLibEmbeddedAllowText => 'Tik tekstinius';
+
+  @override
+  String get adminLibEmbeddedAllowImage => 'Tik vaizdinius';
+
+  @override
+  String get adminLibEmbeddedAllowNone => 'Nėra';
+
+  @override
+  String get adminLibSkipIfEmbeddedSubs =>
+      'Praleisti atsisiuntimą, jei yra įterptųjų subtitrų';
+
+  @override
+  String get adminLibSkipIfAudioMatches =>
+      'Praleisti atsisiuntimą, jei garso takelio kalba sutampa su atsisiuntimo kalba';
+
+  @override
+  String get adminLibRequirePerfectMatch =>
+      'Reikalauti tikslaus subtitrų atitikmens';
+
+  @override
+  String get adminLibSaveSubtitlesWithMedia =>
+      'Įrašyti subtitrus į medijos aplankus';
+
+  @override
+  String get adminLibChapterImageExtraction => 'Išgauti skyrių vaizdus';
+
+  @override
+  String get adminLibChapterImagesDuringScan =>
+      'Išgauti skyrių vaizdus nuskaitant biblioteką';
+
+  @override
+  String get adminLibTrickplayExtraction => 'Įjungti Trickplay vaizdų išgavimą';
+
+  @override
+  String get adminLibTrickplayDuringScan =>
+      'Išgauti Trickplay vaizdus nuskaitant biblioteką';
+
+  @override
+  String get adminLibSaveTrickplayWithMedia =>
+      'Įrašyti Trickplay vaizdus į medijos aplankus';
+
+  @override
+  String get adminLibAutomaticSeriesGrouping =>
+      'Automatiškai sujungti serialus, išsklaidytus keliuose aplankuose';
+
+  @override
+  String get adminLibSeasonZeroName => 'Nulinio sezono rodomas pavadinimas';
+
+  @override
+  String get adminLibLufsScan => 'Įjungti LUFS nuskaitymą garsui normalizuoti';
+
+  @override
+  String get adminLibPreferNonstandardArtist =>
+      'Teikti pirmenybę nestandartinei atlikėjų žymai';
+
+  @override
+  String get adminLibAutoAddToCollection =>
+      'Automatiškai pridėti filmus į rinkinius';
 
   @override
   String get adminLibraryNameRequired => 'Būtinas bibliotekos pavadinimas';
@@ -4294,7 +5130,7 @@ class AppLocalizationsLt extends AppLocalizations {
   String get adminDeleteUser => 'Ištrinti vartotoją';
 
   @override
-  String get admin => 'Admin';
+  String get admin => 'Administravimas';
 
   @override
   String get adminFullAccessWarning =>
@@ -4415,6 +5251,146 @@ class AppLocalizationsLt extends AppLocalizations {
   String get adminEnableAllChannels => 'Įgalinti prieigą prie visų kanalų';
 
   @override
+  String get adminParentalControl => 'Tėvų kontrolė';
+
+  @override
+  String get adminMaxParentalRating => 'Didžiausias leidžiamas amžiaus cenzas';
+
+  @override
+  String get adminMaxParentalRatingHint =>
+      'Aukštesnio cenzo turinys šiam naudotojui bus paslėptas.';
+
+  @override
+  String get adminParentalRatingNone => 'Nėra';
+
+  @override
+  String get adminBlockUnratedItems =>
+      'Blokuoti elementus be cenzo informacijos arba su neatpažinta informacija';
+
+  @override
+  String get adminUnratedBook => 'Knygos';
+
+  @override
+  String get adminUnratedChannelContent => 'Kanalai';
+
+  @override
+  String get adminUnratedLiveTvChannel => 'Tiesioginė TV';
+
+  @override
+  String get adminUnratedMovie => 'Filmai';
+
+  @override
+  String get adminUnratedMusic => 'Muzika';
+
+  @override
+  String get adminUnratedTrailer => 'Anonsai';
+
+  @override
+  String get adminUnratedSeries => 'Serialai';
+
+  @override
+  String get adminAccessSchedules => 'Prieigos tvarkaraščiai';
+
+  @override
+  String get adminAccessSchedulesHint =>
+      'Leisti prieigą tik toliau nurodytu tvarkaraščio laiku. Kai tvarkaraštis nenustatytas, prieiga leidžiama visą parą.';
+
+  @override
+  String get adminAddSchedule => 'Pridėti tvarkaraštį';
+
+  @override
+  String get adminScheduleDay => 'Diena';
+
+  @override
+  String get adminScheduleStart => 'Pradžia';
+
+  @override
+  String get adminScheduleEnd => 'Pabaiga';
+
+  @override
+  String get adminDayEveryday => 'Kasdien';
+
+  @override
+  String get adminDayWeekday => 'Darbo diena';
+
+  @override
+  String get adminDayWeekend => 'Savaitgalis';
+
+  @override
+  String get adminDaySunday => 'Sekmadienis';
+
+  @override
+  String get adminDayMonday => 'Pirmadienis';
+
+  @override
+  String get adminDayTuesday => 'Antradienis';
+
+  @override
+  String get adminDayWednesday => 'Trečiadienis';
+
+  @override
+  String get adminDayThursday => 'Ketvirtadienis';
+
+  @override
+  String get adminDayFriday => 'Penktadienis';
+
+  @override
+  String get adminDaySaturday => 'Šeštadienis';
+
+  @override
+  String get adminAllowedTags => 'Leidžiamos žymos';
+
+  @override
+  String get adminAllowedTagsHint =>
+      'Rodomas tik turinys su šiomis žymomis. Palikite tuščią, kad būtų leidžiama viskas.';
+
+  @override
+  String get adminBlockedTags => 'Blokuojamos žymos';
+
+  @override
+  String get adminBlockedTagsHint =>
+      'Turinys su šiomis žymomis šiam naudotojui bus paslėptas.';
+
+  @override
+  String get adminAddTag => 'Pridėti žymą';
+
+  @override
+  String get adminEnabledDevices => 'Įjungti įrenginiai';
+
+  @override
+  String get adminEnabledChannels => 'Įjungti kanalai';
+
+  @override
+  String get adminAuthProvider => 'Tapatybės nustatymo tiekėjas';
+
+  @override
+  String get adminPasswordResetProvider => 'Slaptažodžio atkūrimo tiekėjas';
+
+  @override
+  String get adminLoginAttemptsBeforeLockout =>
+      'Didžiausias nepavykusių prisijungimų skaičius iki užrakinimo';
+
+  @override
+  String get adminLoginAttemptsHint =>
+      'Nustatykite 0 numatytajai reikšmei arba -1, kad išjungtumėte užrakinimą.';
+
+  @override
+  String get adminSyncPlayAccess => 'SyncPlay prieiga';
+
+  @override
+  String get adminSyncPlayCreateAndJoin =>
+      'Leisti kurti grupes ir prie jų prisijungti';
+
+  @override
+  String get adminSyncPlayJoin => 'Leisti prisijungti prie grupių';
+
+  @override
+  String get adminSyncPlayNone => 'Prieigos nėra';
+
+  @override
+  String get adminContentDeletionFolders => 'Leisti trinti turinį iš';
+
+  @override
   String get adminResetPasswordWarning =>
       'Tai pašalins slaptažodį. Vartotojas galės prisijungti be slaptažodžio.';
 
@@ -4498,6 +5474,28 @@ class AppLocalizationsLt extends AppLocalizations {
   String adminApiKeyTokenCreated(String token, String created) {
     return 'Žetonas: $token\\nSukurta: $created';
   }
+
+  @override
+  String get adminBackupOptionsTitle => 'Kurti atsarginę kopiją';
+
+  @override
+  String get adminBackupInclude =>
+      'Pasirinkite, ką įtraukti į atsarginę kopiją.';
+
+  @override
+  String get adminBackupDatabase => 'Duomenų bazė';
+
+  @override
+  String get adminBackupDatabaseAlways => 'Įtraukiama visada';
+
+  @override
+  String get adminBackupMetadata => 'Metaduomenys';
+
+  @override
+  String get adminBackupSubtitles => 'Subtitrai';
+
+  @override
+  String get adminBackupTrickplay => 'Trickplay vaizdai';
 
   @override
   String get adminCreatingBackup => 'Kuriama atsarginė kopija...';
@@ -4930,7 +5928,7 @@ class AppLocalizationsLt extends AppLocalizations {
   String get adminTrickplaySaved => 'Trickplay nustatymai išsaugoti';
 
   @override
-  String get adminTrickplayLoadFailed => 'Nepavyko įkelti gudrybės nustatymų';
+  String get adminTrickplayLoadFailed => 'Nepavyko įkelti Trickplay nustatymų';
 
   @override
   String get adminEnableHardwareAcceleration =>
@@ -5044,7 +6042,7 @@ class AppLocalizationsLt extends AppLocalizations {
   String get adminBaseUrl => 'Bazinis URL';
 
   @override
-  String get adminBaseUrlHint => 'pvz. / želė';
+  String get adminBaseUrlHint => 'pvz. /jellyfin';
 
   @override
   String get https => 'HTTPS';
@@ -5112,9 +6110,6 @@ class AppLocalizationsLt extends AppLocalizations {
   String adminMetadataRefreshFailed(String error) {
     return 'Nepavyko atnaujinti metaduomenų: $error';
   }
-
-  @override
-  String get adminSearchRemotePerson => 'Ieškoti nuotolinio asmens';
 
   @override
   String get adminNoRemoteMatches => 'Nuotolinių atitikmenų nerasta';
@@ -5210,16 +6205,117 @@ class AppLocalizationsLt extends AppLocalizations {
   String get adminAddTuner => 'Pridėti imtuvą';
 
   @override
+  String get adminEditTuner => 'Redaguoti imtuvą';
+
+  @override
+  String get adminTunerTypeM3u => 'M3U imtuvas';
+
+  @override
+  String get adminTunerTypeHdHomerun => 'HDHomeRun';
+
+  @override
+  String get adminTunerFileOrUrl => 'Failas arba URL';
+
+  @override
+  String get adminTunerIpAddress => 'Imtuvo IP adresas';
+
+  @override
+  String get adminTunerFriendlyName => 'Patogus pavadinimas';
+
+  @override
+  String get adminTunerUserAgent => 'Naudotojo agentas';
+
+  @override
+  String get adminTunerCount => 'Vienalaikių ryšių limitas';
+
+  @override
+  String get adminTunerCountHelp =>
+      'Didžiausias srautų skaičius, kurį imtuvas leidžia vienu metu. Nustatykite 0, kad būtų neribota.';
+
+  @override
+  String get adminTunerFallbackBitrate =>
+      'Atsarginė didžiausia transliavimo bitų sparta';
+
+  @override
+  String get adminTunerImportFavoritesOnly =>
+      'Importuoti tik mėgstamiausius kanalus';
+
+  @override
+  String get adminTunerAllowHwTranscoding => 'Leisti aparatinį perkodavimą';
+
+  @override
+  String get adminTunerAllowFmp4 => 'Leisti fMP4 perkodavimo konteinerį';
+
+  @override
+  String get adminTunerAllowStreamSharing => 'Leisti bendrinti srautą';
+
+  @override
+  String get adminTunerEnableStreamLooping => 'Įjungti srauto kartojimą';
+
+  @override
+  String get adminTunerIgnoreDts => 'Nepaisyti DTS';
+
+  @override
+  String get adminTunerReadAtNativeFramerate =>
+      'Skaityti įvestį natūraliu kadrų dažniu';
+
+  @override
+  String get adminEditProvider => 'Redaguoti tiekėją';
+
+  @override
+  String get adminProviderXmltv => 'XMLTV';
+
+  @override
+  String get adminProviderSchedulesDirect => 'Schedules Direct';
+
+  @override
+  String get adminXmltvPath => 'Failas arba URL';
+
+  @override
+  String get adminXmltvMoviePrefix => 'Filmų prefiksas';
+
+  @override
+  String get adminXmltvMovieCategories => 'Filmų kategorijos';
+
+  @override
+  String get adminXmltvCategoriesHelp =>
+      'Kelias kategorijas atskirkite vertikaliu brūkšniu.';
+
+  @override
+  String get adminXmltvKidsCategories => 'Vaikų kategorijos';
+
+  @override
+  String get adminXmltvNewsCategories => 'Naujienų kategorijos';
+
+  @override
+  String get adminXmltvSportsCategories => 'Sporto kategorijos';
+
+  @override
+  String get adminSdUsername => 'Naudotojo vardas';
+
+  @override
+  String get adminSdPassword => 'Slaptažodis';
+
+  @override
+  String get adminSdCountry => 'Šalis';
+
+  @override
+  String get adminSdCountrySelect => 'Pasirinkite šalį';
+
+  @override
+  String get adminSdPostalCode => 'Pašto kodas';
+
+  @override
+  String get adminSdGetListings => 'Gauti sąrašus';
+
+  @override
+  String get adminSdListings => 'Sąrašai';
+
+  @override
+  String get adminEnableAllTuners => 'Įjungti visus imtuvus';
+
+  @override
   String get adminTunerType => 'Tunerio tipas';
-
-  @override
-  String get adminTunerTypeHint => 'HDHomeRun, M3U, kita';
-
-  @override
-  String get adminUrlPath => 'URL / kelias';
-
-  @override
-  String get adminNameOptional => 'Vardas (neprivaloma)';
 
   @override
   String get adminTunerAdded => 'Pridėtas derintuvas';
@@ -5234,15 +6330,6 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String get adminProviderType => 'Teikėjo tipas';
-
-  @override
-  String get adminProviderTypeHint => 'SchedulesDirect arba XMLTV';
-
-  @override
-  String get adminUsernameOptional => 'Vartotojo vardas (neprivaloma)';
-
-  @override
-  String get adminRefreshInterval => 'Atnaujinimo intervalas (valandomis)';
 
   @override
   String get adminProviderAdded => 'Teikėjas pridėtas';
@@ -5266,6 +6353,10 @@ class AppLocalizationsLt extends AppLocalizations {
   }
 
   @override
+  String get adminTunerResetNotSupported =>
+      'Šio tipo imtuvas nepalaiko atstatymo.';
+
+  @override
   String adminProviderRemoveFailed(String error) {
     return 'Nepavyko pašalinti teikėjo: $error';
   }
@@ -5284,6 +6375,48 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String get adminSeriesRecordingPath => 'Serijos įrašymo kelias';
+
+  @override
+  String get adminMovieRecordingPath => 'Filmų įrašymo kelias';
+
+  @override
+  String get adminGuideDays => 'Gido duomenų dienos';
+
+  @override
+  String get adminGuideDaysAuto => 'Automatiškai';
+
+  @override
+  String adminGuideDaysValue(int days) {
+    return '$days d.';
+  }
+
+  @override
+  String get adminRecordingPostProcessor =>
+      'Papildomo apdorojimo programos kelias';
+
+  @override
+  String get adminRecordingPostProcessorArgs =>
+      'Papildomo apdorojimo argumentai';
+
+  @override
+  String get adminSaveRecordingNfo => 'Įrašyti įrašų NFO metaduomenis';
+
+  @override
+  String get adminSaveRecordingImages => 'Įrašyti įrašų vaizdus';
+
+  @override
+  String get adminLiveTvSectionTiming => 'Laikas';
+
+  @override
+  String get adminLiveTvSectionPaths => 'Įrašymo keliai';
+
+  @override
+  String get adminLiveTvSectionPostProcessing => 'Papildomas apdorojimas';
+
+  @override
+  String adminGuideDaysDisplay(String value) {
+    return 'Gido duomenys: $value';
+  }
 
   @override
   String get adminRecordingSettingsSaved => 'Įrašymo nustatymai išsaugoti';
@@ -5323,6 +6456,16 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String get adminGuideProviders => 'Vadovų teikėjai';
+
+  @override
+  String get adminRefreshGuideData => 'Atnaujinti gido duomenis';
+
+  @override
+  String get adminGuideRefreshStarted => 'Pradėtas gido duomenų atnaujinimas';
+
+  @override
+  String get adminGuideRefreshUnavailable =>
+      'Gido atnaujinimo užduotis šiame serveryje nepasiekiama.';
 
   @override
   String get adminAddProvider => 'Pridėti teikėją';
@@ -5410,7 +6553,7 @@ class AppLocalizationsLt extends AppLocalizations {
   String get adminNotSet => 'Nenustatyta';
 
   @override
-  String get adminReset => 'Nustatyti iš naujo';
+  String get adminReset => 'Atstatyti';
 
   @override
   String get adminLogsTitle => 'Serverio žurnalai';
@@ -5456,7 +6599,7 @@ class AppLocalizationsLt extends AppLocalizations {
   String get adminMetadataEditorTitle => 'Metaduomenų redaktorius';
 
   @override
-  String get adminMetadataRemote => 'Nuotolinis';
+  String get adminMetadataIdentify => 'Identifikuoti';
 
   @override
   String get adminMetadataType => 'Tipas';
@@ -5871,6 +7014,22 @@ class AppLocalizationsLt extends AppLocalizations {
   String get adminBrandingEnableSplash => 'Įgalinti prisilietimo ekraną';
 
   @override
+  String get adminBrandingSplashUpload => 'Įkelti vaizdą';
+
+  @override
+  String get adminBrandingSplashUploaded => 'Pasveikinimo ekranas atnaujintas';
+
+  @override
+  String get adminBrandingSplashUploadFailed =>
+      'Nepavyko įkelti pasveikinimo ekrano';
+
+  @override
+  String get adminBrandingSplashDeleted => 'Pasveikinimo ekranas pašalintas';
+
+  @override
+  String get adminBrandingNoSplash => 'Pasirinktinio pasveikinimo ekrano nėra';
+
+  @override
   String get adminPlaybackHwAccel => 'Aparatinės įrangos pagreitis';
 
   @override
@@ -5883,6 +7042,130 @@ class AppLocalizationsLt extends AppLocalizations {
   @override
   String get adminPlaybackEnableHwDecoding =>
       'Įgalinti aparatinės įrangos dekodavimą:';
+
+  @override
+  String get adminPlaybackQsvDevice => 'QSV įrenginys';
+
+  @override
+  String get adminPlaybackEnhancedNvdec => 'Įjungti patobulintą NVDEC dekoderį';
+
+  @override
+  String get adminPlaybackPreferNativeDecoder =>
+      'Teikti pirmenybę sistemos aparatiniam dekoderiui';
+
+  @override
+  String get adminPlaybackColorDepth => 'Aparatinio dekodavimo spalvų gylis';
+
+  @override
+  String get adminPlaybackColorDepth10Hevc => '10 bitų HEVC dekodavimas';
+
+  @override
+  String get adminPlaybackColorDepth10Vp9 => '10 bitų VP9 dekodavimas';
+
+  @override
+  String get adminPlaybackColorDepth10HevcRext =>
+      'HEVC RExt 8/10 bitų dekodavimas';
+
+  @override
+  String get adminPlaybackColorDepth12HevcRext =>
+      'HEVC RExt 12 bitų dekodavimas';
+
+  @override
+  String get adminPlaybackHwEncodingSection => 'Aparatinis kodavimas';
+
+  @override
+  String get adminPlaybackAllowHevcEncoding => 'Leisti HEVC kodavimą';
+
+  @override
+  String get adminPlaybackAllowAv1Encoding => 'Leisti AV1 kodavimą';
+
+  @override
+  String get adminPlaybackIntelLowPowerH264 =>
+      'Įjungti Intel mažos galios H.264 koduotuvą';
+
+  @override
+  String get adminPlaybackIntelLowPowerHevc =>
+      'Įjungti Intel mažos galios HEVC koduotuvą';
+
+  @override
+  String get adminPlaybackToneMapping => 'Tonų atvaizdavimas';
+
+  @override
+  String get adminPlaybackEnableTonemapping => 'Įjungti tonų atvaizdavimą';
+
+  @override
+  String get adminPlaybackEnableVppTonemapping =>
+      'Įjungti VPP tonų atvaizdavimą';
+
+  @override
+  String get adminPlaybackEnableVtTonemapping =>
+      'Įjungti VideoToolbox tonų atvaizdavimą';
+
+  @override
+  String get adminPlaybackTonemappingAlgorithm =>
+      'Tonų atvaizdavimo algoritmas';
+
+  @override
+  String get adminPlaybackTonemappingMode => 'Tonų atvaizdavimo režimas';
+
+  @override
+  String get adminPlaybackTonemappingRange => 'Tonų atvaizdavimo diapazonas';
+
+  @override
+  String get adminPlaybackTonemappingDesat =>
+      'Tonų atvaizdavimo sodrumo mažinimas';
+
+  @override
+  String get adminPlaybackTonemappingPeak => 'Tonų atvaizdavimo pikas';
+
+  @override
+  String get adminPlaybackTonemappingParam => 'Tonų atvaizdavimo parametras';
+
+  @override
+  String get adminPlaybackVppTonemappingBrightness =>
+      'VPP tonų atvaizdavimo ryškumas';
+
+  @override
+  String get adminPlaybackVppTonemappingContrast =>
+      'VPP tonų atvaizdavimo kontrastas';
+
+  @override
+  String get adminPlaybackPresetsQuality => 'Šablonai ir kokybė';
+
+  @override
+  String get adminPlaybackEncoderPreset => 'Koduotuvo šablonas';
+
+  @override
+  String get adminPlaybackH264Crf => 'H.264 kodavimo CRF';
+
+  @override
+  String get adminPlaybackH265Crf => 'H.265 (HEVC) kodavimo CRF';
+
+  @override
+  String get adminPlaybackDeinterlaceMethod => 'Eilučių išpynimo metodas';
+
+  @override
+  String get adminPlaybackDeinterlaceDoubleRate =>
+      'Dvigubinti kadrų dažnį išpinant eilutes';
+
+  @override
+  String get adminPlaybackAudioSection => 'Garsas';
+
+  @override
+  String get adminPlaybackEnableAudioVbr => 'Įjungti garso VBR kodavimą';
+
+  @override
+  String get adminPlaybackDownmixBoost => 'Garso sumaišymo stiprinimas';
+
+  @override
+  String get adminPlaybackDownmixAlgorithm => 'Stereo sumaišymo algoritmas';
+
+  @override
+  String get adminPlaybackMaxMuxingQueue =>
+      'Didžiausias multipleksavimo eilės dydis';
+
+  @override
+  String get adminPlaybackAutoOption => 'Automatiškai';
 
   @override
   String get adminPlaybackEncoding => 'Kodavimas';
@@ -6002,7 +7285,10 @@ class AppLocalizationsLt extends AppLocalizations {
   String get adminTaskNeverRun => 'Niekada nebėgioti';
 
   @override
-  String get adminTaskStop => 'Sustok';
+  String get adminTaskStop => 'Stabdyti';
+
+  @override
+  String get adminRunningTasks => 'Vykdomos užduotys';
 
   @override
   String get adminTaskRun => 'Bėk';
@@ -6072,8 +7358,10 @@ class AppLocalizationsLt extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count hours',
-      one: '1 hour',
+      other: '$count valandų',
+      many: '$count valandos',
+      few: '$count valandos',
+      one: '$count valanda',
     );
     return '$_temp0';
   }
@@ -6119,22 +7407,22 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String adminActivityMinutesShort(int minutes) {
-    return '${minutes}m';
+    return '$minutes min.';
   }
 
   @override
   String adminActivityHoursShort(int hours) {
-    return '${hours}h';
+    return '$hours val.';
   }
 
   @override
   String adminActivityDaysShort(int days) {
-    return '${days}d';
+    return '$days d.';
   }
 
   @override
   String adminActivityDateShort(int month, int day) {
-    return '$month/$day';
+    return '$month-$day';
   }
 
   @override
@@ -6148,10 +7436,50 @@ class AppLocalizationsLt extends AppLocalizations {
   String get adminNetworkingBaseUrl => 'Bazinis URL';
 
   @override
-  String get adminNetworkingBaseUrlHint => 'pvz. / želė';
+  String get adminNetworkingBaseUrlHint => 'pvz. /jellyfin';
 
   @override
   String get adminNetworkingHttps => 'HTTPS';
+
+  @override
+  String get adminNetworkingPublicHttpPort => 'Viešasis HTTP prievadas';
+
+  @override
+  String get adminNetworkingRequireHttps => 'Reikalauti HTTPS';
+
+  @override
+  String get adminNetworkingRequireHttpsHint =>
+      'Nukreipti visas nuotolines užklausas į HTTPS. Neveikia, jei serveris neturi galiojančio sertifikato.';
+
+  @override
+  String get adminNetworkingCertPassword => 'Sertifikato slaptažodis';
+
+  @override
+  String get adminNetworkingIpSettings => 'IP nustatymai';
+
+  @override
+  String get adminNetworkingEnableIpv4 => 'Įjungti IPv4';
+
+  @override
+  String get adminNetworkingEnableIpv6 => 'Įjungti IPv6';
+
+  @override
+  String get adminNetworkingAutoDiscovery =>
+      'Įjungti automatinį prievadų susiejimą';
+
+  @override
+  String get adminNetworkingLocalSubnets => 'LAN tinklai';
+
+  @override
+  String get adminNetworkingLocalSubnetsHint =>
+      'Kableliais arba naujomis eilutėmis atskirtų IP adresų ar CIDR potinklių sąrašas, laikomas vietiniu tinklu.';
+
+  @override
+  String get adminNetworkingPublishedUris => 'Paskelbti serverio URI';
+
+  @override
+  String get adminNetworkingPublishedUriHint =>
+      'Susiekite potinklį ar adresą su paskelbtu URL, pvz. all=https://example.com';
 
   @override
   String get adminNetworkingCertPath => 'Sertifikato kelias';
@@ -6179,6 +7507,13 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String get adminPlaybackThrottleBuffering => 'Droselio buferis';
+
+  @override
+  String get adminPlaybackThrottleDelay => 'Ribojimo delsa (sekundėmis)';
+
+  @override
+  String get adminPlaybackEnableSubtitleExtraction =>
+      'Leisti išgauti subtitrus realiuoju laiku';
 
   @override
   String get adminResumeMinPct => 'Minimalus atnaujinimo procentas';
@@ -6235,6 +7570,25 @@ class AppLocalizationsLt extends AppLocalizations {
   String get adminGeneralSlowResponseThreshold => 'Lėto atsako slenkstis (ms)';
 
   @override
+  String get adminGeneralEnableSlowResponse =>
+      'Įjungti įspėjimus apie lėtą atsaką';
+
+  @override
+  String get adminGeneralQuickConnect => 'Įjungti Quick Connect';
+
+  @override
+  String get adminGeneralSectionServer => 'Serveris';
+
+  @override
+  String get adminGeneralSectionMetadata => 'Metaduomenys';
+
+  @override
+  String get adminGeneralSectionPaths => 'Keliai';
+
+  @override
+  String get adminGeneralSectionPerformance => 'Našumas';
+
+  @override
   String get adminGeneralCachePath => 'Talpyklos kelias';
 
   @override
@@ -6242,6 +7596,9 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String get adminGeneralServerName => 'Serverio pavadinimas';
+
+  @override
+  String get adminGeneralDisplayLanguage => 'Pageidaujama rodymo kalba';
 
   @override
   String get adminSettingsLoadFailed => 'Nepavyko įkelti nustatymų';
@@ -6293,8 +7650,10 @@ class AppLocalizationsLt extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '# participants',
-      one: '# participant',
+      other: '# dalyvių',
+      many: '# dalyvio',
+      few: '# dalyviai',
+      one: '# dalyvis',
     );
     return '$_temp0';
   }
@@ -6437,50 +7796,17 @@ class AppLocalizationsLt extends AppLocalizations {
   String get requestTranscode => 'Prašyti perkoduoti';
 
   @override
-  String get homeScreenSectionsIntegrationDescription =>
-      'Aptikti eilutes, kurias atskleidžia „IAmParadox27“ papildinys „Pagrindinio ekrano skyriai“. Toliau eilutes galima įjungti ir pertvarkyti.';
-
-  @override
-  String get homeScreenSectionsIntegrationNoServers =>
-      'Dar nė vienas Jellyfin serveris nepraneša apie papildinį.';
-
-  @override
-  String get integrationOpenHomeSections => 'Atidarykite pagrindinius skyrius';
-
-  @override
-  String get integrationOpenHomeSectionsSubtitle =>
-      'Įgalinti, išjungti ir pertvarkyti eilutes';
-
-  @override
-  String get integrationInstalledButDisabled => 'Įdiegta, bet išjungta';
-
-  @override
-  String get integrationNotInstalled => 'Neįdiegta';
-
-  @override
-  String integrationSectionsCount(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '# sections',
-      one: '# section',
-    );
-    return '$_temp0';
-  }
-
-  @override
   String integrationRowsDiscoveredCount(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '# rows discovered',
-      one: '# row discovered',
+      other: 'rasta # eilučių',
+      many: 'rasta # eilutės',
+      few: 'rastos # eilutės',
+      one: 'rasta # eilutė',
     );
     return '$_temp0';
   }
-
-  @override
-  String get jellyseerr => 'Seerr';
 
   @override
   String get seeAll => 'Žiūrėti viską';
@@ -6516,6 +7842,22 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String get offlineSavedMedia => 'Išsaugota laikmena';
+
+  @override
+  String get offlineBannerTitle => 'Esate neprisijungę';
+
+  @override
+  String get offlineBannerSubtitle => 'Rodomi jūsų atsisiuntimai';
+
+  @override
+  String get offlineBannerAction => 'Atsisiuntimai';
+
+  @override
+  String get serverUnreachableBannerTitle => 'Nepavyksta pasiekti serverio';
+
+  @override
+  String get serverUnreachableBannerSubtitle =>
+      'Kol serveris neveikia, leidžiama iš atsisiuntimų';
 
   @override
   String get castGoogleCast => 'Google Cast';
@@ -6589,42 +7931,40 @@ class AppLocalizationsLt extends AppLocalizations {
   String get pinForgot => 'Pamiršote PIN kodą?';
 
   @override
-  String get pinClear => 'Aišku';
+  String get pinClear => 'Išvalyti';
 
   @override
-  String get pinBackspace => 'Backspace';
+  String get pinBackspace => 'Naikinti';
 
   @override
-  String get quickConnectAuthorized =>
-      'Greitojo prisijungimo užklausa patvirtinta.';
+  String get quickConnectAuthorized => 'Quick Connect užklausa patvirtinta.';
 
   @override
   String get quickConnectInvalidOrExpired =>
-      'Greito prisijungimo kodas neteisingas arba pasibaigęs.';
+      'Quick Connect kodas neteisingas arba nebegalioja.';
 
   @override
   String get quickConnectNotSupported =>
-      'Greitasis prisijungimas šiame serveryje nepalaikomas.';
+      'Šis serveris nepalaiko Quick Connect.';
 
   @override
   String get quickConnectAuthorizeFailed =>
-      'Nepavyko įgalioti greitojo prisijungimo kodo.';
+      'Nepavyko patvirtinti Quick Connect kodo.';
 
   @override
-  String get quickConnectDisabled =>
-      'Greitasis prisijungimas šiame serveryje išjungtas.';
+  String get quickConnectDisabled => 'Šiame serveryje Quick Connect išjungtas.';
 
   @override
   String get quickConnectForbidden =>
-      'Jūsų paskyra negali patvirtinti šios greitojo prisijungimo užklausos.';
+      'Jūsų paskyra negali patvirtinti šios Quick Connect užklausos.';
 
   @override
   String get quickConnectNotFound =>
-      'Greito prisijungimo kodas nerastas. Išbandykite naują kodą.';
+      'Quick Connect kodas nerastas. Pabandykite naują kodą.';
 
   @override
   String quickConnectFailedWithMessage(String message) {
-    return 'Greitas prisijungimas nepavyko: $message';
+    return 'Quick Connect nepavyko: $message';
   }
 
   @override
@@ -6730,7 +8070,7 @@ class AppLocalizationsLt extends AppLocalizations {
   String get shuffleSelectGenre => 'Pasirinkite Žanras';
 
   @override
-  String get shuffleLibrary => 'biblioteka';
+  String get shuffleLibrary => 'Biblioteka';
 
   @override
   String get shuffleGenre => 'Žanras';
@@ -6791,7 +8131,7 @@ class AppLocalizationsLt extends AppLocalizations {
       'Atkūrimas buvo pristabdytas. Ar vis dar žiūrite?';
 
   @override
-  String get stillWatchingStop => 'Sustok';
+  String get stillWatchingStop => 'Stabdyti';
 
   @override
   String get stillWatchingContinue => 'Tęsti';
@@ -6830,7 +8170,7 @@ class AppLocalizationsLt extends AppLocalizations {
   String get playerTooltipCastControls => 'Cast valdikliai';
 
   @override
-  String get playerTooltipPlaybackQuality => 'Bitrate';
+  String get playerTooltipPlaybackQuality => 'Bitų sparta';
 
   @override
   String get playerTooltipEnterFullscreen => 'Įeikite per visą ekraną';
@@ -6873,6 +8213,16 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String get contextMenuGoToSeries => 'Eikite į seriją';
+
+  @override
+  String get contextMenuHideFromContinueWatching =>
+      'Slėpti iš „Tęsti žiūrėjimą“';
+
+  @override
+  String get contextMenuHideFromNextUp => 'Slėpti iš „Toliau“';
+
+  @override
+  String get contextMenuAddToCollection => 'Pridėti į rinkinį';
 
   @override
   String get settingsAdministrationSubtitle =>
@@ -6927,6 +8277,17 @@ class AppLocalizationsLt extends AppLocalizations {
   String get settingsAlphabetical => 'Abėcėlinis';
 
   @override
+  String get settingsConnectionSection => 'RYŠYS';
+
+  @override
+  String get settingsAllowSelfSignedCerts =>
+      'Leisti savarankiškai pasirašytus sertifikatus';
+
+  @override
+  String get settingsAllowSelfSignedCertsSubtitle =>
+      'Pasitikėti serveriais, naudojančiais savarankiškai pasirašytus arba privačios CA TLS sertifikatus. Įjunkite tik savo valdomiems serveriams. Tai išjungia sertifikatų tikrinimą visiems ryšiams.';
+
+  @override
   String get settingsPrivacyAndSafetySection => 'PRIVATUMAS IR SAUGA';
 
   @override
@@ -6938,6 +8299,13 @@ class AppLocalizationsLt extends AppLocalizations {
   @override
   String get settingsGeneralStyleSubtitle =>
       'Teminiai akcentai, fonai, žiūrimi indikatoriai ir teminė muzika';
+
+  @override
+  String get settingsDetailsScreen => 'Išsamios informacijos ekranas';
+
+  @override
+  String get settingsDetailsScreenSubtitle =>
+      'Stilius, fono suliejimas ir skirtukų veikimas';
 
   @override
   String get settingsHomePage => 'Pagrindinis puslapis';
@@ -6975,7 +8343,11 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String get settingsShowSeerrButtonInNavigation =>
-      'Show the Seerr button in the navigation bar';
+      'Rodyti Seerr mygtuką naršymo juostoje';
+
+  @override
+  String get settingsAlwaysExpandNavbarLabels =>
+      'Visada rodyti tekstinius pavadinimus viršutinėje naršymo juostoje';
 
   @override
   String get settingsLibraryVisibilitySubtitle =>
@@ -7045,8 +8417,7 @@ class AppLocalizationsLt extends AppLocalizations {
   String get settingsSupportMoonfin => 'Palaikykite Moonfin';
 
   @override
-  String get settingsSupportMoonfinSubtitle =>
-      'Donate a coffee to the developer';
+  String get settingsSupportMoonfinSubtitle => 'Pavaišinkite kūrėją kava';
 
   @override
   String get settingsLegal => 'TEISINĖ';
@@ -7080,8 +8451,10 @@ class AppLocalizationsLt extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '# license notices',
-      one: '# license notice',
+      other: '# licencijos pranešimų',
+      many: '# licencijos pranešimo',
+      few: '# licencijos pranešimai',
+      one: '# licencijos pranešimas',
     );
     return '$_temp0';
   }
@@ -7130,16 +8503,17 @@ class AppLocalizationsLt extends AppLocalizations {
   String get settingsSkipIntrosAndOutros => 'Praleisti įžangas ir pabaigas?';
 
   @override
-  String get settingsMediaSegmentCountdown => 'Media Segment Countdown';
+  String get settingsMediaSegmentCountdown =>
+      'Medijos segmento atgalinis skaičiavimas';
 
   @override
-  String get settingsProgressBar => 'Progress Bar';
+  String get settingsProgressBar => 'Eigos juosta';
 
   @override
-  String get settingsTimer => 'Timer';
+  String get settingsTimer => 'Laikmatis';
 
   @override
-  String get settingsNone => 'None';
+  String get settingsNone => 'Nėra';
 
   @override
   String get settingsPromptUser => 'Raginti vartotoją';
@@ -7371,6 +8745,11 @@ class AppLocalizationsLt extends AppLocalizations {
   }
 
   @override
+  String recentlyReleasedLibraryName(String libraryName) {
+    return 'Neseniai išleista: $libraryName';
+  }
+
+  @override
   String get autoplayNextEpisode => 'Automatiškai paleisti kitą seriją';
 
   @override
@@ -7399,11 +8778,11 @@ class AppLocalizationsLt extends AppLocalizations {
       'Priverstinis netunelinis atkūrimas. Naudinga įrenginiuose su tuneliavimo garso / vaizdo pertrūkiais.';
 
   @override
-  String get enableTunnelingTitle => 'Enable tunneling';
+  String get enableTunnelingTitle => 'Įjungti tuneliavimą';
 
   @override
   String get enableTunnelingSubtitle =>
-      'Advanced. Routes audio and video through a coupled hardware path. Off by default because it causes audio/video dropouts on some devices.';
+      'Išplėstinis. Nukreipia garsą ir vaizdą per susietą aparatinį kelią. Pagal numatytuosius nustatymus išjungta, nes kai kuriuose įrenginiuose sukelia garso ir vaizdo trikdžius.';
 
   @override
   String get mapDolbyVisionP7Title => 'Susieti Dolby Vision profilį 7 su HEVC';
@@ -7429,11 +8808,14 @@ class AppLocalizationsLt extends AppLocalizations {
       'Taikykite šrifto dydžio užuominas, įterptas į subtitrų takelį. Neleiskite naudoti subtitrų dydžio pagal savo stiliaus nuostatas.';
 
   @override
-  String get showMediaDetailsOnLibraryPage => 'Show Media Details';
+  String get showMediaDetailsOnLibraryPage => 'Rodyti medijos informaciją';
 
   @override
   String get showMediaDetailsOnLibraryPageDescription =>
-      'Show details of the selected item at the top of Library pages.';
+      'Rodyti pasirinkto elemento informaciją bibliotekos puslapių viršuje.';
+
+  @override
+  String get hideBackdropsInLibraries => 'Slėpti fono vaizdus naršant?';
 
   @override
   String get useDetailedSubHeadings => 'Naudokite išsamias antraštes';
@@ -7451,37 +8833,38 @@ class AppLocalizationsLt extends AppLocalizations {
   }
 
   @override
-  String get themeStore => 'Theme Store';
+  String get themeStore => 'Temų parduotuvė';
 
   @override
-  String get themeStoreSubtitle => 'Browse and save community themes';
+  String get themeStoreSubtitle =>
+      'Naršykite ir išsaugokite bendruomenės temas';
 
   @override
   String get themeStoreDescription =>
-      'Save a theme to use it like your other saved themes.';
+      'Išsaugokite temą, kad galėtumėte ją naudoti kaip ir kitas išsaugotas temas.';
 
   @override
-  String get themeStoreEmpty => 'No themes are available right now.';
+  String get themeStoreEmpty => 'Šiuo metu temų nėra.';
 
   @override
   String get themeStoreLoadFailed =>
-      'Couldn\'t load the Theme Store. Check your connection and try again.';
+      'Nepavyko įkelti temų parduotuvės. Patikrinkite ryšį ir bandykite dar kartą.';
 
   @override
-  String get themeStoreSave => 'Save';
+  String get themeStoreSave => 'Išsaugoti';
 
   @override
-  String get themeStoreSaveAndApply => 'Save & apply';
+  String get themeStoreSaveAndApply => 'Išsaugoti ir taikyti';
 
   @override
-  String get themeStoreSaved => 'Saved';
+  String get themeStoreSaved => 'Išsaugota';
 
   @override
-  String get themeStoreInvalidMessage => 'This theme couldn\'t be loaded.';
+  String get themeStoreInvalidMessage => 'Šios temos įkelti nepavyko.';
 
   @override
   String themeStoreSavedMessage(String themeName) {
-    return 'Saved \"$themeName\".';
+    return 'Išsaugota „$themeName“.';
   }
 
   @override
@@ -7517,9 +8900,6 @@ class AppLocalizationsLt extends AppLocalizations {
       'Tvarkykite atsisiųstų papildinių temas šiame įrenginyje';
 
   @override
-  String get homeScreenSectionsTitle => 'Pagrindinio ekrano skyriai';
-
-  @override
   String get themeEditor => 'Temos redaktorius';
 
   @override
@@ -7542,21 +8922,21 @@ class AppLocalizationsLt extends AppLocalizations {
   String get homeRowsSection => 'Pradžios eilutės';
 
   @override
-  String get homeRowDisplay => 'Home Row Display';
+  String get homeRowDisplay => 'Pradžios ekrano eilučių rodymas';
 
   @override
-  String get homeRowSections => 'Home Row Sections';
+  String get homeRowSections => 'Pradžios ekrano eilučių skiltys';
 
   @override
-  String get homeRowToggles => 'Home Row Toggles';
+  String get homeRowToggles => 'Pradžios ekrano eilučių jungikliai';
 
   @override
   String get homeRowTogglesSubtitle =>
-      'Enable or disable different home row categories';
+      'Įjunkite arba išjunkite bibliotekomis pagrįstas pradžios ekrano eilučių kategorijas';
 
   @override
   String get homeRowTogglesDescription =>
-      'Enable the following toggles to display the rows in Home Sections.';
+      'Įjunkite toliau esančius jungiklius, kad eilutės būtų rodomos pradžios ekrano skiltyse.';
 
   @override
   String get rowsType => 'Eilučių tipas';
@@ -7615,44 +8995,56 @@ class AppLocalizationsLt extends AppLocalizations {
       'Rodyti filmus, serialus arba abu žanrų eilutėse.';
 
   @override
-  String get displayPlaylistsRows => 'Display Playlist Rows';
+  String get displayPlaylistsRows => 'Rodyti grojaraščių eilutes';
 
   @override
   String get displayPlaylistsRowsSubtitle =>
-      'Show Playlist rows in Home Sections.';
+      'Rodyti grojaraščių eilutes pradžios ekrano skiltyse.';
 
   @override
-  String get playlistsRowSorting => 'Playlist Row Sorting';
+  String get playlistsRowSorting => 'Grojaraščių eilučių rikiavimas';
 
   @override
   String get playlistsRowSortingDescription =>
-      'Sort Playlist rows by date added, release date, alphabetically, and more.';
+      'Rikiuokite grojaraščių eilutes pagal pridėjimo datą, išleidimo datą, abėcėlę ir kitus kriterijus.';
 
   @override
-  String get displayAudioRows => 'Display Audio Rows';
+  String get displayAudioRows => 'Rodyti garso eilutes';
 
   @override
-  String get displayAudioRowsSubtitle => 'Show Audio rows in Home Sections.';
+  String get displayAudioRowsSubtitle =>
+      'Rodyti garso eilutes pradžios ekrano skiltyse.';
 
   @override
-  String get audioRowsSorting => 'Audio Rows sorting';
+  String get audioRowsSorting => 'Garso eilučių rikiavimas';
 
   @override
   String get audioRowsSortingDescription =>
-      'Sort Audio rows by date added, release date, alphabetically, and more.';
+      'Rikiuokite garso eilutes pagal pridėjimo datą, išleidimo datą, abėcėlę ir kitus kriterijus.';
 
   @override
-  String get audioPlaylists => 'Audio Playlists';
-
-  @override
-  String get displaySeerrRows => 'Display Seerr Discovery Rows';
-
-  @override
-  String get displaySeerrRowsSubtitle =>
-      'Show Seerr discovery rows in Home Sections.';
+  String get audioPlaylists => 'Garso grojaraščiai';
 
   @override
   String get appearance => 'Išvaizda';
+
+  @override
+  String get layout => 'Išdėstymas';
+
+  @override
+  String get theme => 'Tema';
+
+  @override
+  String get keyboard => 'Klaviatūra';
+
+  @override
+  String get navButtons => 'Mygtukai';
+
+  @override
+  String get rendering => 'Atvaizdavimas';
+
+  @override
+  String get mpvConfiguration => 'MPV konfigūracija';
 
   @override
   String get cardSize => 'Kortelės dydis';
@@ -7662,7 +9054,7 @@ class AppLocalizationsLt extends AppLocalizations {
 
   @override
   String get externalPlayerAppDescription =>
-      'Set external player to enable long-press play option';
+      'Nustatykite išorinę leistuvę, kad įjungtumėte paleidimą ilgai spaudžiant';
 
   @override
   String get externalPlayerAskEachTimeSubtitle =>
@@ -7904,9 +9296,6 @@ class AppLocalizationsLt extends AppLocalizations {
   String get videos => 'Vaizdo įrašai';
 
   @override
-  String get trailers => 'Priekabos';
-
-  @override
   String get programs => 'Programos';
 
   @override
@@ -7931,7 +9320,10 @@ class AppLocalizationsLt extends AppLocalizations {
   String get guestAppearances => 'Svečių pasirodymai';
 
   @override
-  String get appearancesSeerr => 'Pasirodymai (Serr)';
+  String get appearancesSeerr => 'Pasirodymai (Seerr)';
+
+  @override
+  String get crewContributionsSeerr => 'Kūrybinės grupės darbai (Seerr)';
 
   @override
   String get watchWithGroup => 'Žiūrėkite su grupe';
@@ -8017,8 +9409,10 @@ class AppLocalizationsLt extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count Libraries',
-      one: '1 Library',
+      other: '$count bibliotekų',
+      many: '$count bibliotekos',
+      few: '$count bibliotekos',
+      one: '$count biblioteka',
     );
     return '$_temp0';
   }
@@ -8109,7 +9503,7 @@ class AppLocalizationsLt extends AppLocalizations {
   String get mixedMoviesAndShows => 'Mišrūs filmai ir laidos';
 
   @override
-  String get intelQuickSync => '„Intel“ greitasis sinchronizavimas';
+  String get intelQuickSync => 'Intel Quick Sync';
 
   @override
   String get rockchipMpp => 'Rockchip MPP';
@@ -8176,13 +9570,13 @@ class AppLocalizationsLt extends AppLocalizations {
   String get loadingShuffle => 'Įkeliamas maišymas...';
 
   @override
-  String get libraryShuffleLabel => 'LIBRARY SHUFFLE';
+  String get libraryShuffleLabel => 'BIBLIOTEKOS MAIŠYMAS';
 
   @override
-  String get randomShuffleLabel => 'RANDOM SHUFFLE';
+  String get randomShuffleLabel => 'ATSITIKTINIS MAIŠYMAS';
 
   @override
-  String get genresShuffleLabel => 'GENRES SHUFFLE';
+  String get genresShuffleLabel => 'ŽANRŲ MAIŠYMAS';
 
   @override
   String get autoHdrSwitching => 'Automatinis HDR perjungimas';
@@ -8195,146 +9589,532 @@ class AppLocalizationsLt extends AppLocalizations {
   String get whenFullscreen => 'Kai per visą ekraną';
 
   @override
-  String get changeArtwork => 'Change Artwork';
+  String get changeArtwork => 'Keisti viršelį';
 
   @override
-  String get missing => 'Missing';
+  String get missing => 'Trūksta';
 
   @override
   String get transcodingLimits => 'Perkodavimo ribos';
 
   @override
-  String get clearAllArtworkButton => 'Clear all artwork?';
+  String get clearAllArtworkButton => 'Išvalyti visus viršelius?';
 
   @override
   String get clearAllArtworkWarning =>
-      'Are you sure you want to clear all downloaded artwork?';
+      'Ar tikrai norite išvalyti visus atsisiųstus viršelius?';
 
   @override
-  String get confirmClear => 'Confirm Clear';
+  String get confirmClear => 'Patvirtinti išvalymą';
 
   @override
   String confirmClearMessage(String itemType) {
-    return 'Are you sure you would like to clear this $itemType?';
+    return 'Ar tikrai norite išvalyti šį elementą: $itemType?';
   }
 
   @override
-  String get uploadButton => 'Upload?';
+  String get uploadButton => 'Įkelti?';
 
   @override
-  String get resolutionLabel => 'Resolution: ';
+  String get resolutionLabel => 'Raiška: ';
 
   @override
-  String get onlyShowInterfaceLanguage =>
-      'Only show artwork in interface language';
+  String get onlyShowInterfaceLanguage => 'Rodyti tik sąsajos kalbos viršelius';
 
   @override
-  String get confirmClearAll => 'Confirm Clear All';
+  String get confirmClearAll => 'Patvirtinti visų išvalymą';
 
   @override
-  String get imageUploadSuccess => 'Image uploaded successfully!';
+  String get imageUploadSuccess => 'Vaizdas sėkmingai įkeltas!';
 
   @override
   String imageUploadFailed(String error) {
-    return 'Failed to upload image: $error';
+    return 'Nepavyko įkelti vaizdo: $error';
   }
 
   @override
   String imageDownloadFailed(String error) {
-    return 'Failed to set image: $error';
+    return 'Nepavyko nustatyti vaizdo: $error';
   }
 
   @override
   String imageDeleteFailed(String error) {
-    return 'Failed to delete image: $error';
+    return 'Nepavyko ištrinti vaizdo: $error';
   }
 
   @override
   String clearAllArtworkFailed(String error) {
-    return 'Failed to clear all artwork: $error';
+    return 'Nepavyko išvalyti visų viršelių: $error';
   }
 
   @override
-  String get yes => 'Yes';
+  String get yes => 'Taip';
 
   @override
-  String get posterCategory => 'Poster';
+  String get posterCategory => 'Plakatas';
 
   @override
-  String get backdropsCategory => 'Backdrops';
+  String get backdropsCategory => 'Fono vaizdai';
 
   @override
-  String get bannerCategory => 'Banner';
+  String get bannerCategory => 'Reklamjuostė';
 
   @override
-  String get logoCategory => 'Logo';
+  String get logoCategory => 'Logotipas';
 
   @override
-  String get thumbnailCategory => 'Thumbnail';
+  String get thumbnailCategory => 'Miniatiūra';
 
   @override
-  String get artCategory => 'Art';
+  String get artCategory => 'Grafika';
 
   @override
-  String get discArtCategory => 'Disc Art';
+  String get discArtCategory => 'Disko grafika';
 
   @override
-  String get screenshotCategory => 'Screenshot';
+  String get screenshotCategory => 'Ekrano kopija';
 
   @override
-  String get boxCoverCategory => 'Box Cover';
+  String get boxCoverCategory => 'Dėžutės viršelis';
 
   @override
-  String get boxRearCoverCategory => 'Box Rear Cover';
+  String get boxRearCoverCategory => 'Dėžutės galinis viršelis';
 
   @override
-  String get menuArtCategory => 'Menu Art';
+  String get menuArtCategory => 'Meniu grafika';
 
   @override
-  String get confirmItemPoster => 'poster';
+  String get confirmItemPoster => 'plakatas';
 
   @override
-  String get confirmItemBackdrop => 'backdrop';
+  String get confirmItemBackdrop => 'fono vaizdas';
 
   @override
-  String get confirmItemBanner => 'banner';
+  String get confirmItemBanner => 'reklamjuostė';
 
   @override
-  String get confirmItemLogo => 'logo';
+  String get confirmItemLogo => 'logotipas';
 
   @override
-  String get confirmItemThumbnail => 'thumbnail';
+  String get confirmItemThumbnail => 'miniatiūra';
 
   @override
-  String get confirmItemArt => 'art';
+  String get confirmItemArt => 'grafika';
 
   @override
-  String get confirmItemDiscArt => 'disc art';
+  String get confirmItemDiscArt => 'disko grafika';
 
   @override
-  String get confirmItemScreenshot => 'screenshot';
+  String get confirmItemScreenshot => 'ekrano kopija';
 
   @override
-  String get confirmItemBoxCover => 'box cover';
+  String get confirmItemBoxCover => 'dėžutės viršelis';
 
   @override
-  String get confirmItemBoxRearCover => 'box rear cover';
+  String get confirmItemBoxRearCover => 'dėžutės galinis viršelis';
 
   @override
-  String get confirmItemMenuArt => 'menu art';
+  String get confirmItemMenuArt => 'meniu grafika';
 
   @override
-  String get resolutionAll => 'All';
+  String get resolutionAll => 'Visos';
 
   @override
-  String get resolutionHigh => 'High (1080p+)';
+  String get resolutionHigh => 'Aukšta (1080p+)';
 
   @override
-  String get resolutionMedium => 'Medium (720p)';
+  String get resolutionMedium => 'Vidutinė (720p)';
 
   @override
-  String get resolutionLow => 'Low (<720p)';
+  String get resolutionLow => 'Žema (<720p)';
 
   @override
-  String get sources => 'Sources';
+  String get sources => 'Šaltiniai';
+
+  @override
+  String get audiobookChapters => 'Skyriai';
+
+  @override
+  String get audiobookBookmarks => 'Žymės';
+
+  @override
+  String get audiobookNotes => 'Pastabos';
+
+  @override
+  String get audiobookQueue => 'Eilė';
+
+  @override
+  String get audiobookTimeline => 'Laiko juosta';
+
+  @override
+  String get audiobookTimelineEmpty => 'Laiko juosta tuščia';
+
+  @override
+  String get audiobookWholeBook => 'Visa knyga';
+
+  @override
+  String get audiobookFocusedTimeline => 'Sutelkta laiko juosta';
+
+  @override
+  String get audiobookExportBookmarks => 'Eksportuoti žymes';
+
+  @override
+  String get audiobookExportNotes => 'Eksportuoti pastabas';
+
+  @override
+  String get audiobookExportAll => 'Eksportuoti viską';
+
+  @override
+  String audiobookExportSuccess(String path) {
+    return 'Eksportuota į $path';
+  }
+
+  @override
+  String audiobookExportFailed(String error) {
+    return 'Eksportuoti nepavyko: $error';
+  }
+
+  @override
+  String get audiobookLyrics => 'Dainų tekstai';
+
+  @override
+  String get audiobookAddBookmark => 'Pridėti žymę';
+
+  @override
+  String get audiobookAddNote => 'Pridėti pastabą';
+
+  @override
+  String get audiobookEditNote => 'Redaguoti pastabą';
+
+  @override
+  String get audiobookNoteHint => 'Parašykite pastabą šiai akimirkai';
+
+  @override
+  String get audiobookSleepTimer => 'Miego laikmatis';
+
+  @override
+  String get audiobookSleepOff => 'Išjungta';
+
+  @override
+  String get audiobookSleepEndOfChapter => 'Skyriaus pabaigoje';
+
+  @override
+  String get audiobookSleepCustom => 'Pasirinktinis';
+
+  @override
+  String audiobookSleepRemaining(String remaining) {
+    return 'Liko $remaining';
+  }
+
+  @override
+  String audiobookSleepMinutes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count min',
+      one: '1 min',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get audiobookPlaybackSpeed => 'Atkūrimo greitis';
+
+  @override
+  String get audiobookRemainingTime => 'Liko';
+
+  @override
+  String get audiobookElapsedTime => 'Praėjo';
+
+  @override
+  String audiobookSkipBackSeconds(int seconds) {
+    return 'Atgal $seconds s';
+  }
+
+  @override
+  String audiobookSkipForwardSeconds(int seconds) {
+    return 'Pirmyn $seconds s';
+  }
+
+  @override
+  String get audiobookPreviousChapter => 'Ankstesnis skyrius';
+
+  @override
+  String get audiobookNextChapter => 'Kitas skyrius';
+
+  @override
+  String audiobookChapterIndicator(int current, int total) {
+    return '$current skyrius iš $total';
+  }
+
+  @override
+  String get audiobookNoChapters => 'Skyrių nėra';
+
+  @override
+  String get audiobookNoBookmarks => 'Žymių dar nėra';
+
+  @override
+  String get audiobookNoNotes => 'Pastabų dar nėra';
+
+  @override
+  String audiobookBookmarkAdded(String position) {
+    return 'Žymė pridėta ties $position';
+  }
+
+  @override
+  String get audiobookSpeedReset => 'Atstatyti į 1.0x';
+
+  @override
+  String audiobookSpeedCustomLabel(String value) {
+    return '${value}x';
+  }
+
+  @override
+  String get audiobookSave => 'Išsaugoti';
+
+  @override
+  String get audiobookCancel => 'Atšaukti';
+
+  @override
+  String get audiobookDelete => 'Ištrinti';
+
+  @override
+  String get subtitlePreferences => 'Subtitrų nuostatos';
+
+  @override
+  String get subtitlePreferencesDescription =>
+      'Keiskite subtitrų režimus, numatytąsias kalbas, išvaizdą ir atvaizdavimo parinktis.';
+
+  @override
+  String get subtitleRendering => 'Subtitrų atvaizdavimas';
+
+  @override
+  String get displayOptions => 'Rodymo parinktys';
+
+  @override
+  String get releaseDateAscending => 'Išleidimo data (didėjančiai)';
+
+  @override
+  String get releaseDateDescending => 'Išleidimo data (mažėjančiai)';
+
+  @override
+  String get groupContributions => 'Grupuoti darbus';
+
+  @override
+  String get groupMultipleRoles => 'Grupuoti kelis vaidmenis';
+
+  @override
+  String get libraryWriteAccessWarningTitle =>
+      'Įspėjimas apie bibliotekos rašymo teises';
+
+  @override
+  String get libraryWriteAccessHowToFix => 'Kaip tai ištaisyti:';
+
+  @override
+  String get libraryWriteAccessFixSteps =>
+      '1. Suteikite Jellyfin tarnybos naudotojui (pvz., jellyfin arba Docker PUID/PGID) rašymo teises į serveryje esančius medijos bibliotekos aplankus.\n\n2. Arba eikite į Jellyfin valdymo skydelį -> Bibliotekos, redaguokite šią biblioteką ir išjunkite parinktį „Įrašyti viršelius į medijos aplankus“, kad viršeliai būtų saugomi vidinėje Jellyfin duomenų bazėje.';
+
+  @override
+  String get dismiss => 'Atmesti';
+
+  @override
+  String libraryWriteAccessProactiveBody(
+    String libraryName,
+    String failedPath,
+  ) {
+    return 'Jūsų biblioteka „$libraryName“ sukonfigūruota įrašyti viršelius tiesiai į medijos aplankus (įjungta parinktis „Įrašyti viršelius į medijos aplankus“). Tačiau Jellyfin patikrino rašymo teises ir neturi leidimo įrašyti failų į šį katalogą:\n\n$failedPath';
+  }
+
+  @override
+  String get libraryWriteAccessReactiveBody =>
+      'Panašu, kad Jellyfin nepavyko atnaujinti viršelio. Jūsų biblioteka sukonfigūruota įrašyti viršelius tiesiai į medijos aplankus (įjungta parinktis „Įrašyti viršelius į medijos aplankus“). Ši klaida paprastai atsiranda, kai Jellyfin serverio procesas neturi leidimo įrašyti failų į jūsų medijos katalogus.';
+
+  @override
+  String get externalLists => 'Išoriniai sąrašai';
+
+  @override
+  String get replay => 'Paleisti iš naujo';
+
+  @override
+  String get fileInformation => 'Failo informacija';
+
+  @override
+  String fileSizeFormat(Object size, Object format) {
+    return 'Dydis: $size  •  Formatas: $format';
+  }
+
+  @override
+  String showAllAudioTracks(int count) {
+    return 'Rodyti visus garso takelius ($count)';
+  }
+
+  @override
+  String showAllSubtitleTracks(int count) {
+    return 'Rodyti visus subtitrų takelius ($count)';
+  }
+
+  @override
+  String get checkingDirectPlay => 'Tikrinama tiesioginio atkūrimo galimybė...';
+
+  @override
+  String get directPlayCapabilityLabel => 'Tiesioginio atkūrimo galimybė: ';
+
+  @override
+  String get forced => 'Priverstiniai';
+
+  @override
+  String get transcodeContainerNotSupported =>
+      'Leistuvė nepalaiko konteinerio formato.';
+
+  @override
+  String get transcodeVideoCodecNotSupported => 'Vaizdo kodekas nepalaikomas.';
+
+  @override
+  String get transcodeAudioCodecNotSupported => 'Garso kodekas nepalaikomas.';
+
+  @override
+  String get transcodeSubtitleCodecNotSupported =>
+      'Subtitrų formatas nepalaikomas (reikia įdeginti).';
+
+  @override
+  String get transcodeAudioProfileNotSupported =>
+      'Garso profilis nepalaikomas.';
+
+  @override
+  String get transcodeVideoProfileNotSupported =>
+      'Vaizdo profilis nepalaikomas.';
+
+  @override
+  String get transcodeVideoLevelNotSupported => 'Vaizdo lygis nepalaikomas.';
+
+  @override
+  String get transcodeVideoResolutionNotSupported =>
+      'Šis įrenginys nepalaiko vaizdo raiškos.';
+
+  @override
+  String get transcodeVideoBitDepthNotSupported =>
+      'Vaizdo bitų gylis nepalaikomas.';
+
+  @override
+  String get transcodeVideoFramerateNotSupported =>
+      'Vaizdo kadrų dažnis nepalaikomas.';
+
+  @override
+  String get transcodeContainerBitrateExceedsLimit =>
+      'Failo bitų sparta viršija leistuvės transliavimo limitą.';
+
+  @override
+  String get transcodeVideoBitrateExceedsLimit =>
+      'Vaizdo bitų sparta viršija transliavimo limitą.';
+
+  @override
+  String get transcodeAudioBitrateExceedsLimit =>
+      'Garso bitų sparta viršija transliavimo limitą.';
+
+  @override
+  String get transcodeAudioChannelsNotSupported =>
+      'Garso kanalų skaičius nepalaikomas.';
+
+  @override
+  String get sortAlphabetical => 'Pagal abėcėlę';
+
+  @override
+  String get sortReleaseAscending => 'Išleidimo tvarka (didėjančiai)';
+
+  @override
+  String get sortReleaseDescending => 'Išleidimo tvarka (mažėjančiai)';
+
+  @override
+  String get sortCustomDragDrop => 'Pasirinktinė (vilkimu)';
+
+  @override
+  String get playlistSortOptions => 'Grojaraščio rikiavimo parinktys';
+
+  @override
+  String get resetSort => 'Atstatyti rikiavimą';
+
+  @override
+  String rewatchSeasonEpisode(int season, int episode) {
+    return 'Žiūrėti iš naujo S$season:E$episode';
+  }
+
+  @override
+  String get rewatchPlaylist => 'Žiūrėti grojaraštį iš naujo';
+
+  @override
+  String get noSubtitlesFound => 'Subtitrų nerasta.';
+
+  @override
+  String get adminControls => 'Administratoriaus valdikliai';
+
+  @override
+  String get impellerRendering => 'Atvaizdavimo variklis (Impeller)';
+
+  @override
+  String get impellerRenderingSubtitle =>
+      'Impeller – modernus Flutter GPU atvaizdavimo variklis, užtikrinantis sklandesnes animacijas ir mažiau trūkčiojimų. Kai kuriuose TV priedėliuose ir senesniuose GPU jis gali sukelti trikdžius ar juodą vaizdą; tokiu atveju jį išjunkite. „Automatinis“ parenka geriausią numatytąjį variantą jūsų įrenginiui. Kad pakeitimai įsigaliotų, paleiskite Moonfin iš naujo.';
+
+  @override
+  String get impellerAuto => 'Automatinis';
+
+  @override
+  String get impellerOn => 'Įjungta';
+
+  @override
+  String get impellerOff => 'Išjungta';
+
+  @override
+  String get impellerRestartTitle => 'Reikia paleisti iš naujo';
+
+  @override
+  String get impellerRestartMessage =>
+      'Kad būtų pakeistas atvaizdavimo variklis, Moonfin reikia paleisti iš naujo. Uždarykite programą dabar ir vėl ją atidarykite.';
+
+  @override
+  String get impellerCloseNow => 'Uždaryti programą dabar';
+
+  @override
+  String get adminRefreshLibrary => 'Atnaujinti biblioteką';
+
+  @override
+  String get adminRefreshAllLibraries => 'Atnaujinti visas bibliotekas';
+
+  @override
+  String get adminRepoSortDateOldest => 'Pridėjimo data (nuo seniausių)';
+
+  @override
+  String get adminRepoSortDateNewest => 'Pridėjimo data (nuo naujausių)';
+
+  @override
+  String get adminRepoSortNameAsc => 'Pagal abėcėlę (A–Z)';
+
+  @override
+  String get adminRepoSortNameDesc => 'Pagal abėcėlę (Z–A)';
+
+  @override
+  String adminAnalyticsLoadingProgress(int percentage) {
+    return 'Įkeliama serverio analitika... $percentage%';
+  }
+
+  @override
+  String get adminLibChapterImageResolutionMatchSource => 'Kaip šaltinio';
+
+  @override
+  String get imdbTop250Movies => 'IMDb 250 geriausių filmų';
+
+  @override
+  String get imdbTop250TvShows => 'IMDb 250 geriausių serialų';
+
+  @override
+  String get imdbMostPopularMovies => 'IMDb populiariausi filmai';
+
+  @override
+  String get imdbMostPopularTvShows => 'IMDb populiariausi serialai';
+
+  @override
+  String get imdbLowestRatedMovies => 'IMDb prasčiausiai vertinami filmai';
+
+  @override
+  String get imdbTopEnglishMovies =>
+      'IMDb geriausiai vertinami filmai anglų kalba';
 }

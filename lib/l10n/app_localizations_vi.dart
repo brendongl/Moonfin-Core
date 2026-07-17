@@ -9,22 +9,22 @@ class AppLocalizationsVi extends AppLocalizations {
   AppLocalizationsVi([String locale = 'vi']) : super(locale);
 
   @override
-  String get appTitle => 'Vây trăng';
+  String get appTitle => 'Moonfin';
 
   @override
-  String get accountPreferences => 'ACCOUNT PREFERENCES';
+  String get accountPreferences => 'TÙY CHỌN TÀI KHOẢN';
 
   @override
-  String get interfaceLanguage => 'Interface Language';
+  String get interfaceLanguage => 'Ngôn ngữ giao diện';
 
   @override
-  String get systemLanguageDefault => 'System Default';
+  String get systemLanguageDefault => 'Mặc định của hệ thống';
 
   @override
   String get signIn => 'Đăng nhập';
 
   @override
-  String get empty => 'Empty';
+  String get empty => 'Trống';
 
   @override
   String connectingToServer(String serverName) {
@@ -32,7 +32,7 @@ class AppLocalizationsVi extends AppLocalizations {
   }
 
   @override
-  String get quickConnect => 'Kết nối nhanh';
+  String get quickConnect => 'Quick Connect';
 
   @override
   String get password => 'Mật khẩu';
@@ -51,7 +51,7 @@ class AppLocalizationsVi extends AppLocalizations {
   String get waitingForAuthorization => 'Đang chờ cấp phép...';
 
   @override
-  String get back => 'Mặt sau';
+  String get back => 'Quay lại';
 
   @override
   String get serverUnavailable => 'Máy chủ không khả dụng';
@@ -113,7 +113,7 @@ class AppLocalizationsVi extends AppLocalizations {
   String get cancel => 'Hủy bỏ';
 
   @override
-  String get remove => 'Di dời';
+  String get remove => 'Gỡ bỏ';
 
   @override
   String get connectToServer => 'Kết nối với máy chủ';
@@ -141,8 +141,95 @@ class AppLocalizationsVi extends AppLocalizations {
   String get settingsAppearanceTheme => 'Chủ đề ứng dụng';
 
   @override
+  String get detailScreenStyle => 'Kiểu màn hình chi tiết';
+
+  @override
+  String get detailScreenStyleSubtitle =>
+      'Cổ điển là bố cục Moonfin gốc căn giữa. Hiện đại là bố cục điện ảnh tự điều chỉnh.';
+
+  @override
+  String get detailScreenStyleMoonfin => 'Cổ điển';
+
+  @override
+  String get detailScreenStyleModern => 'Hiện đại';
+
+  @override
+  String get expandedTabs => 'Thẻ mở rộng';
+
+  @override
+  String get expandedTabsSubtitle =>
+      'Tự động hiển thị nội dung thẻ khi bạn duyệt qua các thẻ. Tắt để tự mở và đóng từng thẻ.';
+
+  @override
+  String get showTechnicalDetails => 'Hiển thị chi tiết kỹ thuật?';
+
+  @override
+  String get showTechnicalDetailsSubtitle =>
+      'Hiển thị thông tin codec, độ phân giải và luồng trong phần tóm tắt biểu ngữ';
+
+  @override
+  String get recommendationSystem => 'Hệ thống gợi ý';
+
+  @override
+  String get recommendationSystemSubtitle =>
+      'Dùng thuật toán Moonfin Gợi ý dựa trên thư viện cục bộ hoặc Chỉ số tương đồng trực tuyến của TMDb. Lưu ý: Gợi ý trực tuyến cần tích hợp Seerr.';
+
+  @override
+  String get recommendationSystemMoonfin => 'Moonfin Gợi ý';
+
+  @override
+  String get recommendationSystemTmdb => 'Độ tương đồng TMDb';
+
+  @override
+  String get recommendationsApplyParentalRatingCap =>
+      'Giới hạn theo xếp hạng độ tuổi?';
+
+  @override
+  String get recommendationsApplyParentalRatingCapSubtitle =>
+      'Giới hạn gợi ý của Moonfin Gợi ý theo xếp hạng độ tuổi của nội dung đích';
+
+  @override
+  String get interfaceStyle => 'Kiểu giao diện';
+
+  @override
+  String get interfaceStyleSubtitle =>
+      'Tự động sẽ khớp với thiết bị của bạn. Chọn Apple hoặc Material để dùng một giao diện cố định.';
+
+  @override
+  String get interfaceStyleAutomatic => 'Tự động';
+
+  @override
+  String get interfaceStyleApple => 'Apple';
+
+  @override
+  String get interfaceStyleMaterial => 'Material';
+
+  @override
+  String get glassQuality => 'Chất lượng hiệu ứng kính';
+
+  @override
+  String get glassQualitySubtitle =>
+      'Tự động sẽ chọn hiệu ứng kính phù hợp nhất cho thiết bị này. Đầy đủ buộc dùng làm mờ thật; Giảm bớt dùng hiệu ứng kính nhẹ giúp tiết kiệm GPU.';
+
+  @override
+  String get glassQualityAuto => 'Tự động';
+
+  @override
+  String get glassQualityFull => 'Đầy đủ';
+
+  @override
+  String get glassQualityReduced => 'Giảm bớt';
+
+  @override
   String get settingsAppearanceThemeSubtitle =>
       'Chuyển đổi giữa Moonfin và Neon Pulse mà không cần khởi động lại ứng dụng';
+
+  @override
+  String get customThemeTitle => 'Chủ đề tùy chỉnh';
+
+  @override
+  String get customThemeSubtitle =>
+      'Chủ đề tùy chỉnh thay đổi các thành phần giao diện trên toàn Moonfin. Hãy chọn một tùy chọn hợp với phong cách của bạn.';
 
   @override
   String get keyboardPreferSystemIme => 'Ưu tiên bàn phím hệ thống';
@@ -152,7 +239,7 @@ class AppLocalizationsVi extends AppLocalizations {
       'Sử dụng phương thức nhập thiết bị của bạn theo mặc định để nhập văn bản';
 
   @override
-  String get themeMoonfin => 'Vây trăng';
+  String get themeMoonfin => 'Moonfin';
 
   @override
   String get themeMoonfinSubtitle =>
@@ -166,11 +253,18 @@ class AppLocalizationsVi extends AppLocalizations {
       'Kiểu dáng Synthwave với ánh sáng đỏ tươi, văn bản màu lục lam và độ tương phản chrome mạnh hơn';
 
   @override
-  String get themeGlass => 'Glass';
+  String get themeGlass => 'Kính';
 
   @override
   String get themeGlassSubtitle =>
-      'Liquid-glass styling with a drifting gradient backdrop, frosted surfaces, and Apple-blue accent';
+      'Phong cách kính lỏng với nền chuyển sắc chuyển động nhẹ, bề mặt mờ và điểm nhấn xanh Apple';
+
+  @override
+  String get theme8BitHero => 'Người hùng 8-bit';
+
+  @override
+  String get theme8BitHeroSubtitle =>
+      'Phong cách pixel-art hoài cổ với bảng màu đậm, viền khối, đổ bóng sắc nét và phông chữ pixel';
 
   @override
   String get embyConnectSignInSubtitle =>
@@ -234,6 +328,38 @@ class AppLocalizationsVi extends AppLocalizations {
   String get exit => 'Ra';
 
   @override
+  String get gameMenu => 'Menu';
+
+  @override
+  String get gamePaused => 'Đã tạm dừng';
+
+  @override
+  String get gameSaveState => 'Lưu trạng thái';
+
+  @override
+  String get games => 'Trò chơi';
+
+  @override
+  String get gameLoadState => 'Tải trạng thái';
+
+  @override
+  String get gameFastForward => 'Tua nhanh';
+
+  @override
+  String get gameEmulatorSettings => 'Cài đặt trình giả lập';
+
+  @override
+  String get gameNoCoreOptions =>
+      'Nhân này không có tùy chọn nào để điều chỉnh.';
+
+  @override
+  String get gameHoldToOpenMenu => 'Giữ để mở menu';
+
+  @override
+  String get gamePlaybackUnsupported =>
+      'Thiết bị này chưa hỗ trợ chơi trò chơi.';
+
+  @override
   String get noHomeRowsLoaded => 'Không thể tải hàng nhà nào';
 
   @override
@@ -247,13 +373,13 @@ class AppLocalizationsVi extends AppLocalizations {
   String get guide => 'Hướng dẫn';
 
   @override
-  String get recordings => 'Bản ghi âm';
+  String get recordings => 'Bản ghi';
 
   @override
   String get schedule => 'Lịch trình';
 
   @override
-  String get series => 'Loạt';
+  String get series => 'Phim bộ';
 
   @override
   String get noItemsFound => 'Không tìm thấy mục nào';
@@ -384,7 +510,7 @@ class AppLocalizationsVi extends AppLocalizations {
   String get albumArtists => 'Nghệ sĩ album';
 
   @override
-  String get artists => 'nghệ sĩ';
+  String get artists => 'Nghệ sĩ';
 
   @override
   String get bookmarks => 'Dấu trang';
@@ -480,7 +606,7 @@ class AppLocalizationsVi extends AppLocalizations {
   String get listen => 'Nghe';
 
   @override
-  String get resume => 'Bản tóm tắt';
+  String get resume => 'Tiếp tục';
 
   @override
   String get failedToLoadLibrary => 'Không tải được thư viện';
@@ -573,7 +699,7 @@ class AppLocalizationsVi extends AppLocalizations {
   }
 
   @override
-  String get titles => 'Tiêu đề';
+  String get titles => 'Tựa đề';
 
   @override
   String get allTitles => 'Tất cả các tiêu đề';
@@ -641,6 +767,45 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String get books => 'Sách';
+
+  @override
+  String get latestBooks => 'Sách mới nhất';
+
+  @override
+  String get latestAudiobooks => 'Sách nói mới nhất';
+
+  @override
+  String bookSeriesItemCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count cuốn sách',
+      one: '1 cuốn sách',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get bookFormatBook => 'Sách';
+
+  @override
+  String get bookFormatAudiobook => 'Sách nói';
+
+  @override
+  String bookPercentRead(int percent) {
+    return 'Đã đọc $percent%';
+  }
+
+  @override
+  String bookTimeLeft(String time) {
+    return 'Còn $time';
+  }
+
+  @override
+  String get bookHeroRead => 'Đọc';
+
+  @override
+  String get bookHeroListen => 'Nghe';
 
   @override
   String get author => 'Tác giả';
@@ -717,8 +882,8 @@ class AppLocalizationsVi extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count audiobooks',
-      one: '1 audiobook',
+      other: '$count sách nói',
+      one: '1 sách nói',
     );
     return '$_temp0';
   }
@@ -730,17 +895,13 @@ class AppLocalizationsVi extends AppLocalizations {
   String get itemListPlaceholder => 'Danh sách vật phẩm sẽ xuất hiện ở đây';
 
   @override
-  String get favoriteTracksPlaceholder =>
-      'Những bản nhạc yêu thích sẽ xuất hiện ở đây';
-
-  @override
   String get failedToLoad => 'Không tải được';
 
   @override
-  String get delete => 'Xóa bỏ';
+  String get delete => 'Xóa';
 
   @override
-  String get save => 'Cứu';
+  String get save => 'Lưu';
 
   @override
   String get moreLikeThis => 'Tương tự thế này';
@@ -825,8 +986,8 @@ class AppLocalizationsVi extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count Seasons',
-      one: '1 Season',
+      other: '$count Mùa',
+      one: '1 Mùa',
     );
     return '$_temp0';
   }
@@ -837,8 +998,40 @@ class AppLocalizationsVi extends AppLocalizations {
   }
 
   @override
+  String get items => 'Mục';
+
+  @override
+  String get extras => 'Nội dung thêm';
+
+  @override
+  String get behindTheScenes => 'Hậu trường';
+
+  @override
+  String get deletedScenes => 'Cảnh bị cắt';
+
+  @override
+  String get featurettes => 'Phim ngắn giới thiệu';
+
+  @override
+  String get interviews => 'Phỏng vấn';
+
+  @override
+  String get scenes => 'Cảnh phim';
+
+  @override
+  String get shorts => 'Phim ngắn';
+
+  @override
+  String get trailers => 'Trailer';
+
+  @override
+  String timeRemaining(String time) {
+    return 'Còn $time';
+  }
+
+  @override
   String endsIn(String time) {
-    return 'Ends in $time';
+    return 'Kết thúc sau $time';
   }
 
   @override
@@ -856,7 +1049,7 @@ class AppLocalizationsVi extends AppLocalizations {
   }
 
   @override
-  String get play => 'Chơi';
+  String get play => 'Phát';
 
   @override
   String get startOver => 'Bắt đầu lại';
@@ -880,10 +1073,10 @@ class AppLocalizationsVi extends AppLocalizations {
   String get version => 'Phiên bản';
 
   @override
-  String get cast => 'Dàn diễn viên';
+  String get cast => 'Truyền';
 
   @override
-  String get trailer => 'Đoạn phim giới thiệu';
+  String get trailer => 'Trailer';
 
   @override
   String get finished => 'Hoàn thành';
@@ -1074,13 +1267,13 @@ class AppLocalizationsVi extends AppLocalizations {
   String get director => 'GIÁM ĐỐC';
 
   @override
-  String get directors => 'DIRECTORS';
+  String get directors => 'ĐẠO DIỄN';
 
   @override
-  String get writer => 'WRITER';
+  String get writer => 'BIÊN KỊCH';
 
   @override
-  String get writers => 'nhà văn';
+  String get writers => 'BIÊN KỊCH';
 
   @override
   String get studio => 'PHÒNG THU';
@@ -1115,8 +1308,8 @@ class AppLocalizationsVi extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count tracks',
-      one: '1 track',
+      other: '$count bản nhạc',
+      one: '1 bản nhạc',
     );
     return '$_temp0';
   }
@@ -1126,8 +1319,8 @@ class AppLocalizationsVi extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count chapters',
-      one: '1 chapter',
+      other: '$count chương',
+      one: '1 chương',
     );
     return '$_temp0';
   }
@@ -1154,7 +1347,16 @@ class AppLocalizationsVi extends AppLocalizations {
   String get readMore => 'Đọc thêm';
 
   @override
-  String get shuffle => 'Trộn bài';
+  String get shuffle => 'Phát ngẫu nhiên';
+
+  @override
+  String get shuffleAllMusic => 'Phát ngẫu nhiên toàn bộ nhạc';
+
+  @override
+  String get carSignInPrompt => 'Đăng nhập Moonfin trên điện thoại của bạn';
+
+  @override
+  String get carServerUnreachable => 'Không kết nối được máy chủ của bạn';
 
   @override
   String downloadsCount(int count) {
@@ -1166,14 +1368,14 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String channelsCount(int count) {
-    return '${count}ch';
+    return '$count kênh';
   }
 
   @override
-  String get mono => 'Bệnh tăng bạch cầu đơn nhân';
+  String get mono => 'Mono';
 
   @override
-  String get stereo => 'Âm thanh nổi';
+  String get stereo => 'Stereo';
 
   @override
   String remoteSubtitlePermissionError(String action) {
@@ -1327,7 +1529,7 @@ class AppLocalizationsVi extends AppLocalizations {
   String get subtitleDelay => 'Độ trễ phụ đề';
 
   @override
-  String get reset => 'Cài lại';
+  String get reset => 'Đặt lại';
 
   @override
   String get unknown => 'Không xác định';
@@ -1354,7 +1556,7 @@ class AppLocalizationsVi extends AppLocalizations {
   String get transcodeReasons => 'Lý do chuyển mã';
 
   @override
-  String get player => 'Người chơi';
+  String get player => 'Trình phát';
 
   @override
   String get container => 'thùng chứa';
@@ -1378,7 +1580,7 @@ class AppLocalizationsVi extends AppLocalizations {
   String get videoBitrate => 'Tốc độ bit của video';
 
   @override
-  String get track => 'Theo dõi';
+  String get track => 'Track';
 
   @override
   String get channels => 'Kênh';
@@ -1593,6 +1795,26 @@ class AppLocalizationsVi extends AppLocalizations {
   String get liveBadge => 'SỐNG';
 
   @override
+  String guideNextProgram(String time, String title) {
+    return 'Tiếp theo: $time  $title';
+  }
+
+  @override
+  String guideMinutesLeft(int minutes) {
+    return 'Còn $minutes phút';
+  }
+
+  @override
+  String guideHoursLeft(int hours) {
+    return 'Còn $hours giờ';
+  }
+
+  @override
+  String guideHoursMinutesLeft(int hours, int minutes) {
+    return 'Còn $hours giờ $minutes phút';
+  }
+
+  @override
   String get movie => 'Bộ phim';
 
   @override
@@ -1612,7 +1834,7 @@ class AppLocalizationsVi extends AppLocalizations {
   String get favoriteChannel => 'Kênh yêu thích';
 
   @override
-  String get record => 'Ghi';
+  String get record => 'Ghi hình';
 
   @override
   String get cancelRecordingAction => 'Hủy ghi âm';
@@ -1627,7 +1849,7 @@ class AppLocalizationsVi extends AppLocalizations {
   String get unableToCreateRecording => 'Không thể tạo bản ghi';
 
   @override
-  String get watch => 'Đồng hồ';
+  String get watch => 'Xem';
 
   @override
   String get close => 'Đóng';
@@ -1664,7 +1886,7 @@ class AppLocalizationsVi extends AppLocalizations {
   }
 
   @override
-  String get no => 'KHÔNG';
+  String get no => 'Không';
 
   @override
   String get yesCancel => 'Có, Hủy';
@@ -1837,8 +2059,8 @@ class AppLocalizationsVi extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count episodes',
-      one: '1 episode',
+      other: '$count tập',
+      one: '1 tập',
     );
     return '$_temp0';
   }
@@ -2064,6 +2286,10 @@ class AppLocalizationsVi extends AppLocalizations {
   String get themeMusicVolume => 'Âm lượng nhạc chủ đề';
 
   @override
+  String get themeMusicSettingsSubtitle =>
+      'Trang chi tiết, hàng trang chủ và âm lượng';
+
+  @override
   String percentValue(int value) {
     return '$value%';
   }
@@ -2073,6 +2299,13 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String get playWhenBrowsingHomeScreen => 'Chơi khi duyệt màn hình chính';
+
+  @override
+  String get loopThemeMusic => 'Lặp nhạc chủ đề';
+
+  @override
+  String get loopThemeMusicSubtitle =>
+      'Lặp lại bản nhạc thay vì chỉ phát một lần';
 
   @override
   String get detailsBackgroundBlur => 'Chi tiết Làm mờ nền';
@@ -2095,23 +2328,23 @@ class AppLocalizationsVi extends AppLocalizations {
   String get playerZoomMode => 'Chế độ thu phóng trình phát';
 
   @override
-  String get settingsScrollWheelAction => 'Mouse scroll wheel';
+  String get settingsScrollWheelAction => 'Con lăn chuột';
 
   @override
   String get settingsScrollWheelActionDescription =>
-      'Choose what scrolling the mouse wheel over the video does during playback.';
+      'Chọn hành động khi lăn chuột trên video trong lúc phát.';
 
   @override
-  String get scrollWheelActionOff => 'Off';
+  String get scrollWheelActionOff => 'Tắt';
 
   @override
-  String get scrollWheelActionSeek => 'Seek (forward / back)';
+  String get scrollWheelActionSeek => 'Tua (tiến / lùi)';
 
   @override
-  String get scrollWheelActionVolume => 'Volume';
+  String get scrollWheelActionVolume => 'Âm lượng';
 
   @override
-  String get playerTooltipVolume => 'Volume';
+  String get playerTooltipVolume => 'Âm lượng';
 
   @override
   String get fit => 'Phù hợp';
@@ -2126,7 +2359,7 @@ class AppLocalizationsVi extends AppLocalizations {
   String get refreshRateSwitching => 'Chuyển đổi tốc độ làm mới';
 
   @override
-  String get disabled => 'Tàn tật';
+  String get disabled => 'Đã tắt';
 
   @override
   String get scaleOnTv => 'Cân trên TV';
@@ -2163,6 +2396,39 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String get defaultAudioLanguage => 'Ngôn ngữ âm thanh mặc định';
+
+  @override
+  String get fallbackAudioLanguage => 'Ngôn ngữ âm thanh dự phòng';
+
+  @override
+  String get preferDefaultAudioTrack => 'Ưu tiên bản âm thanh mặc định';
+
+  @override
+  String get preferDefaultAudioTrackDescription =>
+      'Ưu tiên bản âm thanh gốc thay vì bản lồng tiếng.';
+
+  @override
+  String get preferAudioDescription => 'Ưu tiên bản thuyết minh mô tả';
+
+  @override
+  String get preferAudioDescriptionDescription =>
+      'Ưu tiên bản thuyết minh mô tả thay vì bản âm thanh thường.';
+
+  @override
+  String get transcodingAudio => 'Chuyển mã (Âm thanh)';
+
+  @override
+  String get directStreamRemux => 'Truyền trực tiếp (Remux)';
+
+  @override
+  String get transcodingBitrateOrResolution =>
+      'Chuyển mã (Tốc độ bit hoặc Độ phân giải)';
+
+  @override
+  String get transcodingVideoAndAudio => 'Chuyển mã (Video & Âm thanh)';
+
+  @override
+  String get transcodingVideo => 'Chuyển mã (Video)';
 
   @override
   String get autoServerDefault => 'Tự động (Mặc định máy chủ)';
@@ -2243,7 +2509,7 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String get settingsAudioOutputModeDescription =>
-      'Choose how audio is decoded. AVR Passthrough sends raw Dolby/DTS streams to your receiver; Auto or Downmix decodes locally.';
+      'Chọn cách giải mã âm thanh. AVR Passthrough gửi luồng Dolby/DTS thô đến bộ thu của bạn; Tự động hoặc Trộn xuống sẽ giải mã ngay trên thiết bị.';
 
   @override
   String get settingsAudioOutputModeAvrPassthrough => 'Truyền qua AVR';
@@ -2253,13 +2519,14 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String get settingsAudioFallbackCodecDescription =>
-      'Select the target format to transcode multi-channel audio when the source stream cannot be direct-played or passed through.';
+      'Chọn định dạng đích để chuyển mã âm thanh đa kênh khi luồng gốc không thể phát trực tiếp hoặc truyền thẳng.';
 
   @override
-  String get settingsAudioFallbackCodecAuto => 'Auto Detect\n(Recommended)';
+  String get settingsAudioFallbackCodecAuto =>
+      'Tự động nhận diện\n(Khuyên dùng)';
 
   @override
-  String get settingsAudioFallbackCodecAac => 'AAC\n(Default)';
+  String get settingsAudioFallbackCodecAac => 'AAC\n(Mặc định)';
 
   @override
   String get settingsAudioFallbackCodecAc3 => 'AC3\n(Dolby Digital)';
@@ -2268,26 +2535,27 @@ class AppLocalizationsVi extends AppLocalizations {
   String get settingsAudioFallbackCodecEac3 => 'EAC3\n(Dolby Digital Plus)';
 
   @override
-  String get settingsAudioFallbackCodecTrueHd => 'TrueHD\n(Lossless)';
+  String get settingsAudioFallbackCodecTrueHd => 'TrueHD\n(Không mất dữ liệu)';
 
   @override
-  String get settingsAudioFallbackCodecMp3 => 'MP3\n(Stereo Only)';
+  String get settingsAudioFallbackCodecMp3 => 'MP3\n(Chỉ Stereo)';
 
   @override
-  String get settingsAudioFallbackCodecOpus => 'Opus\n(Efficient)';
+  String get settingsAudioFallbackCodecOpus => 'Opus\n(Hiệu quả)';
 
   @override
-  String get settingsAudioFallbackCodecFlac => 'FLAC\n(Lossless)';
+  String get settingsAudioFallbackCodecFlac => 'FLAC\n(Không mất dữ liệu)';
 
   @override
-  String get settingsMaxAudioChannels => 'Max Audio Channels';
+  String get settingsMaxAudioChannels => 'Số kênh âm thanh tối đa';
 
   @override
   String get settingsMaxAudioChannelsDescription =>
-      'Configure the maximum channels of your audio setup. Multichannel streams exceeding this limit will downmix or transcode.';
+      'Thiết lập số kênh tối đa của hệ thống âm thanh của bạn. Các luồng đa kênh vượt quá giới hạn này sẽ được trộn xuống hoặc chuyển mã.';
 
   @override
-  String get settingsMaxAudioChannelsAuto => 'Auto Detect\n(Hardware Default)';
+  String get settingsMaxAudioChannelsAuto =>
+      'Tự động nhận diện\n(Mặc định phần cứng)';
 
   @override
   String get settingsMaxAudioChannelsMono => '1.0 Mono';
@@ -2296,22 +2564,22 @@ class AppLocalizationsVi extends AppLocalizations {
   String get settingsMaxAudioChannelsStereo => '2.0 Stereo';
 
   @override
-  String get settingsMaxAudioChannels3_0 => '3.0 / 2.1 Surround';
+  String get settingsMaxAudioChannels3_0 => '3.0 / 2.1 Vòm';
 
   @override
   String get settingsMaxAudioChannels4_0 => '4.0 / 3.1 Quadraphonic';
 
   @override
-  String get settingsMaxAudioChannels5_0 => '5.0 / 4.1 Surround';
+  String get settingsMaxAudioChannels5_0 => '5.0 / 4.1 Vòm';
 
   @override
-  String get settingsMaxAudioChannels5_1 => '5.1 Surround';
+  String get settingsMaxAudioChannels5_1 => '5.1 Vòm';
 
   @override
-  String get settingsMaxAudioChannels6_1 => '6.1 Surround';
+  String get settingsMaxAudioChannels6_1 => '6.1 Vòm';
 
   @override
-  String get settingsMaxAudioChannels7_1 => '7.1 Surround';
+  String get settingsMaxAudioChannels7_1 => '7.1 Vòm';
 
   @override
   String get settingsAudioPassthroughAdvanced => 'Truyền qua (Nâng cao)';
@@ -2339,8 +2607,7 @@ class AppLocalizationsVi extends AppLocalizations {
   String get settingsAudioTrueHdPassthrough => 'Truyền qua TrueHD';
 
   @override
-  String get settingsAudioTrueHdAtmosPassthrough =>
-      'Dòng bit Dolby Digital Plus (EAC3) tới bộ giải mã bên ngoài.';
+  String get settingsAudioTrueHdAtmosPassthrough => 'Truyền thẳng TrueHD Atmos';
 
   @override
   String get settingsAudioBitstreamEac3ToExternalDecoder =>
@@ -2394,8 +2661,11 @@ class AppLocalizationsVi extends AppLocalizations {
   String get settingsAudioRouteSpeaker => 'Loa';
 
   @override
+  String get settingsAudioRouteHeadphones => 'Tai nghe';
+
+  @override
   String settingsAudioPcmChannels(int count) {
-    return '${count}ch PCM';
+    return 'PCM $count kênh';
   }
 
   @override
@@ -2481,7 +2751,7 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String secondsValue(int value) {
-    return '${value}s';
+    return '$value giây';
   }
 
   @override
@@ -2568,6 +2838,47 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String get subtitleCustomizationDescription => 'Tùy chỉnh giao diện phụ đề';
+
+  @override
+  String get subtitleMode => 'Chế độ phụ đề';
+
+  @override
+  String get subtitleModeFlagged => 'Theo đánh dấu';
+
+  @override
+  String get subtitleModeAlways => 'Luôn luôn';
+
+  @override
+  String get subtitleModeForeign => 'Tiếng nước ngoài';
+
+  @override
+  String get subtitleModeForced => 'Bắt buộc';
+
+  @override
+  String get subtitleModeFlaggedDescription =>
+      'Phát các bản được đánh dấu \"default\" hoặc \"forced\" trong siêu dữ liệu của tệp phương tiện.';
+
+  @override
+  String get subtitleModeAlwaysDescription =>
+      'Tự động tải và hiển thị phụ đề mỗi khi bắt đầu phát video.';
+
+  @override
+  String get subtitleModeForeignDescription =>
+      'Tự động bật phụ đề nếu bản âm thanh mặc định là tiếng nước ngoài.';
+
+  @override
+  String get subtitleModeForcedDescription =>
+      'Chỉ tải phụ đề được gắn cờ siêu dữ liệu forced.';
+
+  @override
+  String get subtitleModeNoneDescription =>
+      'Tắt hoàn toàn việc tự động tải phụ đề.';
+
+  @override
+  String get fallbackSubtitleLanguage => 'Ngôn ngữ phụ đề dự phòng';
+
+  @override
+  String get subtitleStream => 'Luồng phụ đề';
 
   @override
   String get subtitlePreviewText => 'Cáo nâu nhanh nhẹn nhảy qua chó lười';
@@ -2674,6 +2985,13 @@ class AppLocalizationsVi extends AppLocalizations {
   String get wifiOnlyDownloads => 'Tải xuống chỉ qua Wi-Fi';
 
   @override
+  String get reportDownloadsActivity => 'Hiển thị lượt tải xuống trên máy chủ';
+
+  @override
+  String get reportDownloadsActivitySubtitle =>
+      'Cho phép quản trị viên máy chủ xem các lượt tải xuống đã chuyển mã của bạn trong bảng điều khiển';
+
+  @override
   String get onlyDownloadOnWifi => 'Chỉ tải xuống khi kết nối với WiFi';
 
   @override
@@ -2763,7 +3081,10 @@ class AppLocalizationsVi extends AppLocalizations {
   String get showLibrariesInToolbar => 'Hiển thị Thư viện trong Thanh công cụ';
 
   @override
-  String get showSeerrButton => 'Show Seerr Button';
+  String get navbarAlwaysExpanded => 'Luôn hiển thị nhãn thanh điều hướng';
+
+  @override
+  String get showSeerrButton => 'Hiển thị nút Seerr';
 
   @override
   String get navbarOpacity => 'Độ mờ của thanh điều hướng';
@@ -2837,6 +3158,20 @@ class AppLocalizationsVi extends AppLocalizations {
   String get showFolderBrowsingOption => 'Hiển thị tùy chọn duyệt thư mục';
 
   @override
+  String get groupItemsIntoCollections => 'Nhóm các mục thành bộ sưu tập';
+
+  @override
+  String get hideCollectionAssociatedItems =>
+      'Ẩn các mục thuộc bộ sưu tập khi duyệt thư viện';
+
+  @override
+  String get groupItemsIntoCollectionsDialogTitle => 'Lưu ý về nhóm thư viện';
+
+  @override
+  String get groupItemsIntoCollectionsDialogMessage =>
+      'Để dùng thiết lập này, hãy đảm bảo các tùy chọn thư viện \"Group movies into collections\" và/hoặc \"Group shows into collections\" đã được bật trong phần cài đặt Hiển thị của thư viện trên máy chủ Jellyfin hoặc Emby của bạn.';
+
+  @override
   String get libraryVisibility => 'Hiển thị thư viện';
 
   @override
@@ -2894,7 +3229,7 @@ class AppLocalizationsVi extends AppLocalizations {
       'Chọn giữa Moonfin, MakD hoặc tắt thanh phương tiện';
 
   @override
-  String get mediaBarModeMoonfin => 'Vây trăng';
+  String get mediaBarModeMoonfin => 'Moonfin';
 
   @override
   String get mediaBarModeMakd => 'MakD';
@@ -2945,6 +3280,13 @@ class AppLocalizationsVi extends AppLocalizations {
   @override
   String get autoPlayTrailers =>
       'Tự động phát đoạn giới thiệu trên thanh phương tiện sau 3 giây';
+
+  @override
+  String get trailerAudio => 'Âm thanh trailer';
+
+  @override
+  String get enableTrailerAudio =>
+      'Bật âm thanh cho trailer trong thanh phương tiện';
 
   @override
   String get episodePreview => 'Xem trước tập';
@@ -3022,10 +3364,11 @@ class AppLocalizationsVi extends AppLocalizations {
       'Kết hợp cả hai hàng thành một phần nhà duy nhất';
 
   @override
-  String get fullScreenRows => 'Expanded Home Rows';
+  String get fullScreenRows => 'Hàng trang chủ mở rộng';
 
   @override
-  String get fullScreenRowsDescription => 'Limit home rows to 1 row per screen';
+  String get fullScreenRowsDescription =>
+      'Giới hạn còn 1 hàng trang chủ mỗi màn hình';
 
   @override
   String get perRowImageType => 'Loại hình ảnh trên mỗi hàng';
@@ -3040,7 +3383,7 @@ class AppLocalizationsVi extends AppLocalizations {
   String get lastUser => 'Người dùng cuối cùng';
 
   @override
-  String get currentUser => 'Current User';
+  String get currentUser => 'Người dùng hiện tại';
 
   @override
   String get alwaysAuthenticate => 'Luôn xác thực';
@@ -3101,7 +3444,7 @@ class AppLocalizationsVi extends AppLocalizations {
       'Kích hoạt trình bảo vệ màn hình tích hợp';
 
   @override
-  String get mode => 'Cách thức';
+  String get mode => 'Chế độ';
 
   @override
   String get libraryArt => 'Thư viện nghệ thuật';
@@ -3148,10 +3491,10 @@ class AppLocalizationsVi extends AppLocalizations {
       'Hiển thị đồng hồ trong khi bảo vệ màn hình';
 
   @override
-  String get clockModeStatic => 'Static';
+  String get clockModeStatic => 'Cố định';
 
   @override
-  String get clockModeBouncing => 'Bouncing';
+  String get clockModeBouncing => 'Chuyển động';
 
   @override
   String get rottenTomatoesCritics => 'Rotten Tomatoes (Nhà phê bình)';
@@ -3224,7 +3567,7 @@ class AppLocalizationsVi extends AppLocalizations {
       'Bật và sắp xếp lại các nguồn xếp hạng được hiển thị trên toàn bộ ứng dụng';
 
   @override
-  String get pluginLabel => 'Trình cắm';
+  String get pluginLabel => 'Plugin Moonbase';
 
   @override
   String get pluginDetected => 'Đã phát hiện plugin';
@@ -3295,13 +3638,13 @@ class AppLocalizationsVi extends AppLocalizations {
   String get networks => 'Mạng';
 
   @override
-  String get seerrDiscoveryRows => 'Seerr Discovery Rows';
+  String get seerrDiscoveryRows => 'Hàng khám phá Seerr';
 
   @override
   String get resetRowsToDefaults => 'Đặt lại các hàng về mặc định';
 
   @override
-  String get enableSeerr => 'Kích hoạt Seer';
+  String get enableSeerr => 'Bật Seerr';
 
   @override
   String get showSeerrInNavigation =>
@@ -3318,20 +3661,43 @@ class AppLocalizationsVi extends AppLocalizations {
   String get hideAdultContent => 'Ẩn nội dung người lớn trong kết quả';
 
   @override
+  String get seerrNotificationsSection => 'Thông báo';
+
+  @override
+  String get seerrNotifyNewRequestsTitle => 'Thông báo yêu cầu mới';
+
+  @override
+  String get seerrNotifyNewRequestsSubtitle =>
+      'Báo cho tôi khi có người gửi yêu cầu';
+
+  @override
+  String get seerrNotifyLibraryAddedTitle => 'Cập nhật yêu cầu';
+
+  @override
+  String get seerrNotifyLibraryAddedSubtitle =>
+      'Đã duyệt, bị từ chối và đã thêm vào thư viện của bạn';
+
+  @override
+  String get seerrNotifyIssuesTitle => 'Cập nhật sự cố';
+
+  @override
+  String get seerrNotifyIssuesSubtitle => 'Sự cố mới, phản hồi và cách xử lý';
+
+  @override
   String loggedInAs(String username) {
     return 'Đã đăng nhập với tên: $username';
   }
 
   @override
-  String get discoverRows => 'Khám phá hàng';
+  String get discoverRows => 'Trang khám phá Seerr';
 
   @override
   String get discoverRowsDescriptionPlugin =>
-      'Kéo để sắp xếp lại. Bật hoặc tắt hàng. Thứ tự hàng đã bật sẽ đồng bộ hóa với plugin Moonfin.';
+      'Bật các hàng muốn hiển thị trên trang chính Seerr. Kéo để sắp xếp lại. Thứ tự tùy chỉnh sẽ đồng bộ với Moonbase.';
 
   @override
   String get discoverRowsDescription =>
-      'Kéo để sắp xếp lại. Bật hoặc tắt hàng.';
+      'Bật các hàng muốn hiển thị trên trang chính Seerr. Kéo để sắp xếp lại. Thứ tự tùy chỉnh sẽ đồng bộ với Moonbase.';
 
   @override
   String get enabled => 'Đã bật';
@@ -3354,8 +3720,7 @@ class AppLocalizationsVi extends AppLocalizations {
   String get sourceCode => 'Mã nguồn';
 
   @override
-  String get sourceCodeUrl =>
-      'https://github.com/Moonfin-Client/Mobile-Desktop';
+  String get sourceCodeUrl => 'https://github.com/Moonfin-Client/Moonfin-Core';
 
   @override
   String get checkForUpdatesNow => 'Kiểm tra cập nhật ngay bây giờ';
@@ -3453,7 +3818,21 @@ class AppLocalizationsVi extends AppLocalizations {
   }
 
   @override
-  String get clear => 'Thông thoáng';
+  String mbValue(int value) {
+    return '$value MB';
+  }
+
+  @override
+  String get imageCacheLimit => 'Giới hạn bộ nhớ đệm hình ảnh';
+
+  @override
+  String get clearImageCache => 'Xóa bộ nhớ đệm hình ảnh';
+
+  @override
+  String get imageCacheCleared => 'Đã xóa bộ nhớ đệm hình ảnh';
+
+  @override
+  String get clear => 'Xóa';
 
   @override
   String get browse => 'Duyệt qua';
@@ -3468,12 +3847,20 @@ class AppLocalizationsVi extends AppLocalizations {
   String get seerrRequestedStatus => 'Đã yêu cầu';
 
   @override
+  String seerrDownloadingPercent(int percent) {
+    return 'Đang tải xuống · $percent%';
+  }
+
+  @override
+  String get seerrImportingStatus => 'Đang nhập';
+
+  @override
   String itemsCount(int count) {
     return '$count Vật phẩm';
   }
 
   @override
-  String get seerrSettings => 'Cài đặt Seer';
+  String get seerrSettings => 'Cài đặt Seerr';
 
   @override
   String get requestMore => 'Yêu cầu thêm';
@@ -3570,7 +3957,7 @@ class AppLocalizationsVi extends AppLocalizations {
   String get showMore => 'Hiển thị thêm';
 
   @override
-  String get appearances => 'Xuất hiện';
+  String get appearances => 'Tác phẩm tham gia';
 
   @override
   String get crewSection => 'Phi hành đoàn';
@@ -3608,6 +3995,149 @@ class AppLocalizationsVi extends AppLocalizations {
   String get deletedStatus => 'Đã xóa';
 
   @override
+  String get failedStatus => 'Thất bại';
+
+  @override
+  String get processingStatus => 'Đang xử lý';
+
+  @override
+  String modifiedByName(String name) {
+    return 'Được sửa bởi $name';
+  }
+
+  @override
+  String get completedStatus => 'Hoàn tất';
+
+  @override
+  String get requestErrorDuplicate => 'Tựa đề này đã được yêu cầu';
+
+  @override
+  String get requestErrorQuota => 'Đã đạt giới hạn yêu cầu';
+
+  @override
+  String get requestErrorBlocklisted => 'Tựa đề này nằm trong danh sách chặn';
+
+  @override
+  String get requestErrorNoSeasons => 'Không còn mùa nào để yêu cầu';
+
+  @override
+  String get requestErrorPermission => 'Bạn không có quyền gửi yêu cầu này';
+
+  @override
+  String get seerrRequestsTitle => 'Yêu cầu';
+
+  @override
+  String get seerrIssuesTitle => 'Sự cố';
+
+  @override
+  String get sortNewest => 'Mới nhất';
+
+  @override
+  String get sortLastModified => 'Sửa gần nhất';
+
+  @override
+  String get noIssues => 'Không có sự cố';
+
+  @override
+  String movieQuotaRemaining(int remaining, int limit) {
+    return 'Còn $remaining trên $limit lượt yêu cầu phim';
+  }
+
+  @override
+  String seasonQuotaRemaining(int remaining, int limit) {
+    return 'Còn $remaining trên $limit lượt yêu cầu mùa';
+  }
+
+  @override
+  String partOfCollectionName(String name) {
+    return 'Thuộc $name';
+  }
+
+  @override
+  String get viewCollection => 'Xem bộ sưu tập';
+
+  @override
+  String get requestCollection => 'Yêu cầu cả bộ sưu tập';
+
+  @override
+  String collectionMoviesSummary(int total, int available) {
+    return '$total phim · $available phim có sẵn';
+  }
+
+  @override
+  String requestMoviesCount(int count) {
+    return 'Yêu cầu $count phim';
+  }
+
+  @override
+  String requestingProgress(int current, int total) {
+    return 'Đang yêu cầu $current trên $total...';
+  }
+
+  @override
+  String requestedMoviesCount(int count) {
+    return 'Đã yêu cầu $count phim';
+  }
+
+  @override
+  String requestedMoviesPartial(int ok, int total) {
+    return 'Đã yêu cầu $ok trên $total phim';
+  }
+
+  @override
+  String get collectionAllRequested =>
+      'Tất cả phim đều đã có sẵn hoặc đã được yêu cầu';
+
+  @override
+  String get reportIssue => 'Báo cáo sự cố';
+
+  @override
+  String get issueTypeVideo => 'Video';
+
+  @override
+  String get issueTypeAudio => 'Âm thanh';
+
+  @override
+  String get whatsWrong => 'Có vấn đề gì?';
+
+  @override
+  String get allEpisodes => 'Tất cả các tập';
+
+  @override
+  String get episode => 'Tập';
+
+  @override
+  String get openStatus => 'Đang mở';
+
+  @override
+  String get resolvedStatus => 'Đã xử lý';
+
+  @override
+  String get resolveAction => 'Đánh dấu đã xử lý';
+
+  @override
+  String get reopenAction => 'Mở lại';
+
+  @override
+  String reportedByName(String name) {
+    return 'Được báo cáo bởi $name';
+  }
+
+  @override
+  String commentsCount(int count) {
+    return '$count bình luận';
+  }
+
+  @override
+  String get addComment => 'Thêm bình luận';
+
+  @override
+  String get deleteIssueConfirm => 'Xóa sự cố này?';
+
+  @override
+  String get submitReport => 'Gửi báo cáo';
+
+  @override
   String get tmdbScore => 'Điểm TMDB';
 
   @override
@@ -3638,7 +4168,7 @@ class AppLocalizationsVi extends AppLocalizations {
   String get access => 'Truy cập';
 
   @override
-  String get add => 'Thêm vào';
+  String get add => 'Thêm';
 
   @override
   String get address => 'Địa chỉ';
@@ -3665,7 +4195,7 @@ class AppLocalizationsVi extends AppLocalizations {
   String get done => 'Xong';
 
   @override
-  String get edit => 'Biên tập';
+  String get edit => 'Chỉnh sửa';
 
   @override
   String get encoding => 'Mã hóa';
@@ -3674,10 +4204,10 @@ class AppLocalizationsVi extends AppLocalizations {
   String get error => 'Lỗi';
 
   @override
-  String get forward => 'Phía trước';
+  String get forward => 'Tua tới';
 
   @override
-  String get general => 'Tổng quan';
+  String get general => 'Chung';
 
   @override
   String get go => 'Đi';
@@ -3698,7 +4228,7 @@ class AppLocalizationsVi extends AppLocalizations {
   String get networking => 'Mạng';
 
   @override
-  String get next => 'Kế tiếp';
+  String get next => 'Tiếp theo';
 
   @override
   String get path => 'Con đường';
@@ -3722,7 +4252,7 @@ class AppLocalizationsVi extends AppLocalizations {
   String get refresh => 'Làm cho khỏe lại';
 
   @override
-  String get remote => 'Xa';
+  String get remote => 'Điều khiển từ xa';
 
   @override
   String get rename => 'Đổi tên';
@@ -3758,7 +4288,7 @@ class AppLocalizationsVi extends AppLocalizations {
   String get status => 'Trạng thái';
 
   @override
-  String get stop => 'Dừng lại';
+  String get stop => 'Dừng';
 
   @override
   String get streaming => 'Truyền phát';
@@ -3767,7 +4297,7 @@ class AppLocalizationsVi extends AppLocalizations {
   String get time => 'Thời gian';
 
   @override
-  String get trickplay => 'trò lừa';
+  String get trickplay => 'Trickplay';
 
   @override
   String get uninstall => 'Gỡ cài đặt';
@@ -3809,16 +4339,25 @@ class AppLocalizationsVi extends AppLocalizations {
   String get adminDrawerLibraries => 'Thư viện';
 
   @override
+  String get adminDrawerDisplay => 'Hiển thị';
+
+  @override
+  String get adminDrawerMetadata => 'Siêu dữ liệu';
+
+  @override
+  String get adminDrawerNfo => 'Cài đặt NFO';
+
+  @override
   String get adminDrawerTranscoding => 'Chuyển mã';
 
   @override
-  String get adminDrawerResume => 'Bản tóm tắt';
+  String get adminDrawerResume => 'Tiếp tục xem';
 
   @override
   String get adminDrawerStreaming => 'Truyền phát';
 
   @override
-  String get adminDrawerTrickplay => 'trò lừa';
+  String get adminDrawerTrickplay => 'Trickplay';
 
   @override
   String get adminDrawerDevices => 'Thiết bị';
@@ -3989,10 +4528,10 @@ class AppLocalizationsVi extends AppLocalizations {
   String get sessionRewind => 'Tua lại';
 
   @override
-  String get sessionForward => 'Phía trước';
+  String get sessionForward => 'Tua tới';
 
   @override
-  String get sessionNext => 'Kế tiếp';
+  String get sessionNext => 'Tiếp theo';
 
   @override
   String get sessionVolumeDown => 'Tập –';
@@ -4034,6 +4573,12 @@ class AppLocalizationsVi extends AppLocalizations {
   String get adminClearDates => 'Xóa ngày';
 
   @override
+  String get adminActivitySeverityAll => 'Mọi mức độ';
+
+  @override
+  String get adminActivityDateRange => 'Khoảng thời gian';
+
+  @override
   String adminActivityLoadFailed(String error) {
     return 'Không tải được nhật ký hoạt động: $error';
   }
@@ -4064,6 +4609,27 @@ class AppLocalizationsVi extends AppLocalizations {
   @override
   String adminDeviceDeleteFailed(String error) {
     return 'Không xóa được thiết bị: $error';
+  }
+
+  @override
+  String adminRemoveDeviceConfirm(String name) {
+    return 'Gỡ thiết bị \'$name\'? Người dùng sẽ phải đăng nhập lại trên thiết bị này.';
+  }
+
+  @override
+  String get adminDeleteAllDevices => 'Xóa tất cả thiết bị';
+
+  @override
+  String adminDeleteAllDevicesConfirm(int count) {
+    return 'Gỡ $count thiết bị? Những người dùng bị ảnh hưởng sẽ phải đăng nhập lại. Thiết bị hiện tại của bạn không bị ảnh hưởng.';
+  }
+
+  @override
+  String get adminDevicesDeletedAll => 'Đã gỡ thiết bị';
+
+  @override
+  String adminDevicesDeletedPartial(int count) {
+    return 'Đã gỡ một số thiết bị; không thể gỡ $count thiết bị.';
   }
 
   @override
@@ -4177,6 +4743,248 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String get adminMetadataCountryHint => 'ví dụ. Mỹ, Đức, Pháp';
+
+  @override
+  String get adminLibraryTabPaths => 'Đường dẫn';
+
+  @override
+  String get adminLibraryTabOptions => 'Tùy chọn';
+
+  @override
+  String get adminLibraryTabDownloaders => 'Trình tải xuống';
+
+  @override
+  String get adminLibMetadataSavers => 'Trình lưu siêu dữ liệu';
+
+  @override
+  String get adminLibSubtitleDownloaders => 'Trình tải phụ đề';
+
+  @override
+  String get adminLibLyricDownloaders => 'Trình tải lời bài hát';
+
+  @override
+  String adminLibMetadataDownloadersFor(String type) {
+    return 'Trình tải siêu dữ liệu: $type';
+  }
+
+  @override
+  String adminLibImageFetchersFor(String type) {
+    return 'Trình lấy hình ảnh: $type';
+  }
+
+  @override
+  String get adminLibNoDownloaders =>
+      'Máy chủ này không cung cấp trình tải nào cho loại thư viện này.';
+
+  @override
+  String get adminLibrarySectionGeneral => 'Chung';
+
+  @override
+  String get adminLibrarySectionMetadata => 'Siêu dữ liệu';
+
+  @override
+  String get adminLibrarySectionEmbedded => 'Thông tin nhúng';
+
+  @override
+  String get adminLibrarySectionSubtitles => 'Phụ đề';
+
+  @override
+  String get adminLibrarySectionImages => 'Hình ảnh';
+
+  @override
+  String get adminLibrarySectionSeries => 'Phim bộ';
+
+  @override
+  String get adminLibrarySectionMusic => 'Nhạc';
+
+  @override
+  String get adminLibrarySectionMovies => 'Phim';
+
+  @override
+  String get adminLibRealtimeMonitor => 'Bật giám sát theo thời gian thực';
+
+  @override
+  String get adminLibRealtimeMonitorHint =>
+      'Phát hiện thay đổi của tệp và tự động xử lý.';
+
+  @override
+  String get adminLibArchiveMediaFiles => 'Xem tệp nén như tệp phương tiện';
+
+  @override
+  String get adminLibEnablePhotos => 'Hiển thị ảnh';
+
+  @override
+  String get adminLibSaveLocalMetadata => 'Lưu ảnh bìa vào thư mục phương tiện';
+
+  @override
+  String get adminLibRefreshInterval => 'Tự động làm mới siêu dữ liệu';
+
+  @override
+  String get adminLibRefreshNever => 'Không bao giờ';
+
+  @override
+  String get adminLibDefault => 'Mặc định';
+
+  @override
+  String get adminLibDisplayTitle => 'Hiển thị';
+
+  @override
+  String get adminLibDisplaySection => 'Hiển thị thư viện';
+
+  @override
+  String get adminLibFolderView =>
+      'Hiển thị dạng thư mục để xem các thư mục phương tiện thuần túy';
+
+  @override
+  String get adminLibSpecialsInSeasons =>
+      'Hiển thị tập đặc biệt trong mùa mà chúng được phát sóng';
+
+  @override
+  String get adminLibGroupMovies => 'Nhóm phim lẻ thành bộ sưu tập';
+
+  @override
+  String get adminLibGroupShows => 'Nhóm phim bộ thành bộ sưu tập';
+
+  @override
+  String get adminLibExternalSuggestions =>
+      'Hiển thị nội dung bên ngoài trong phần gợi ý';
+
+  @override
+  String get adminLibDateAddedSection => 'Cách xác định ngày thêm';
+
+  @override
+  String get adminLibDateAddedLabel => 'Lấy ngày thêm từ';
+
+  @override
+  String get adminLibDateAddedImport => 'Ngày quét vào thư viện';
+
+  @override
+  String get adminLibDateAddedFile => 'Ngày tệp được tạo';
+
+  @override
+  String get adminLibMetadataTitle => 'Siêu dữ liệu và hình ảnh';
+
+  @override
+  String get adminLibMetadataLangSection => 'Ngôn ngữ siêu dữ liệu ưu tiên';
+
+  @override
+  String get adminLibChaptersSection => 'Chương';
+
+  @override
+  String get adminLibDummyChapterDuration => 'Thời lượng chương giả (giây)';
+
+  @override
+  String get adminLibDummyChapterDurationHint =>
+      'Độ dài của các chương được tạo cho nội dung không có chương. Đặt 0 để tắt.';
+
+  @override
+  String get adminLibChapterImageResolution => 'Độ phân giải ảnh chương';
+
+  @override
+  String get adminLibNfoTitle => 'Cài đặt NFO';
+
+  @override
+  String get adminLibNfoHelp =>
+      'Siêu dữ liệu NFO tương thích với Kodi và các ứng dụng tương tự. Các thiết lập này áp dụng cho mọi thư viện có lưu siêu dữ liệu NFO.';
+
+  @override
+  String get adminLibKodiUser =>
+      'Người dùng được lưu dữ liệu xem trong tệp NFO';
+
+  @override
+  String get adminLibSaveImagePaths => 'Lưu đường dẫn hình ảnh trong tệp NFO';
+
+  @override
+  String get adminLibPathSubstitution =>
+      'Bật thay thế đường dẫn cho đường dẫn hình ảnh NFO';
+
+  @override
+  String get adminLibExtraThumbs =>
+      'Sao chép ảnh extrafanart vào thư mục extrathumbs';
+
+  @override
+  String get adminLibNone => 'Không có';
+
+  @override
+  String adminLibRefreshDays(int days) {
+    return '$days ngày';
+  }
+
+  @override
+  String get adminLibEmbeddedTitles => 'Dùng tựa đề nhúng trong tệp';
+
+  @override
+  String get adminLibEmbeddedExtrasTitles =>
+      'Dùng tựa đề nhúng cho nội dung thêm';
+
+  @override
+  String get adminLibEmbeddedEpisodeInfos =>
+      'Dùng thông tin tập nhúng trong tệp';
+
+  @override
+  String get adminLibAllowEmbeddedSubtitles => 'Cho phép phụ đề nhúng';
+
+  @override
+  String get adminLibEmbeddedAllowAll => 'Cho phép tất cả';
+
+  @override
+  String get adminLibEmbeddedAllowText => 'Chỉ dạng văn bản';
+
+  @override
+  String get adminLibEmbeddedAllowImage => 'Chỉ dạng hình ảnh';
+
+  @override
+  String get adminLibEmbeddedAllowNone => 'Không có';
+
+  @override
+  String get adminLibSkipIfEmbeddedSubs =>
+      'Bỏ qua tải xuống nếu đã có phụ đề nhúng';
+
+  @override
+  String get adminLibSkipIfAudioMatches =>
+      'Bỏ qua tải xuống nếu bản âm thanh trùng với ngôn ngữ tải xuống';
+
+  @override
+  String get adminLibRequirePerfectMatch => 'Yêu cầu phụ đề khớp hoàn toàn';
+
+  @override
+  String get adminLibSaveSubtitlesWithMedia =>
+      'Lưu phụ đề vào thư mục phương tiện';
+
+  @override
+  String get adminLibChapterImageExtraction => 'Trích xuất ảnh chương';
+
+  @override
+  String get adminLibChapterImagesDuringScan =>
+      'Trích xuất ảnh chương trong lúc quét thư viện';
+
+  @override
+  String get adminLibTrickplayExtraction => 'Bật trích xuất ảnh Trickplay';
+
+  @override
+  String get adminLibTrickplayDuringScan =>
+      'Trích xuất ảnh Trickplay trong lúc quét thư viện';
+
+  @override
+  String get adminLibSaveTrickplayWithMedia =>
+      'Lưu ảnh Trickplay vào thư mục phương tiện';
+
+  @override
+  String get adminLibAutomaticSeriesGrouping =>
+      'Tự động gộp các phim bộ nằm rải rác ở nhiều thư mục';
+
+  @override
+  String get adminLibSeasonZeroName => 'Tên hiển thị của mùa 0';
+
+  @override
+  String get adminLibLufsScan => 'Bật quét LUFS để chuẩn hóa âm lượng';
+
+  @override
+  String get adminLibPreferNonstandardArtist =>
+      'Ưu tiên thẻ nghệ sĩ không chuẩn';
+
+  @override
+  String get adminLibAutoAddToCollection => 'Tự động thêm phim vào bộ sưu tập';
 
   @override
   String get adminLibraryNameRequired => 'Tên thư viện là bắt buộc';
@@ -4416,6 +5224,145 @@ class AppLocalizationsVi extends AppLocalizations {
   String get adminEnableAllChannels => 'Cho phép truy cập vào tất cả các kênh';
 
   @override
+  String get adminParentalControl => 'Kiểm soát của phụ huynh';
+
+  @override
+  String get adminMaxParentalRating => 'Xếp hạng độ tuổi tối đa được phép';
+
+  @override
+  String get adminMaxParentalRatingHint =>
+      'Nội dung có xếp hạng cao hơn sẽ bị ẩn với người dùng này.';
+
+  @override
+  String get adminParentalRatingNone => 'Không có';
+
+  @override
+  String get adminBlockUnratedItems =>
+      'Chặn các mục không có hoặc có thông tin xếp hạng không xác định';
+
+  @override
+  String get adminUnratedBook => 'Sách';
+
+  @override
+  String get adminUnratedChannelContent => 'Kênh';
+
+  @override
+  String get adminUnratedLiveTvChannel => 'TV trực tiếp';
+
+  @override
+  String get adminUnratedMovie => 'Phim';
+
+  @override
+  String get adminUnratedMusic => 'Nhạc';
+
+  @override
+  String get adminUnratedTrailer => 'Trailer';
+
+  @override
+  String get adminUnratedSeries => 'Phim bộ';
+
+  @override
+  String get adminAccessSchedules => 'Lịch truy cập';
+
+  @override
+  String get adminAccessSchedulesHint =>
+      'Chỉ cho phép truy cập trong các khung giờ bên dưới. Nếu không đặt lịch, người dùng được truy cập cả ngày.';
+
+  @override
+  String get adminAddSchedule => 'Thêm lịch';
+
+  @override
+  String get adminScheduleDay => 'Ngày';
+
+  @override
+  String get adminScheduleStart => 'Bắt đầu';
+
+  @override
+  String get adminScheduleEnd => 'Kết thúc';
+
+  @override
+  String get adminDayEveryday => 'Mỗi ngày';
+
+  @override
+  String get adminDayWeekday => 'Ngày trong tuần';
+
+  @override
+  String get adminDayWeekend => 'Cuối tuần';
+
+  @override
+  String get adminDaySunday => 'Chủ Nhật';
+
+  @override
+  String get adminDayMonday => 'Thứ Hai';
+
+  @override
+  String get adminDayTuesday => 'Thứ Ba';
+
+  @override
+  String get adminDayWednesday => 'Thứ Tư';
+
+  @override
+  String get adminDayThursday => 'Thứ Năm';
+
+  @override
+  String get adminDayFriday => 'Thứ Sáu';
+
+  @override
+  String get adminDaySaturday => 'Thứ Bảy';
+
+  @override
+  String get adminAllowedTags => 'Thẻ được phép';
+
+  @override
+  String get adminAllowedTagsHint =>
+      'Chỉ hiển thị nội dung có các thẻ này. Để trống để cho phép tất cả.';
+
+  @override
+  String get adminBlockedTags => 'Thẻ bị chặn';
+
+  @override
+  String get adminBlockedTagsHint =>
+      'Nội dung có các thẻ này sẽ bị ẩn với người dùng này.';
+
+  @override
+  String get adminAddTag => 'Thêm thẻ';
+
+  @override
+  String get adminEnabledDevices => 'Thiết bị được bật';
+
+  @override
+  String get adminEnabledChannels => 'Kênh được bật';
+
+  @override
+  String get adminAuthProvider => 'Nhà cung cấp xác thực';
+
+  @override
+  String get adminPasswordResetProvider => 'Nhà cung cấp đặt lại mật khẩu';
+
+  @override
+  String get adminLoginAttemptsBeforeLockout =>
+      'Số lần đăng nhập thất bại tối đa trước khi khóa';
+
+  @override
+  String get adminLoginAttemptsHint =>
+      'Đặt 0 để dùng mặc định, hoặc -1 để tắt tính năng khóa.';
+
+  @override
+  String get adminSyncPlayAccess => 'Quyền truy cập SyncPlay';
+
+  @override
+  String get adminSyncPlayCreateAndJoin => 'Cho phép tạo và tham gia nhóm';
+
+  @override
+  String get adminSyncPlayJoin => 'Cho phép tham gia nhóm';
+
+  @override
+  String get adminSyncPlayNone => 'Không có quyền truy cập';
+
+  @override
+  String get adminContentDeletionFolders => 'Cho phép xóa nội dung từ';
+
+  @override
   String get adminResetPasswordWarning =>
       'Điều này sẽ loại bỏ mật khẩu. Người dùng sẽ có thể đăng nhập mà không cần mật khẩu.';
 
@@ -4499,6 +5446,27 @@ class AppLocalizationsVi extends AppLocalizations {
   String adminApiKeyTokenCreated(String token, String created) {
     return 'Mã thông báo: $token\\nĐã tạo: $created';
   }
+
+  @override
+  String get adminBackupOptionsTitle => 'Tạo bản sao lưu';
+
+  @override
+  String get adminBackupInclude => 'Chọn những gì cần đưa vào bản sao lưu.';
+
+  @override
+  String get adminBackupDatabase => 'Cơ sở dữ liệu';
+
+  @override
+  String get adminBackupDatabaseAlways => 'Luôn được bao gồm';
+
+  @override
+  String get adminBackupMetadata => 'Siêu dữ liệu';
+
+  @override
+  String get adminBackupSubtitles => 'Phụ đề';
+
+  @override
+  String get adminBackupTrickplay => 'Ảnh Trickplay';
 
   @override
   String get adminCreatingBackup => 'Đang tạo bản sao lưu...';
@@ -4926,10 +5894,10 @@ class AppLocalizationsVi extends AppLocalizations {
   String get adminThrottleBuffering => 'Bộ đệm ga';
 
   @override
-  String get adminTrickplaySaved => 'Đã lưu cài đặt trò chơi lừa';
+  String get adminTrickplaySaved => 'Đã lưu cài đặt Trickplay';
 
   @override
-  String get adminTrickplayLoadFailed => 'Không tải được cài đặt trò chơi lừa';
+  String get adminTrickplayLoadFailed => 'Không tải được cài đặt Trickplay';
 
   @override
   String get adminEnableHardwareAcceleration =>
@@ -5039,7 +6007,7 @@ class AppLocalizationsVi extends AppLocalizations {
   String get adminBaseUrl => 'URL cơ sở';
 
   @override
-  String get adminBaseUrlHint => 'ví dụ. /vây thạch';
+  String get adminBaseUrlHint => 'ví dụ: /jellyfin';
 
   @override
   String get https => 'HTTPS';
@@ -5106,9 +6074,6 @@ class AppLocalizationsVi extends AppLocalizations {
   String adminMetadataRefreshFailed(String error) {
     return 'Không làm mới được siêu dữ liệu: $error';
   }
-
-  @override
-  String get adminSearchRemotePerson => 'Tìm kiếm người ở xa';
 
   @override
   String get adminNoRemoteMatches => 'Không tìm thấy kết quả phù hợp từ xa';
@@ -5205,16 +6170,116 @@ class AppLocalizationsVi extends AppLocalizations {
   String get adminAddTuner => 'Thêm bộ chỉnh';
 
   @override
+  String get adminEditTuner => 'Sửa bộ thu';
+
+  @override
+  String get adminTunerTypeM3u => 'Bộ thu M3U';
+
+  @override
+  String get adminTunerTypeHdHomerun => 'HDHomeRun';
+
+  @override
+  String get adminTunerFileOrUrl => 'Tệp hoặc URL';
+
+  @override
+  String get adminTunerIpAddress => 'Địa chỉ IP của bộ thu';
+
+  @override
+  String get adminTunerFriendlyName => 'Tên thân thiện';
+
+  @override
+  String get adminTunerUserAgent => 'User agent';
+
+  @override
+  String get adminTunerCount => 'Giới hạn kết nối đồng thời';
+
+  @override
+  String get adminTunerCountHelp =>
+      'Số luồng tối đa mà bộ thu cho phép cùng lúc. Đặt 0 để không giới hạn.';
+
+  @override
+  String get adminTunerFallbackBitrate => 'Tốc độ bit truyền tối đa dự phòng';
+
+  @override
+  String get adminTunerImportFavoritesOnly => 'Chỉ nhập các kênh yêu thích';
+
+  @override
+  String get adminTunerAllowHwTranscoding =>
+      'Cho phép chuyển mã bằng phần cứng';
+
+  @override
+  String get adminTunerAllowFmp4 => 'Cho phép vùng chứa chuyển mã fMP4';
+
+  @override
+  String get adminTunerAllowStreamSharing => 'Cho phép chia sẻ luồng';
+
+  @override
+  String get adminTunerEnableStreamLooping => 'Bật lặp luồng';
+
+  @override
+  String get adminTunerIgnoreDts => 'Bỏ qua DTS';
+
+  @override
+  String get adminTunerReadAtNativeFramerate =>
+      'Đọc đầu vào theo tốc độ khung hình gốc';
+
+  @override
+  String get adminEditProvider => 'Sửa nhà cung cấp';
+
+  @override
+  String get adminProviderXmltv => 'XMLTV';
+
+  @override
+  String get adminProviderSchedulesDirect => 'Schedules Direct';
+
+  @override
+  String get adminXmltvPath => 'Tệp hoặc URL';
+
+  @override
+  String get adminXmltvMoviePrefix => 'Tiền tố phim';
+
+  @override
+  String get adminXmltvMovieCategories => 'Danh mục phim';
+
+  @override
+  String get adminXmltvCategoriesHelp =>
+      'Phân tách nhiều danh mục bằng dấu gạch đứng (|).';
+
+  @override
+  String get adminXmltvKidsCategories => 'Danh mục thiếu nhi';
+
+  @override
+  String get adminXmltvNewsCategories => 'Danh mục tin tức';
+
+  @override
+  String get adminXmltvSportsCategories => 'Danh mục thể thao';
+
+  @override
+  String get adminSdUsername => 'Tên người dùng';
+
+  @override
+  String get adminSdPassword => 'Mật khẩu';
+
+  @override
+  String get adminSdCountry => 'Quốc gia';
+
+  @override
+  String get adminSdCountrySelect => 'Chọn quốc gia';
+
+  @override
+  String get adminSdPostalCode => 'Mã bưu chính';
+
+  @override
+  String get adminSdGetListings => 'Lấy danh sách kênh';
+
+  @override
+  String get adminSdListings => 'Danh sách kênh';
+
+  @override
+  String get adminEnableAllTuners => 'Bật tất cả bộ thu';
+
+  @override
   String get adminTunerType => 'Loại bộ chỉnh';
-
-  @override
-  String get adminTunerTypeHint => 'HDHomeRun, M3U, Khác';
-
-  @override
-  String get adminUrlPath => 'URL/Đường dẫn';
-
-  @override
-  String get adminNameOptional => 'Tên (tùy chọn)';
 
   @override
   String get adminTunerAdded => 'Đã thêm bộ chỉnh';
@@ -5229,15 +6294,6 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String get adminProviderType => 'Loại nhà cung cấp';
-
-  @override
-  String get adminProviderTypeHint => 'Lịch trìnhDirect hoặc XMLTV';
-
-  @override
-  String get adminUsernameOptional => 'Tên người dùng (tùy chọn)';
-
-  @override
-  String get adminRefreshInterval => 'Khoảng thời gian làm mới (giờ)';
 
   @override
   String get adminProviderAdded => 'Đã thêm nhà cung cấp';
@@ -5261,6 +6317,10 @@ class AppLocalizationsVi extends AppLocalizations {
   }
 
   @override
+  String get adminTunerResetNotSupported =>
+      'Loại bộ thu này không hỗ trợ đặt lại.';
+
+  @override
   String adminProviderRemoveFailed(String error) {
     return 'Không xóa được nhà cung cấp: $error';
   }
@@ -5279,6 +6339,46 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String get adminSeriesRecordingPath => 'Đường dẫn ghi sê-ri';
+
+  @override
+  String get adminMovieRecordingPath => 'Đường dẫn ghi phim';
+
+  @override
+  String get adminGuideDays => 'Số ngày dữ liệu lịch phát sóng';
+
+  @override
+  String get adminGuideDaysAuto => 'Tự động';
+
+  @override
+  String adminGuideDaysValue(int days) {
+    return '$days ngày';
+  }
+
+  @override
+  String get adminRecordingPostProcessor => 'Đường dẫn ứng dụng hậu xử lý';
+
+  @override
+  String get adminRecordingPostProcessorArgs => 'Tham số của trình hậu xử lý';
+
+  @override
+  String get adminSaveRecordingNfo => 'Lưu siêu dữ liệu NFO của bản ghi';
+
+  @override
+  String get adminSaveRecordingImages => 'Lưu hình ảnh của bản ghi';
+
+  @override
+  String get adminLiveTvSectionTiming => 'Thời gian';
+
+  @override
+  String get adminLiveTvSectionPaths => 'Đường dẫn ghi hình';
+
+  @override
+  String get adminLiveTvSectionPostProcessing => 'Hậu xử lý';
+
+  @override
+  String adminGuideDaysDisplay(String value) {
+    return 'Dữ liệu lịch phát sóng: $value';
+  }
 
   @override
   String get adminRecordingSettingsSaved => 'Đã lưu cài đặt ghi âm';
@@ -5318,6 +6418,17 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String get adminGuideProviders => 'Nhà cung cấp hướng dẫn';
+
+  @override
+  String get adminRefreshGuideData => 'Làm mới dữ liệu lịch phát sóng';
+
+  @override
+  String get adminGuideRefreshStarted =>
+      'Đã bắt đầu làm mới dữ liệu lịch phát sóng';
+
+  @override
+  String get adminGuideRefreshUnavailable =>
+      'Tác vụ làm mới lịch phát sóng không khả dụng trên máy chủ này.';
 
   @override
   String get adminAddProvider => 'Thêm nhà cung cấp';
@@ -5407,7 +6518,7 @@ class AppLocalizationsVi extends AppLocalizations {
   String get adminNotSet => 'Chưa đặt';
 
   @override
-  String get adminReset => 'Cài lại';
+  String get adminReset => 'Đặt lại';
 
   @override
   String get adminLogsTitle => 'Nhật ký máy chủ';
@@ -5453,7 +6564,7 @@ class AppLocalizationsVi extends AppLocalizations {
   String get adminMetadataEditorTitle => 'Trình chỉnh sửa siêu dữ liệu';
 
   @override
-  String get adminMetadataRemote => 'Xa';
+  String get adminMetadataIdentify => 'Nhận dạng';
 
   @override
   String get adminMetadataType => 'Kiểu';
@@ -5737,7 +6848,7 @@ class AppLocalizationsVi extends AppLocalizations {
   }
 
   @override
-  String get adminReposRemove => 'Di dời';
+  String get adminReposRemove => 'Gỡ bỏ';
 
   @override
   String adminReposSaveFailed(String error) {
@@ -5868,6 +6979,22 @@ class AppLocalizationsVi extends AppLocalizations {
   String get adminBrandingEnableSplash => 'Bật màn hình giật gân';
 
   @override
+  String get adminBrandingSplashUpload => 'Tải hình ảnh lên';
+
+  @override
+  String get adminBrandingSplashUploaded => 'Đã cập nhật màn hình chờ';
+
+  @override
+  String get adminBrandingSplashUploadFailed =>
+      'Không tải được màn hình chờ lên';
+
+  @override
+  String get adminBrandingSplashDeleted => 'Đã gỡ màn hình chờ';
+
+  @override
+  String get adminBrandingNoSplash => 'Không có màn hình chờ tùy chỉnh';
+
+  @override
   String get adminPlaybackHwAccel => 'Tăng tốc phần cứng';
 
   @override
@@ -5878,6 +7005,126 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String get adminPlaybackEnableHwDecoding => 'Bật giải mã phần cứng cho:';
+
+  @override
+  String get adminPlaybackQsvDevice => 'Thiết bị QSV';
+
+  @override
+  String get adminPlaybackEnhancedNvdec => 'Bật bộ giải mã NVDEC nâng cao';
+
+  @override
+  String get adminPlaybackPreferNativeDecoder =>
+      'Ưu tiên bộ giải mã phần cứng gốc của hệ thống';
+
+  @override
+  String get adminPlaybackColorDepth => 'Độ sâu màu khi giải mã bằng phần cứng';
+
+  @override
+  String get adminPlaybackColorDepth10Hevc => 'Giải mã HEVC 10-bit';
+
+  @override
+  String get adminPlaybackColorDepth10Vp9 => 'Giải mã VP9 10-bit';
+
+  @override
+  String get adminPlaybackColorDepth10HevcRext => 'Giải mã HEVC RExt 8/10-bit';
+
+  @override
+  String get adminPlaybackColorDepth12HevcRext => 'Giải mã HEVC RExt 12-bit';
+
+  @override
+  String get adminPlaybackHwEncodingSection => 'Mã hóa bằng phần cứng';
+
+  @override
+  String get adminPlaybackAllowHevcEncoding => 'Cho phép mã hóa HEVC';
+
+  @override
+  String get adminPlaybackAllowAv1Encoding => 'Cho phép mã hóa AV1';
+
+  @override
+  String get adminPlaybackIntelLowPowerH264 =>
+      'Bật bộ mã hóa H.264 tiết kiệm điện của Intel';
+
+  @override
+  String get adminPlaybackIntelLowPowerHevc =>
+      'Bật bộ mã hóa HEVC tiết kiệm điện của Intel';
+
+  @override
+  String get adminPlaybackToneMapping => 'Ánh xạ tông màu';
+
+  @override
+  String get adminPlaybackEnableTonemapping => 'Bật ánh xạ tông màu';
+
+  @override
+  String get adminPlaybackEnableVppTonemapping => 'Bật ánh xạ tông màu VPP';
+
+  @override
+  String get adminPlaybackEnableVtTonemapping =>
+      'Bật ánh xạ tông màu VideoToolbox';
+
+  @override
+  String get adminPlaybackTonemappingAlgorithm => 'Thuật toán ánh xạ tông màu';
+
+  @override
+  String get adminPlaybackTonemappingMode => 'Chế độ ánh xạ tông màu';
+
+  @override
+  String get adminPlaybackTonemappingRange => 'Dải ánh xạ tông màu';
+
+  @override
+  String get adminPlaybackTonemappingDesat =>
+      'Độ giảm bão hòa của ánh xạ tông màu';
+
+  @override
+  String get adminPlaybackTonemappingPeak => 'Đỉnh sáng của ánh xạ tông màu';
+
+  @override
+  String get adminPlaybackTonemappingParam => 'Tham số ánh xạ tông màu';
+
+  @override
+  String get adminPlaybackVppTonemappingBrightness =>
+      'Độ sáng ánh xạ tông màu VPP';
+
+  @override
+  String get adminPlaybackVppTonemappingContrast =>
+      'Độ tương phản ánh xạ tông màu VPP';
+
+  @override
+  String get adminPlaybackPresetsQuality => 'Cấu hình sẵn & Chất lượng';
+
+  @override
+  String get adminPlaybackEncoderPreset => 'Cấu hình sẵn của bộ mã hóa';
+
+  @override
+  String get adminPlaybackH264Crf => 'CRF mã hóa H.264';
+
+  @override
+  String get adminPlaybackH265Crf => 'CRF mã hóa H.265 (HEVC)';
+
+  @override
+  String get adminPlaybackDeinterlaceMethod => 'Phương pháp khử xen kẽ';
+
+  @override
+  String get adminPlaybackDeinterlaceDoubleRate =>
+      'Nhân đôi tốc độ khung hình khi khử xen kẽ';
+
+  @override
+  String get adminPlaybackAudioSection => 'Âm thanh';
+
+  @override
+  String get adminPlaybackEnableAudioVbr => 'Bật mã hóa âm thanh VBR';
+
+  @override
+  String get adminPlaybackDownmixBoost => 'Tăng âm khi trộn xuống';
+
+  @override
+  String get adminPlaybackDownmixAlgorithm => 'Thuật toán trộn xuống Stereo';
+
+  @override
+  String get adminPlaybackMaxMuxingQueue =>
+      'Kích thước hàng đợi ghép kênh tối đa';
+
+  @override
+  String get adminPlaybackAutoOption => 'Tự động';
 
   @override
   String get adminPlaybackEncoding => 'Mã hóa';
@@ -5994,7 +7241,10 @@ class AppLocalizationsVi extends AppLocalizations {
   String get adminTaskNeverRun => 'Không bao giờ chạy';
 
   @override
-  String get adminTaskStop => 'Dừng lại';
+  String get adminTaskStop => 'Dừng';
+
+  @override
+  String get adminRunningTasks => 'Tác vụ đang chạy';
 
   @override
   String get adminTaskRun => 'Chạy';
@@ -6064,8 +7314,8 @@ class AppLocalizationsVi extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count hours',
-      one: '1 hour',
+      other: '$count giờ',
+      one: '1 giờ',
     );
     return '$_temp0';
   }
@@ -6111,27 +7361,27 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String adminActivityMinutesShort(int minutes) {
-    return '${minutes}m';
+    return '$minutes phút';
   }
 
   @override
   String adminActivityHoursShort(int hours) {
-    return '${hours}h';
+    return '$hours giờ';
   }
 
   @override
   String adminActivityDaysShort(int days) {
-    return '${days}d';
+    return '$days ngày';
   }
 
   @override
   String adminActivityDateShort(int month, int day) {
-    return '$month/$day';
+    return '$day/$month';
   }
 
   @override
   String get adminTrickplayDescription =>
-      'Định cấu hình tạo hình ảnh thủ thuật để tìm kiếm hình thu nhỏ xem trước.';
+      'Thiết lập việc tạo ảnh Trickplay cho hình thu nhỏ xem trước khi tua.';
 
   @override
   String get adminNetworkingPublicHttpsPort => 'Cổng HTTPS công cộng';
@@ -6140,10 +7390,49 @@ class AppLocalizationsVi extends AppLocalizations {
   String get adminNetworkingBaseUrl => 'URL cơ sở';
 
   @override
-  String get adminNetworkingBaseUrlHint => 'ví dụ. /vây thạch';
+  String get adminNetworkingBaseUrlHint => 'ví dụ: /jellyfin';
 
   @override
   String get adminNetworkingHttps => 'HTTPS';
+
+  @override
+  String get adminNetworkingPublicHttpPort => 'Cổng HTTP công khai';
+
+  @override
+  String get adminNetworkingRequireHttps => 'Bắt buộc HTTPS';
+
+  @override
+  String get adminNetworkingRequireHttpsHint =>
+      'Chuyển hướng mọi yêu cầu từ xa sang HTTPS. Không có tác dụng nếu máy chủ không có chứng chỉ hợp lệ.';
+
+  @override
+  String get adminNetworkingCertPassword => 'Mật khẩu chứng chỉ';
+
+  @override
+  String get adminNetworkingIpSettings => 'Cài đặt IP';
+
+  @override
+  String get adminNetworkingEnableIpv4 => 'Bật IPv4';
+
+  @override
+  String get adminNetworkingEnableIpv6 => 'Bật IPv6';
+
+  @override
+  String get adminNetworkingAutoDiscovery => 'Bật ánh xạ cổng tự động';
+
+  @override
+  String get adminNetworkingLocalSubnets => 'Mạng LAN';
+
+  @override
+  String get adminNetworkingLocalSubnetsHint =>
+      'Danh sách địa chỉ IP hoặc dải mạng CIDR được xem là thuộc mạng nội bộ, phân tách bằng dấu phẩy hoặc xuống dòng.';
+
+  @override
+  String get adminNetworkingPublishedUris => 'URI máy chủ được công bố';
+
+  @override
+  String get adminNetworkingPublishedUriHint =>
+      'Ánh xạ một dải mạng hoặc địa chỉ tới một URL được công bố, ví dụ: all=https://example.com';
 
   @override
   String get adminNetworkingCertPath => 'Đường dẫn chứng chỉ';
@@ -6171,6 +7460,13 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String get adminPlaybackThrottleBuffering => 'Bộ đệm ga';
+
+  @override
+  String get adminPlaybackThrottleDelay => 'Độ trễ điều tiết (giây)';
+
+  @override
+  String get adminPlaybackEnableSubtitleExtraction =>
+      'Cho phép trích xuất phụ đề tức thời';
 
   @override
   String get adminResumeMinPct => 'Tỷ lệ sơ yếu lý lịch tối thiểu';
@@ -6226,6 +7522,24 @@ class AppLocalizationsVi extends AppLocalizations {
   String get adminGeneralSlowResponseThreshold => 'Ngưỡng phản hồi chậm (ms)';
 
   @override
+  String get adminGeneralEnableSlowResponse => 'Bật cảnh báo phản hồi chậm';
+
+  @override
+  String get adminGeneralQuickConnect => 'Bật Quick Connect';
+
+  @override
+  String get adminGeneralSectionServer => 'Máy chủ';
+
+  @override
+  String get adminGeneralSectionMetadata => 'Siêu dữ liệu';
+
+  @override
+  String get adminGeneralSectionPaths => 'Đường dẫn';
+
+  @override
+  String get adminGeneralSectionPerformance => 'Hiệu năng';
+
+  @override
   String get adminGeneralCachePath => 'Đường dẫn bộ đệm';
 
   @override
@@ -6233,6 +7547,9 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String get adminGeneralServerName => 'Tên máy chủ';
+
+  @override
+  String get adminGeneralDisplayLanguage => 'Ngôn ngữ hiển thị ưu tiên';
 
   @override
   String get adminSettingsLoadFailed => 'Không tải được cài đặt';
@@ -6284,8 +7601,8 @@ class AppLocalizationsVi extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '# participants',
-      one: '# participant',
+      other: '# người tham gia',
+      one: '# người tham gia',
     );
     return '$_temp0';
   }
@@ -6429,50 +7746,15 @@ class AppLocalizationsVi extends AppLocalizations {
   String get requestTranscode => 'Yêu cầu chuyển mã';
 
   @override
-  String get homeScreenSectionsIntegrationDescription =>
-      'Phát hiện các hàng được hiển thị bởi plugin \"Phần màn hình chính\" của IAmParadox27. Các hàng có thể được kích hoạt và sắp xếp lại bên dưới.';
-
-  @override
-  String get homeScreenSectionsIntegrationNoServers =>
-      'Chưa có máy chủ Jellyfin nào báo cáo plugin.';
-
-  @override
-  String get integrationOpenHomeSections => 'Mở phần trang chủ';
-
-  @override
-  String get integrationOpenHomeSectionsSubtitle =>
-      'Bật, tắt và sắp xếp lại các hàng';
-
-  @override
-  String get integrationInstalledButDisabled => 'Đã cài nhưng bị tắt';
-
-  @override
-  String get integrationNotInstalled => 'Chưa được cài đặt';
-
-  @override
-  String integrationSectionsCount(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '# sections',
-      one: '# section',
-    );
-    return '$_temp0';
-  }
-
-  @override
   String integrationRowsDiscoveredCount(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '# rows discovered',
-      one: '# row discovered',
+      other: 'Đã tìm thấy # hàng',
+      one: 'Đã tìm thấy # hàng',
     );
     return '$_temp0';
   }
-
-  @override
-  String get jellyseerr => 'Seerr';
 
   @override
   String get seeAll => 'Xem Tất Cả';
@@ -6508,6 +7790,23 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String get offlineSavedMedia => 'Phương tiện đã lưu';
+
+  @override
+  String get offlineBannerTitle => 'Bạn đang ngoại tuyến';
+
+  @override
+  String get offlineBannerSubtitle => 'Đang hiển thị các mục đã tải xuống';
+
+  @override
+  String get offlineBannerAction => 'Tải xuống';
+
+  @override
+  String get serverUnreachableBannerTitle =>
+      'Không kết nối được máy chủ của bạn';
+
+  @override
+  String get serverUnreachableBannerSubtitle =>
+      'Đang phát từ các mục đã tải xuống cho đến khi máy chủ hoạt động lại';
 
   @override
   String get castGoogleCast => 'Google Cast';
@@ -6580,40 +7879,41 @@ class AppLocalizationsVi extends AppLocalizations {
   String get pinForgot => 'Quên mã PIN?';
 
   @override
-  String get pinClear => 'Thông thoáng';
+  String get pinClear => 'Xóa';
 
   @override
   String get pinBackspace => 'Phím lùi';
 
   @override
-  String get quickConnectAuthorized => 'Yêu cầu kết nối nhanh được ủy quyền.';
+  String get quickConnectAuthorized => 'Đã phê duyệt yêu cầu Quick Connect.';
 
   @override
   String get quickConnectInvalidOrExpired =>
-      'Mã Kết nối nhanh không hợp lệ hoặc đã hết hạn.';
+      'Mã Quick Connect không hợp lệ hoặc đã hết hạn.';
 
   @override
   String get quickConnectNotSupported =>
-      'Kết nối nhanh không được hỗ trợ trên máy chủ này.';
+      'Máy chủ này không hỗ trợ Quick Connect.';
 
   @override
   String get quickConnectAuthorizeFailed =>
-      'Không thể ủy quyền mã Kết nối nhanh.';
+      'Không phê duyệt được mã Quick Connect.';
 
   @override
-  String get quickConnectDisabled => 'Kết nối nhanh bị tắt trên máy chủ này.';
+  String get quickConnectDisabled =>
+      'Quick Connect đã bị tắt trên máy chủ này.';
 
   @override
   String get quickConnectForbidden =>
-      'Tài khoản của bạn không thể ủy quyền yêu cầu Kết nối nhanh này.';
+      'Tài khoản của bạn không thể phê duyệt yêu cầu Quick Connect này.';
 
   @override
   String get quickConnectNotFound =>
-      'Không tìm thấy mã Kết nối nhanh. Hãy thử một mã mới.';
+      'Không tìm thấy mã Quick Connect. Hãy thử mã mới.';
 
   @override
   String quickConnectFailedWithMessage(String message) {
-    return 'Kết nối nhanh không thành công: $message';
+    return 'Quick Connect thất bại: $message';
   }
 
   @override
@@ -6780,7 +8080,7 @@ class AppLocalizationsVi extends AppLocalizations {
       'Việc phát lại đã bị tạm dừng. Bạn vẫn đang xem chứ?';
 
   @override
-  String get stillWatchingStop => 'Dừng lại';
+  String get stillWatchingStop => 'Dừng';
 
   @override
   String get stillWatchingContinue => 'Tiếp tục';
@@ -6864,6 +8164,15 @@ class AppLocalizationsVi extends AppLocalizations {
   String get contextMenuGoToSeries => 'Đi tới loạt bài';
 
   @override
+  String get contextMenuHideFromContinueWatching => 'Ẩn khỏi Tiếp tục xem';
+
+  @override
+  String get contextMenuHideFromNextUp => 'Ẩn khỏi Tiếp theo';
+
+  @override
+  String get contextMenuAddToCollection => 'Thêm vào bộ sưu tập';
+
+  @override
   String get settingsAdministrationSubtitle => 'Truy cập bảng quản trị máy chủ';
 
   @override
@@ -6914,6 +8223,16 @@ class AppLocalizationsVi extends AppLocalizations {
   String get settingsAlphabetical => 'theo bảng chữ cái';
 
   @override
+  String get settingsConnectionSection => 'KẾT NỐI';
+
+  @override
+  String get settingsAllowSelfSignedCerts => 'Cho phép chứng chỉ tự ký';
+
+  @override
+  String get settingsAllowSelfSignedCertsSubtitle =>
+      'Tin cậy các máy chủ dùng chứng chỉ TLS tự ký hoặc từ CA riêng. Chỉ bật với những máy chủ bạn kiểm soát. Tùy chọn này sẽ tắt việc xác thực chứng chỉ cho mọi kết nối.';
+
+  @override
   String get settingsPrivacyAndSafetySection => 'RIÊNG TƯ & AN TOÀN';
 
   @override
@@ -6925,6 +8244,13 @@ class AppLocalizationsVi extends AppLocalizations {
   @override
   String get settingsGeneralStyleSubtitle =>
       'Điểm nhấn của chủ đề, phông nền, chỉ báo đã xem và nhạc chủ đề';
+
+  @override
+  String get settingsDetailsScreen => 'Màn hình chi tiết';
+
+  @override
+  String get settingsDetailsScreenSubtitle =>
+      'Kiểu, làm mờ nền và cách hoạt động của thẻ';
 
   @override
   String get settingsHomePage => 'Trang chủ';
@@ -6962,7 +8288,11 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String get settingsShowSeerrButtonInNavigation =>
-      'Show the Seerr button in the navigation bar';
+      'Hiển thị nút Seerr trên thanh điều hướng';
+
+  @override
+  String get settingsAlwaysExpandNavbarLabels =>
+      'Luôn hiển thị nhãn chữ trên thanh điều hướng phía trên';
 
   @override
   String get settingsLibraryVisibilitySubtitle =>
@@ -7032,7 +8362,7 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String get settingsSupportMoonfinSubtitle =>
-      'Donate a coffee to the developer';
+      'Mời nhà phát triển một ly cà phê';
 
   @override
   String get settingsLegal => 'HỢP PHÁP';
@@ -7065,8 +8395,8 @@ class AppLocalizationsVi extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '# license notices',
-      one: '# license notice',
+      other: '# thông báo giấy phép',
+      one: '# thông báo giấy phép',
     );
     return '$_temp0';
   }
@@ -7115,16 +8445,16 @@ class AppLocalizationsVi extends AppLocalizations {
       'Bỏ qua phần giới thiệu và phần kết thúc?';
 
   @override
-  String get settingsMediaSegmentCountdown => 'Media Segment Countdown';
+  String get settingsMediaSegmentCountdown => 'Đếm ngược phân đoạn phương tiện';
 
   @override
-  String get settingsProgressBar => 'Progress Bar';
+  String get settingsProgressBar => 'Thanh tiến trình';
 
   @override
-  String get settingsTimer => 'Timer';
+  String get settingsTimer => 'Bộ đếm giờ';
 
   @override
-  String get settingsNone => 'None';
+  String get settingsNone => 'Không có';
 
   @override
   String get settingsPromptUser => 'Nhắc người dùng';
@@ -7350,6 +8680,11 @@ class AppLocalizationsVi extends AppLocalizations {
   }
 
   @override
+  String recentlyReleasedLibraryName(String libraryName) {
+    return '$libraryName mới phát hành';
+  }
+
+  @override
   String get autoplayNextEpisode => 'Tự động phát tập tiếp theo';
 
   @override
@@ -7379,11 +8714,11 @@ class AppLocalizationsVi extends AppLocalizations {
       'Buộc phát lại không theo đường hầm. Hữu ích trên các thiết bị có sự gián đoạn về âm thanh/video trong đường hầm.';
 
   @override
-  String get enableTunnelingTitle => 'Enable tunneling';
+  String get enableTunnelingTitle => 'Bật tunneling';
 
   @override
   String get enableTunnelingSubtitle =>
-      'Advanced. Routes audio and video through a coupled hardware path. Off by default because it causes audio/video dropouts on some devices.';
+      'Nâng cao. Định tuyến âm thanh và video qua một đường phần cứng ghép đôi. Mặc định tắt vì gây mất tiếng hoặc mất hình trên một số thiết bị.';
 
   @override
   String get mapDolbyVisionP7Title => 'Ánh xạ hồ sơ Dolby Vision 7 tới HEVC';
@@ -7408,11 +8743,14 @@ class AppLocalizationsVi extends AppLocalizations {
       'Áp dụng gợi ý về kích thước phông chữ được nhúng trong phụ đề. Tắt để sử dụng kích thước phụ đề từ tùy chọn kiểu của bạn.';
 
   @override
-  String get showMediaDetailsOnLibraryPage => 'Show Media Details';
+  String get showMediaDetailsOnLibraryPage => 'Hiển thị chi tiết nội dung';
 
   @override
   String get showMediaDetailsOnLibraryPageDescription =>
-      'Show details of the selected item at the top of Library pages.';
+      'Hiển thị chi tiết của mục đang chọn ở đầu trang Thư viện.';
+
+  @override
+  String get hideBackdropsInLibraries => 'Ẩn ảnh nền khi duyệt?';
 
   @override
   String get useDetailedSubHeadings => 'Sử dụng các tiêu đề phụ chi tiết';
@@ -7430,37 +8768,37 @@ class AppLocalizationsVi extends AppLocalizations {
   }
 
   @override
-  String get themeStore => 'Theme Store';
+  String get themeStore => 'Kho chủ đề';
 
   @override
-  String get themeStoreSubtitle => 'Browse and save community themes';
+  String get themeStoreSubtitle => 'Duyệt và lưu các chủ đề từ cộng đồng';
 
   @override
   String get themeStoreDescription =>
-      'Save a theme to use it like your other saved themes.';
+      'Lưu một chủ đề để dùng như các chủ đề đã lưu khác của bạn.';
 
   @override
-  String get themeStoreEmpty => 'No themes are available right now.';
+  String get themeStoreEmpty => 'Hiện chưa có chủ đề nào.';
 
   @override
   String get themeStoreLoadFailed =>
-      'Couldn\'t load the Theme Store. Check your connection and try again.';
+      'Không tải được Kho chủ đề. Hãy kiểm tra kết nối và thử lại.';
 
   @override
-  String get themeStoreSave => 'Save';
+  String get themeStoreSave => 'Lưu';
 
   @override
-  String get themeStoreSaveAndApply => 'Save & apply';
+  String get themeStoreSaveAndApply => 'Lưu & áp dụng';
 
   @override
-  String get themeStoreSaved => 'Saved';
+  String get themeStoreSaved => 'Đã lưu';
 
   @override
-  String get themeStoreInvalidMessage => 'This theme couldn\'t be loaded.';
+  String get themeStoreInvalidMessage => 'Không tải được chủ đề này.';
 
   @override
   String themeStoreSavedMessage(String themeName) {
-    return 'Saved \"$themeName\".';
+    return 'Đã lưu \"$themeName\".';
   }
 
   @override
@@ -7497,9 +8835,6 @@ class AppLocalizationsVi extends AppLocalizations {
       'Quản lý các chủ đề plugin đã tải xuống trên thiết bị này';
 
   @override
-  String get homeScreenSectionsTitle => 'Phần màn hình chính';
-
-  @override
   String get themeEditor => 'Trình chỉnh sửa chủ đề';
 
   @override
@@ -7522,21 +8857,21 @@ class AppLocalizationsVi extends AppLocalizations {
   String get homeRowsSection => 'Hàng nhà';
 
   @override
-  String get homeRowDisplay => 'Home Row Display';
+  String get homeRowDisplay => 'Hiển thị hàng trang chủ';
 
   @override
-  String get homeRowSections => 'Home Row Sections';
+  String get homeRowSections => 'Các mục hàng trang chủ';
 
   @override
-  String get homeRowToggles => 'Home Row Toggles';
+  String get homeRowToggles => 'Bật/tắt hàng trang chủ';
 
   @override
   String get homeRowTogglesSubtitle =>
-      'Enable or disable different home row categories';
+      'Bật hoặc tắt các danh mục hàng trang chủ dựa trên thư viện';
 
   @override
   String get homeRowTogglesDescription =>
-      'Enable the following toggles to display the rows in Home Sections.';
+      'Bật các mục sau để hiển thị các hàng trong phần Trang chủ.';
 
   @override
   String get rowsType => 'Loại hàng';
@@ -7595,44 +8930,56 @@ class AppLocalizationsVi extends AppLocalizations {
       'Hiển thị Phim, Bộ hoặc cả hai trong hàng Thể loại.';
 
   @override
-  String get displayPlaylistsRows => 'Display Playlist Rows';
+  String get displayPlaylistsRows => 'Hiển thị hàng danh sách phát';
 
   @override
   String get displayPlaylistsRowsSubtitle =>
-      'Show Playlist rows in Home Sections.';
+      'Hiển thị các hàng danh sách phát trong phần Trang chủ.';
 
   @override
-  String get playlistsRowSorting => 'Playlist Row Sorting';
+  String get playlistsRowSorting => 'Sắp xếp hàng danh sách phát';
 
   @override
   String get playlistsRowSortingDescription =>
-      'Sort Playlist rows by date added, release date, alphabetically, and more.';
+      'Sắp xếp hàng danh sách phát theo ngày thêm, ngày phát hành, theo bảng chữ cái và nhiều tiêu chí khác.';
 
   @override
-  String get displayAudioRows => 'Display Audio Rows';
+  String get displayAudioRows => 'Hiển thị hàng âm thanh';
 
   @override
-  String get displayAudioRowsSubtitle => 'Show Audio rows in Home Sections.';
+  String get displayAudioRowsSubtitle =>
+      'Hiển thị các hàng âm thanh trong phần Trang chủ.';
 
   @override
-  String get audioRowsSorting => 'Audio Rows sorting';
+  String get audioRowsSorting => 'Sắp xếp hàng âm thanh';
 
   @override
   String get audioRowsSortingDescription =>
-      'Sort Audio rows by date added, release date, alphabetically, and more.';
+      'Sắp xếp hàng âm thanh theo ngày thêm, ngày phát hành, theo bảng chữ cái và nhiều tiêu chí khác.';
 
   @override
-  String get audioPlaylists => 'Audio Playlists';
+  String get audioPlaylists => 'Danh sách phát âm thanh';
 
   @override
-  String get displaySeerrRows => 'Display Seerr Discovery Rows';
+  String get appearance => 'Giao diện';
 
   @override
-  String get displaySeerrRowsSubtitle =>
-      'Show Seerr discovery rows in Home Sections.';
+  String get layout => 'Bố cục';
 
   @override
-  String get appearance => 'Vẻ bề ngoài';
+  String get theme => 'Chủ đề';
+
+  @override
+  String get keyboard => 'Bàn phím';
+
+  @override
+  String get navButtons => 'Nút';
+
+  @override
+  String get rendering => 'Kết xuất';
+
+  @override
+  String get mpvConfiguration => 'Cấu hình MPV';
 
   @override
   String get cardSize => 'Kích thước thẻ';
@@ -7642,7 +8989,7 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String get externalPlayerAppDescription =>
-      'Set external player to enable long-press play option';
+      'Thiết lập trình phát ngoài để bật tùy chọn phát khi nhấn giữ';
 
   @override
   String get externalPlayerAskEachTimeSubtitle =>
@@ -7883,9 +9230,6 @@ class AppLocalizationsVi extends AppLocalizations {
   String get videos => 'Video';
 
   @override
-  String get trailers => 'Xe kéo';
-
-  @override
   String get programs => 'Chương trình';
 
   @override
@@ -7911,6 +9255,9 @@ class AppLocalizationsVi extends AppLocalizations {
 
   @override
   String get appearancesSeerr => 'Xuất hiện (Seerr)';
+
+  @override
+  String get crewContributionsSeerr => 'Đóng góp của ê-kíp (Seerr)';
 
   @override
   String get watchWithGroup => 'Xem cùng nhóm';
@@ -7996,8 +9343,8 @@ class AppLocalizationsVi extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count Libraries',
-      one: '1 Library',
+      other: '$count Thư viện',
+      one: '1 Thư viện',
     );
     return '$_temp0';
   }
@@ -8088,7 +9435,7 @@ class AppLocalizationsVi extends AppLocalizations {
   String get mixedMoviesAndShows => 'Phim và chương trình tổng hợp';
 
   @override
-  String get intelQuickSync => 'Đồng bộ hóa nhanh Intel';
+  String get intelQuickSync => 'Intel Quick Sync';
 
   @override
   String get rockchipMpp => 'Rockchip MPP';
@@ -8156,13 +9503,13 @@ class AppLocalizationsVi extends AppLocalizations {
   String get loadingShuffle => 'Đang tải ngẫu nhiên...';
 
   @override
-  String get libraryShuffleLabel => 'LIBRARY SHUFFLE';
+  String get libraryShuffleLabel => 'PHÁT NGẪU NHIÊN THƯ VIỆN';
 
   @override
-  String get randomShuffleLabel => 'RANDOM SHUFFLE';
+  String get randomShuffleLabel => 'PHÁT NGẪU NHIÊN TOÀN BỘ';
 
   @override
-  String get genresShuffleLabel => 'GENRES SHUFFLE';
+  String get genresShuffleLabel => 'PHÁT NGẪU NHIÊN THEO THỂ LOẠI';
 
   @override
   String get autoHdrSwitching => 'Tự động chuyển đổi HDR';
@@ -8175,146 +9522,536 @@ class AppLocalizationsVi extends AppLocalizations {
   String get whenFullscreen => 'Khi toàn màn hình';
 
   @override
-  String get changeArtwork => 'Change Artwork';
+  String get changeArtwork => 'Đổi ảnh bìa';
 
   @override
-  String get missing => 'Missing';
+  String get missing => 'Chưa có';
 
   @override
   String get transcodingLimits => 'Giới hạn chuyển mã';
 
   @override
-  String get clearAllArtworkButton => 'Clear all artwork?';
+  String get clearAllArtworkButton => 'Xóa toàn bộ ảnh bìa?';
 
   @override
   String get clearAllArtworkWarning =>
-      'Are you sure you want to clear all downloaded artwork?';
+      'Bạn có chắc muốn xóa toàn bộ ảnh bìa đã tải xuống không?';
 
   @override
-  String get confirmClear => 'Confirm Clear';
+  String get confirmClear => 'Xác nhận xóa';
 
   @override
   String confirmClearMessage(String itemType) {
-    return 'Are you sure you would like to clear this $itemType?';
+    return 'Bạn có chắc muốn xóa $itemType này không?';
   }
 
   @override
-  String get uploadButton => 'Upload?';
+  String get uploadButton => 'Tải lên?';
 
   @override
-  String get resolutionLabel => 'Resolution: ';
+  String get resolutionLabel => 'Độ phân giải: ';
 
   @override
   String get onlyShowInterfaceLanguage =>
-      'Only show artwork in interface language';
+      'Chỉ hiển thị ảnh bìa theo ngôn ngữ giao diện';
 
   @override
-  String get confirmClearAll => 'Confirm Clear All';
+  String get confirmClearAll => 'Xác nhận xóa tất cả';
 
   @override
-  String get imageUploadSuccess => 'Image uploaded successfully!';
+  String get imageUploadSuccess => 'Đã tải hình ảnh lên thành công!';
 
   @override
   String imageUploadFailed(String error) {
-    return 'Failed to upload image: $error';
+    return 'Không tải được hình ảnh lên: $error';
   }
 
   @override
   String imageDownloadFailed(String error) {
-    return 'Failed to set image: $error';
+    return 'Không đặt được hình ảnh: $error';
   }
 
   @override
   String imageDeleteFailed(String error) {
-    return 'Failed to delete image: $error';
+    return 'Không xóa được hình ảnh: $error';
   }
 
   @override
   String clearAllArtworkFailed(String error) {
-    return 'Failed to clear all artwork: $error';
+    return 'Không xóa được toàn bộ ảnh bìa: $error';
   }
 
   @override
-  String get yes => 'Yes';
+  String get yes => 'Có';
 
   @override
-  String get posterCategory => 'Poster';
+  String get posterCategory => 'Áp phích';
 
   @override
-  String get backdropsCategory => 'Backdrops';
+  String get backdropsCategory => 'Ảnh nền';
 
   @override
-  String get bannerCategory => 'Banner';
+  String get bannerCategory => 'Biểu ngữ';
 
   @override
   String get logoCategory => 'Logo';
 
   @override
-  String get thumbnailCategory => 'Thumbnail';
+  String get thumbnailCategory => 'Hình thu nhỏ';
 
   @override
-  String get artCategory => 'Art';
+  String get artCategory => 'Ảnh minh họa';
 
   @override
-  String get discArtCategory => 'Disc Art';
+  String get discArtCategory => 'Ảnh mặt đĩa';
 
   @override
-  String get screenshotCategory => 'Screenshot';
+  String get screenshotCategory => 'Ảnh chụp màn hình';
 
   @override
-  String get boxCoverCategory => 'Box Cover';
+  String get boxCoverCategory => 'Bìa hộp';
 
   @override
-  String get boxRearCoverCategory => 'Box Rear Cover';
+  String get boxRearCoverCategory => 'Bìa sau hộp';
 
   @override
-  String get menuArtCategory => 'Menu Art';
+  String get menuArtCategory => 'Ảnh menu';
 
   @override
-  String get confirmItemPoster => 'poster';
+  String get confirmItemPoster => 'áp phích';
 
   @override
-  String get confirmItemBackdrop => 'backdrop';
+  String get confirmItemBackdrop => 'ảnh nền';
 
   @override
-  String get confirmItemBanner => 'banner';
+  String get confirmItemBanner => 'biểu ngữ';
 
   @override
   String get confirmItemLogo => 'logo';
 
   @override
-  String get confirmItemThumbnail => 'thumbnail';
+  String get confirmItemThumbnail => 'hình thu nhỏ';
 
   @override
-  String get confirmItemArt => 'art';
+  String get confirmItemArt => 'ảnh minh họa';
 
   @override
-  String get confirmItemDiscArt => 'disc art';
+  String get confirmItemDiscArt => 'ảnh mặt đĩa';
 
   @override
-  String get confirmItemScreenshot => 'screenshot';
+  String get confirmItemScreenshot => 'ảnh chụp màn hình';
 
   @override
-  String get confirmItemBoxCover => 'box cover';
+  String get confirmItemBoxCover => 'bìa hộp';
 
   @override
-  String get confirmItemBoxRearCover => 'box rear cover';
+  String get confirmItemBoxRearCover => 'bìa sau hộp';
 
   @override
-  String get confirmItemMenuArt => 'menu art';
+  String get confirmItemMenuArt => 'ảnh menu';
 
   @override
-  String get resolutionAll => 'All';
+  String get resolutionAll => 'Tất cả';
 
   @override
-  String get resolutionHigh => 'High (1080p+)';
+  String get resolutionHigh => 'Cao (1080p+)';
 
   @override
-  String get resolutionMedium => 'Medium (720p)';
+  String get resolutionMedium => 'Trung bình (720p)';
 
   @override
-  String get resolutionLow => 'Low (<720p)';
+  String get resolutionLow => 'Thấp (<720p)';
 
   @override
-  String get sources => 'Sources';
+  String get sources => 'Nguồn';
+
+  @override
+  String get audiobookChapters => 'Chương';
+
+  @override
+  String get audiobookBookmarks => 'Dấu trang';
+
+  @override
+  String get audiobookNotes => 'Ghi chú';
+
+  @override
+  String get audiobookQueue => 'Hàng đợi';
+
+  @override
+  String get audiobookTimeline => 'Dòng thời gian';
+
+  @override
+  String get audiobookTimelineEmpty => 'Dòng thời gian trống';
+
+  @override
+  String get audiobookWholeBook => 'Toàn bộ sách';
+
+  @override
+  String get audiobookFocusedTimeline => 'Dòng thời gian thu hẹp';
+
+  @override
+  String get audiobookExportBookmarks => 'Xuất dấu trang';
+
+  @override
+  String get audiobookExportNotes => 'Xuất ghi chú';
+
+  @override
+  String get audiobookExportAll => 'Xuất tất cả';
+
+  @override
+  String audiobookExportSuccess(String path) {
+    return 'Đã xuất tới $path';
+  }
+
+  @override
+  String audiobookExportFailed(String error) {
+    return 'Xuất thất bại: $error';
+  }
+
+  @override
+  String get audiobookLyrics => 'Lời bài hát';
+
+  @override
+  String get audiobookAddBookmark => 'Thêm dấu trang';
+
+  @override
+  String get audiobookAddNote => 'Thêm ghi chú';
+
+  @override
+  String get audiobookEditNote => 'Sửa ghi chú';
+
+  @override
+  String get audiobookNoteHint => 'Viết ghi chú cho khoảnh khắc này';
+
+  @override
+  String get audiobookSleepTimer => 'Hẹn giờ tắt';
+
+  @override
+  String get audiobookSleepOff => 'Tắt';
+
+  @override
+  String get audiobookSleepEndOfChapter => 'Hết chương';
+
+  @override
+  String get audiobookSleepCustom => 'Tùy chỉnh';
+
+  @override
+  String audiobookSleepRemaining(String remaining) {
+    return 'Còn $remaining';
+  }
+
+  @override
+  String audiobookSleepMinutes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count phút',
+      one: '1 phút',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get audiobookPlaybackSpeed => 'Tốc độ phát';
+
+  @override
+  String get audiobookRemainingTime => 'Còn lại';
+
+  @override
+  String get audiobookElapsedTime => 'Đã phát';
+
+  @override
+  String audiobookSkipBackSeconds(int seconds) {
+    return 'Lùi $seconds giây';
+  }
+
+  @override
+  String audiobookSkipForwardSeconds(int seconds) {
+    return 'Tiến $seconds giây';
+  }
+
+  @override
+  String get audiobookPreviousChapter => 'Chương trước';
+
+  @override
+  String get audiobookNextChapter => 'Chương sau';
+
+  @override
+  String audiobookChapterIndicator(int current, int total) {
+    return 'Chương $current trên $total';
+  }
+
+  @override
+  String get audiobookNoChapters => 'Không có chương';
+
+  @override
+  String get audiobookNoBookmarks => 'Chưa có dấu trang nào';
+
+  @override
+  String get audiobookNoNotes => 'Chưa có ghi chú nào';
+
+  @override
+  String audiobookBookmarkAdded(String position) {
+    return 'Đã thêm dấu trang tại $position';
+  }
+
+  @override
+  String get audiobookSpeedReset => 'Đặt lại về 1.0x';
+
+  @override
+  String audiobookSpeedCustomLabel(String value) {
+    return '${value}x';
+  }
+
+  @override
+  String get audiobookSave => 'Lưu';
+
+  @override
+  String get audiobookCancel => 'Hủy';
+
+  @override
+  String get audiobookDelete => 'Xóa';
+
+  @override
+  String get subtitlePreferences => 'Tùy chọn phụ đề';
+
+  @override
+  String get subtitlePreferencesDescription =>
+      'Thay đổi chế độ phụ đề, ngôn ngữ mặc định, giao diện và các tùy chọn kết xuất.';
+
+  @override
+  String get subtitleRendering => 'Kết xuất phụ đề';
+
+  @override
+  String get displayOptions => 'Tùy chọn hiển thị';
+
+  @override
+  String get releaseDateAscending => 'Ngày phát hành (Tăng dần)';
+
+  @override
+  String get releaseDateDescending => 'Ngày phát hành (Giảm dần)';
+
+  @override
+  String get groupContributions => 'Nhóm các đóng góp';
+
+  @override
+  String get groupMultipleRoles => 'Nhóm nhiều vai trò';
+
+  @override
+  String get libraryWriteAccessWarningTitle =>
+      'Cảnh báo quyền ghi vào thư viện';
+
+  @override
+  String get libraryWriteAccessHowToFix => 'Cách khắc phục:';
+
+  @override
+  String get libraryWriteAccessFixSteps =>
+      '1. Cấp quyền ghi cho người dùng dịch vụ Jellyfin (ví dụ: jellyfin hoặc PUID/PGID của Docker) đối với các thư mục thư viện phương tiện của bạn trên máy chủ.\n\n2. Hoặc vào Bảng điều khiển Jellyfin -> Thư viện, sửa thư viện này và tắt \'Save artwork into media folders\' để lưu ảnh bìa trong cơ sở dữ liệu nội bộ của Jellyfin.';
+
+  @override
+  String get dismiss => 'Bỏ qua';
+
+  @override
+  String libraryWriteAccessProactiveBody(
+    String libraryName,
+    String failedPath,
+  ) {
+    return 'Thư viện \'$libraryName\' của bạn được cấu hình để lưu ảnh bìa trực tiếp vào thư mục phương tiện (tùy chọn \'Save artwork into media folders\' đang bật). Tuy nhiên, Jellyfin đã kiểm tra quyền ghi và không có quyền ghi tệp vào thư mục này:\n\n$failedPath';
+  }
+
+  @override
+  String get libraryWriteAccessReactiveBody =>
+      'Có vẻ Jellyfin không cập nhật được ảnh bìa. Thư viện của bạn được cấu hình để lưu ảnh bìa trực tiếp vào thư mục phương tiện (tùy chọn \'Save artwork into media folders\' đang bật). Lỗi này thường xảy ra khi tiến trình máy chủ Jellyfin không có quyền ghi tệp vào các thư mục phương tiện của bạn.';
+
+  @override
+  String get externalLists => 'Danh sách bên ngoài';
+
+  @override
+  String get replay => 'Phát lại';
+
+  @override
+  String get fileInformation => 'Thông tin tệp';
+
+  @override
+  String fileSizeFormat(Object size, Object format) {
+    return 'Kích thước: $size  •  Định dạng: $format';
+  }
+
+  @override
+  String showAllAudioTracks(int count) {
+    return 'Hiện tất cả ($count) bản âm thanh';
+  }
+
+  @override
+  String showAllSubtitleTracks(int count) {
+    return 'Hiện tất cả ($count) bản phụ đề';
+  }
+
+  @override
+  String get checkingDirectPlay => 'Đang kiểm tra khả năng Phát trực tiếp...';
+
+  @override
+  String get directPlayCapabilityLabel => 'Khả năng Phát trực tiếp: ';
+
+  @override
+  String get forced => 'Bắt buộc';
+
+  @override
+  String get transcodeContainerNotSupported =>
+      'Trình phát không hỗ trợ định dạng vùng chứa này.';
+
+  @override
+  String get transcodeVideoCodecNotSupported => 'Không hỗ trợ codec video này.';
+
+  @override
+  String get transcodeAudioCodecNotSupported =>
+      'Không hỗ trợ codec âm thanh này.';
+
+  @override
+  String get transcodeSubtitleCodecNotSupported =>
+      'Không hỗ trợ định dạng phụ đề này (cần ghi đè vào hình).';
+
+  @override
+  String get transcodeAudioProfileNotSupported =>
+      'Không hỗ trợ hồ sơ âm thanh này.';
+
+  @override
+  String get transcodeVideoProfileNotSupported =>
+      'Không hỗ trợ hồ sơ video này.';
+
+  @override
+  String get transcodeVideoLevelNotSupported =>
+      'Không hỗ trợ cấp độ video này.';
+
+  @override
+  String get transcodeVideoResolutionNotSupported =>
+      'Thiết bị này không hỗ trợ độ phân giải video này.';
+
+  @override
+  String get transcodeVideoBitDepthNotSupported =>
+      'Không hỗ trợ độ sâu bit của video này.';
+
+  @override
+  String get transcodeVideoFramerateNotSupported =>
+      'Không hỗ trợ tốc độ khung hình của video này.';
+
+  @override
+  String get transcodeContainerBitrateExceedsLimit =>
+      'Tốc độ bit của tệp vượt quá giới hạn truyền của trình phát.';
+
+  @override
+  String get transcodeVideoBitrateExceedsLimit =>
+      'Tốc độ bit video vượt quá giới hạn truyền.';
+
+  @override
+  String get transcodeAudioBitrateExceedsLimit =>
+      'Tốc độ bit âm thanh vượt quá giới hạn truyền.';
+
+  @override
+  String get transcodeAudioChannelsNotSupported =>
+      'Không hỗ trợ số kênh âm thanh này.';
+
+  @override
+  String get sortAlphabetical => 'Theo bảng chữ cái';
+
+  @override
+  String get sortReleaseAscending => 'Thứ tự phát hành (Tăng dần)';
+
+  @override
+  String get sortReleaseDescending => 'Thứ tự phát hành (Giảm dần)';
+
+  @override
+  String get sortCustomDragDrop => 'Tùy chỉnh (Kéo và thả)';
+
+  @override
+  String get playlistSortOptions => 'Tùy chọn sắp xếp danh sách phát';
+
+  @override
+  String get resetSort => 'Đặt lại sắp xếp';
+
+  @override
+  String rewatchSeasonEpisode(int season, int episode) {
+    return 'Xem lại S$season:E$episode';
+  }
+
+  @override
+  String get rewatchPlaylist => 'Danh sách phát xem lại';
+
+  @override
+  String get noSubtitlesFound => 'Không tìm thấy phụ đề.';
+
+  @override
+  String get adminControls => 'Điều khiển quản trị';
+
+  @override
+  String get impellerRendering => 'Công cụ kết xuất (Impeller)';
+
+  @override
+  String get impellerRenderingSubtitle =>
+      'Impeller là bộ kết xuất GPU hiện đại của Flutter, cho hoạt ảnh mượt hơn và ít giật hơn. Trên một số hộp TV và GPU đời cũ, nó có thể gây lỗi hiển thị hoặc video đen; hãy Tắt nếu bạn gặp tình trạng đó. Tự động sẽ chọn mặc định phù hợp nhất cho thiết bị của bạn. Khởi động lại Moonfin để áp dụng.';
+
+  @override
+  String get impellerAuto => 'Tự động';
+
+  @override
+  String get impellerOn => 'Bật';
+
+  @override
+  String get impellerOff => 'Tắt';
+
+  @override
+  String get impellerRestartTitle => 'Cần khởi động lại';
+
+  @override
+  String get impellerRestartMessage =>
+      'Moonfin cần khởi động lại để đổi công cụ kết xuất. Hãy đóng ứng dụng ngay bây giờ, sau đó mở lại để áp dụng.';
+
+  @override
+  String get impellerCloseNow => 'Đóng ứng dụng ngay';
+
+  @override
+  String get adminRefreshLibrary => 'Làm mới thư viện';
+
+  @override
+  String get adminRefreshAllLibraries => 'Làm mới tất cả thư viện';
+
+  @override
+  String get adminRepoSortDateOldest => 'Ngày thêm (Cũ nhất trước)';
+
+  @override
+  String get adminRepoSortDateNewest => 'Ngày thêm (Mới nhất trước)';
+
+  @override
+  String get adminRepoSortNameAsc => 'Theo bảng chữ cái (A đến Z)';
+
+  @override
+  String get adminRepoSortNameDesc => 'Theo bảng chữ cái (Z đến A)';
+
+  @override
+  String adminAnalyticsLoadingProgress(int percentage) {
+    return 'Đang tải phân tích máy chủ... $percentage%';
+  }
+
+  @override
+  String get adminLibChapterImageResolutionMatchSource => 'Theo nguồn';
+
+  @override
+  String get imdbTop250Movies => '250 phim hàng đầu trên IMDb';
+
+  @override
+  String get imdbTop250TvShows => '250 chương trình TV hàng đầu trên IMDb';
+
+  @override
+  String get imdbMostPopularMovies => 'Phim phổ biến nhất trên IMDb';
+
+  @override
+  String get imdbMostPopularTvShows =>
+      'Chương trình TV phổ biến nhất trên IMDb';
+
+  @override
+  String get imdbLowestRatedMovies => 'Phim bị đánh giá thấp nhất trên IMDb';
+
+  @override
+  String get imdbTopEnglishMovies =>
+      'Phim tiếng Anh được đánh giá cao nhất trên IMDb';
 }

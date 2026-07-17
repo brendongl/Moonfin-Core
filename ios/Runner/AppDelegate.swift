@@ -2,6 +2,7 @@ import Flutter
 import UIKit
 import AVKit
 import GoogleCast
+import UserNotifications
 
 private final class NativeCastEventStreamHandler: NSObject, FlutterStreamHandler {
   weak var appDelegate: AppDelegate?
@@ -50,7 +51,7 @@ private final class NativeAirPlayEventStreamHandler: NSObject, FlutterStreamHand
 }
 
 @main
-@objc class AppDelegate: FlutterAppDelegate, GCKSessionManagerListener, FlutterImplicitEngineDelegate {
+@objc class AppDelegate: FlutterAppDelegate, GCKSessionManagerListener {
   private static let isSimulator: Bool = {
     #if targetEnvironment(simulator)
       return true
@@ -74,6 +75,7 @@ private final class NativeAirPlayEventStreamHandler: NSObject, FlutterStreamHand
 
   private var pipChannel: FlutterMethodChannel?
   private var pipController: NSObject?
+  private var sfSymbolChannel: FlutterMethodChannel?
 
   private struct PendingCastRequest {
     let targetId: String
@@ -92,8 +94,14 @@ private final class NativeAirPlayEventStreamHandler: NSObject, FlutterStreamHand
   /// controller is no longer reachable via `self.window` at launch time and
   /// must be looked up from the connected scenes when a channel call needs it.
   private var flutterViewController: FlutterViewController? {
-    for scene in UIApplication.shared.connectedScenes {
-      guard let windowScene = scene as? UIWindowScene else { continue }
+    // Prefer the foreground-active scene so a background or placeholder scene can't
+    // shadow the live Flutter window and leave PiP without a host view.
+    let scenes = UIApplication.shared.connectedScenes
+      .compactMap { $0 as? UIWindowScene }
+      .sorted {
+        Self.sceneActivationRank($0.activationState) < Self.sceneActivationRank($1.activationState)
+      }
+    for windowScene in scenes {
       let windows = windowScene.windows
       let keyed = windows.first(where: { $0.isKeyWindow }) ?? windows.first
       if let controller = keyed?.rootViewController as? FlutterViewController {
@@ -102,6 +110,16 @@ private final class NativeAirPlayEventStreamHandler: NSObject, FlutterStreamHand
     }
     // Fallback for the legacy (non-scene) path.
     return window?.rootViewController as? FlutterViewController
+  }
+
+  private static func sceneActivationRank(_ state: UIScene.ActivationState) -> Int {
+    switch state {
+    case .foregroundActive: return 0
+    case .foregroundInactive: return 1
+    case .background: return 2
+    case .unattached: return 3
+    @unknown default: return 4
+    }
   }
 
   private func topViewController(from root: UIViewController?) -> UIViewController? {
@@ -118,23 +136,40 @@ private final class NativeAirPlayEventStreamHandler: NSObject, FlutterStreamHand
     return root
   }
 
+  // One explicit engine for the whole app. The phone UI scene and the CarPlay
+  // scene both use it, and starting it in didFinishLaunchingWithOptions makes
+  // Dart run even when iOS launches the app for CarPlay only (no window scene,
+  // so a storyboard-created implicit engine would never exist).
+  let sharedEngine = FlutterEngine(name: "moonfin")
+  private var engineStarted = false
+
+  func startEngineIfNeeded() {
+    guard !engineStarted else { return }
+    engineStarted = true
+    sharedEngine.run()
+    GeneratedPluginRegistrant.register(with: sharedEngine)
+    setUpPlatformChannels(messenger: sharedEngine.binaryMessenger)
+  }
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     configureGoogleCast()
+    startEngineIfNeeded()
 
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-  }
+    let launched = super.application(application, didFinishLaunchingWithOptions: launchOptions)
 
-  // Called once the implicit FlutterEngine (created by the storyboard's
-  // FlutterViewController under the UIScene lifecycle) is initialized. Plugin
-  // registration and application-level channels are wired up here against the
-  // engine's messenger instead of `window.rootViewController`, which is not yet
-  // available at `didFinishLaunchingWithOptions` time when scenes are in use.
-  func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
-    GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
-    setUpPlatformChannels(messenger: engineBridge.applicationRegistrar.messenger())
+    // firebase_messaging swizzles the notification-center delegate, which stops
+    // flutter_local_notifications from presenting while the app is foreground and
+    // from receiving action taps. Hand the delegate back to FlutterAppDelegate,
+    // which forwards to both plugins. Firebase's separate APNs handling is
+    // untouched, so push registration still works.
+    if #available(iOS 10.0, *), let delegate = self as? UNUserNotificationCenterDelegate {
+      UNUserNotificationCenter.current().delegate = delegate
+    }
+
+    return launched
   }
 
   private func setUpPlatformChannels(messenger: FlutterBinaryMessenger) {
@@ -142,6 +177,40 @@ private final class NativeAirPlayEventStreamHandler: NSObject, FlutterStreamHand
       name: "com.moonfin/ios_storage",
       binaryMessenger: messenger
     )
+
+    let sfSymbolChannel = FlutterMethodChannel(
+      name: "moonfin/sf_symbols",
+      binaryMessenger: messenger
+    )
+    self.sfSymbolChannel = sfSymbolChannel
+    sfSymbolChannel.setMethodCallHandler { (call, result) in
+      guard call.method == "render",
+        let args = call.arguments as? [String: Any],
+        let name = args["name"] as? String
+      else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      let size = CGFloat(args["size"] as? Double ?? 18)
+      let scale = CGFloat(args["scale"] as? Double ?? 2)
+      let color = UIColor(
+        red: CGFloat(args["r"] as? Double ?? 1),
+        green: CGFloat(args["g"] as? Double ?? 1),
+        blue: CGFloat(args["b"] as? Double ?? 1),
+        alpha: CGFloat(args["a"] as? Double ?? 1)
+      )
+      let config = UIImage.SymbolConfiguration(pointSize: size, weight: .regular)
+      guard let symbol = UIImage(systemName: name, withConfiguration: config) else {
+        result(nil)
+        return
+      }
+      let tinted = symbol.withTintColor(color, renderingMode: .alwaysOriginal)
+      let format = UIGraphicsImageRendererFormat()
+      format.scale = scale
+      let renderer = UIGraphicsImageRenderer(size: tinted.size, format: format)
+      let data = renderer.pngData { _ in tinted.draw(at: .zero) }
+      result(FlutterStandardTypedData(bytes: data))
+    }
 
       let pipChannel = FlutterMethodChannel(
         name: "org.moonfin.ios/pip",
@@ -230,6 +299,17 @@ private final class NativeAirPlayEventStreamHandler: NSObject, FlutterStreamHand
           case "updatePlaybackState":
             let isPlaying = (call.arguments as? [String: Any])?["isPlaying"] as? Bool ?? true
             pip.updatePlaybackState(isPlaying: isPlaying)
+            result(nil)
+          case "updateTimeline":
+            let args = call.arguments as? [String: Any]
+            let positionMs = (args?["positionMs"] as? NSNumber)?.doubleValue ?? 0
+            let durationMs = (args?["durationMs"] as? NSNumber)?.doubleValue ?? 0
+            let isPlaying = args?["isPlaying"] as? Bool ?? true
+            pip.updateTimeline(
+              positionSeconds: positionMs / 1000.0,
+              durationSeconds: durationMs / 1000.0,
+              isPlaying: isPlaying
+            )
             result(nil)
           default:
             result(FlutterMethodNotImplemented)
@@ -678,6 +758,10 @@ private final class NativeAirPlayEventStreamHandler: NSObject, FlutterStreamHand
       default:
         result(FlutterMethodNotImplemented)
       }
+    }
+
+    if #available(iOS 14.0, *) {
+      CarPlayBridge.shared.attach(messenger: messenger)
     }
   }
 

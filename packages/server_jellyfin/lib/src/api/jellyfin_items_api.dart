@@ -18,6 +18,7 @@ class JellyfinItemsApi implements ItemsApi {
 
   @override
   Future<Map<String, dynamic>> getItems({
+    bool? serverWide,
     String? parentId,
     List<String>? ids,
     List<String>? includeItemTypes,
@@ -47,53 +48,90 @@ class JellyfinItemsApi implements ItemsApi {
     DateTime? minPremiereDate,
     String? maxOfficialRating,
     bool? hasParentalRating,
+    String? anyProviderIdEquals,
+  }) async {
+    final queryParams = {
+      'ParentId': ?parentId,
+      if (ids != null) 'Ids': ids.join(','),
+      if (includeItemTypes != null)
+        'IncludeItemTypes': includeItemTypes.join(','),
+      if (excludeItemTypes != null)
+        'ExcludeItemTypes': excludeItemTypes.join(','),
+      'SortBy': ?sortBy,
+      'SortOrder': ?sortOrder,
+      'StartIndex': ?startIndex,
+      'Limit': ?limit,
+      'Recursive': ?recursive,
+      'SearchTerm': ?searchTerm,
+      'Fields': ?fields,
+      if (personIds != null) 'PersonIds': personIds.join(','),
+      if (artistIds != null) 'ArtistIds': artistIds.join(','),
+      if (filters != null) 'Filters': filters.join(','),
+      if (seriesStatus != null) 'SeriesStatus': seriesStatus.join(','),
+      'NameStartsWith': ?nameStartsWith,
+      'NameLessThan': ?nameLessThan,
+      if (genreIds != null) 'GenreIds': genreIds.join(','),
+      if (genres != null) 'Genres': genres.join(','),
+      'IsFavorite': ?isFavorite,
+      'CollapseBoxSetItems': ?collapseBoxSetItems,
+      'EnableTotalRecordCount': ?enableTotalRecordCount,
+      'EnableImageTypes': ?enableImageTypes,
+      'ImageTypeLimit': ?imageTypeLimit,
+      if (tags != null && tags.isNotEmpty) 'Tags': tags.join('|'),
+      if (studios != null && studios.isNotEmpty) 'Studios': studios.join('|'),
+      if (minPremiereDate != null)
+        'MinPremiereDate': minPremiereDate.toUtc().toIso8601String(),
+      'MaxOfficialRating': ?maxOfficialRating,
+      'HasParentalRating': ?hasParentalRating,
+      'AnyProviderIdEquals': ?anyProviderIdEquals,
+    };
+    final String path;
+    if (serverWide == true) {
+      path = '/Items';
+    } else {
+      final userId = _getUserId();
+      path = '/Users/$userId/Items';
+    }
+    final response = await _dio.get(
+      path,
+      queryParameters: queryParams,
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  @override
+  Future<Map<String, dynamic>> getPersons({
+    required String searchTerm,
+    int? limit,
+    String? fields,
+    String? enableImageTypes,
   }) async {
     final response = await _dio.get(
-      '/Items',
+      '/Persons',
       queryParameters: {
-        'ParentId': ?parentId,
-        if (ids != null) 'Ids': ids.join(','),
-        if (includeItemTypes != null)
-          'IncludeItemTypes': includeItemTypes.join(','),
-        if (excludeItemTypes != null)
-          'ExcludeItemTypes': excludeItemTypes.join(','),
-        'SortBy': ?sortBy,
-        'SortOrder': ?sortOrder,
-        'StartIndex': ?startIndex,
+        'UserId': _getUserId(),
+        'SearchTerm': searchTerm,
         'Limit': ?limit,
-        'Recursive': ?recursive,
-        'SearchTerm': ?searchTerm,
         'Fields': ?fields,
-        if (personIds != null) 'PersonIds': personIds.join(','),
-        if (artistIds != null) 'ArtistIds': artistIds.join(','),
-        if (filters != null) 'Filters': filters.join(','),
-        if (seriesStatus != null) 'SeriesStatus': seriesStatus.join(','),
-        'NameStartsWith': ?nameStartsWith,
-        'NameLessThan': ?nameLessThan,
-        if (genreIds != null) 'GenreIds': genreIds.join(','),
-        if (genres != null) 'Genres': genres.join(','),
-        'IsFavorite': ?isFavorite,
-        'CollapseBoxSetItems': ?collapseBoxSetItems,
-        'EnableTotalRecordCount': ?enableTotalRecordCount,
         'EnableImageTypes': ?enableImageTypes,
-        'ImageTypeLimit': ?imageTypeLimit,
-        if (tags != null && tags.isNotEmpty) 'Tags': tags.join('|'),
-        if (studios != null && studios.isNotEmpty) 'Studios': studios.join('|'),
-        if (minPremiereDate != null)
-          'MinPremiereDate': minPremiereDate.toUtc().toIso8601String(),
-        'MaxOfficialRating': ?maxOfficialRating,
-        'HasParentalRating': ?hasParentalRating,
       },
     );
     return response.data as Map<String, dynamic>;
   }
 
   @override
-  Future<Map<String, dynamic>> getItem(String itemId) async {
+  Future<Map<String, dynamic>> getItem(
+    String itemId, {
+    String? mediaSourceId,
+    String? fields,
+  }) async {
     final userId = _getUserId();
     final response = await _dio.get(
       '/Users/$userId/Items/$itemId',
-      queryParameters: {'Fields': kItemFields},
+      queryParameters: {
+        'Fields': fields ?? kItemFields,
+        if (mediaSourceId != null) 'mediaSourceId': mediaSourceId,
+      },
     );
     return response.data as Map<String, dynamic>;
   }
@@ -189,6 +227,36 @@ class JellyfinItemsApi implements ItemsApi {
         'Fields': ?fields,
         'EnableImageTypes': ?enableImageTypes,
         'ImageTypeLimit': ?imageTypeLimit,
+      },
+    );
+    final data = response.data;
+    if (data is List) return {'Items': data, 'TotalRecordCount': data.length};
+    return data as Map<String, dynamic>;
+  }
+
+  @override
+  Future<Map<String, dynamic>> getRecentlyReleasedItems({
+    String? parentId,
+    List<String>? includeItemTypes,
+    int? limit,
+    String? fields,
+    String? enableImageTypes,
+    int? imageTypeLimit,
+  }) async {
+    final userId = _getUserId();
+    final response = await _dio.get(
+      '/Users/$userId/Items',
+      queryParameters: {
+        'ParentId': ?parentId,
+        if (includeItemTypes != null)
+          'IncludeItemTypes': includeItemTypes.join(','),
+        'Limit': ?limit,
+        'Fields': ?fields,
+        'EnableImageTypes': ?enableImageTypes,
+        'ImageTypeLimit': ?imageTypeLimit,
+        'SortBy': 'PremiereDate',
+        'SortOrder': 'Descending',
+         'MaxPremiereDate': DateTime.now().toUtc().toIso8601String(),
       },
     );
     final data = response.data;
@@ -313,8 +381,8 @@ class JellyfinItemsApi implements ItemsApi {
       '/Playlists/$playlistId/Items',
       queryParameters: {
         'Fields':
-            'BasicSyncInfo,PrimaryImageAspectRatio,RunTimeTicks,Artists,AlbumArtist,IndexNumber,MediaType,PlaylistItemId,BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId',
-        'EnableImageTypes': 'Primary,Backdrop',
+            'BasicSyncInfo,PrimaryImageAspectRatio,RunTimeTicks,Artists,AlbumArtist,IndexNumber,MediaType,PlaylistItemId,BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId,SeriesName,ParentIndexNumber,Genres',
+        'EnableImageTypes': 'Primary,Backdrop,Logo,Thumb',
         'ImageTypeLimit': 1,
       },
     );

@@ -9,14 +9,29 @@ jobs:
   update-aur:
     runs-on: ubuntu-latest
     steps:
-      - name: Get upstream latest release
+      - name: Resolve release version
         id: upstream
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+          EVENT_PRERELEASE: ${{ github.event.release.prerelease }}
         run: |
-          LATEST=$(curl -s https://api.github.com/repos/Moonfin-Client/Moonfin-Core/releases/latest | jq -r '.tag_name')
-          echo "version=$LATEST" >> "$GITHUB_OUTPUT"
-          echo "Upstream latest version: $LATEST"
+          # Use the tag from the release that triggered this run
+          if [ "$EVENT_NAME" = "release" ]; then
+            if [ "$EVENT_PRERELEASE" = "true" ]; then
+              echo "Prerelease, skipping AUR update"
+              echo "version=" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            VERSION="$EVENT_TAG"
+          else
+            VERSION=$(curl -fsS https://api.github.com/repos/Moonfin-Client/Moonfin-Core/releases/latest | jq -r '.tag_name')
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Release version: $VERSION"
 
       - name: Setup SSH for AUR
+        if: steps.upstream.outputs.version != ''
         env:
           AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
         run: |
@@ -33,6 +48,7 @@ jobs:
           chmod 600 ~/.ssh/config
 
       - name: Clone AUR package
+        if: steps.upstream.outputs.version != ''
         run: |
           git clone ssh://aur@aur.archlinux.org/moonfin-bin.git /tmp/aur-package
           cd /tmp/aur-package
@@ -45,6 +61,7 @@ jobs:
 
       - name: Check if update needed
         id: check
+        if: steps.upstream.outputs.version != ''
         run: |
           VERSION="${{ steps.upstream.outputs.version }}"
           cd /tmp/aur-package
@@ -68,7 +85,17 @@ jobs:
         run: |
           VERSION="${{ steps.upstream.outputs.version }}"
           URL="https://github.com/Moonfin-Client/Moonfin-Core/releases/download/${VERSION}/Moonfin_Linux_v${VERSION}.tar.gz"
-          curl -L -o /tmp/moonfin-linux.tar.gz "$URL"
+          for attempt in 1 2 3 4 5 6; do
+            if curl -fL --retry 3 -o /tmp/moonfin-linux.tar.gz "$URL"; then
+              break
+            fi
+            if [ "$attempt" = "6" ]; then
+              echo "Release asset not available: $URL"
+              exit 1
+            fi
+            echo "Asset not ready yet, retrying in 30s"
+            sleep 30
+          done
           SHA256=$(sha256sum /tmp/moonfin-linux.tar.gz | cut -d' ' -f1)
           echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
           echo "Downloaded release, SHA256: $SHA256"
@@ -91,9 +118,9 @@ jobs:
           sed -i "s|^source=.*|source=(\"\${pkgname}-\${pkgver}.tar.gz::https://github.com/Moonfin-Client/Moonfin-Core/releases/download/\${pkgver}/Moonfin_Linux_v\${pkgver}.tar.gz\")|" PKGBUILD
 
           if grep -q '^depends=' PKGBUILD; then
-            sed -i "s/^depends=.*/depends=('gtk3' 'glib2' 'libsecret' 'webkit2gtk-4.1' 'mpv')/" PKGBUILD
+            sed -i "s/^depends=.*/depends=('gtk3' 'glib2' 'libsecret' 'webkit2gtk-4.1' 'mpv' 'harfbuzz-icu')/" PKGBUILD
           else
-            sed -i "/^pkgrel=/a depends=('gtk3' 'glib2' 'libsecret' 'webkit2gtk-4.1' 'mpv')" PKGBUILD
+            sed -i "/^pkgrel=/a depends=('gtk3' 'glib2' 'libsecret' 'webkit2gtk-4.1' 'mpv' 'harfbuzz-icu')" PKGBUILD
           fi
 
           printf '%s\n' \
@@ -109,6 +136,7 @@ jobs:
             "    depends = libsecret" \
             "    depends = webkit2gtk-4.1" \
             "    depends = mpv" \
+            "    depends = harfbuzz-icu" \
             "    provides = moonfin" \
             "    conflicts = moonfin" \
             "    source = moonfin-bin-${VERSION}.tar.gz::https://github.com/Moonfin-Client/Moonfin-Core/releases/download/${VERSION}/Moonfin_Linux_v${VERSION}.tar.gz" \

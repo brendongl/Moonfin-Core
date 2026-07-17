@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "آهنگ های مورد علاقه در اینجا ظاهر می شوند",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "بارگیری نشد",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "کاربر خاص",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "همیشه احراز هویت",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "جستجوی شخص از راه دور",
     "adminNoRemoteMatches": "هیچ منطبق از راه دور پیدا نشد",
     "adminRemoteResults": "نتایج از راه دور",
     "adminRemoteMetadataApplied": "ابرداده از راه دور اعمال شد",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "تیونر را اضافه کنید",
     "adminTunerType": "نوع تیونر",
-    "adminTunerTypeHint": "HDHomeRun، M3U، سایر موارد",
-    "adminUrlPath": "URL / مسیر",
-    "adminNameOptional": "نام (اختیاری)",
     "adminTunerAdded": "تیونر اضافه شد",
     "adminTunerAddFailed": "تیونر اضافه نشد: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "ارائه دهنده راهنما را اضافه کنید",
     "adminProviderType": "نوع ارائه دهنده",
-    "adminProviderTypeHint": "SchedulesDirect یا XMLTV",
-    "adminUsernameOptional": "نام کاربری (اختیاری)",
-    "adminRefreshInterval": "فاصله بازخوانی (ساعت)",
     "adminProviderAdded": "ارائه دهنده اضافه شد",
     "adminProviderAddFailed": "ارائه دهنده اضافه نشد: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "بدون خطوط منطبق",
     "adminMetadataEditorTitle": "ویرایشگر فراداده",
-    "adminMetadataRemote": "از راه دور",
     "adminMetadataType": "تایپ کنید",
     "adminMetadataDetails": "جزئیات",
     "adminMetadataExternalIds": "شناسه های خارجی",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "انتخاب من را به خاطر بسپار",
     "playHdr10Fallback": "پخش مجدد HDR10",
     "requestTranscode": "درخواست ترانکد",
-    "homeScreenSectionsIntegrationDescription": "ردیف‌هایی را که توسط افزونه «بخش‌های صفحه اصلی» IAmParadox27 در معرض دید قرار گرفته‌اند، شناسایی کنید. ردیف‌ها را می‌توان در زیر فعال و مرتب کرد.",
-    "homeScreenSectionsIntegrationNoServers": "هنوز هیچ سرور Jellyfin این افزونه را گزارش نکرده است.",
-    "integrationOpenHomeSections": "بخش های صفحه اصلی را باز کنید",
-    "integrationOpenHomeSectionsSubtitle": "فعال کردن، غیرفعال کردن و ترتیب مجدد ردیف ها",
-    "integrationInstalledButDisabled": "نصب شده اما غیرفعال است",
-    "integrationNotInstalled": "نصب نشده است",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "مشاهده همه",
     "noItems": "هیچ موردی وجود ندارد",
     "switchUser": "تغییر کاربر",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "استریو AAC",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "عبور (پیشرفته)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "حذف تم ذخیره شده",
     "savedThemesManageSubtitle": "مضامین بارگیری شده افزونه را در این دستگاه مدیریت کنید",
-    "homeScreenSectionsTitle": "بخش های صفحه اصلی",
     "themeEditor": "ویرایشگر تم",
     "themeEditorSubtitle": "ویرایشگر تم Moonfin را در مرورگر خود باز کنید",
     "homeScreen": "صفحه اصلی",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "به طور خودکار HDR را برای پخش ویدیوی HDR فعال کنید و حالت نمایش را در هنگام خروج بازیابی کنید.",
     "whenFullscreen": "وقتی تمام صفحه",
     "transcodingLimits": "محدودیت های رمزگذاری",
-    "settingsSupportMoonfinSubtitle": "یک قهوه به توسعه دهنده اهدا کنید"
+    "settingsSupportMoonfinSubtitle": "یک قهوه به توسعه دهنده اهدا کنید",
+    "reportDownloadsActivity": "نمایش دانلودها در سرور",
+    "reportDownloadsActivitySubtitle": "به مدیر سرور اجازه دهید دانلودهای ترنسکدشده شما را در داشبورد ببیند",
+    "mbValue": "{value} مگابایت",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "محدودیت حافظه پنهان تصاویر",
+    "clearImageCache": "پاک کردن حافظه پنهان تصاویر",
+    "imageCacheCleared": "حافظه پنهان تصاویر پاک شد"
 }

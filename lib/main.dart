@@ -3,16 +3,26 @@ import 'dart:async';
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:get_it/get_it.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:playback_core/playback_core.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'app.dart';
+import 'data/models/aggregated_item.dart';
+import 'background/watch_next_background.dart' as watch_next_bg;
+import 'data/services/carplay_service.dart';
 import 'data/services/cast/airplay_command_bridge.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+
 import 'data/services/download_notification_service.dart';
+import 'data/services/push_messaging_service.dart';
+import 'data/services/seerr_notification_service.dart';
 import 'data/services/media_server_client_factory.dart';
 import 'data/services/storage_path_service.dart';
+import 'util/webview_environment.dart';
 import 'data/services/theme_store_service.dart';
 import 'di/injection.dart';
 import 'playback/appletv_audio_now_playing_feeder.dart';
@@ -20,20 +30,26 @@ import 'playback/appletv_mpv_backend.dart';
 import 'playback/audio_capability_profile.dart';
 import 'playback/audio_capability_probe.dart';
 import 'playback/audio_handler.dart';
+import 'playback/media_browse_service.dart';
+import 'playback/mpris_service.dart';
 import 'playback/playback_lifecycle_handler.dart';
 import 'platform/web_runtime_config.dart';
 import 'preference/user_preferences.dart';
+import 'util/fullscreen_helper.dart';
+import 'util/http_overrides_stub.dart'
+    if (dart.library.io) 'util/http_overrides_io.dart';
+import 'util/game_core_licenses.dart';
 import 'util/platform_detection.dart';
 import 'util/tv_image_cache_stub.dart'
     if (dart.library.io) 'util/tv_image_cache_io.dart';
 
 DateTime? _lastIosRouteResync;
 
-/// iOS-only audio route handling. audio_service owns the AVAudioSession, so we
-/// observe route changes directly to (a) pause when the current output device
-/// disappears (AirPods removed, cable unplugged) and (b) re-sync A/V when a new
-/// output is connected mid-playback (AirPlay/HomePod), which otherwise leaves
-/// libmpv writing to a stale clock and drifts audio out of sync.
+/// iOS-only audio route handling: observe output route changes to (a) pause when
+/// the current output device disappears (AirPods removed, cable unplugged) and
+/// (b) re-sync A/V when the output switches mid-playback (a new device connects,
+/// or AirPlay/HomePod is selected), which otherwise leaves libmpv writing to a
+/// stale clock and drifts audio out of sync.
 void _attachIosAudioRouteHandling() {
   final session = AVAudioSession();
   session.routeChangeStream.listen((change) async {
@@ -43,6 +59,7 @@ void _attachIosAudioRouteHandling() {
         manager.pause();
         break;
       case AVAudioSessionRouteChangeReason.newDeviceAvailable:
+      case AVAudioSessionRouteChangeReason.override:
         if (!manager.state.isPlaying) return;
         final now = DateTime.now();
         final last = _lastIosRouteResync;
@@ -61,26 +78,30 @@ void _attachIosAudioRouteHandling() {
   });
 }
 
+// The entry counts are generous on purpose: a library grid shows dozens of
+// posters at once, so a small count evicts them after about two screenfuls and
+// scrolling back re-decodes everything. maximumSizeBytes is what really bounds
+// memory here.
 void _configureImageCache() {
   final imageCache = PaintingBinding.instance.imageCache;
   if (PlatformDetection.isWeb) {
-    imageCache.maximumSize = 200;
+    imageCache.maximumSize = 400;
     imageCache.maximumSizeBytes = 96 << 20;
     return;
   }
   if (PlatformDetection.isMobile) {
-    imageCache.maximumSize = 100;
+    imageCache.maximumSize = 400;
     imageCache.maximumSizeBytes = 120 << 20;
     return;
   }
 
   if (PlatformDetection.isTV) {
-    imageCache.maximumSize = 120;
+    imageCache.maximumSize = 500;
     imageCache.maximumSizeBytes = 96 << 20;
     return;
   }
 
-  imageCache.maximumSize = 200;
+  imageCache.maximumSize = 600;
   imageCache.maximumSizeBytes = 256 << 20;
 }
 
@@ -90,6 +111,7 @@ Future<void> _restoreWindowGeometry() async {
   final h = prefs.get(UserPreferences.windowHeight);
   final x = prefs.get(UserPreferences.windowX);
   final y = prefs.get(UserPreferences.windowY);
+  final startFullscreen = prefs.get(UserPreferences.windowFullscreen);
 
   const minW = 800.0;
   const minH = 500.0;
@@ -108,16 +130,38 @@ Future<void> _restoreWindowGeometry() async {
     }
     await windowManager.show();
     await windowManager.focus();
+    if (startFullscreen) {
+      // Via FullscreenHelper so its cached state matches the window.
+      await FullscreenHelper.setFullscreen(true);
+    }
   });
 }
 
+/// Resolves whether this Android device is a TV, which decides the leanback UI
+/// and the default playback engine.
 Future<void> _detectAndSetTvMode() async {
+  if (const bool.fromEnvironment('MOONFIN_FORCE_TV')) {
+    PlatformDetection.setTvMode(true);
+    return;
+  }
   if (!PlatformDetection.isAndroid) return;
-  try {
-    const channel = MethodChannel('org.moonfin.androidtv/platform');
-    final isTV = await channel.invokeMethod<bool>('isTvDevice') ?? false;
-    PlatformDetection.setTvMode(isTV);
-  } catch (_) {}
+  const channel = MethodChannel('org.moonfin.androidtv/platform');
+  const attempts = 3;
+  for (var attempt = 0; attempt < attempts; attempt++) {
+    try {
+      final isTV = await channel.invokeMethod<bool>('isTvDevice');
+      if (isTV != null) {
+        PlatformDetection.setTvMode(isTV);
+        return;
+      }
+    } catch (_) {}
+    if (attempt < attempts - 1) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
+  }
+  debugPrint(
+    'TV detection failed after $attempts attempts, continuing as a non-TV device',
+  );
 }
 
 Future<void> _detectAndSetDisplayCapabilities() async {
@@ -260,6 +304,23 @@ Future<void> _migrateSeededPassthroughTogglesToAuto(
   await prefs.set(UserPreferences.audioPassthroughMigratedToAuto, true);
 }
 
+void _sweepImageCache(UserPreferences prefs, {bool throttle = false}) {
+  final mb = prefs.get(UserPreferences.imageCacheLimitMb);
+  unawaited(enforceImageCacheBudget(mb * 1024 * 1024, throttle: throttle));
+}
+
+class _ImageCacheSweepObserver with WidgetsBindingObserver {
+  _ImageCacheSweepObserver(this._prefs);
+
+  final UserPreferences _prefs;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    _sweepImageCache(_prefs, throttle: true);
+  }
+}
+
 class _PreferenceWriteFlushObserver with WidgetsBindingObserver {
   _PreferenceWriteFlushObserver(this._prefs);
 
@@ -288,8 +349,26 @@ class _PreferenceWriteFlushObserver with WidgetsBindingObserver {
   }
 }
 
+@pragma('vm:entry-point')
+Future<void> watchNextBackgroundMain() => watch_next_bg.watchNextBackgroundMain();
+
 void main() async {
+  configureHttpOverrides();
   WidgetsFlutterBinding.ensureInitialized();
+
+  if (PlatformDetection.isAppleTV) {
+    registerGameCoreLicenses();
+  }
+
+  if (!PlatformDetection.isWeb && PlatformDetection.isWindows) {
+    try {
+      final appDataDir = await getApplicationSupportDirectory();
+      final customPath = '${appDataDir.path}\\WebView2Data';
+      gWebViewEnvironment = await WebViewEnvironment.create(
+        settings: WebViewEnvironmentSettings(userDataFolder: customPath),
+      );
+    } catch (_) {}
+  }
 
   if (PlatformDetection.isAppleTV) {
     ErrorWidget.builder = (FlutterErrorDetails details) {
@@ -333,7 +412,7 @@ void main() async {
   }
 
   _configureImageCache();
-  await configureAppleTvImageCache();
+  await configureImageDiskCache();
 
   // On Linux the GTK font pipeline loads fonts asynchronously. The first frame
   // can render before MaterialIcons and other fonts are ready, causing icons to
@@ -352,13 +431,43 @@ void main() async {
       statusBarColor: Colors.transparent,
       systemNavigationBarColor: Colors.transparent,
     ));
+
+    // Registered before runApp so a background/terminated push can be handled.
+    // The handler itself is a no-op; the OS draws these notifications.
+    try {
+      FirebaseMessaging.onBackgroundMessage(pushBackgroundHandler);
+    } catch (_) {}
   }
 
   await configureDependencies();
 
+  // Registered before runApp so a CarPlay-only launch (no window scene, no
+  // widgets) can browse and start playback.
+  if (PlatformDetection.isIOS && !GetIt.instance.isRegistered<CarPlayService>()) {
+    try {
+      final carPlayService = CarPlayService(
+        browse: GetIt.instance<MediaBrowseService>(),
+        manager: GetIt.instance<PlaybackManager>(),
+      )..start();
+      GetIt.instance.registerSingleton<CarPlayService>(carPlayService);
+    } catch (_) {}
+  }
+
   final prefs = GetIt.instance<UserPreferences>();
   WidgetsBinding.instance.addObserver(_PreferenceWriteFlushObserver(prefs));
-  await _detectAndApplyAudioCapabilities(prefs);
+  WidgetsBinding.instance.addObserver(_ImageCacheSweepObserver(prefs));
+  WidgetsBinding.instance.addPostFrameCallback((_) => _sweepImageCache(prefs));
+
+  GetIt.instance<PlaybackManager>().queueService.queueChangedStream.listen((_) {
+    final activeItem = GetIt.instance<PlaybackManager>().queueService.currentItem;
+    if (activeItem is AggregatedItem) {
+      prefs.unhideFromContinueWatching(activeItem.id);
+      if (activeItem.seriesId != null && activeItem.seriesId!.isNotEmpty) {
+        prefs.unhideFromContinueWatching(activeItem.seriesId!);
+        prefs.unhideFromNextUp(activeItem.seriesId!);
+      }
+    }
+  });
 
   // Register Theme Store themes before the active theme is resolved so a
   // store-saved theme applies on launch.
@@ -370,53 +479,11 @@ void main() async {
     await _restoreWindowGeometry();
   }
 
-  final notificationService = GetIt.instance<DownloadNotificationService>();
-  try {
-    await notificationService.initialize();
-  } catch (_) {}
-
-  // Android TV also gets the MediaSession so music is controllable from the
-  // system quick-access / screensaver after leaving the app. Apple
-  // TV and Tizen are excluded: they have no audio_service backend (tvOS uses the
-  // native NowPlayingController instead).
-  if (PlatformDetection.isMobile ||
-      (PlatformDetection.isAndroid && PlatformDetection.isTV)) {
-    try {
-      await initAudioService(
-        manager: GetIt.instance<PlaybackManager>(),
-        clientFactory: GetIt.instance<MediaServerClientFactory>(),
-      );
-    } catch (e, st) {
-      debugPrint('initAudioService failed (lock-screen controls disabled): $e\n$st');
-    }
-  }
-
-  // Audio session ownership differs per platform:
-  // - Android: the audio_session package configures and activates the session for
-  //   the foreground media notification.
-  // - iOS: audio_service owns the AVAudioSession so that lock-screen / Control
-  //   Center Now Playing works. Configuring/activating it again here would detach
-  //   audio_service's Now Playing wiring, so we don't. Route handling (pause on
-  //   disconnect, A/V re-sync on connect) is done in _attachIosAudioRouteHandling.
-  if (PlatformDetection.isAndroid) {
-    try {
-      final session = await AudioSession.instance;
-      await session.configure(AudioSessionConfiguration(
-        androidAudioAttributes: AndroidAudioAttributes(
-          contentType: AndroidAudioContentType.music,
-          usage: AndroidAudioUsage.media,
-        ),
-      ));
-      await session.setActive(true);
-      session.becomingNoisyEventStream.listen((_) {
-        GetIt.instance<PlaybackManager>().pause();
-      });
-    } catch (_) {}
-  } else if (PlatformDetection.isIOS) {
-    try {
-      _attachIosAudioRouteHandling();
-    } catch (_) {}
-  }
+  // Audio and notification services are only needed once playback or a
+  // download can happen, so they initialize after the first frame.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(_initDeferredStartupServices(prefs));
+  });
 
   // tvOS: keep the system Now Playing card fed for music (the native
   // NowPlayingController handles video; audio has no view controller to feed it).
@@ -443,4 +510,78 @@ void main() async {
   } catch (_) {}
 
   runApp(const MoonfinApp());
+}
+
+/// Startup work that runs after the first frame. The internal order matters:
+/// the Android audio session configuration must follow initAudioService.
+Future<void> _initDeferredStartupServices(UserPreferences prefs) async {
+  if (PlatformDetection.isMobile ||
+      (PlatformDetection.isAndroid && PlatformDetection.isTV)) {
+    try {
+      await initAudioService(
+        manager: GetIt.instance<PlaybackManager>(),
+        clientFactory: GetIt.instance<MediaServerClientFactory>(),
+      );
+    } catch (e, st) {
+      debugPrint('initAudioService failed (lock-screen controls disabled): $e\n$st');
+    }
+  }
+
+  if (PlatformDetection.isLinux) {
+    try {
+      await initMprisService(
+        manager: GetIt.instance<PlaybackManager>(),
+        clientFactory: GetIt.instance<MediaServerClientFactory>(),
+      );
+    } catch (e, st) {
+      debugPrint('initMprisService failed (MPRIS controls disabled): $e\n$st');
+    }
+  }
+
+  await _detectAndApplyAudioCapabilities(prefs);
+
+  try {
+    await GetIt.instance<DownloadNotificationService>().initialize();
+  } catch (_) {}
+
+  try {
+    await GetIt.instance<SeerrNotificationService>().initialize();
+    await GetIt.instance<SeerrNotificationService>().handleColdStart();
+  } catch (_) {}
+
+  if (PlatformDetection.isMobile) {
+    try {
+      await GetIt.instance<PushMessagingService>().initialize();
+    } catch (_) {}
+  }
+
+  // Audio session ownership differs per platform:
+  // - Android: MoonfinAudioHandler acquires audio focus per playback, and skips
+  //   it when the backend manages focus itself like media3. We only configure
+  //   the attributes here so the becomingNoisy handler below can pause on
+  //   headphone unplug. We deliberately do not setActive(true) at startup: that
+  //   focus grab goes stale before playback begins, which left Android Auto
+  //   music muted, and it fights ExoPlayer's own focus.
+  // - iOS: MoonfinAudioHandler claims a non-mixing `.playback` session when
+  //   playback starts and releases it on stop, so the in-app player owns Control
+  //   Center / lock-screen Now Playing and AirPods/remote controls. Here we only
+  //   attach route handling (pause on disconnect, A/V re-sync on connect).
+  if (PlatformDetection.isAndroid) {
+    try {
+      final session = await AudioSession.instance;
+      await session.configure(AudioSessionConfiguration(
+        androidAudioAttributes: AndroidAudioAttributes(
+          contentType: AndroidAudioContentType.music,
+          usage: AndroidAudioUsage.media,
+        ),
+      ));
+      session.becomingNoisyEventStream.listen((_) {
+        GetIt.instance<PlaybackManager>().pause();
+      });
+    } catch (_) {}
+  } else if (PlatformDetection.isIOS) {
+    try {
+      _attachIosAudioRouteHandling();
+    } catch (_) {}
+  }
 }

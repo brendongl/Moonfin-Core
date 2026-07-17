@@ -20,6 +20,7 @@ import '../../preference/user_preferences.dart';
 import '../../l10n/app_localizations.dart';
 import '../../util/clock_format.dart';
 import '../../util/focus/dpad_keys.dart';
+import '../../util/game_library.dart';
 import '../../util/overlay_color_palette.dart';
 import '../../util/platform_detection.dart';
 import '../navigation/destinations.dart';
@@ -37,6 +38,7 @@ import 'package:playback_core/playback_core.dart';
 import '../../data/models/aggregated_item.dart';
 import '../../data/services/media_server_client_factory.dart';
 import '../navigation/app_router.dart';
+import 'adaptive/sf_symbol.dart';
 
 const _kExpandedWidthDesktop = 240.0;
 const _kExpandedWidthMobile = 260.0;
@@ -246,6 +248,8 @@ class _LeftSidebarState extends State<LeftSidebar> {
           ? await GetIt.instance<MultiServerRepository>()
                 .getAggregatedLibraries()
           : await _viewsRepo.getUserViews();
+
+      unawaited(GetIt.instance<GameLibraryRegistry>().refresh());
 
       List<AggregatedLibrary> filtered = libs;
       if (useMultiServer) {
@@ -761,10 +765,7 @@ class _LeftSidebarState extends State<LeftSidebar> {
         _prefs.get(UserPreferences.syncPlayEnabled) &&
         _prefs.get(UserPreferences.showSyncPlayButton);
     final seerrPrefs = GetIt.instance<SeerrPreferences>();
-    final seerrDisplayName = seerrPrefs.moonfinDisplayName.trim();
-    final seerrNavLabel = seerrDisplayName.isNotEmpty
-      ? seerrDisplayName
-      : (seerrPrefs.isSeerrVariant ? l10n.seerr : l10n.jellyseerr);
+    final seerrNavLabel = seerrPrefs.labelOrDefault(l10n.seerr);
     final clockBehavior = _prefs.get(UserPreferences.clockBehavior);
     final showClock =
         clockBehavior == ClockBehavior.always ||
@@ -806,11 +807,11 @@ class _LeftSidebarState extends State<LeftSidebar> {
                   onPressed: () {
                     _onNavigate();
                     if (_isActive(Destinations.home)) {
-                      requestHomeRefresh();
+                      homeRefreshBus.request();
                       _exitSidebarToContent();
                       return;
                     }
-                    requestHomeRefreshAfterNavigation();
+                    homeRefreshBus.requestAfterNavigation();
                     _markNavigationAwayFromSidebar();
                     context.go(Destinations.home);
                   },
@@ -923,7 +924,7 @@ class _LeftSidebarState extends State<LeftSidebar> {
                     baseColor: nextMainSidebarColor(),
                     iconBuilder: (size, color) => seerrPrefs.isSeerrVariant
                         ? SeerrIcon(size: size, color: color)
-                        : JellyseerrIcon(size: size, color: color),
+                        : SeerrIcon(size: size, color: color),
                     label: seerrNavLabel,
                     showLabel: _showLabels,
                     onPressed: () {
@@ -989,13 +990,26 @@ class _LeftSidebarState extends State<LeftSidebar> {
                                           '/music/${lib.id}',
                                         );
                                       } else if (lib.collectionType ==
+                                              'books' ||
+                                          lib.collectionType == 'audiobooks') {
+                                        context.navigateTopLevel(
+                                          Destinations.bookLibrary(
+                                            lib.id,
+                                            collectionType: lib.collectionType,
+                                          ),
+                                        );
+                                      } else if (lib.collectionType ==
                                           'livetv') {
                                         context.navigateTopLevel(
                                           Destinations.liveTvGuide,
                                         );
                                       } else {
                                         context.navigateTopLevel(
-                                          '/library/${lib.id}',
+                                          gameOrLibraryRoute(
+                                            lib.id,
+                                            lib.collectionType,
+                                            lib.name,
+                                          ),
                                         );
                                       }
                                     },
@@ -1144,7 +1158,7 @@ class _LeftSidebarState extends State<LeftSidebar> {
         color: (PlatformDetection.isTV && isFocused && _showLabels)
             ? Colors.white
             : Colors.transparent,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: AppRadius.circular(24),
       ),
       child: Row(
         children: [
@@ -1328,7 +1342,7 @@ class _SidebarItemState extends State<_SidebarItem> {
                           : focusColor.withValues(alpha: 0.12))
                     : Colors.transparent,
                 borderRadius: PlatformDetection.isTV
-                    ? BorderRadius.circular(24)
+                    ? AppRadius.circular(24)
                     : BorderRadius.zero,
               ),
               child: Row(
@@ -1337,7 +1351,13 @@ class _SidebarItemState extends State<_SidebarItem> {
                     width: iconSlotWidth,
                     child:
                         widget.iconBuilder?.call(iconSize, fgColor) ??
-                        Icon(widget.icon, size: iconSize, color: fgColor),
+                        (widget.icon != null
+                            ? AdaptiveIcon(
+                                widget.icon!,
+                                size: iconSize,
+                                color: fgColor,
+                              )
+                            : const SizedBox.shrink()),
                   ),
                   if (widget.showLabel) ...[
                     const SizedBox(width: 12),
@@ -1447,7 +1467,7 @@ class _SidebarLibraryItemState extends State<_SidebarLibraryItem> {
                           : focusColor.withValues(alpha: 0.1))
                     : Colors.transparent,
                 borderRadius: PlatformDetection.isTV
-                    ? BorderRadius.circular(24)
+                    ? AppRadius.circular(24)
                     : BorderRadius.zero,
               ),
               alignment: Alignment.centerLeft,
@@ -1683,7 +1703,7 @@ class _SidebarMusicCardState extends State<SidebarMusicCard> {
             child: Row(
               children: [
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: AppRadius.circular(8),
                   child: SizedBox(
                     width: 48,
                     height: 48,
@@ -1769,7 +1789,7 @@ class _SidebarMusicCardState extends State<SidebarMusicCard> {
         child: FocusTraversalGroup(
           child: Container(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: AppRadius.circular(16),
               border: border,
               boxShadow: boxShadow,
             ),

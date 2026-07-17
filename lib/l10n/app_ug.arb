@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "ياقتۇرىدىغان ئىزلار بۇ يەردە كۆرۈنىدۇ",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "يۈكلەش مەغلۇپ بولدى",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "كونكرېت ئىشلەتكۈچى",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "ھەمىشە دەلىللەش",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "يىراقتىن ئىزدەش",
     "adminNoRemoteMatches": "يىراقتىن ماس كېلىدىغان تېپىلمىدى",
     "adminRemoteResults": "يىراقتىن نەتىجە",
     "adminRemoteMetadataApplied": "يىراقتىكى مېتا سانلىق مەلۇمات قوللىنىلدى",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "Tuner نى قوشۇڭ",
     "adminTunerType": "تەڭشىگۈچ تىپى",
-    "adminTunerTypeHint": "HDHomeRun, M3U, Other",
-    "adminUrlPath": "URL / يول",
-    "adminNameOptional": "ئىسمى (ئىختىيارى)",
     "adminTunerAdded": "Tuner قوشۇلدى",
     "adminTunerAddFailed": "Failed to add tuner: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "يېتەكچى تەمىنلىگۈچىنى قوشۇڭ",
     "adminProviderType": "تەمىنلىگۈچى تىپى",
-    "adminProviderTypeHint": "خىزمەت يۆنىلىشى ياكى XMLTV",
-    "adminUsernameOptional": "ئىشلەتكۈچى ئىسمى (ئىختىيارى)",
-    "adminRefreshInterval": "ئارىلىقنى يېڭىلاش (سائەت)",
     "adminProviderAdded": "تەمىنلىگۈچى قوشۇلدى",
     "adminProviderAddFailed": "Failed to add provider: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "ماس كېلىدىغان قۇر يوق",
     "adminMetadataEditorTitle": "Metadata Editor",
-    "adminMetadataRemote": "Remote",
     "adminMetadataType": "تىپ",
     "adminMetadataDetails": "تەپسىلاتى",
     "adminMetadataExternalIds": "سىرتقى كىملىك",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "مېنىڭ تاللىشىمنى ئېسىڭىزدە تۇتۇڭ",
     "playHdr10Fallback": "HDR10 چۈشۈشنى ئويناڭ",
     "requestTranscode": "كودنى تەلەپ قىلىڭ",
-    "homeScreenSectionsIntegrationDescription": "IAmParadox27 نىڭ «ئائىلە ئېكران بۆلەكلىرى» قىستۇرمىسى تەرىپىدىن ئاشكارلانغان قۇرلارنى ئېنىقلاڭ. قۇرلارنى قوزغىتىپ تۆۋەندە رەتلىگىلى بولىدۇ.",
-    "homeScreenSectionsIntegrationNoServers": "قىستۇرمىنى دوكلات قىلىدىغان Jellyfin مۇلازىمېتىرلىرى يوق.",
-    "integrationOpenHomeSections": "ئۆي بۆلەكلىرىنى ئېچىڭ",
-    "integrationOpenHomeSectionsSubtitle": "قۇرلارنى قوزغىتىش ، چەكلەش ۋە رەتلەش",
-    "integrationInstalledButDisabled": "قاچىلانغان ئەمما چەكلەنگەن",
-    "integrationNotInstalled": "قاچىلانمىدى",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "ھەممىنى كۆرۈڭ",
     "noItems": "ھېچقانداق نەرسە يوق",
     "switchUser": "ئىشلەتكۈچىنى ئالماشتۇرۇش",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "AAC Stereo",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Passthrough (Advanced)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Delete saved theme",
     "savedThemesManageSubtitle": "Manage downloaded plugin themes on this device",
-    "homeScreenSectionsTitle": "Home Screen Sections",
     "themeEditor": "Theme Editor",
     "themeEditorSubtitle": "Open the Moonfin Theme Editor in your browser",
     "homeScreen": "Home Screen",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "Automatically enable HDR for HDR video playback and restore display mode on exit.",
     "whenFullscreen": "When fullscreen",
     "transcodingLimits": "Transcoding Limits",
-    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer"
+    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer",
+    "reportDownloadsActivity": "چۈشۈرۈشلەرنى مۇلازىمېتىردا كۆرسىتىش",
+    "reportDownloadsActivitySubtitle": "مۇلازىمېتىر باشقۇرغۇچىسىنىڭ كود ئۆزگەرتىلگەن چۈشۈرۈشلىرىڭىزنى باشقۇرۇش تاختىسىدا كۆرۈشىگە يول قويىدۇ",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "رەسىم غەملەك چېكى",
+    "clearImageCache": "رەسىم غەملىكىنى تازىلاش",
+    "imageCacheCleared": "رەسىم غەملىكى تازىلاندى"
 }

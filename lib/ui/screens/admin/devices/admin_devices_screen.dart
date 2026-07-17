@@ -5,7 +5,9 @@ import 'package:moonfin_design/moonfin_design.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../../../l10n/app_localizations.dart';
+import '../../../widgets/adaptive/adaptive_dialog.dart';
 import '../providers/admin_user_providers.dart';
+import '../widgets/admin_form_styles.dart';
 
 class AdminDevicesScreen extends ConsumerStatefulWidget {
   const AdminDevicesScreen({super.key});
@@ -32,19 +34,16 @@ class _AdminDevicesScreenState extends ConsumerState<AdminDevicesScreen> {
     final controller = TextEditingController(text: device.displayName);
     final newName = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => AlertDialog.adaptive(
         title: Text(l10n.adminEditDeviceName),
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: InputDecoration(
-            labelText: l10n.adminCustomName,
-            border: const OutlineInputBorder(),
-          ),
+          decoration: adminInputDecoration(label: l10n.adminCustomName),
           onSubmitted: (value) => Navigator.pop(ctx, value.trim()),
         ),
         actions: [
-          TextButton(
+          adaptiveDialogAction(
             onPressed: () => Navigator.pop(ctx),
             child: Text(l10n.cancel),
           ),
@@ -82,14 +81,11 @@ class _AdminDevicesScreenState extends ConsumerState<AdminDevicesScreen> {
     final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => AlertDialog.adaptive(
         title: Text(l10n.adminDeleteDevice),
-        content: Text(
-          "Remove device '${device.displayName}'?\n\n"
-          'The user will need to sign in again on this device.',
-        ),
+        content: Text(l10n.adminRemoveDeviceConfirm(device.displayName)),
         actions: [
-          TextButton(
+          adaptiveDialogAction(
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(l10n.cancel),
           ),
@@ -120,6 +116,50 @@ class _AdminDevicesScreenState extends ConsumerState<AdminDevicesScreen> {
         );
       }
     }
+  }
+
+  Future<void> _deleteAllDevices(List<DeviceInfoDto> targets) async {
+    final l10n = AppLocalizations.of(context);
+    if (targets.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog.adaptive(
+        title: Text(l10n.adminDeleteAllDevices),
+        content: Text(l10n.adminDeleteAllDevicesConfirm(targets.length)),
+        actions: [
+          adaptiveDialogAction(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l10n.cancel),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(l10n.delete),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    var failed = 0;
+    for (final device in targets) {
+      try {
+        await _api.deleteDevice(device.id);
+      } catch (_) {
+        failed++;
+      }
+    }
+    ref.invalidate(adminDevicesProvider);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(failed == 0
+            ? l10n.adminDevicesDeletedAll
+            : l10n.adminDevicesDeletedPartial(failed)),
+      ),
+    );
   }
 
   Color _lastSeenColor(DateTime? date, ThemeData theme) {
@@ -191,13 +231,39 @@ class _AdminDevicesScreenState extends ConsumerState<AdminDevicesScreen> {
         return Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: adminScreenHeader(
+                      context,
+                      title: l10n.adminDrawerDevices,
+                      icon: Icons.devices_outlined,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete_sweep_outlined),
+                    tooltip: l10n.adminDeleteAllDevices,
+                    color: theme.colorScheme.error,
+                    onPressed: () {
+                      final targets = devices
+                          .where((d) => d.id != currentDeviceId)
+                          .toList();
+                      if (targets.isEmpty) return;
+                      _deleteAllDevices(targets);
+                    },
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
               child: TextField(
                 controller: _searchController,
-                onChanged: (value) => setState(() => _searchQuery = value.trim()),
-                decoration: InputDecoration(
-                  hintText: l10n.adminSearchDevices,
-                  prefixIcon: const Icon(Icons.search),
+                onChanged: (value) =>
+                    setState(() => _searchQuery = value.trim()),
+                decoration: adminInputDecoration(
+                  hint: l10n.adminSearchDevices,
                   suffixIcon: _searchQuery.isEmpty
                       ? null
                       : IconButton(
@@ -207,10 +273,7 @@ class _AdminDevicesScreenState extends ConsumerState<AdminDevicesScreen> {
                           },
                           icon: const Icon(Icons.clear),
                         ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
+                ).copyWith(prefixIcon: const Icon(Icons.search)),
               ),
             ),
             if (users.isNotEmpty)
@@ -264,8 +327,10 @@ class _AdminDevicesScreenState extends ConsumerState<AdminDevicesScreen> {
                     .where((v) => v != null && v.isNotEmpty)
                     .join(' ');
 
-                return Card(
-                  child: ListTile(
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: adminListCard(
+                    child: ListTile(
                     leading: Icon(
                       _deviceIcon(device.appName),
                       size: 32,
@@ -333,6 +398,7 @@ class _AdminDevicesScreenState extends ConsumerState<AdminDevicesScreen> {
                         ),
                       ],
                     ),
+                  ),
                   ),
                 );
               },

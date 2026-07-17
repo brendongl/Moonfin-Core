@@ -17,6 +17,7 @@ class EmbyItemsApi implements ItemsApi {
 
   @override
   Future<Map<String, dynamic>> getItems({
+    bool? serverWide,
     String? parentId,
     List<String>? ids,
     List<String>? includeItemTypes,
@@ -46,52 +47,91 @@ class EmbyItemsApi implements ItemsApi {
     DateTime? minPremiereDate,
     String? maxOfficialRating,
     bool? hasParentalRating,
+    String? anyProviderIdEquals,
   }) async {
-    final userId = _getUserId();
+    final queryParams = {
+      'ParentId': ?parentId,
+      if (ids != null) 'Ids': ids.join(','),
+      if (includeItemTypes != null)
+        'IncludeItemTypes': includeItemTypes.join(','),
+      if (excludeItemTypes != null)
+        'ExcludeItemTypes': excludeItemTypes.join(','),
+      'SortBy': ?sortBy,
+      'SortOrder': ?sortOrder,
+      'StartIndex': ?startIndex,
+      'Limit': ?limit,
+      'Recursive': ?recursive,
+      'SearchTerm': ?searchTerm,
+      'Fields': ?fields,
+      if (personIds != null) 'PersonIds': personIds.join(','),
+      if (artistIds != null) 'ArtistIds': artistIds.join(','),
+      if (filters != null) 'Filters': filters.join(','),
+      if (seriesStatus != null) 'SeriesStatus': seriesStatus.join(','),
+      'NameStartsWith': ?nameStartsWith,
+      'NameLessThan': ?nameLessThan,
+      if (genreIds != null) 'GenreIds': genreIds.join(','),
+      if (genres != null) 'Genres': genres.join(','),
+      'IsFavorite': ?isFavorite,
+      'CollapseBoxSetItems': ?collapseBoxSetItems,
+      'EnableTotalRecordCount': ?enableTotalRecordCount,
+      'EnableImageTypes': ?enableImageTypes,
+      'ImageTypeLimit': ?imageTypeLimit,
+      if (tags != null && tags.isNotEmpty) 'Tags': tags.join('|'),
+      if (studios != null && studios.isNotEmpty) 'Studios': studios.join('|'),
+      if (minPremiereDate != null)
+        'MinPremiereDate': minPremiereDate.toUtc().toIso8601String(),
+      'MaxOfficialRating': ?maxOfficialRating,
+      'HasParentalRating': ?hasParentalRating,
+      'AnyProviderIdEquals': ?anyProviderIdEquals,
+    };
+    final String path;
+    if (serverWide == true) {
+      path = '/Items';
+    } else {
+      final userId = _getUserId();
+      path = '/Users/$userId/Items';
+    }
     final response = await _dio.get(
-      '/Users/$userId/Items',
+      path,
+      queryParameters: queryParams,
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  @override
+  Future<Map<String, dynamic>> getPersons({
+    required String searchTerm,
+    int? limit,
+    String? fields,
+    String? enableImageTypes,
+  }) async {
+    final response = await _dio.get(
+      '/Persons',
       queryParameters: {
-        'ParentId': ?parentId,
-        if (ids != null) 'Ids': ids.join(','),
-        if (includeItemTypes != null)
-          'IncludeItemTypes': includeItemTypes.join(','),
-        if (excludeItemTypes != null)
-          'ExcludeItemTypes': excludeItemTypes.join(','),
-        'SortBy': ?sortBy,
-        'SortOrder': ?sortOrder,
-        'StartIndex': ?startIndex,
+        'UserId': _getUserId(),
+        'SearchTerm': searchTerm,
         'Limit': ?limit,
-        'Recursive': ?recursive,
-        'SearchTerm': ?searchTerm,
         'Fields': ?fields,
-        if (personIds != null) 'PersonIds': personIds.join(','),
-        if (artistIds != null) 'ArtistIds': artistIds.join(','),
-        if (filters != null) 'Filters': filters.join(','),
-        if (seriesStatus != null) 'SeriesStatus': seriesStatus.join(','),
-        'NameStartsWith': ?nameStartsWith,
-        'NameLessThan': ?nameLessThan,
-        if (genreIds != null) 'GenreIds': genreIds.join(','),
-        if (genres != null) 'Genres': genres.join(','),
-        'IsFavorite': ?isFavorite,
-        'CollapseBoxSetItems': ?collapseBoxSetItems,
-        'EnableTotalRecordCount': ?enableTotalRecordCount,
         'EnableImageTypes': ?enableImageTypes,
-        'ImageTypeLimit': ?imageTypeLimit,
-        if (tags != null && tags.isNotEmpty) 'Tags': tags.join('|'),
-        if (studios != null && studios.isNotEmpty) 'Studios': studios.join('|'),
-        if (minPremiereDate != null)
-          'MinPremiereDate': minPremiereDate.toUtc().toIso8601String(),
-        'MaxOfficialRating': ?maxOfficialRating,
-        'HasParentalRating': ?hasParentalRating,
       },
     );
     return response.data as Map<String, dynamic>;
   }
 
   @override
-  Future<Map<String, dynamic>> getItem(String itemId) async {
+  Future<Map<String, dynamic>> getItem(
+    String itemId, {
+    String? mediaSourceId,
+    String? fields,
+  }) async {
     final userId = _getUserId();
-    final response = await _dio.get('/Users/$userId/Items/$itemId');
+    final response = await _dio.get(
+      '/Users/$userId/Items/$itemId',
+      queryParameters: {
+        if (mediaSourceId != null) 'mediaSourceId': mediaSourceId,
+        if (fields != null && fields.isNotEmpty) 'Fields': fields,
+      },
+    );
     return response.data as Map<String, dynamic>;
   }
 
@@ -202,6 +242,40 @@ class EmbyItemsApi implements ItemsApi {
       'Items': list,
       'TotalRecordCount': list.length,
     };
+  }
+
+  @override
+  Future<Map<String, dynamic>> getRecentlyReleasedItems({
+    String? parentId,
+    List<String>? includeItemTypes,
+    int? limit,
+    String? fields,
+    String? enableImageTypes,
+    int? imageTypeLimit,
+  }) async {
+    final response = await _dio.get(
+      '/Items',
+      queryParameters: {
+        if (parentId != null) 'ParentId': parentId,
+        if (includeItemTypes != null)
+          'IncludeItemTypes': includeItemTypes.join(','),
+        if (limit != null) 'Limit': limit,
+        if (fields != null) 'Fields': fields,
+        if (enableImageTypes != null) 'EnableImageTypes': enableImageTypes,
+        if (imageTypeLimit != null) 'ImageTypeLimit': imageTypeLimit,
+        'SortBy' : 'PremiereDate',
+        'SortOrder' : 'Descending',
+        'MaxPremiereDate': DateTime.now().toUtc().toIso8601String(),
+      },
+    );
+
+    // /Items/Latest returns a bare array, so normalize it into the
+    // same shape as /Items so all callers stay unchanged.
+    final data = response.data;
+    if (data is List) {
+      return {'Items': data, 'TotalRecordCount': data.length};
+    }
+    return data as Map<String, dynamic>;
   }
 
   @override
@@ -326,8 +400,8 @@ class EmbyItemsApi implements ItemsApi {
       '/Playlists/$playlistId/Items',
       queryParameters: {
         'Fields':
-            'BasicSyncInfo,PrimaryImageAspectRatio,RunTimeTicks,Artists,AlbumArtist,IndexNumber,MediaType,PlaylistItemId,BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId',
-        'EnableImageTypes': 'Primary,Backdrop',
+            'BasicSyncInfo,PrimaryImageAspectRatio,RunTimeTicks,Artists,AlbumArtist,IndexNumber,MediaType,PlaylistItemId,BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId,SeriesName,ParentIndexNumber,Genres',
+        'EnableImageTypes': 'Primary,Backdrop,Logo,Thumb',
         'ImageTypeLimit': 1,
       },
     );

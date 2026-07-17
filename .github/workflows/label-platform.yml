@@ -34,6 +34,8 @@ jobs:
               'Android': /Android/i,
               'Android TV': /\b(Android\s*TV|Google\s*TV|Fire\s*TV)\b/i,
               'iOS': /\biOS\b/i,
+              'tvOS': /\b(tvOS|Apple\s*TV)\b/i,
+              'Web': /\b(Web|Browser|Chrome|Firefox|Safari|Edge)\b/i,
               'macOS': /\bmacOS\b/i,
               'Tizen': /\bTizen\b/i,
               'Windows': /\bWindows\b/i,

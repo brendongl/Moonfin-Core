@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "最喜歡的曲目將會出現在這裡",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "載入失敗",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "特定用戶",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "始終進行身份驗證",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "搜尋遠端人員",
     "adminNoRemoteMatches": "未找到遠端匹配項",
     "adminRemoteResults": "遠程結果",
     "adminRemoteMetadataApplied": "應用遠端元數據",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "新增調音器",
     "adminTunerType": "調音器類型",
-    "adminTunerTypeHint": "HDHomeRun、M3U、其他",
-    "adminUrlPath": "網址/路徑",
-    "adminNameOptional": "姓名（可選）",
     "adminTunerAdded": "新增了調音器",
     "adminTunerAddFailed": "Failed to add tuner: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "新增嚮導提供者",
     "adminProviderType": "提供者類型",
-    "adminProviderTypeHint": "ScheduleDirect 或 XMLTV",
-    "adminUsernameOptional": "使用者名稱（可選）",
-    "adminRefreshInterval": "刷新間隔（小時）",
     "adminProviderAdded": "提供者已新增",
     "adminProviderAddFailed": "Failed to add provider: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "沒有匹配的線",
     "adminMetadataEditorTitle": "元資料編輯器",
-    "adminMetadataRemote": "偏僻的",
     "adminMetadataType": "類型",
     "adminMetadataDetails": "細節",
     "adminMetadataExternalIds": "外部 ID",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "記住我的選擇",
     "playHdr10Fallback": "播放 HDR10 後備",
     "requestTranscode": "請求轉碼",
-    "homeScreenSectionsIntegrationDescription": "偵測 IAmParadox27 的「主螢幕部分」外掛程式暴露的行。可以在下面啟用行並重新排序。",
-    "homeScreenSectionsIntegrationNoServers": "尚無 Jellyfin 伺服器報告該外掛程式。",
-    "integrationOpenHomeSections": "開放主頁部分",
-    "integrationOpenHomeSectionsSubtitle": "啟用、停用和重新排序行",
-    "integrationInstalledButDisabled": "已安裝但已停用",
-    "integrationNotInstalled": "未安裝",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "看全部",
     "noItems": "沒有商品",
     "switchUser": "切換用戶",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "AAC Stereo",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Passthrough (Advanced)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Delete saved theme",
     "savedThemesManageSubtitle": "Manage downloaded plugin themes on this device",
-    "homeScreenSectionsTitle": "Home Screen Sections",
     "themeEditor": "Theme Editor",
     "themeEditorSubtitle": "Open the Moonfin Theme Editor in your browser",
     "homeScreen": "Home Screen",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "Automatically enable HDR for HDR video playback and restore display mode on exit.",
     "whenFullscreen": "When fullscreen",
     "transcodingLimits": "Transcoding Limits",
-    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer"
+    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer",
+    "reportDownloadsActivity": "在伺服器上顯示下載紀錄",
+    "reportDownloadsActivitySubtitle": "讓伺服器管理員在儀表板中看到您轉碼過的下載",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "圖片快取上限",
+    "clearImageCache": "清除圖片快取",
+    "imageCacheCleared": "已清除圖片快取"
 }

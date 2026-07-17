@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:server_core/server_core.dart';
 
@@ -81,5 +83,56 @@ class JellyfinAdminSystemApi implements AdminSystemApi {
       queryParameters: params,
     );
     return ActivityLogResult.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<List<Map<String, dynamic>>> _getLocalizationList(String path) async {
+    final response = await _dio.get(path);
+    return (response.data as List<dynamic>)
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getCultures() =>
+      _getLocalizationList('/Localization/Cultures');
+
+  @override
+  Future<List<Map<String, dynamic>>> getCountries() =>
+      _getLocalizationList('/Localization/Countries');
+
+  @override
+  Future<List<Map<String, dynamic>>> getLocalizationOptions() =>
+      _getLocalizationList('/Localization/Options');
+
+  @override
+  Future<List<Map<String, dynamic>>> getParentalRatings() =>
+      _getLocalizationList('/Localization/ParentalRatings');
+
+  @override
+  Future<List<Map<String, dynamic>>> getAuthProviders() =>
+      _getLocalizationList('/Auth/Providers');
+
+  @override
+  Future<List<Map<String, dynamic>>> getPasswordResetProviders() =>
+      _getLocalizationList('/Auth/PasswordResetProviders');
+
+  @override
+  Future<void> uploadSplashscreen(List<int> bytes, String contentType) async {
+    await _dio.post(
+      '/Branding/Splashscreen',
+      data: base64Encode(bytes),
+      options: Options(contentType: contentType),
+    );
+  }
+
+  @override
+  Future<void> deleteSplashscreen() async {
+    await _dio.delete('/Branding/Splashscreen');
+  }
+
+  @override
+  Future<Map<String, dynamic>> getItemCounts() async {
+    final response = await _dio.get('/Items/Counts');
+    return response.data as Map<String, dynamic>;
   }
 }

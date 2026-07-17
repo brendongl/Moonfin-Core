@@ -2,7 +2,6 @@ import 'package:get_it/get_it.dart';
 import 'package:jellyfin_preference/jellyfin_preference.dart';
 import 'package:playback_core/playback_core.dart';
 import 'package:server_core/server_core.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../auth/repositories/session_repository.dart';
 import '../../auth/store/authentication_store.dart';
@@ -17,6 +16,7 @@ import '../../data/repositories/tmdb_repository.dart';
 import '../../data/repositories/user_views_repository.dart';
 import '../../data/repositories/search_repository.dart';
 import '../../data/repositories/item_mutation_repository.dart';
+import '../../util/game_library.dart';
 import '../../data/services/background_service.dart';
 import '../../data/services/app_update_service.dart';
 import '../../data/services/cast/airplay_provider.dart';
@@ -28,10 +28,9 @@ import '../../data/services/cast/native_dlna_channel.dart';
 import '../../data/services/cast/google_cast_provider.dart';
 import '../../data/services/cast/native_cast_channel.dart';
 import '../../data/services/cast/remote_session_cast_provider.dart';
-import '../../data/services/home_screen_sections_service.dart';
 import '../../data/services/plugin_sync_service.dart';
+import '../../data/services/custom_external_lists_service.dart';
 import '../../data/services/row_data_source.dart';
-import '../../data/services/seerr/seerr_cookie_jar.dart';
 import '../../data/services/socket_handler.dart';
 import '../../data/services/sync_service.dart';
 import '../../data/services/theme_music_service.dart';
@@ -56,25 +55,24 @@ void resetUserScopedSingletons() {
   unregister<SeerrRepository>();
   unregister<HomeViewModel>();
   unregister<MediaBarViewModel>();
-  unregister<HomeScreenSectionsService>();
   unregister<MultiServerRepository>();
   unregister<ThemeMusicService>();
   unregister<MediaBarRepository>();
   unregister<TmdbRepository>();
   unregister<MdbListRepository>();
   unregister<RowDataSource>();
+  RowDataSource.clearRecommendationCache();
   unregister<ItemMutationRepository>();
   unregister<SearchRepository>();
   unregister<UserViewsRepository>();
+  unregister<GameLibraryRegistry>();
 
   _registerUserScopedSingletons();
 }
 
 void registerAppModule() {
-  _getIt.registerLazySingletonAsync(
-    () async => SeerrCookieJar(await SharedPreferences.getInstance()),
-  );
   _getIt.registerLazySingleton(() => SocketHandler());
+  _getIt.registerLazySingleton(() => CustomExternalListsService());
   _getIt.registerLazySingleton(
     () => BackgroundService(),
     dispose: (service) => service.dispose(),
@@ -148,13 +146,10 @@ void _registerUserScopedSingletons() {
     ),
   );
   _getIt.registerLazySingleton(
-    () => HomeScreenSectionsService(_getIt<MultiServerRepository>()),
-    dispose: (s) => s.dispose(),
-  );
-  _getIt.registerLazySingleton(
     () => UserViewsRepository(_getIt()),
     dispose: (repository) => repository.dispose(),
   );
+  _getIt.registerLazySingleton(() => GameLibraryRegistry());
   _getIt.registerLazySingleton(() => SearchRepository(_getIt()));
   _getIt.registerLazySingleton(() => ItemMutationRepository(_getIt()));
   _getIt.registerLazySingleton(
@@ -202,7 +197,6 @@ void _registerUserScopedSingletons() {
     () async => SeerrRepository(
       _getIt<PreferenceStore>(),
       _getIt<SessionRepository>(),
-      await _getIt.getAsync<SeerrCookieJar>(),
       _getIt<MediaServerClient>(),
     ),
   );

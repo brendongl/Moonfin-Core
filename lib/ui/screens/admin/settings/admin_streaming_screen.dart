@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
+import 'package:moonfin_design/moonfin_design.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../../../l10n/app_localizations.dart';
+import '../widgets/admin_form_styles.dart';
 
 class AdminStreamingScreen extends StatefulWidget {
   const AdminStreamingScreen({super.key});
@@ -96,24 +98,25 @@ class _AdminStreamingScreenState extends State<AdminStreamingScreen> {
     }
 
     final mbps = _bitrateAsMbps();
+    final bottomSafe = MediaQuery.of(context).padding.bottom;
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.fromLTRB(16, 20, 16, bottomSafe + 40),
       children: [
-        Text(l10n.adminDrawerStreaming, style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 8),
-        Text(
-          l10n.adminStreamingDescription,
-          style: Theme.of(context).textTheme.bodyMedium,
+        adminScreenHeader(
+          context,
+          title: l10n.adminDrawerStreaming,
+          subtitle: l10n.adminStreamingDescription,
+          icon: Icons.stream,
         ),
-        const SizedBox(height: 24),
+        adminSectionLabel(context, l10n.adminStreamingBitrateLimit,
+            icon: Icons.speed),
         TextFormField(
           key: ValueKey(mbps),
           initialValue: mbps > 0 ? mbps.toStringAsFixed(1) : '',
-          decoration: InputDecoration(
-            labelText: l10n.adminStreamingBitrateLimit,
-            helperText: l10n.adminStreamingBitrateLimitHint,
-            border: const OutlineInputBorder(),
+          decoration: adminInputDecoration(
+            label: l10n.adminStreamingBitrateLimit,
+            helper: l10n.adminStreamingBitrateLimitHint,
             suffixText: 'Mbps',
           ),
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -123,20 +126,8 @@ class _AdminStreamingScreenState extends State<AdminStreamingScreen> {
                 (parsed * 1000000).truncate();
           },
         ),
-        const SizedBox(height: 24),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: FilledButton(
-            onPressed: _saving ? null : _save,
-            child: _saving
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Text(l10n.save),
-          ),
-        ),
+        const SizedBox(height: AppSpacing.spaceXl),
+        adminSaveButton(label: l10n.save, saving: _saving, onPressed: _save),
       ],
     );
   }

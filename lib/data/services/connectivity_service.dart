@@ -49,6 +49,9 @@ class ConnectivityService extends ChangeNotifier {
     if (PlatformDetection.isAppleTV) {
       _isOnline = true;
       await _checkServerReachability();
+      if (_serverReachable) {
+        _triggerSync();
+      }
       _initialCheckDone = true;
       notifyListeners();
       return;
@@ -57,6 +60,9 @@ class ConnectivityService extends ChangeNotifier {
     _isOnline = results.any((r) => r != ConnectivityResult.none);
     if (_isOnline) {
       await _checkServerReachability();
+      if (_serverReachable) {
+        _triggerSync();
+      }
     } else {
       _serverReachable = false;
     }
@@ -116,6 +122,28 @@ class ConnectivityService extends ChangeNotifier {
       _serverReachable = false;
     }
     notifyListeners();
+  }
+
+  /// Resolves true as soon as the device reports online, or false after
+  /// [timeout]. Lets cold-boot startup wait out the Wi-Fi association window
+  /// instead of committing to the offline fallback immediately.
+  Future<bool> waitForOnline(Duration timeout) async {
+    if (_isOnline && _initialCheckDone) return true;
+    final completer = Completer<bool>();
+    void onChange() {
+      if (_isOnline && !completer.isCompleted) {
+        completer.complete(true);
+      }
+    }
+
+    addListener(onChange);
+    final timer = Timer(timeout, () {
+      if (!completer.isCompleted) completer.complete(_isOnline);
+    });
+    final result = await completer.future;
+    timer.cancel();
+    removeListener(onChange);
+    return result;
   }
 
   Future<void> recheckNow() async {

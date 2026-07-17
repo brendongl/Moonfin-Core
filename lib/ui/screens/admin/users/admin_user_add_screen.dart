@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:server_core/server_core.dart';
 
 import '../providers/admin_user_providers.dart';
+import '../widgets/admin_form_styles.dart';
 import '../../../../l10n/app_localizations.dart';
 
 class AdminUserAddScreen extends ConsumerStatefulWidget {
@@ -59,15 +60,14 @@ class _AdminUserAddScreenState extends ConsumerState<AdminUserAddScreen> {
         key: _formKey,
         child: ListView(
           children: [
-            Text(l10n.adminCreateUser,
-                style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 24),
+            adminScreenHeader(
+              context,
+              title: l10n.adminCreateUser,
+              icon: Icons.person_add_alt_1_outlined,
+            ),
             TextFormField(
               controller: _nameController,
-              decoration: InputDecoration(
-                labelText: l10n.username,
-                border: const OutlineInputBorder(),
-              ),
+              decoration: adminInputDecoration(label: l10n.username),
               validator: (v) =>
                   (v == null || v.trim().isEmpty) ? 'Username is required' : null,
               textInputAction: TextInputAction.next,
@@ -75,32 +75,19 @@ class _AdminUserAddScreenState extends ConsumerState<AdminUserAddScreen> {
             const SizedBox(height: 16),
             TextFormField(
               controller: _passwordController,
-              decoration: InputDecoration(
-                labelText: l10n.adminPasswordOptional,
-                border: const OutlineInputBorder(),
-              ),
+              decoration: adminInputDecoration(label: l10n.adminPasswordOptional),
               obscureText: true,
             ),
             const SizedBox(height: 24),
-            Row(
-              children: [
-                FilledButton(
-                  onPressed: _saving ? null : _submit,
-                  child: _saving
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(l10n.create),
-                ),
-                const SizedBox(width: 12),
-                TextButton(
-                  onPressed:
-                      _saving ? null : () => context.pop(),
-                  child: Text(l10n.cancel),
-                ),
-              ],
+            adminSaveButton(
+              label: l10n.create,
+              saving: _saving,
+              onPressed: _submit,
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: _saving ? null : () => context.pop(),
+              child: Text(l10n.cancel),
             ),
           ],
         ),

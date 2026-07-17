@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "Bydd hoff draciau yn ymddangos yma",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "Wedi methu llwytho",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "Defnyddiwr Penodol",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "Dilysu bob amser",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "Chwilio am Berson o Bell",
     "adminNoRemoteMatches": "Ni chanfuwyd unrhyw barau o bell",
     "adminRemoteResults": "Canlyniadau o Bell",
     "adminRemoteMetadataApplied": "Cymhwyswyd metadata o bell",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "Ychwanegu Tuner",
     "adminTunerType": "Math Tiwniwr",
-    "adminTunerTypeHint": "HDHomeRun, M3U, Arall",
-    "adminUrlPath": "URL / Llwybr",
-    "adminNameOptional": "Enw (dewisol)",
     "adminTunerAdded": "Ychwanegodd tuner",
     "adminTunerAddFailed": "Wedi methu ag ychwanegu tiwniwr: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "Ychwanegu Darparwr Canllaw",
     "adminProviderType": "Math o Ddarparwr",
-    "adminProviderTypeHint": "SchedulesDirect neu XMLTV",
-    "adminUsernameOptional": "Enw defnyddiwr (dewisol)",
-    "adminRefreshInterval": "Cyfnod adnewyddu (oriau)",
     "adminProviderAdded": "Ychwanegodd y darparwr",
     "adminProviderAddFailed": "Wedi methu ag ychwanegu darparwr: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "Dim llinellau cyfatebol",
     "adminMetadataEditorTitle": "Golygydd Metadata",
-    "adminMetadataRemote": "Anghysbell",
     "adminMetadataType": "Math",
     "adminMetadataDetails": "Manylion",
     "adminMetadataExternalIds": "IDau allanol",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "Cofiwch fy newis",
     "playHdr10Fallback": "Chwarae HDR10 wrth gefn",
     "requestTranscode": "Gofyn am drawsgod",
-    "homeScreenSectionsIntegrationDescription": "Canfod rhesi a ddatgelwyd gan ategyn \"Home Screen Sections\" IAmParadox27. Gellir galluogi ac aildrefnu rhesi isod.",
-    "homeScreenSectionsIntegrationNoServers": "Dim gweinyddwyr Jellyfin yn adrodd am yr ategyn eto.",
-    "integrationOpenHomeSections": "Adrannau Cartref Agored",
-    "integrationOpenHomeSectionsSubtitle": "Galluogi, analluogi, ac aildrefnu rhesi",
-    "integrationInstalledButDisabled": "Wedi'i osod ond wedi'i analluogi",
-    "integrationNotInstalled": "Heb ei osod",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "Gwel Pawb",
     "noItems": "Dim eitemau",
     "switchUser": "Newid Defnyddiwr",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "Stereo AAC",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Passthrough (Uwch)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Dileu thema sydd wedi'i chadw",
     "savedThemesManageSubtitle": "Rheoli themâu ategyn wedi'u lawrlwytho ar y ddyfais hon",
-    "homeScreenSectionsTitle": "Adrannau Sgrin Cartref",
     "themeEditor": "Golygydd Thema",
     "themeEditorSubtitle": "Agorwch y Golygydd Thema Moonfin yn eich porwr",
     "homeScreen": "Sgrin Cartref",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "Galluogi HDR yn awtomatig ar gyfer chwarae fideo HDR ac adfer modd arddangos wrth ymadael.",
     "whenFullscreen": "Pan fydd sgrin lawn",
     "transcodingLimits": "Terfynau Trawsgodio",
-    "settingsSupportMoonfinSubtitle": "Rhowch goffi i'r datblygwr"
+    "settingsSupportMoonfinSubtitle": "Rhowch goffi i'r datblygwr",
+    "reportDownloadsActivity": "Dangos lawrlwythiadau ar y gweinydd",
+    "reportDownloadsActivitySubtitle": "Gadael i weinyddwr y gweinydd weld eich lawrlwythiadau wedi'u trawsgodio yn y dangosfwrdd",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "Terfyn storfa ddelweddau",
+    "clearImageCache": "Clirio'r storfa ddelweddau",
+    "imageCacheCleared": "Storfa ddelweddau wedi'i chlirio"
 }

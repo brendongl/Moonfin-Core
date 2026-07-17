@@ -31,6 +31,7 @@ class ThemeColorTokens {
   final Color badgeWatched;
   final Color recordingActive;
   final Color recordingScheduled;
+  final Color? error;
 
   const ThemeColorTokens({
     required this.background,
@@ -62,6 +63,7 @@ class ThemeColorTokens {
     required this.badgeWatched,
     required this.recordingActive,
     required this.recordingScheduled,
+    this.error,
   });
 
   factory ThemeColorTokens.fromJson(Map<String, dynamic> json) {
@@ -96,6 +98,7 @@ class ThemeColorTokens {
       badgeWatched: c('badgeWatched'),
       recordingActive: c('recordingActive'),
       recordingScheduled: c('recordingScheduled'),
+      error: json['error'] != null ? c('error') : null,
     );
   }
 
@@ -129,6 +132,7 @@ class ThemeColorTokens {
         'badgeWatched': _encodeColor(badgeWatched),
         'recordingActive': _encodeColor(recordingActive),
         'recordingScheduled': _encodeColor(recordingScheduled),
+        if (error != null) 'error': _encodeColor(error!),
       };
 }
 
@@ -190,6 +194,7 @@ class ThemeSemanticTokens {
   final Color statusRequested;
   final Color statusPending;
   final Color statusDownloading;
+  final Color statusError;
   final Color mediaTypeBadgeMovie;
   final Color mediaTypeBadgeShow;
 
@@ -198,6 +203,7 @@ class ThemeSemanticTokens {
     required this.statusRequested,
     required this.statusPending,
     required this.statusDownloading,
+    this.statusError = const Color(0xFFEF4444),
     required this.mediaTypeBadgeMovie,
     required this.mediaTypeBadgeShow,
   });
@@ -207,6 +213,7 @@ class ThemeSemanticTokens {
     statusRequested: Color(0xFF9333EA),
     statusPending: Color(0xFFEAB308),
     statusDownloading: Color(0xFF6366F1),
+    statusError: Color(0xFFEF4444),
     mediaTypeBadgeMovie: Color(0xFF3B82F6),
     mediaTypeBadgeShow: Color(0xFF8B5CF6),
   );
@@ -226,6 +233,10 @@ class ThemeSemanticTokens {
         json['statusDownloading'],
         'semantic.statusDownloading',
       ),
+      // Older custom themes were saved without this field.
+      statusError: json.containsKey('statusError')
+          ? _parseColor(json['statusError'], 'semantic.statusError')
+          : defaults.statusError,
       mediaTypeBadgeMovie: _parseColor(
         json['mediaTypeBadgeMovie'],
         'semantic.mediaTypeBadgeMovie',
@@ -242,6 +253,7 @@ class ThemeSemanticTokens {
         'statusRequested': _encodeColor(statusRequested),
         'statusPending': _encodeColor(statusPending),
         'statusDownloading': _encodeColor(statusDownloading),
+        'statusError': _encodeColor(statusError),
         'mediaTypeBadgeMovie': _encodeColor(mediaTypeBadgeMovie),
         'mediaTypeBadgeShow': _encodeColor(mediaTypeBadgeShow),
       };
@@ -392,6 +404,12 @@ class ThemeSpec {
   /// flat fills. Widgets check this via `AppColorScheme.isGlass`.
   final bool isGlass;
 
+  /// When `true`, surfaces render retro pixel-art chrome (blocky bevels,
+  /// stair-step / zero-radius corners, and hard offset drop-shadows) instead
+  /// of smooth glass or flat fills. Widgets check this via
+  /// `AppColorScheme.isPixel`. Mutually exclusive with [isGlass].
+  final bool isPixel;
+
   const ThemeSpec({
     required this.id,
     required this.displayName,
@@ -405,6 +423,7 @@ class ThemeSpec {
     this.navColorCycle = const [],
     this.transparentNavbarSurface = false,
     this.isGlass = false,
+    this.isPixel = false,
   });
 
   factory ThemeSpec.fromJson(Map<String, dynamic> json) {
@@ -459,6 +478,7 @@ class ThemeSpec {
       navColorCycle: _parseColorList(json['navColorCycle']),
       transparentNavbarSurface: (json['transparentNavbarSurface'] as bool?) ?? false,
       isGlass: (json['isGlass'] as bool?) ?? false,
+      isPixel: (json['isPixel'] as bool?) ?? false,
     );
   }
 
@@ -474,6 +494,7 @@ class ThemeSpec {
           'navColorCycle': navColorCycle.map(_encodeColor).toList(),
         if (transparentNavbarSurface) 'transparentNavbarSurface': true,
         if (isGlass) 'isGlass': true,
+        if (isPixel) 'isPixel': true,
         'colors': colors.toJson(),
         'borders': borders.toJson(),
         'semantic': semantic.toJson(),

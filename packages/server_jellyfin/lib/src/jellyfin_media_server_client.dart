@@ -24,7 +24,6 @@ import 'api/jellyfin_admin_api_keys_api.dart';
 import 'api/jellyfin_admin_backup_api.dart';
 import 'api/jellyfin_admin_live_tv_api.dart';
 import 'api/jellyfin_admin_items_api.dart';
-import 'api/jellyfin_home_screen_sections_api.dart';
 import 'api/jellyfin_client_log_api.dart';
 import 'api/jellyfin_syncplay_api.dart';
 
@@ -188,11 +187,11 @@ class JellyfinMediaServerClient extends MediaServerClient {
   late final SyncPlayApi syncPlayApi = JellyfinSyncPlayApi(_dio);
 
   @override
-  late final HomeScreenSectionsApi homeScreenSectionsApi =
-      JellyfinHomeScreenSectionsApi(_dio, () => _userId);
+  late final ClientLogApi clientLogApi = JellyfinClientLogApi(_dio);
 
   @override
-  late final ClientLogApi clientLogApi = JellyfinClientLogApi(_dio);
+  late final GamesApi gamesApi = MoonbaseGamesApi(
+      _dio, () => _baseUrl, () => _accessToken, ServerType.jellyfin);
 
   @override
   void dispose() {

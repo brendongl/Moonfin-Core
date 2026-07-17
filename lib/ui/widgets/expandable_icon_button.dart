@@ -7,6 +7,7 @@ import 'package:moonfin_design/moonfin_design.dart';
 
 import '../../preference/user_preferences.dart';
 import '../../util/focus/dpad_keys.dart';
+import '../../util/focus/input_mode_tracker.dart';
 import '../../util/platform_detection.dart';
 import 'focus/focus_theme.dart';
 
@@ -25,6 +26,11 @@ class ExpandableIconButton extends StatefulWidget {
   final ValueChanged<bool>? onFocusChanged;
   final Color? baseColor;
 
+  /// When true, the label stays visible even when unfocused/unhovered instead
+  /// of collapsing to an icon-only button. Drives the "always expand navbar
+  /// labels" preference.
+  final bool forceExpanded;
+
   const ExpandableIconButton({
     super.key,
     this.icon,
@@ -36,6 +42,7 @@ class ExpandableIconButton extends StatefulWidget {
     this.onKeyEvent,
     this.onFocusChanged,
     this.baseColor,
+    this.forceExpanded = false,
   });
 
   @override
@@ -76,7 +83,23 @@ class _ExpandableIconButtonState extends State<ExpandableIconButton> {
       _isFocused = hasFocus;
       if (hoverChanged) _isHovered = false;
     });
+    if (hasFocus) _ensureVisible();
     widget.onFocusChanged?.call(hasFocus);
+  }
+
+  // Keep the focused item on screen inside a horizontally-scrolling navbar.
+  // Runs after the frame so the expand animation's new width is measured first.
+  // A no-op when there is no enclosing Scrollable.
+  void _ensureVisible() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_focusNode.hasFocus) return;
+      Scrollable.ensureVisible(
+        context,
+        alignment: 0.5,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
@@ -133,22 +156,24 @@ class _ExpandableIconButtonState extends State<ExpandableIconButton> {
     final iconSize = (isMobile ? 22.0 : (isTV ? 24.0 : 30.0)) * desktopScale;
     final focusColor = Color(_prefs.get(UserPreferences.focusColor).colorValue);
 
+    // Gate focus visuals to keyboard/D-pad input
+    final focusVisible = InputModeTracker.showFocusVisuals(context, _isFocused);
     final hoverActive = _isHovered && !isTV;
-    final leanbackFocused = _isFocused && !isMobile;
-    final isExpanded = _isFocused || hoverActive;
+    final leanbackFocused = focusVisible && !isMobile;
+    final isExpanded = widget.forceExpanded || focusVisible || hoverActive;
     final effectiveBorderRadius = !isMobile ? 36.0 : (btnSize / 2);
     final baseColor = widget.baseColor ?? AppColorScheme.onSurface.withValues(alpha: 0.6);
     final useBaseForFocus = widget.baseColor != null;
 
     final bgColor = leanbackFocused
         ? AppColorScheme.onSurface
-        : (_isFocused || hoverActive)
+        : (focusVisible || hoverActive)
         ? focusColor.withValues(alpha: 0.18)
         : Colors.transparent;
 
     final fgColor = leanbackFocused
       ? AppColors.black
-      : (_isFocused || hoverActive)
+      : (focusVisible || hoverActive)
       ? (useBaseForFocus ? baseColor : focusColor)
       : baseColor;
 
@@ -183,7 +208,7 @@ class _ExpandableIconButtonState extends State<ExpandableIconButton> {
               maxWidth: isExpanded ? 200 : btnSize,
             ),
             decoration: FocusTheme.focusDecoration(
-              isFocused: _isFocused && isMobile,
+              isFocused: focusVisible && isMobile,
               radius: effectiveBorderRadius,
               color: focusColor,
               backgroundColor: bgColor,

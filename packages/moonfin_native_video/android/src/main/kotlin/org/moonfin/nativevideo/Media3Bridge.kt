@@ -73,9 +73,37 @@ object Media3Bridge {
 
     private val pendingCalls = ArrayDeque<Pair<String, Any?>>()
 
+    // Lets a persistent (still-mounted) view reclaim control routing after
+    // another view attached. Everything here stays on the main thread, where
+    // platform view create/dispose and method-channel callbacks all run.
+    private val viewRegistry = HashMap<Int, Media3VideoView>()
+
+    fun registerView(viewId: Int, view: Media3VideoView) {
+        if (viewId < 0) return
+        viewRegistry[viewId] = view
+    }
+
+    fun unregisterView(viewId: Int, view: Media3VideoView) {
+        if (viewId < 0) return
+        if (viewRegistry[viewId] === view) {
+            viewRegistry.remove(viewId)
+        }
+    }
+
     fun attachView(view: Media3VideoView) {
         mainHandler.post {
             val oldView = activeView
+            // A preview (media bar / row trailer) must never interrupt a live
+            // main player. It stays registered so activateView can promote it
+            // later, once the main view is gone.
+            if (view.role == "preview" &&
+                oldView != null &&
+                oldView !== view &&
+                oldView.role == "main" &&
+                oldView.isPlayerLive()
+            ) {
+                return@post
+            }
             if (oldView != null && oldView !== view) {
                 oldView.forceReleasePlayer()
             }
@@ -108,6 +136,20 @@ object Media3Bridge {
         }
     }
 
+    // Only drops the sink if this caller still owns it. Secondary FlutterEngines
+    // in the process, like WatchNextWorker's background engine, also register
+    // NativeVideoPlugin, and their teardown must not sever the foreground engine's
+    // event stream. That froze the player OSD while ExoPlayer kept playing. This
+    // guards clearing only; a background isolate must never register the playback
+    // module and open its own sink.
+    fun clearEventSink(sink: EventChannel.EventSink?) {
+        mainHandler.post {
+            if (eventSink === sink) {
+                eventSink = null
+            }
+        }
+    }
+
     fun emitEvent(event: Map<String, Any?>) {
         mainHandler.post {
             eventSink?.success(event)
@@ -129,6 +171,21 @@ object Media3Bridge {
     }
 
     fun handleMethodCall(call: MethodCall, result: MethodChannel.Result) {
+        if (call.method == "activateView") {
+            val id = ((call.arguments as? Map<*, *>)?.get("viewId") as? Number)?.toInt()
+            val view = id?.let { viewRegistry[it] }
+            if (view != null && view.isReattachable()) {
+                view.ensurePlayerAlive()
+                // The posted attachView runs before the next channel message;
+                // attaching the already-active view just flushes the queue.
+                attachView(view)
+                result.success(true)
+            } else {
+                result.success(false)
+            }
+            return
+        }
+
         if (call.method == "setUiMetadata") {
             uiMetadata = normalizeUiMetadata(call.arguments as? Map<*, *>)
             activeView?.refreshNowPlayingMetadata()
@@ -159,6 +216,30 @@ object Media3Bridge {
                 result.success(null)
             }
             return
+        }
+
+        if (call.method == "setSource") {
+            val isPreviewSource =
+                (call.arguments as? Map<*, *>)?.get("preview") as? Boolean ?: false
+            val current = activeView
+            if (!isPreviewSource && current != null && current.role == "preview") {
+                // Real playback starting while a trailer owns the slot (the
+                // idle-home start window). Load the source into the next main
+                // view instead of the preview: release the preview, drop the
+                // slot, and queue so the flush lands on the fullscreen player.
+                current.forceReleasePlayer()
+                activeView = null
+                queueCall(call.method, call.arguments)
+                result.success(null)
+                return
+            }
+            if (isPreviewSource && current != null &&
+                current.role == "main" && current.isPlayerLive()
+            ) {
+                // Never let a trailer interrupt real playback.
+                result.success(null)
+                return
+            }
         }
 
         val view = activeView

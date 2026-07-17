@@ -9,7 +9,7 @@ import '../preference/preference_constants.dart';
 import '../preference/user_preferences.dart';
 import '../sipflix/sipflix_servers.dart';
 import '../util/platform_detection.dart';
-import 'audio_capability_profile.dart';
+
 import 'device_profile_builder.dart';
 import 'known_defects.dart';
 
@@ -102,6 +102,12 @@ class Media3PlayerBackend extends PlayerBackend {
     if (_disposed || _activityStarted) return;
     _activityStarted = true;
   }
+
+  /// Re-activates a persistent (still-mounted) platform view for control
+  /// routing. Returns false when the native side does not know the view;
+  /// callers then rely on the default attach semantics.
+  Future<bool> activateView(int viewId) async =>
+      await _invoke<bool>('activateView', {'viewId': viewId}) ?? false;
 
   Future<void> _stopActivity() async {
     if (!_activityStarted) return;
@@ -432,16 +438,24 @@ class Media3PlayerBackend extends PlayerBackend {
           )
         : <String, String>{};
 
+    final isPreview = payload['preview'] == true;
+
     _completed = false;
     _tracksKnown = false;
     _textTrackCount = 0;
     _tracksReadyCompleter = null;
     _discontinuityTimestamps.clear();
-    _resetPlaybackWatchdogs(
-      payload['itemName']?.toString() ??
-          payload['title']?.toString() ??
-          'item',
-    );
+    if (isPreview) {
+      // Muted previews/trailers are routinely canceled mid-load; disarm the
+      // never-started watchdog instead of re-arming it and logging warnings.
+      _loadRequestedAtMs = 0;
+    } else {
+      _resetPlaybackWatchdogs(
+        payload['itemName']?.toString() ??
+            payload['title']?.toString() ??
+            'item',
+      );
+    }
     _skipSilenceEnabled = _prefs.get(UserPreferences.media3SkipSilence);
     _volumeBoostLevel = 0;
     final preferredAudioLanguage = _normalizeTrackLanguagePref(
@@ -491,10 +505,11 @@ class Media3PlayerBackend extends PlayerBackend {
       'preferredTextLanguage': preferredSubtitleLanguage,
       'selectUndeterminedTextLanguage': false,
       'forceSubtitlesDisabledOnStart':
-          _prefs.get(UserPreferences.subtitlesDefaultToNone),
+          _prefs.get(UserPreferences.subtitleMode) == SubtitleMode.none,
       'audioDelayMs': (_audioDelaySeconds * 1000).round(),
       'subtitleDelayMs': (_subtitleDelaySeconds * 1000).round(),
       'volumeBoostLevel': _volumeBoostLevel,
+      'preview': isPreview,
     });
     await _invoke<void>('setRepeatMode', {
       'mode': _repeatModeToWire(_repeatMode),
@@ -532,6 +547,14 @@ class Media3PlayerBackend extends PlayerBackend {
   Future<void> stop() => _teardown('stop');
 
   Future<void> release() => _teardown('release');
+
+  Future<void> appPaused() async {
+    await _invoke<void>('appPaused');
+  }
+
+  Future<void> appResumed() async {
+    await _invoke<void>('appResumed');
+  }
 
   Future<void> _teardown(String command) async {
     await _invoke<void>(command);
@@ -589,11 +612,7 @@ class Media3PlayerBackend extends PlayerBackend {
   }) {
     final maxBitrate = int.tryParse(_prefs.get(UserPreferences.maxBitrate));
     final maxResolution = _prefs.get(UserPreferences.maxVideoResolution);
-    final audioCapabilityProfile = PlatformDetection.hasAudioCapabilities
-        ? AudioCapabilityProfile.fromMap(
-            PlatformDetection.audioCapabilitiesSnapshot,
-          )
-        : const AudioCapabilityProfile.optimistic();
+    final audioCapabilityProfile = _prefs.detectedAudioCapabilities;
 
     return DeviceProfileBuilder.build(
       maxBitrateMbps: maxBitrate,
@@ -610,6 +629,10 @@ class Media3PlayerBackend extends PlayerBackend {
       trueHdAtmosPassthroughEnabled: _prefs
           .resolveTrueHdAtmosPassthroughEnabled(),
       maxAudioChannels: _prefs.resolveMaxAudioChannels(),
+      // Media3 bundles the FFmpeg audio decoder extension: every advertised
+      // codec decodes in software, so stereo routes downmix locally instead
+      // of forcing a server transcode.
+      universalAudioDecode: true,
       maxResolution: maxResolution,
       pgsDirectPlay: _prefs.get(UserPreferences.pgsDirectPlay) && canRenderBitmapSubtitles,
       assDirectPlay: _prefs.get(UserPreferences.assDirectPlay),
@@ -654,6 +677,8 @@ class Media3PlayerBackend extends PlayerBackend {
             behavior: _prefs.get(
               UserPreferences.dolbyVisionProfile7DirectPlayBehavior,
             ),
+            hasHardwareDolbyVisionDecoder:
+                PlatformDetection.supportsHevcDolbyVision,
           ),
     );
   }
@@ -873,6 +898,11 @@ class Media3PlayerBackend extends PlayerBackend {
 
   @override
   bool get nativelyHandlesStartPosition => true;
+
+  // ExoPlayer is built with setAudioAttributes(attrs, handleAudioFocus = true),
+  // so the native player owns Android audio focus for this backend.
+  @override
+  bool get managesAudioFocus => true;
 
   @override
   bool get canRenderBitmapSubtitles => true;

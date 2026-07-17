@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:get_it/get_it.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
@@ -10,6 +11,8 @@ import '../../../data/services/youtube_stream_resolver.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../playback/appletv_preview_player.dart';
 import '../../../util/platform_detection.dart';
+import '../../screensaver/screensaver_controller.dart';
+import '../../widgets/adaptive/sf_symbol.dart';
 import '../../widgets/web_youtube_trailer.dart';
 
 class TrailerPlayerScreen extends StatefulWidget {
@@ -40,6 +43,7 @@ class _TrailerPlayerScreenState extends State<TrailerPlayerScreen> {
   bool _embedFallbackTriggered = false;
   bool _sponsorBlockSeekInFlight = false;
   int _sponsorBlockToken = 0;
+  final _screensaverController = GetIt.instance<ScreensaverController>();
 
   bool get _supportsEmbeddedYouTubePlatform {
     return PlatformDetection.isAndroid ||
@@ -50,6 +54,9 @@ class _TrailerPlayerScreenState extends State<TrailerPlayerScreen> {
   @override
   void initState() {
     super.initState();
+    // Keep the screen awake and the screensaver disarmed while a trailer plays,
+    // matching the other full-screen players.
+    _screensaverController.setPlaybackActive(true);
     final resolvedVideoId = _resolvedVideoId();
 
     if (kIsWeb) {
@@ -123,6 +130,7 @@ class _TrailerPlayerScreenState extends State<TrailerPlayerScreen> {
 
   @override
   void dispose() {
+    _screensaverController.setPlaybackActive(false);
     _sponsorBlockPositionSub?.cancel();
     _appleTvCompletedSub?.cancel();
     unawaited(_appleTvPlayer?.dispose());
@@ -405,7 +413,7 @@ class _TrailerPlayerScreenState extends State<TrailerPlayerScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: IconButton(
-                  icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  icon: const AdaptiveIcon(Icons.arrow_back, color: Colors.white),
                   onPressed: () {
                     _player?.stop();
                     unawaited(_appleTvPlayer?.stop());

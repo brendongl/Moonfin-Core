@@ -9,7 +9,9 @@ import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get_it/get_it.dart';
+import 'package:path/path.dart' as p;
 import 'package:server_core/server_core.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../platform/ios_storage.dart';
 import '../../playback/subtitle_formats.dart';
@@ -138,6 +140,8 @@ Future<void> _downloadIsolateMain(Map<String, Object?> args) async {
   }
 }
 
+enum _DownloadActivityPhase { start, progress, stop }
+
 class DownloadService extends ChangeNotifier {
   static const String _guardCancelReason = 'download_guard_timeout';
 
@@ -228,8 +232,7 @@ class DownloadService extends ChangeNotifier {
   OfflineRepository get _offlineRepo => GetIt.instance<OfflineRepository>();
 
   String _fileNameBaseFromPath(String savePath) {
-    final fileName = savePath.split(PlatformDetection.pathSeparator).last;
-    return fileName.replaceAll(RegExp(r'\.[^.]+$'), '');
+    return p.basenameWithoutExtension(savePath);
   }
 
   Future<void> _deleteSubtitleFiles(Directory dir, String fileNameBase) async {
@@ -243,7 +246,7 @@ class DownloadService extends ChangeNotifier {
         continue;
       }
 
-      final name = entity.path.split(PlatformDetection.pathSeparator).last;
+      final name = p.basename(entity.path);
       if (name.startsWith(prefix)) {
         await entity.delete();
       }
@@ -256,7 +259,7 @@ class DownloadService extends ChangeNotifier {
   ) async {
     var current = start;
 
-    while (current.path.startsWith(root.path) && current.path != root.path) {
+    while (p.isWithin(root.path, current.path) && !p.equals(current.path, root.path)) {
       if (!await current.exists()) {
         current = current.parent;
         continue;
@@ -463,6 +466,13 @@ class DownloadService extends ChangeNotifier {
             ? 'Season ${season.toString().padLeft(2, '0')}'
             : 'Specials';
         return 'TV/$series/$seasonFolder';
+
+      case 'MusicVideo':
+        final artist = item.albumArtist ??
+            (item.artists.isNotEmpty ? item.artists.first : null);
+        return artist != null
+            ? 'Music Videos/${_sanitizePath(artist)}'
+            : 'Music Videos/${_sanitizePath(item.name)}';
 
       default:
         return 'Other/${_sanitizePath(item.name)}';
@@ -825,7 +835,10 @@ class DownloadService extends ChangeNotifier {
   }
 
   bool _supportsTranscodedDownload(String? type) {
-    return type == 'Movie' || type == 'Episode';
+    return type == 'Movie' ||
+        type == 'Episode' ||
+        type == 'MusicVideo' ||
+        type == 'Video';
   }
 
   Map<String, String> _buildAuthHeaders() {
@@ -1161,8 +1174,9 @@ class DownloadService extends ChangeNotifier {
   String _buildDownloadUrl(
     String itemId,
     AggregatedItem item,
-    DownloadQuality quality,
-  ) {
+    DownloadQuality quality, {
+    String? playSessionId,
+  }) {
     if (!quality.isTranscoded || !_supportsTranscodedDownload(item.type)) {
       return _buildDirectItemDownloadUrl(itemId, item);
     }
@@ -1186,15 +1200,29 @@ class DownloadService extends ChangeNotifier {
     if (quality.audioChannels != null) {
       params['audioChannels'] = quality.audioChannels.toString();
     }
+    if (playSessionId != null) {
+      params['PlaySessionId'] = playSessionId;
+      params['DeviceId'] = _client.deviceInfo.id;
+    }
 
     final query = _encodeQuery(params);
     return '$baseUrl/Videos/$itemId/stream?$query';
   }
 
   Future<AggregatedItem> _ensureFullItem(AggregatedItem item) async {
-    if (item.mediaSources.isNotEmpty) return item;
-    final data = await _client.itemsApi.getItem(item.id);
-    return AggregatedItem(id: item.id, serverId: item.serverId, rawData: data);
+    // Items from row queries are missing fields like Overview and Chapters,
+    // so always fetch the full item before persisting its metadata.
+    try {
+      final data = await _client.itemsApi.getItem(item.id);
+      return AggregatedItem(
+        id: item.id,
+        serverId: item.serverId,
+        rawData: data,
+      );
+    } catch (_) {
+      if (item.mediaSources.isNotEmpty) return item;
+      rethrow;
+    }
   }
 
   Future<void> downloadItem(
@@ -1229,6 +1257,10 @@ class DownloadService extends ChangeNotifier {
     }
 
     String? savePath;
+    Timer? activityHeartbeat;
+    String? activityPlaySessionId;
+    String? activityMediaSourceId;
+    var activityResumeTicks = 0;
 
     if (!await _checkWifiPolicy()) {
       _activeDownloads[item.id] = DownloadProgress(
@@ -1320,9 +1352,43 @@ class DownloadService extends ChangeNotifier {
       );
       notifyListeners();
 
-      final url = _buildDownloadUrl(item.id, fullItem, quality);
+      final reportActivity = quality.isTranscoded &&
+          _supportsTranscodedDownload(fullItem.type) &&
+          _prefs.get(UserPreferences.reportDownloadsAsActivity);
+      if (reportActivity) {
+        activityPlaySessionId = const Uuid().v4();
+        activityMediaSourceId = _primaryMediaSourceId(fullItem);
+        activityResumeTicks = fullItem.playbackPositionTicks ?? 0;
+      }
+
+      final url = _buildDownloadUrl(
+        item.id,
+        fullItem,
+        quality,
+        playSessionId: activityPlaySessionId,
+      );
       final headers = _buildDownloadRequestHeaders();
       final requestOptions = Options(headers: headers, method: 'GET');
+
+      if (activityPlaySessionId != null) {
+        _reportDownloadActivity(
+          phase: _DownloadActivityPhase.start,
+          itemId: item.id,
+          mediaSourceId: activityMediaSourceId,
+          playSessionId: activityPlaySessionId,
+          positionTicks: activityResumeTicks,
+        );
+        final heartbeatSessionId = activityPlaySessionId;
+        activityHeartbeat = Timer.periodic(const Duration(seconds: 10), (_) {
+          _reportDownloadActivity(
+            phase: _DownloadActivityPhase.progress,
+            itemId: item.id,
+            mediaSourceId: activityMediaSourceId,
+            playSessionId: heartbeatSessionId,
+            positionTicks: activityResumeTicks,
+          );
+        });
+      }
 
       void onReceiveProgress(int received, int total) {
         final rawProgress = _calculateProgress(
@@ -1549,6 +1615,16 @@ class DownloadService extends ChangeNotifier {
       );
       _emitError('${item.name}: $friendlyError');
     } finally {
+      activityHeartbeat?.cancel();
+      if (activityPlaySessionId != null) {
+        _reportDownloadActivity(
+          phase: _DownloadActivityPhase.stop,
+          itemId: item.id,
+          mediaSourceId: activityMediaSourceId,
+          playSessionId: activityPlaySessionId,
+          positionTicks: activityResumeTicks,
+        );
+      }
       _downloadStartTimes.remove(item.id);
       _cancelTokens.remove(item.id);
       _lastPersistedProgress.remove(item.id);
@@ -1556,6 +1632,55 @@ class DownloadService extends ChangeNotifier {
       _lastCallbackProgress.remove(item.id);
       notifyListeners();
     }
+  }
+
+  // Best effort reporting of a transcoded download as a server play session so
+  // it shows up in the Jellyfin dashboard. This must never affect the download,
+  // so every call is fire and forget and swallows its errors. The position is
+  // held at the item's existing resume point across start, progress, and stop
+  // so a download never moves the user's watch progress.
+  void _reportDownloadActivity({
+    required _DownloadActivityPhase phase,
+    required String itemId,
+    required String? mediaSourceId,
+    required String playSessionId,
+    required int positionTicks,
+  }) {
+    unawaited(() async {
+      try {
+        final api = _client.playbackApi;
+        switch (phase) {
+          case _DownloadActivityPhase.start:
+            await api.reportPlaybackStart(
+              PlaybackStartReport(
+                itemId: itemId,
+                mediaSourceId: mediaSourceId,
+                playSessionId: playSessionId,
+                playMethod: PlayMethod.transcode,
+                positionTicks: positionTicks,
+              ).toJson(),
+            );
+          case _DownloadActivityPhase.progress:
+            await api.reportPlaybackProgress(
+              PlaybackProgressReport(
+                itemId: itemId,
+                mediaSourceId: mediaSourceId,
+                playSessionId: playSessionId,
+                positionTicks: positionTicks,
+              ).toJson(),
+            );
+          case _DownloadActivityPhase.stop:
+            await api.reportPlaybackStopped(
+              PlaybackStopReport(
+                itemId: itemId,
+                mediaSourceId: mediaSourceId,
+                playSessionId: playSessionId,
+                positionTicks: positionTicks,
+              ).toJson(),
+            );
+        }
+      } catch (_) {}
+    }());
   }
 
   Future<void> downloadItems(
@@ -1619,6 +1744,32 @@ class DownloadService extends ChangeNotifier {
   }) async {
     final playableItems = await _getAllPlayableItemsForBoxSet(boxSetId);
     await downloadItems(playableItems, quality: quality);
+  }
+
+  Future<void> downloadAlbum(
+    String albumId, {
+    DownloadQuality quality = DownloadQuality.original,
+  }) async {
+    final data = await _client.itemsApi.getItems(
+      parentId: albumId,
+      includeItemTypes: const ['Audio'],
+      sortBy: 'ParentIndexNumber,IndexNumber,SortName',
+      fields: 'MediaStreams,MediaSources,RunTimeTicks',
+    );
+    final rawItems = (data['Items'] as List?) ?? const [];
+    final tracks = rawItems
+        .whereType<Map>()
+        .map((raw) => raw.cast<String, dynamic>())
+        .where((raw) => (raw['Id']?.toString() ?? '').isNotEmpty)
+        .map(
+          (raw) => AggregatedItem(
+            id: raw['Id']!.toString(),
+            serverId: _client.baseUrl,
+            rawData: raw,
+          ),
+        )
+        .toList();
+    await downloadItems(tracks, quality: quality);
   }
 
   Future<List<AggregatedItem>> _getAllPlayableItemsForBoxSet(
@@ -1767,13 +1918,30 @@ class DownloadService extends ChangeNotifier {
       if (!await itemDir.exists()) await itemDir.create(recursive: true);
 
       final authOptions = Options(headers: _buildAuthHeaders());
-      String? posterPath, backdropPath, logoPath;
+      String? posterPath, backdropPath, logoPath, thumbPath;
 
+      // Fall back to album, series, or parent art so tracks and episodes
+      // still get a poster offline.
+      String? posterItemId, posterTag;
       if (item.primaryImageTag != null) {
+        posterItemId = item.id;
+        posterTag = item.primaryImageTag;
+      } else if (item.albumId != null && item.albumPrimaryImageTag != null) {
+        posterItemId = item.albumId;
+        posterTag = item.albumPrimaryImageTag;
+      } else if (item.seriesId != null && item.seriesPrimaryImageTag != null) {
+        posterItemId = item.seriesId;
+        posterTag = item.seriesPrimaryImageTag;
+      } else if (item.parentPrimaryImageItemId != null &&
+          item.parentPrimaryImageTag != null) {
+        posterItemId = item.parentPrimaryImageItemId;
+        posterTag = item.parentPrimaryImageTag;
+      }
+      if (posterItemId != null) {
         final url = _client.imageApi.getPrimaryImageUrl(
-          item.id,
+          posterItemId,
           maxHeight: 500,
-          tag: item.primaryImageTag,
+          tag: posterTag,
         );
         posterPath = '${itemDir.path}/poster.jpg';
         try {
@@ -1810,11 +1978,22 @@ class DownloadService extends ChangeNotifier {
         }
       }
 
+      String? logoItemId, logoTag;
       if (item.logoImageTag != null) {
+        logoItemId = item.id;
+        logoTag = item.logoImageTag;
+      } else if (item.seriesLogoImageTag != null) {
+        final parentLogoItemId = item.rawData['ParentLogoItemId']?.toString();
+        if (parentLogoItemId != null) {
+          logoItemId = parentLogoItemId;
+          logoTag = item.seriesLogoImageTag;
+        }
+      }
+      if (logoItemId != null) {
         final url = _client.imageApi.getLogoImageUrl(
-          item.id,
+          logoItemId,
           maxWidth: 500,
-          tag: item.logoImageTag,
+          tag: logoTag,
         );
         logoPath = '${itemDir.path}/logo.png';
         try {
@@ -1824,16 +2003,44 @@ class DownloadService extends ChangeNotifier {
         }
       }
 
+      String? thumbItemId, thumbTag;
+      if (item.thumbImageTag != null) {
+        thumbItemId = item.id;
+        thumbTag = item.thumbImageTag;
+      } else if (item.parentThumbItemId != null &&
+          item.parentThumbImageTag != null) {
+        thumbItemId = item.parentThumbItemId;
+        thumbTag = item.parentThumbImageTag;
+      }
+      if (thumbItemId != null) {
+        final url = _client.imageApi.getThumbImageUrl(
+          thumbItemId,
+          maxWidth: 1280,
+          tag: thumbTag,
+        );
+        thumbPath = '${itemDir.path}/thumb.jpg';
+        try {
+          await _downloadDio.download(url, thumbPath, options: authOptions);
+        } catch (_) {
+          thumbPath = null;
+        }
+      }
+
       await _offlineRepo.setImagePaths(
         item.id,
         poster: posterPath,
         backdrop: backdropPath,
         logo: logoPath,
+        thumb: thumbPath,
       );
     } catch (_) {}
   }
 
   Future<void> _ensureParentContainers(AggregatedItem episode) async {
+    if (episode.type == 'Audio' || episode.type == 'AudioBook') {
+      await _ensureAlbumContainer(episode);
+      return;
+    }
     if (episode.type != 'Episode') return;
 
     if (episode.seriesId != null) {
@@ -1889,6 +2096,34 @@ class DownloadService extends ChangeNotifier {
         } catch (_) {}
       }
     }
+  }
+
+  /// Creates a lightweight MusicAlbum container row (with images) so album
+  /// groupings render offline, mirroring the Series/Season containers.
+  Future<void> _ensureAlbumContainer(AggregatedItem track) async {
+    final albumId = track.albumId;
+    if (albumId == null || albumId.isEmpty) return;
+    final existing = await _offlineRepo.getItem(albumId);
+    if (existing != null) return;
+    try {
+      final albumData = await _client.itemsApi.getItem(albumId);
+      final albumItem = AggregatedItem(
+        id: albumId,
+        serverId: track.serverId,
+        rawData: albumData,
+      );
+      await _offlineRepo.upsertItem(
+        DownloadedItemsCompanion(
+          itemId: Value(albumId),
+          serverId: Value(track.serverId),
+          type: Value(albumItem.type ?? 'MusicAlbum'),
+          name: Value(albumItem.name),
+          metadataJson: Value(jsonEncode(albumData)),
+          downloadStatus: const Value(2),
+        ),
+      );
+      _downloadImages(albumItem);
+    } catch (_) {}
   }
 
   Future<void> _downloadExternalSubtitles(
@@ -1967,6 +2202,7 @@ class DownloadService extends ChangeNotifier {
       'Movies',
       'TV',
       'Music',
+      'Music Videos',
       'Audiobooks',
       'Books',
       'Other',

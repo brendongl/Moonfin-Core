@@ -58,6 +58,8 @@ struct PlayerTrack: Identifiable, Equatable {
     let isDefault: Bool
     let isForced: Bool
     let codec: String?
+    let isExternal: Bool
+    let externalFilename: String?
 
     init(
         id: Int32,
@@ -66,7 +68,9 @@ struct PlayerTrack: Identifiable, Equatable {
         title: String? = nil,
         isDefault: Bool = false,
         isForced: Bool = false,
-        codec: String? = nil
+        codec: String? = nil,
+        isExternal: Bool = false,
+        externalFilename: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -75,6 +79,8 @@ struct PlayerTrack: Identifiable, Equatable {
         self.isDefault = isDefault
         self.isForced = isForced
         self.codec = codec
+        self.isExternal = isExternal
+        self.externalFilename = externalFilename
     }
 }
 
@@ -116,6 +122,8 @@ class MpvPlayerWrapper: NSObject, ObservableObject {
     nonisolated(unsafe) private var lifecycleObservers: [NSObjectProtocol] = []
     private var wasPlayingBeforeBackground = false
     private var wasPlayingBeforeInterruption = false
+    private var renderContextNeedsRebuild = false
+    private var pauseAfterRebuild = false
     private var engine: MPVEngine?
     private let videoSurface = MPVVideoSurface()
     private var activeProfile: MPVRenderProfile = .metal
@@ -217,6 +225,14 @@ class MpvPlayerWrapper: NSObject, ObservableObject {
             self?.onNowPlayingCommand?([
                 "event": "seek",
                 "positionMs": Int((seconds * 1000).rounded()),
+            ])
+        }
+        nowPlaying.onSkip = { [weak self] delta in
+            guard let self else { return }
+            let target = max(0, self.currentTime + delta)
+            self.onNowPlayingCommand?([
+                "event": "seek",
+                "positionMs": Int((target * 1000).rounded()),
             ])
         }
         nowPlaying.onNext = { [weak self] in
@@ -590,9 +606,30 @@ class MpvPlayerWrapper: NSObject, ObservableObject {
         _ = engine?.command(["set", "audio-spdif", "ac3,eac3"])
     }
 
+    /// The Dart side sends 1-based positions into the stream's track list of
+    /// a type, not mpv track ids. Resolve the position against the live list,
+    /// since mpv ids can have gaps or a shifted origin. An empty list means
+    /// the refresh hasn't landed yet, where id == position has held.
+    private func trackId(atPosition trackIndex: Int32, in tracks: [PlayerTrack]) -> Int32? {
+        guard !tracks.isEmpty else { return trackIndex }
+        let position = Int(trackIndex) - 1
+        guard tracks.indices.contains(position) else { return nil }
+        return tracks[position].id
+    }
+
     func setAudioTrack(_ trackIndex: Int32) {
         if hybridAudioActive { return }
-        _ = engine?.setAudioTrack(trackIndex)
+        if trackIndex < 1 {
+            _ = engine?.setAudioTrack(trackIndex)
+            currentAudioTrackIndex = trackIndex
+            return
+        }
+        guard let aid = trackId(atPosition: trackIndex, in: audioTracks) else {
+            // The position doesn't exist in this stream, and selecting a
+            // nonexistent aid would mute playback.
+            return
+        }
+        _ = engine?.setAudioTrack(aid)
         currentAudioTrackIndex = trackIndex
     }
 
@@ -604,10 +641,88 @@ class MpvPlayerWrapper: NSObject, ObservableObject {
         subtitleDebug(
             "subtitle_mpv_set track_id=\(trackIndex) current_track_before=\(self.currentSubtitleTrackIndex) tracks=\(self.subtitleTrackDebugSummary(self.subtitleTracks))"
         )
-        _ = engine?.setSubtitleTrack(trackIndex)
+        guard let sid = trackId(atPosition: trackIndex, in: subtitleTracks) else {
+            subtitleDebug("subtitle_mpv_set track_id=\(trackIndex) skipped: only \(self.subtitleTracks.count) sub tracks")
+            return
+        }
+        applySubtitleSid(sid, requestedIndex: trackIndex)
+        subtitleDebug("subtitle_mpv_set_done track_id=\(trackIndex) sid=\(sid) current_track_after=\(self.currentSubtitleTrackIndex)")
+    }
+
+    private func applySubtitleSid(_ sid: Int32, requestedIndex: Int32) {
+        _ = engine?.setSubtitleTrack(sid)
+        _ = engine?.command(["set", "sub-visibility", "yes"])
+        currentSubtitleTrackIndex = requestedIndex
+    }
+
+    // Whether an mpv external track was sub-added from the requested URL. mpv
+    // can re-encode the URL it reports, so an exact compare misses. Jellyfin
+    // external subtitle URLs carry the unique subtitle stream index in the
+    // path, so a decoded-path match still identifies the sub.
+    private static func externalFilenameMatches(_ mpvFilename: String?, _ requestedUrl: String) -> Bool {
+        guard let mpvFilename, !mpvFilename.isEmpty else { return false }
+        if mpvFilename == requestedUrl { return true }
+        guard let a = URL(string: mpvFilename), let b = URL(string: requestedUrl) else { return false }
+        let pathA = a.path.removingPercentEncoding ?? a.path
+        let pathB = b.path.removingPercentEncoding ?? b.path
+        return pathA == pathB
+    }
+
+    /// Selects a subtitle track by its 1-based position. External tracks are
+    /// already sub-added unselected at playback start and are matched by the
+    /// URL they were loaded from, so a scrambled add order can't select the
+    /// wrong track. If the external file is missing from mpv's list entirely,
+    /// fall back to adding it with the select flag.
+    func selectSubtitleTrack(_ trackIndex: Int32, externalUrl: String?) {
+        if trackIndex < 0 {
+            disableSubtitles()
+            return
+        }
+        guard let externalUrl else {
+            // Embedded selection: count only demuxed tracks so early-added
+            // externals can't shift the position.
+            let embedded = subtitleTracks.filter { !$0.isExternal }
+            if !embedded.isEmpty, embedded.indices.contains(Int(trackIndex) - 1) {
+                applySubtitleSid(embedded[Int(trackIndex) - 1].id, requestedIndex: trackIndex)
+                return
+            }
+            setSubtitleTrack(trackIndex)
+            return
+        }
+        if let match = subtitleTracks.first(where: {
+            $0.isExternal && Self.externalFilenameMatches($0.externalFilename, externalUrl)
+        }) {
+            subtitleDebug(
+                "subtitle_mpv_select_external_by_url track_id=\(trackIndex) sid=\(match.id) tracks=\(self.subtitleTrackDebugSummary(self.subtitleTracks))"
+            )
+            applySubtitleSid(match.id, requestedIndex: trackIndex)
+            return
+        }
+        // No URL match, often mpv normalizing the filename it reports. Prefer
+        // selecting among the already-loaded external tracks by position, using
+        // the live embedded count so the ordinal can't cross into embedded
+        // tracks.
+        let embeddedCount = subtitleTracks.filter { !$0.isExternal }.count
+        let externals = subtitleTracks.filter { $0.isExternal }
+        let externalPos = Int(trackIndex) - 1 - embeddedCount
+        if externals.indices.contains(externalPos) {
+            subtitleDebug(
+                "subtitle_mpv_select_external_positional track_id=\(trackIndex) sid=\(externals[externalPos].id) tracks=\(self.subtitleTrackDebugSummary(self.subtitleTracks))"
+            )
+            applySubtitleSid(externals[externalPos].id, requestedIndex: trackIndex)
+            return
+        }
+        // The intended external file was never loaded, so add it with select.
+        guard let url = URL(string: externalUrl) else {
+            setSubtitleTrack(trackIndex)
+            return
+        }
+        subtitleDebug(
+            "subtitle_mpv_select_external_via_add track_id=\(trackIndex) url=\(self.redactedURLString(url)) tracks=\(self.subtitleTrackDebugSummary(self.subtitleTracks))"
+        )
+        _ = engine?.command(["sub-add", url.absoluteString, "select", "External"])
         _ = engine?.command(["set", "sub-visibility", "yes"])
         currentSubtitleTrackIndex = trackIndex
-        subtitleDebug("subtitle_mpv_set_done track_id=\(trackIndex) current_track_after=\(self.currentSubtitleTrackIndex)")
     }
 
     func disableSubtitles() {
@@ -879,6 +994,7 @@ class MpvPlayerWrapper: NSObject, ObservableObject {
         pendingMpvStartPosition = (startPosition ?? 0) > 0 ? startPosition : nil
         pendingMpvSeekAttempts = 0
         pendingMpvSeekLastAttemptAt = 0
+        pauseAfterRebuild = false
 
         configureAudioSession(installChannelLayoutFix: true)
 
@@ -1248,6 +1364,29 @@ class MpvPlayerWrapper: NSObject, ObservableObject {
         mpvResumeGateWorkItem = nil
     }
 
+    /// Rebuilds the mpv engine after a real background transition. The MoltenVK
+    /// swapchain bound to the CAMetalLayer was invalidated while backgrounded, so
+    /// reusing it renders corrupt or no video. resetEngine before startMpvPlayback
+    /// forces ensureEngine to build a fresh engine, and therefore a fresh
+    /// swapchain, against the same layer. Playback resumes at the saved position.
+    private func rebuildRenderContextAfterBackground() {
+        guard let url = activePlaybackURL else {
+            wasPlayingBeforeBackground = false
+            return
+        }
+        let resumeAt = snapshotPlaybackPosition()
+        let resumePlaying = wasPlayingBeforeBackground
+        wasPlayingBeforeBackground = false
+        stopPlaybackOnly()
+        resetEngine()
+        if startMpvPlayback(url, startPosition: resumeAt) {
+            // startMpvPlayback always resumes playing, so if we were paused,
+            // re-pause once the reloaded frame lands (see playbackRestart) rather
+            // than now, where the restart event would flip the state back.
+            pauseAfterRebuild = !resumePlaying
+        }
+    }
+
     func snapshotPlaybackPosition() -> TimeInterval {
         if let engine, let pos = engine.getDoubleProperty("time-pos"), pos.isFinite, pos >= 0 {
             return pos
@@ -1270,6 +1409,10 @@ class MpvPlayerWrapper: NSObject, ObservableObject {
                 state = .buffering(0.25)
             } else {
                 state = .playing
+            }
+            if pauseAfterRebuild {
+                pauseAfterRebuild = false
+                pause()
             }
             refreshTracksFromMpv()
         case MPVEngine.EventID.endFile.rawValue:
@@ -1547,7 +1690,9 @@ class MpvPlayerWrapper: NSObject, ObservableObject {
             title: normalizedTrackText(track.title),
             isDefault: track.isDefault,
             isForced: track.isForced,
-            codec: normalizedTrackText(track.codec)
+            codec: normalizedTrackText(track.codec),
+            isExternal: track.isExternal,
+            externalFilename: normalizedTrackText(track.externalFilename)
         )
     }
 
@@ -1613,6 +1758,23 @@ class MpvPlayerWrapper: NSObject, ObservableObject {
 
         lifecycleObservers.append(
             center.addObserver(
+                forName: UIApplication.didEnterBackgroundNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    guard self.playbackBackendIdentifier == "mpv" else { return }
+                    // Backgrounding revokes GPU access and invalidates the
+                    // CAMetalLayer drawables, so mpv's MoltenVK swapchain is stale
+                    // once we return. Mark it for a rebuild on the way back.
+                    self.renderContextNeedsRebuild = true
+                }
+            }
+        )
+
+        lifecycleObservers.append(
+            center.addObserver(
                 forName: UIApplication.didBecomeActiveNotification,
                 object: nil,
                 queue: .main
@@ -1626,8 +1788,15 @@ class MpvPlayerWrapper: NSObject, ObservableObject {
                         return
                     }
 
-                    self.restoreColorPipelineAfterWake(force: true)
+                    if self.renderContextNeedsRebuild {
+                        self.renderContextNeedsRebuild = false
+                        self.rebuildRenderContextAfterBackground()
+                        return
+                    }
 
+                    // Resigned active without truly backgrounding, so the
+                    // swapchain is still valid and a light resume is enough.
+                    self.restoreColorPipelineAfterWake(force: true)
                     if self.wasPlayingBeforeBackground {
                         self.wasPlayingBeforeBackground = false
                         self.beginMpvResumeGateIfNeeded()
@@ -1730,6 +1899,7 @@ final class NowPlayingController {
     var onPause: (@MainActor () -> Void)?
     var onToggle: (@MainActor () -> Void)?
     var onSeek: (@MainActor (TimeInterval) -> Void)?
+    var onSkip: (@MainActor (TimeInterval) -> Void)?
     var onNext: (@MainActor () -> Void)?
     var onPrevious: (@MainActor () -> Void)?
 
@@ -1772,6 +1942,20 @@ final class NowPlayingController {
                 return .success
             }
         }
+        addTarget(center.skipForwardCommand) { [weak self] event in
+            MainActor.assumeIsolated {
+                let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? 10
+                self?.onSkip?(interval)
+                return .success
+            }
+        }
+        addTarget(center.skipBackwardCommand) { [weak self] event in
+            MainActor.assumeIsolated {
+                let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? 10
+                self?.onSkip?(-interval)
+                return .success
+            }
+        }
         addTarget(center.nextTrackCommand) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.onNext?()
@@ -1785,10 +1969,14 @@ final class NowPlayingController {
             }
         }
 
+        center.skipForwardCommand.preferredIntervals = [NSNumber(value: 10)]
+        center.skipBackwardCommand.preferredIntervals = [NSNumber(value: 10)]
         center.playCommand.isEnabled = true
         center.pauseCommand.isEnabled = true
         center.togglePlayPauseCommand.isEnabled = true
         center.changePlaybackPositionCommand.isEnabled = true
+        center.skipForwardCommand.isEnabled = true
+        center.skipBackwardCommand.isEnabled = true
     }
 
     func setQueueCapabilities(hasNext: Bool, hasPrevious: Bool) {
@@ -1969,6 +2157,8 @@ private final class MPVEngine {
         var isDefault: Bool
         var isForced: Bool
         var codec: String?
+        var isExternal: Bool
+        var externalFilename: String?
     }
 
     enum EventID: Int32 {
@@ -2022,6 +2212,11 @@ private final class MPVEngine {
 
         _ = setOptionString("subs-match-os-language", value: "yes", on: created)
         _ = setOptionString("subs-fallback", value: "yes", on: created)
+
+        if let bundledFontsDir = SubtitleFontLocator.bundledFontsDirectory() {
+            _ = setOptionString("sub-fonts-dir", value: bundledFontsDir, on: created)
+            _ = setOptionString("sub-font", value: SubtitleFontLocator.fontFamily, on: created)
+        }
 
         initDiagnostics["output_intent"] = "\(outputIntent)"
         initDiagnostics["quality_profile"] = qualityProfile.rawValue
@@ -2288,6 +2483,8 @@ private final class MPVEngine {
             let isDefault = getFlagProperty("\(prefix)/default") ?? false
             let isForced = getFlagProperty("\(prefix)/forced") ?? false
             let codec = getStringProperty("\(prefix)/codec")
+            let isExternal = getFlagProperty("\(prefix)/external") ?? false
+            let externalFilename = getStringProperty("\(prefix)/external-filename")
 
             tracks.append(
                 TrackInfo(
@@ -2297,7 +2494,9 @@ private final class MPVEngine {
                     language: language,
                     isDefault: isDefault,
                     isForced: isForced,
-                    codec: codec
+                    codec: codec,
+                    isExternal: isExternal,
+                    externalFilename: externalFilename
                 )
             )
         }

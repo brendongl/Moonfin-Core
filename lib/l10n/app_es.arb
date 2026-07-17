@@ -923,10 +923,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "Las pistas favoritas aparecerán aquí",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "Error al cargar",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -1112,7 +1108,7 @@
     "@version": {
         "description": "Action button label for version/media source selection"
     },
-    "cast": "Reparto",
+    "cast": "Retransmitir",
     "@cast": {
         "description": "Action button label for casting to a device"
     },
@@ -3707,10 +3703,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "Usuario específico",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "Siempre autenticar",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -5318,7 +5310,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "Buscar persona remota",
     "adminNoRemoteMatches": "No se encontraron coincidencias remotas",
     "adminRemoteResults": "Resultados remotos",
     "adminRemoteMetadataApplied": "Metadatos remotos aplicados",
@@ -5414,9 +5405,6 @@
     },
     "adminAddTuner": "Añadir sintonizador",
     "adminTunerType": "Tipo de sintonizador",
-    "adminTunerTypeHint": "HDHomeRun, M3U, Otro",
-    "adminUrlPath": "URL / Ruta",
-    "adminNameOptional": "Nombre (opcional)",
     "adminTunerAdded": "Sintonizador añadido",
     "adminTunerAddFailed": "No se pudo agregar el sintonizador: {error}",
     "@adminTunerAddFailed": {
@@ -5428,9 +5416,6 @@
     },
     "adminAddGuideProvider": "Añadir proveedor de guía",
     "adminProviderType": "Tipo de proveedor",
-    "adminProviderTypeHint": "SchedulesDirect o XMLTV",
-    "adminUsernameOptional": "Nombre de usuario (opcional)",
-    "adminRefreshInterval": "Intervalo de actualización (horas)",
     "adminProviderAdded": "Proveedor añadido",
     "adminProviderAddFailed": "No se pudo agregar el proveedor: {error}",
     "@adminProviderAddFailed": {
@@ -5599,7 +5584,6 @@
     },
     "adminLogViewerNoMatches": "No hay líneas coincidentes",
     "adminMetadataEditorTitle": "Editor de metadatos",
-    "adminMetadataRemote": "Remoto",
     "adminMetadataType": "Tipo",
     "adminMetadataDetails": "Detalles",
     "adminMetadataExternalIds": "IDs externos",
@@ -6046,7 +6030,6 @@
     "folders": "Carpetas",
     "libraries": "Bibliotecas",
     "syncPlay": "SyncPlay",
-    "jellyseerr": "Seerr",
     "seeAll": "Ver todo",
     "noItems": "No hay elementos",
     "switchUser": "Cambiar de usuario",
@@ -6360,7 +6343,7 @@
     "@libraryVisibilityDescription": {
         "description": "Explanation shown on the library visibility settings screen"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -6555,21 +6538,6 @@
     "rememberMyChoice": "Recuerda mi elección",
     "playHdr10Fallback": "Reproducir el respaldo de HDR10",
     "requestTranscode": "Solicitar transcodificación",
-    "homeScreenSectionsIntegrationDescription": "Detecte filas expuestas por el complemento \"Secciones de pantalla de inicio\" de IAmParadox27. Las filas se pueden habilitar y reordenar a continuación.",
-    "homeScreenSectionsIntegrationNoServers": "Aún no hay servidores Jellyfin que informen sobre el complemento.",
-    "integrationOpenHomeSections": "Abrir secciones de inicio",
-    "integrationOpenHomeSectionsSubtitle": "Activar, desactivar y reordenar filas",
-    "integrationInstalledButDisabled": "Instalado pero deshabilitado",
-    "integrationNotInstalled": "No instalado",
-    "integrationSectionsCount": "{count, plural, one {# seccion} other {# secciones}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# fila detectada} other {# filas detectadas}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "Estéreo AAC",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Paso a través (avanzado)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Eliminar tema guardado",
     "savedThemesManageSubtitle": "Administrar temas de complementos descargados en este dispositivo",
-    "homeScreenSectionsTitle": "Secciones de la pantalla de inicio",
     "themeEditor": "Editor de temas",
     "themeEditorSubtitle": "Abra el editor de temas Moonfin en su navegador.",
     "homeScreen": "Pantalla de inicio",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "Habilite HDR automáticamente para la reproducción de video HDR y restaure el modo de visualización al salir.",
     "whenFullscreen": "Cuando pantalla completa",
     "transcodingLimits": "Límites de transcodificación",
-    "settingsSupportMoonfinSubtitle": "Dona un café al desarrollador"
+    "settingsSupportMoonfinSubtitle": "Dona un café al desarrollador",
+    "reportDownloadsActivity": "Mostrar las descargas en el servidor",
+    "reportDownloadsActivitySubtitle": "Permite que el administrador del servidor vea tus descargas transcodificadas en el panel de control",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "Límite de la caché de imágenes",
+    "clearImageCache": "Borrar la caché de imágenes",
+    "imageCacheCleared": "Caché de imágenes borrada"
 }

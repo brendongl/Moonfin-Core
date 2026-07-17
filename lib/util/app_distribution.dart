@@ -13,6 +13,11 @@
 ///   linux_aur      : Linux AUR package (no in-app updater)
 ///   ios_signed     : Signed IPA (App Store)
 ///   ios_unsigned   : Unsigned IPA (sideload)
+library;
+
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+
 enum DistributionChannel {
   apk,
   aab,
@@ -59,6 +64,9 @@ class AppDistribution {
       case 'ios_unsigned':
         return DistributionChannel.iosUnsigned;
       default:
+        if (!kIsWeb && Platform.isWindows) {
+          return DistributionChannel.windows;
+        }
         return DistributionChannel.unknown;
     }
   }

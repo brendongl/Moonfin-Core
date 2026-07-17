@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get_it/get_it.dart';
@@ -20,6 +19,7 @@ import '../../preference/preference_constants.dart';
 import '../../preference/seerr_preferences.dart';
 import '../../preference/user_preferences.dart';
 import '../../util/clock_format.dart';
+import '../../util/game_library.dart';
 import '../../util/overlay_color_palette.dart';
 import '../../util/platform_detection.dart';
 import '../navigation/destinations.dart';
@@ -33,12 +33,14 @@ import 'seerr_icons.dart';
 import 'shuffle_overlay.dart';
 import 'user_menu_dialog.dart';
 
-import 'package:cached_network_image/cached_network_image.dart';
+import 'offline_aware_image.dart';
 import 'package:playback_core/playback_core.dart';
 import '../../data/models/aggregated_item.dart';
 import '../../data/services/media_server_client_factory.dart';
 import '../../util/focus/dpad_keys.dart';
+import '../../util/focus/input_mode_tracker.dart';
 import '../navigation/app_router.dart';
+import 'adaptive/sf_symbol.dart';
 
 const _kToolbarHeightTV = 95.0;
 const _kToolbarHeightDesktop = 80.0;
@@ -79,15 +81,18 @@ class TopToolbar extends StatefulWidget {
     return PlatformDetection.useLeanbackUi ? 64.0 : 54.0;
   }
 
-  /// Total laid-out height of the toolbar for the current platform.
-  static double heightFor(BuildContext context) {
-    final baseHeight = PlatformDetection.useLeanbackUi
+  /// Base height of the toolbar for the current platform (excluding music bar).
+  static double baseHeightFor(BuildContext context) {
+    return PlatformDetection.useLeanbackUi
         ? _kToolbarHeightTV
         : PlatformDetection.useMobileUi
         ? _kToolbarHeightMobile
         : _kToolbarHeightDesktop;
+  }
 
-    return baseHeight + musicBarExtraHeight();
+  /// Total laid-out height of the toolbar for the current platform.
+  static double heightFor(BuildContext context) {
+    return baseHeightFor(context) + musicBarExtraHeight();
   }
 
   @override
@@ -264,6 +269,8 @@ class _TopToolbarState extends State<TopToolbar> {
                 .getAggregatedLibraries()
           : await _viewsRepo.getUserViews();
 
+      unawaited(GetIt.instance<GameLibraryRegistry>().refresh());
+
       List<AggregatedLibrary> filtered = libs;
       if (useMultiServer) {
         try {
@@ -323,6 +330,11 @@ class _TopToolbarState extends State<TopToolbar> {
   }
 
   void _restoreFocusBelowToolbar() {
+    final playBtnNode = NavigationLayout.focusDetailsPlayButtonNotifier.value;
+    if (playBtnNode != null && playBtnNode.context != null && playBtnNode.canRequestFocus) {
+      playBtnNode.requestFocus();
+      return;
+    }
     final focusContent = NavigationLayout.focusContentFromNavbarNotifier.value;
     if (focusContent != null && widget.activeRoute == Destinations.home) {
       focusContent();
@@ -401,14 +413,20 @@ class _TopToolbarState extends State<TopToolbar> {
     final primary = FocusManager.instance.primaryFocus;
     if (primary == null || !_isInsideToolbar(primary)) return false;
 
+    final insideMusicBar = _isDescendantOf(primary, _musicBarFocusNode);
+
     final nodes = _toolbarScopeNode.descendants
         .where((n) => !n.skipTraversal && _isLaidOutFocusNode(n))
-        .map((n) => (
-              node: n,
-              x: (n.context!.findRenderObject()! as RenderBox)
-                  .localToGlobal(Offset.zero)
-                  .dx,
-            ))
+        .where((n) {
+          final isMusicNode = _isDescendantOf(n, _musicBarFocusNode);
+          return insideMusicBar == isMusicNode;
+        })
+        .map((n) {
+          final box = n.context!.findRenderObject() as RenderBox?;
+          final pos = box?.localToGlobal(Offset.zero);
+          return (node: n, x: pos?.dx ?? -1.0);
+        })
+        .where((item) => item.x > 0)
         .toList()
       ..sort((a, b) => a.x.compareTo(b.x));
 
@@ -521,14 +539,25 @@ class _TopToolbarState extends State<TopToolbar> {
                 if (primary != null) {
                   final insideMusicBar = _isDescendantOf(primary, _musicBarFocusNode);
                   if (!insideMusicBar && isMusicActive) {
-                    final target = _firstFocusableDescendant(_musicBarFocusNode);
-                    if (target != null) {
-                      target.requestFocus();
+                    final musicNodes = _musicBarFocusNode.descendants
+                        .where((n) => !n.skipTraversal && _isLaidOutFocusNode(n))
+                        .map((n) {
+                          final box = n.context!.findRenderObject() as RenderBox?;
+                          final pos = box?.localToGlobal(Offset.zero);
+                          return (node: n, x: pos?.dx ?? -1.0);
+                        })
+                        .where((item) => item.x > 0)
+                        .toList()
+                      ..sort((a, b) => a.x.compareTo(b.x));
+
+                    if (musicNodes.isNotEmpty) {
+                      musicNodes.first.node.requestFocus();
                       return KeyEventResult.handled;
                     }
                   }
 
-                  if (widget.activeRoute != Destinations.home) {
+                  if (widget.activeRoute != Destinations.home &&
+                      NavigationLayout.focusDetailsPlayButtonNotifier.value == null) {
                     final success =
                         primary.focusInDirection(TraversalDirection.down);
                     if (success) {
@@ -542,7 +571,35 @@ class _TopToolbarState extends State<TopToolbar> {
                 _restoreFocusBelowToolbar();
                 return KeyEventResult.handled;
               }
-              if (PlatformDetection.isTV &&
+              if (event is KeyDownEvent &&
+                  event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                final primary = FocusManager.instance.primaryFocus;
+                if (primary != null) {
+                  final insideMusicBar = _isDescendantOf(primary, _musicBarFocusNode);
+                  if (insideMusicBar) {
+                    if (_homeFocus.canRequestFocus) {
+                      _homeFocus.requestFocus();
+                      return KeyEventResult.handled;
+                    }
+                    FocusNode? targetNode;
+                    for (final n in _toolbarScopeNode.descendants) {
+                      if (!n.skipTraversal && _isLaidOutFocusNode(n) && !_isDescendantOf(n, _musicBarFocusNode)) {
+                        final box = n.context!.findRenderObject() as RenderBox?;
+                        final pos = box?.localToGlobal(Offset.zero);
+                        if (pos != null && pos.dx > 0) {
+                          targetNode = n;
+                          break;
+                        }
+                      }
+                    }
+                    if (targetNode != null) {
+                      targetNode.requestFocus();
+                      return KeyEventResult.handled;
+                    }
+                  }
+                }
+              }
+              if ((PlatformDetection.isTV || PlatformDetection.isDesktop) &&
                   event is KeyDownEvent &&
                   (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
                       event.logicalKey == LogicalKeyboardKey.arrowRight)) {
@@ -652,6 +709,10 @@ class _TopToolbarState extends State<TopToolbar> {
 
   Widget _buildAvatar() {
     const avatarSize = _kAvatarSize;
+    final avatarFocusVisible = InputModeTracker.showFocusVisuals(
+      context,
+      _avatarFocus.hasFocus,
+    );
 
     return Focus(
       focusNode: _avatarFocus,
@@ -667,7 +728,7 @@ class _TopToolbarState extends State<TopToolbar> {
           _restoreFocusBelowToolbar();
           return KeyEventResult.handled;
         }
-        if (PlatformDetection.isTV &&
+        if ((PlatformDetection.isTV || PlatformDetection.isDesktop) &&
             event.logicalKey == LogicalKeyboardKey.arrowRight) {
           _homeFocus.requestFocus();
           return KeyEventResult.handled;
@@ -677,19 +738,19 @@ class _TopToolbarState extends State<TopToolbar> {
       child: GestureDetector(
         onTap: _showUserMenu,
         child: AnimatedScale(
-          scale: _avatarFocus.hasFocus ? 1.08 : 1.0,
+          scale: avatarFocusVisible ? 1.08 : 1.0,
           duration: const Duration(milliseconds: 200),
           child: Container(
             width: avatarSize,
             height: avatarSize,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: (_avatarFocus.hasFocus && !PlatformDetection.isTV)
+              border: (avatarFocusVisible && !PlatformDetection.isTV)
                   ? Border.fromBorderSide(
                       ThemeRegistry.active.borders.focusBorder,
                     )
                   : null,
-              color: (_avatarFocus.hasFocus && PlatformDetection.isTV)
+              color: (avatarFocusVisible && PlatformDetection.isTV)
                   ? Colors.white
                   : null,
             ),
@@ -743,6 +804,7 @@ class _TopToolbarState extends State<TopToolbar> {
     final showGenres = _prefs.get(UserPreferences.showGenresButton);
     final showFavorites = _prefs.get(UserPreferences.showFavoritesButton);
     final showLibraries = _prefs.get(UserPreferences.showLibrariesInToolbar);
+    final alwaysExpanded = _prefs.get(UserPreferences.navbarAlwaysExpanded);
     final showFolders = _prefs.get(UserPreferences.enableFolderView);
     final showSyncPlay =
         _prefs.get(UserPreferences.syncPlayEnabled) &&
@@ -751,14 +813,15 @@ class _TopToolbarState extends State<TopToolbar> {
     final showSeerr = _prefs.get(UserPreferences.showSeerrButton) &&
         GetIt.instance<PluginSyncService>().seerrAvailable;
     final l10n = AppLocalizations.of(context);
-    final seerrDisplayName = seerrPrefs.moonfinDisplayName.trim();
-    final seerrNavLabel = seerrDisplayName.isNotEmpty
-      ? seerrDisplayName
-      : (seerrPrefs.isSeerrVariant ? l10n.seerr : l10n.jellyseerr);
-    final useAndroidTvInlineLibraries =
-        PlatformDetection.isAndroid &&
-        PlatformDetection.isTV &&
-        _prefs.get(UserPreferences.navbarPosition) == NavbarPosition.top;
+    final seerrNavLabel = seerrPrefs.labelOrDefault(l10n.seerr);
+    // Desktop/macOS keeps the dropdown; inline fan-out is only used where
+    // horizontal scroll is natural (TV d-pad or touch).
+    final useInlineLibraries =
+        _prefs.get(UserPreferences.navbarPosition) == NavbarPosition.top &&
+        ((alwaysExpanded &&
+                (PlatformDetection.isTV || PlatformDetection.useMobileUi)) ||
+            ((PlatformDetection.isAndroid || PlatformDetection.isAppleTV) &&
+                PlatformDetection.isTV));
 
     int order = 1;
     var navSlot = 0;
@@ -781,6 +844,7 @@ class _TopToolbarState extends State<TopToolbar> {
                   order: (order++).toDouble(),
                   child: ExpandableIconButton(
                     key: const ValueKey('toolbar_home'),
+                    forceExpanded: alwaysExpanded,
                     icon: Icons.home_rounded,
                     label: l10n.home,
                     baseColor: nextNavColor(),
@@ -796,10 +860,10 @@ class _TopToolbarState extends State<TopToolbar> {
                     },
                     onPressed: () {
                       if (_isActive(Destinations.home)) {
-                        requestHomeRefresh();
+                        homeRefreshBus.request();
                         return;
                       }
-                      requestHomeRefreshAfterNavigation();
+                      homeRefreshBus.requestAfterNavigation();
                       context.go(Destinations.home);
                     },
                   ),
@@ -809,6 +873,7 @@ class _TopToolbarState extends State<TopToolbar> {
                   order: (order++).toDouble(),
                   child: ExpandableIconButton(
                     key: const ValueKey('toolbar_search'),
+                    forceExpanded: alwaysExpanded,
                     icon: Icons.search_rounded,
                     label: l10n.search,
                     baseColor: nextNavColor(),
@@ -824,6 +889,7 @@ class _TopToolbarState extends State<TopToolbar> {
                     order: (order++).toDouble(),
                     child: ExpandableIconButton(
                       key: const ValueKey('toolbar_shuffle'),
+                      forceExpanded: alwaysExpanded,
                       icon: Icons.shuffle_rounded,
                       label: l10n.shuffle,
                       baseColor: nextNavColor(),
@@ -837,6 +903,7 @@ class _TopToolbarState extends State<TopToolbar> {
                     order: (order++).toDouble(),
                     child: ExpandableIconButton(
                       key: const ValueKey('toolbar_genres'),
+                      forceExpanded: alwaysExpanded,
                       baseColor: nextNavColor(),
                       iconBuilder: (size, color) => Image.asset(
                         'assets/icons/genres.png',
@@ -859,6 +926,7 @@ class _TopToolbarState extends State<TopToolbar> {
                     order: (order++).toDouble(),
                     child: ExpandableIconButton(
                       key: const ValueKey('toolbar_favorites'),
+                      forceExpanded: alwaysExpanded,
                       icon: Icons.favorite_rounded,
                       label: l10n.favorites,
                       baseColor: nextNavColor(),
@@ -875,6 +943,7 @@ class _TopToolbarState extends State<TopToolbar> {
                     order: (order++).toDouble(),
                     child: ExpandableIconButton(
                       key: const ValueKey('toolbar_folders'),
+                      forceExpanded: alwaysExpanded,
                       icon: Icons.folder_rounded,
                       label: l10n.folders,
                       baseColor: nextNavColor(),
@@ -891,6 +960,7 @@ class _TopToolbarState extends State<TopToolbar> {
                     order: (order++).toDouble(),
                     child: ExpandableIconButton(
                       key: const ValueKey('toolbar_syncplay'),
+                      forceExpanded: alwaysExpanded,
                       icon: Icons.groups_rounded,
                       label: l10n.syncPlay,
                       baseColor: nextNavColor(),
@@ -908,10 +978,11 @@ class _TopToolbarState extends State<TopToolbar> {
                     order: (order++).toDouble(),
                     child: ExpandableIconButton(
                       key: const ValueKey('toolbar_seerr'),
+                      forceExpanded: alwaysExpanded,
                       baseColor: nextNavColor(),
                       iconBuilder: (size, color) => seerrPrefs.isSeerrVariant
                           ? SeerrIcon(size: size, color: color)
-                          : JellyseerrIcon(size: size, color: color),
+                          : SeerrIcon(size: size, color: color),
                       label: seerrNavLabel,
                       onPressed: () {
                         if (_isActive(Destinations.seerrDiscover)) return;
@@ -924,12 +995,16 @@ class _TopToolbarState extends State<TopToolbar> {
                   _gap(),
                   _orderButton(
                     order: (order++).toDouble(),
-                    child: useAndroidTvInlineLibraries
-                        ? _buildAndroidTvLibrariesButton(
+                    child: useInlineLibraries
+                        ? _buildInlineLibrariesButton(
                             l10n,
                             iconColor: nextNavColor(),
+                            alwaysExpanded: alwaysExpanded,
                           )
-                        : _buildLibrariesButton(iconColor: nextNavColor()),
+                        : _buildLibrariesButton(
+                            iconColor: nextNavColor(),
+                            alwaysExpanded: alwaysExpanded,
+                          ),
                   ),
                 ],
                 _gap(),
@@ -937,6 +1012,7 @@ class _TopToolbarState extends State<TopToolbar> {
                   order: 99,
                   child: ExpandableIconButton(
                     key: const ValueKey('toolbar_settings'),
+                    forceExpanded: alwaysExpanded,
                     icon: Icons.settings_rounded,
                     label: l10n.settings,
                     baseColor: nextNavColor(),
@@ -949,7 +1025,7 @@ class _TopToolbarState extends State<TopToolbar> {
                       }
                       if (event is KeyDownEvent &&
                           event.logicalKey == LogicalKeyboardKey.arrowLeft &&
-                          useAndroidTvInlineLibraries &&
+                          useInlineLibraries &&
                           showLibraries &&
                           _libraries.isNotEmpty) {
                         _inlineLibrariesTriggerFocus.requestFocus();
@@ -982,12 +1058,12 @@ class _TopToolbarState extends State<TopToolbar> {
       );
     }
     return ClipRRect(
-      borderRadius: BorderRadius.circular(_kPillRadius),
+      borderRadius: AppRadius.circular(_kPillRadius),
       child: Container(
         padding: EdgeInsets.zero,
         decoration: BoxDecoration(
           color: _toolbarSurfaceColor(),
-          borderRadius: BorderRadius.circular(_kPillRadius),
+          borderRadius: AppRadius.circular(_kPillRadius),
           border: isNeon
               ? Border.fromBorderSide(
                   ThemeRegistry.active.borders.chipBorder.copyWith(
@@ -1005,28 +1081,40 @@ class _TopToolbarState extends State<TopToolbar> {
     );
   }
 
-  Widget _buildLibrariesButton({Color? iconColor}) {
+  Widget _buildLibrariesButton({
+    Color? iconColor,
+    bool alwaysExpanded = false,
+  }) {
     return _LibrariesDropdown(
       key: const ValueKey('toolbar_libraries'),
       activeRoute: widget.activeRoute,
       libraries: _libraries,
       surfaceColor: _toolbarSurfaceColor(),
       iconColor: iconColor,
+      alwaysExpanded: alwaysExpanded,
       onLibraryTap: (lib) {
         if (lib.collectionType == 'music') {
           context.navigateTopLevel('/music/${lib.id}');
+        } else if (lib.collectionType == 'books' ||
+            lib.collectionType == 'audiobooks') {
+          context.navigateTopLevel(
+            Destinations.bookLibrary(lib.id, collectionType: lib.collectionType),
+          );
         } else if (lib.collectionType == 'livetv') {
           context.navigateTopLevel(Destinations.liveTvGuide);
         } else {
-          context.navigateTopLevel('/library/${lib.id}');
+          context.navigateTopLevel(
+            gameOrLibraryRoute(lib.id, lib.collectionType, lib.name),
+          );
         }
       },
     );
   }
 
-  Widget _buildAndroidTvLibrariesButton(
+  Widget _buildInlineLibrariesButton(
     AppLocalizations l10n, {
     Color? iconColor,
+    bool alwaysExpanded = false,
   }) {
     return _AndroidTvExpandableLibrariesButton(
       key: const ValueKey('toolbar_libraries_inline_tv'),
@@ -1034,15 +1122,23 @@ class _TopToolbarState extends State<TopToolbar> {
       libraries: _libraries,
       label: l10n.libraries,
       iconColor: iconColor,
+      alwaysExpanded: alwaysExpanded,
       triggerFocusNode: _inlineLibrariesTriggerFocus,
       nextFocusNode: _settingsFocus,
       onLibraryTap: (lib) {
         if (lib.collectionType == 'music') {
           context.navigateTopLevel('/music/${lib.id}');
+        } else if (lib.collectionType == 'books' ||
+            lib.collectionType == 'audiobooks') {
+          context.navigateTopLevel(
+            Destinations.bookLibrary(lib.id, collectionType: lib.collectionType),
+          );
         } else if (lib.collectionType == 'livetv') {
           context.navigateTopLevel(Destinations.liveTvGuide);
         } else {
-          context.navigateTopLevel('/library/${lib.id}');
+          context.navigateTopLevel(
+            gameOrLibraryRoute(lib.id, lib.collectionType, lib.name),
+          );
         }
       },
     );
@@ -1095,6 +1191,7 @@ class _LibrariesDropdown extends StatefulWidget {
   final List<AggregatedLibrary> libraries;
   final Color surfaceColor;
   final Color? iconColor;
+  final bool alwaysExpanded;
   final ValueChanged<AggregatedLibrary> onLibraryTap;
 
   const _LibrariesDropdown({
@@ -1103,6 +1200,7 @@ class _LibrariesDropdown extends StatefulWidget {
     required this.libraries,
     required this.surfaceColor,
     this.iconColor,
+    this.alwaysExpanded = false,
     required this.onLibraryTap,
   });
 
@@ -1115,6 +1213,7 @@ class _AndroidTvExpandableLibrariesButton extends StatefulWidget {
   final List<AggregatedLibrary> libraries;
   final String label;
   final Color? iconColor;
+  final bool alwaysExpanded;
   final FocusNode? triggerFocusNode;
   final FocusNode? nextFocusNode;
   final ValueChanged<AggregatedLibrary> onLibraryTap;
@@ -1125,6 +1224,7 @@ class _AndroidTvExpandableLibrariesButton extends StatefulWidget {
     required this.libraries,
     required this.label,
     this.iconColor,
+    this.alwaysExpanded = false,
     this.triggerFocusNode,
     this.nextFocusNode,
     required this.onLibraryTap,
@@ -1248,6 +1348,7 @@ class _AndroidTvExpandableLibrariesButtonState
             label: widget.label,
             expanded: _expanded,
             iconColor: widget.iconColor,
+            alwaysExpanded: widget.alwaysExpanded,
             onMoveRight: () {
               if (!_expanded || _libraryFocusNodes.isEmpty) return;
               _focusLibraryAt(0);
@@ -1324,6 +1425,7 @@ class _AndroidTvExpandableLibrariesButtonState
 class _ToolbarLibrariesTriggerButton extends StatefulWidget {
   final String label;
   final bool expanded;
+  final bool alwaysExpanded;
   final FocusNode? focusNode;
   final Color? iconColor;
   final VoidCallback? onMoveRight;
@@ -1333,6 +1435,7 @@ class _ToolbarLibrariesTriggerButton extends StatefulWidget {
     super.key,
     required this.label,
     required this.expanded,
+    this.alwaysExpanded = false,
     this.focusNode,
     this.iconColor,
     this.onMoveRight,
@@ -1346,81 +1449,111 @@ class _ToolbarLibrariesTriggerButton extends StatefulWidget {
 
 class _ToolbarLibrariesTriggerButtonState
     extends State<_ToolbarLibrariesTriggerButton> {
+  final _prefs = GetIt.instance<UserPreferences>();
   bool _focused = false;
+  bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
-    final isNeon = ThemeRegistry.active.id == ThemeRegistry.neonPulseId;
-    final highlighted = _focused || widget.expanded;
-    final showLabel = _focused;
-    final bgColor = highlighted ? Colors.white : Colors.transparent;
-    final fgColor = highlighted
-        ? Colors.black
-        : (widget.iconColor ??
-              (isNeon
-                  ? AppColorScheme.accent
-                  : Colors.white.withValues(alpha: 0.6)));
+    final isLeanback = PlatformDetection.useLeanbackUi;
+    final showLabel = _focused || _hovered || widget.alwaysExpanded;
 
-    return Focus(
-      focusNode: widget.focusNode,
-      onFocusChange: (focused) {
-        if (_focused != focused && mounted) {
-          setState(() => _focused = focused);
-        }
-      },
-      onKeyEvent: (_, event) {
-        if (event is KeyDownEvent &&
-            (event.logicalKey == LogicalKeyboardKey.select ||
-                event.logicalKey == LogicalKeyboardKey.enter)) {
-          widget.onPressed();
-          return KeyEventResult.handled;
-        }
-        if (event is KeyDownEvent &&
-            event.logicalKey == LogicalKeyboardKey.arrowRight &&
-            widget.expanded &&
-            widget.onMoveRight != null) {
-          widget.onMoveRight!.call();
-          return KeyEventResult.handled;
-        }
-        return KeyEventResult.ignored;
-      },
-      child: GestureDetector(
-        onTap: widget.onPressed,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOut,
-          constraints: const BoxConstraints(minHeight: 44),
-          padding: EdgeInsets.symmetric(
-            horizontal: showLabel ? 18 : 10,
-            vertical: 10,
-          ),
-          decoration: BoxDecoration(
-            color: bgColor,
-            borderRadius: BorderRadius.circular(36),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Image.asset(
-                'assets/icons/clapperboard.png',
-                width: 24,
-                height: 24,
-                color: fgColor,
-                fit: BoxFit.contain,
-              ),
-              if (showLabel) ...[
-                const SizedBox(width: 10),
-                Text(
-                  widget.label,
-                  style: TextStyle(
-                    color: fgColor,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
+    final Color bgColor;
+    final Color fgColor;
+    if (isLeanback) {
+      final isNeon = ThemeRegistry.active.id == ThemeRegistry.neonPulseId;
+      final highlighted = _focused || widget.expanded;
+      bgColor = highlighted ? Colors.white : Colors.transparent;
+      fgColor = highlighted
+          ? Colors.black
+          : (widget.iconColor ??
+                (isNeon
+                    ? AppColorScheme.accent
+                    : Colors.white.withValues(alpha: 0.6)));
+    } else {
+      final focusColor = Color(
+        _prefs.get(UserPreferences.focusColor).colorValue,
+      );
+      final base =
+          widget.iconColor ?? AppColorScheme.onSurface.withValues(alpha: 0.6);
+      final active = _focused || _hovered || widget.expanded;
+      bgColor = active ? focusColor.withValues(alpha: 0.18) : Colors.transparent;
+      fgColor = active ? focusColor : base;
+    }
+
+    final hoverEnabled = !isLeanback;
+    return MouseRegion(
+      onEnter: hoverEnabled
+          ? (_) {
+              if (mounted && !_hovered) setState(() => _hovered = true);
+            }
+          : null,
+      onExit: hoverEnabled
+          ? (_) {
+              if (mounted && _hovered) setState(() => _hovered = false);
+            }
+          : null,
+      child: Focus(
+        focusNode: widget.focusNode,
+        onFocusChange: (focused) {
+          if (_focused != focused && mounted) {
+            setState(() => _focused = focused);
+          }
+        },
+        onKeyEvent: (_, event) {
+          if (event is KeyDownEvent &&
+              (event.logicalKey == LogicalKeyboardKey.select ||
+                  event.logicalKey == LogicalKeyboardKey.enter)) {
+            widget.onPressed();
+            return KeyEventResult.handled;
+          }
+          if (event is KeyDownEvent &&
+              event.logicalKey == LogicalKeyboardKey.arrowRight &&
+              widget.expanded &&
+              widget.onMoveRight != null) {
+            widget.onMoveRight!.call();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: GestureDetector(
+          onTap: widget.onPressed,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOut,
+            constraints: const BoxConstraints(minHeight: 44),
+            padding: EdgeInsets.symmetric(
+              horizontal: showLabel ? 18 : 10,
+              vertical: 10,
+            ),
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: AppRadius.circular(36),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Image.asset(
+                  'assets/icons/clapperboard.png',
+                  width: 24,
+                  height: 24,
+                  color: fgColor,
+                  fit: BoxFit.contain,
                 ),
+                if (showLabel) ...[
+                  const SizedBox(width: 10),
+                  Text(
+                    widget.label,
+                    style: TextStyle(
+                      color: fgColor,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -1453,61 +1586,90 @@ class _ToolbarLibraryLabelButton extends StatefulWidget {
 
 class _ToolbarLibraryLabelButtonState
     extends State<_ToolbarLibraryLabelButton> {
+  final _prefs = GetIt.instance<UserPreferences>();
   bool _focused = false;
+  bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
-    final bgColor = _focused ? Colors.white : Colors.transparent;
-    final fgColor = _focused ? Colors.black : Colors.white;
+    final isLeanback = PlatformDetection.useLeanbackUi;
+    final active = _focused || _hovered;
+    final Color bgColor;
+    final Color fgColor;
+    if (isLeanback) {
+      bgColor = _focused ? Colors.white : Colors.transparent;
+      fgColor = _focused ? Colors.black : Colors.white;
+    } else {
+      final focusColor = Color(
+        _prefs.get(UserPreferences.focusColor).colorValue,
+      );
+      bgColor = active ? focusColor.withValues(alpha: 0.18) : Colors.transparent;
+      fgColor = active
+          ? focusColor
+          : AppColorScheme.onSurface.withValues(alpha: 0.85);
+    }
 
-    return Focus(
-      focusNode: widget.focusNode,
-      onFocusChange: (focused) {
-        if (_focused != focused && mounted) {
-          setState(() => _focused = focused);
-        }
-        widget.onFocusChanged?.call(focused);
-      },
-      onKeyEvent: (_, event) {
-        if (event is KeyDownEvent &&
-            event.logicalKey == LogicalKeyboardKey.arrowLeft &&
-            widget.onMoveLeft != null) {
-          widget.onMoveLeft!.call();
-          return KeyEventResult.handled;
-        }
-        if (event is KeyDownEvent &&
-            event.logicalKey == LogicalKeyboardKey.arrowRight &&
-            widget.onMoveRight != null) {
-          widget.onMoveRight!.call();
-          return KeyEventResult.handled;
-        }
-        if (event is KeyDownEvent &&
-            (event.logicalKey == LogicalKeyboardKey.select ||
-                event.logicalKey == LogicalKeyboardKey.enter)) {
-          widget.onPressed();
-          return KeyEventResult.handled;
-        }
-        return KeyEventResult.ignored;
-      },
-      child: GestureDetector(
-        onTap: widget.onPressed,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          curve: Curves.easeOut,
-          constraints: const BoxConstraints(minHeight: 44),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: _focused
-              ? BoxDecoration(
-                  color: bgColor,
-                  borderRadius: BorderRadius.circular(22),
-                )
-              : null,
-          child: Text(
-            widget.label,
-            style: TextStyle(
-              color: fgColor,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
+    final hoverEnabled = !isLeanback;
+    return MouseRegion(
+      onEnter: hoverEnabled
+          ? (_) {
+              if (mounted && !_hovered) setState(() => _hovered = true);
+            }
+          : null,
+      onExit: hoverEnabled
+          ? (_) {
+              if (mounted && _hovered) setState(() => _hovered = false);
+            }
+          : null,
+      child: Focus(
+        focusNode: widget.focusNode,
+        onFocusChange: (focused) {
+          if (_focused != focused && mounted) {
+            setState(() => _focused = focused);
+          }
+          widget.onFocusChanged?.call(focused);
+        },
+        onKeyEvent: (_, event) {
+          if (event is KeyDownEvent &&
+              event.logicalKey == LogicalKeyboardKey.arrowLeft &&
+              widget.onMoveLeft != null) {
+            widget.onMoveLeft!.call();
+            return KeyEventResult.handled;
+          }
+          if (event is KeyDownEvent &&
+              event.logicalKey == LogicalKeyboardKey.arrowRight &&
+              widget.onMoveRight != null) {
+            widget.onMoveRight!.call();
+            return KeyEventResult.handled;
+          }
+          if (event is KeyDownEvent &&
+              (event.logicalKey == LogicalKeyboardKey.select ||
+                  event.logicalKey == LogicalKeyboardKey.enter)) {
+            widget.onPressed();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: GestureDetector(
+          onTap: widget.onPressed,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            curve: Curves.easeOut,
+            constraints: const BoxConstraints(minHeight: 44),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: active
+                ? BoxDecoration(
+                    color: bgColor,
+                    borderRadius: AppRadius.circular(22),
+                  )
+                : null,
+            child: Text(
+              widget.label,
+              style: TextStyle(
+                color: fgColor,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ),
@@ -1660,24 +1822,41 @@ class _LibrariesDropdownState extends State<_LibrariesDropdown> {
         child: Material(
           color: Colors.transparent,
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: kIsWeb
-                ? _dropdownContent(maxMenuHeight)
-                : BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            borderRadius: AppRadius.circular(12),
+            child: GlassSettings.blursBackdrop
+                ? BackdropFilter(
+                    filter: ImageFilter.blur(
+                      sigmaX: GlassSettings.capSigma(20),
+                      sigmaY: GlassSettings.capSigma(20),
+                    ),
                     child: _dropdownContent(maxMenuHeight),
-                  ),
+                  )
+                : _dropdownContent(maxMenuHeight),
           ),
         ),
       ),
     );
 
-    return CompositedTransformFollower(
+    final follower = CompositedTransformFollower(
       link: _layerLink,
       targetAnchor: _openToLeft ? Alignment.bottomRight : Alignment.bottomLeft,
       followerAnchor: _openToLeft ? Alignment.topRight : Alignment.topLeft,
       offset: Offset.zero,
       child: content,
+    );
+
+    if (!PlatformDetection.isMobile) return follower;
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _hideDropdown(),
+          ),
+        ),
+        follower,
+      ],
     );
   }
 
@@ -1690,7 +1869,7 @@ class _LibrariesDropdownState extends State<_LibrariesDropdown> {
       ),
       decoration: BoxDecoration(
         color: widget.surfaceColor,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppRadius.circular(12),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.5),
@@ -1747,6 +1926,7 @@ class _LibrariesDropdownState extends State<_LibrariesDropdown> {
         },
         child: ExpandableIconButton(
           baseColor: widget.iconColor,
+          forceExpanded: widget.alwaysExpanded,
           focusNode: _buttonFocusNode,
           onFocusChanged: (_) => _handleManagedFocusChange(),
           onKeyEvent: (_, event) {
@@ -1940,7 +2120,10 @@ class _TopMusicBarState extends State<TopMusicBar> {
       },
       child: Builder(
         builder: (context) {
-          final focused = Focus.of(context).hasFocus;
+          final focused = InputModeTracker.showFocusVisuals(
+            context,
+            Focus.of(context).hasFocus,
+          );
           return GestureDetector(
             onTap: onPressed,
             child: AnimatedContainer(
@@ -1953,7 +2136,7 @@ class _TopMusicBarState extends State<TopMusicBar> {
                     ? AppColorScheme.onSurface
                     : Colors.transparent,
               ),
-              child: Icon(
+              child: AdaptiveIcon(
                 icon,
                 size: 20,
                 color: focused ? AppColorScheme.surface : AppColorScheme.onSurface,
@@ -1975,22 +2158,11 @@ class _TopMusicBarState extends State<TopMusicBar> {
             color: AppColorScheme.onSurface.withValues(alpha: 0.15),
             width: 1.0,
           );
-    final boxShadow = isNeon
-        ? const [
-            BoxShadow(
-              color: Color(0x3300F0FF), // cyan glow!
-              blurRadius: 8,
-              spreadRadius: 1,
-            )
-          ]
-        : null;
-
     if (AppColorScheme.isGlass) {
       return Container(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: AppRadius.circular(24),
           border: border,
-          boxShadow: boxShadow,
         ),
         child: GlassSurface(
           cornerRadius: 24,
@@ -2007,9 +2179,8 @@ class _TopMusicBarState extends State<TopMusicBar> {
         ).withValues(
           alpha: GetIt.instance<UserPreferences>().get(UserPreferences.navbarOpacity) / 100.0,
         ),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: AppRadius.circular(24),
         border: border,
-        boxShadow: boxShadow,
       ),
       child: child,
     );
@@ -2043,12 +2214,12 @@ class _TopMusicBarState extends State<TopMusicBar> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: AppRadius.circular(6),
                   child: SizedBox(
                     width: 32,
                     height: 32,
                     child: artUrl != null
-                        ? CachedNetworkImage(
+                        ? OfflineAwareImage(
                             imageUrl: artUrl,
                             fit: BoxFit.cover,
                           )

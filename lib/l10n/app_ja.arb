@@ -931,10 +931,6 @@
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
     },
-    "favoriteTracksPlaceholder": "お気に入りのトラックがここに表示されます",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
-    },
     "failedToLoad": "ロードに失敗しました",
     "@failedToLoad": {
         "description": "Error message when item detail fails to load"
@@ -3733,10 +3729,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "特定のユーザー",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "常に認証する",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -4129,7 +4121,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -5451,7 +5443,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "遠隔地にいる人の検索",
     "adminNoRemoteMatches": "リモート一致が見つかりません",
     "adminRemoteResults": "リモート結果",
     "adminRemoteMetadataApplied": "リモートメタデータの適用",
@@ -5547,9 +5538,6 @@
     },
     "adminAddTuner": "チューナーの追加",
     "adminTunerType": "チューナーの種類",
-    "adminTunerTypeHint": "HDホームラン、M3U、その他",
-    "adminUrlPath": "URL/パス",
-    "adminNameOptional": "名前 (オプション)",
     "adminTunerAdded": "チューナーを追加しました",
     "adminTunerAddFailed": "Failed to add tuner: {error}",
     "@adminTunerAddFailed": {
@@ -5561,9 +5549,6 @@
     },
     "adminAddGuideProvider": "ガイドプロバイダーの追加",
     "adminProviderType": "プロバイダーの種類",
-    "adminProviderTypeHint": "スケジュールダイレクトまたは XMLTV",
-    "adminUsernameOptional": "ユーザー名 (オプション)",
-    "adminRefreshInterval": "更新間隔 (時間)",
     "adminProviderAdded": "プロバイダーが追加されました",
     "adminProviderAddFailed": "Failed to add provider: {error}",
     "@adminProviderAddFailed": {
@@ -5733,7 +5718,6 @@
     },
     "adminLogViewerNoMatches": "一致する行はありません",
     "adminMetadataEditorTitle": "メタデータエディター",
-    "adminMetadataRemote": "リモート",
     "adminMetadataType": "タイプ",
     "adminMetadataDetails": "詳細",
     "adminMetadataExternalIds": "外部ID",
@@ -6267,21 +6251,6 @@
     "rememberMyChoice": "私の選択を覚えておいてください",
     "playHdr10Fallback": "HDR10 フォールバックを再生する",
     "requestTranscode": "トランスコードをリクエストする",
-    "homeScreenSectionsIntegrationDescription": "IAmParadox27 の「ホーム画面セクション」プラグインによって公開された行を検出します。以下で行を有効にして並べ替えることができます。",
-    "homeScreenSectionsIntegrationNoServers": "プラグインを報告している Jellyfin サーバーはまだありません。",
-    "integrationOpenHomeSections": "ホームセクションを開く",
-    "integrationOpenHomeSectionsSubtitle": "行の有効化、無効化、および並べ替え",
-    "integrationInstalledButDisabled": "インストールされていますが無効になっています",
-    "integrationNotInstalled": "インストールされていません",
-    "integrationSectionsCount": "{count, plural, one {# section} other {# sections}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# row discovered} other {# rows discovered}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6291,7 +6260,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "すべて見る",
     "noItems": "アイテムがありません",
     "switchUser": "ユーザーの切り替え",
@@ -6827,18 +6795,6 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "AAC Stereo",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
     "settingsAudioPassthroughAdvanced": "Passthrough (Advanced)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
@@ -7092,7 +7048,6 @@
     },
     "savedThemesDeleteTooltip": "Delete saved theme",
     "savedThemesManageSubtitle": "Manage downloaded plugin themes on this device",
-    "homeScreenSectionsTitle": "Home Screen Sections",
     "themeEditor": "Theme Editor",
     "themeEditorSubtitle": "Open the Moonfin Theme Editor in your browser",
     "homeScreen": "Home Screen",
@@ -7354,5 +7309,19 @@
     "autoHdrSwitchingDescription": "Automatically enable HDR for HDR video playback and restore display mode on exit.",
     "whenFullscreen": "When fullscreen",
     "transcodingLimits": "Transcoding Limits",
-    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer"
+    "settingsSupportMoonfinSubtitle": "Donate a coffee to the developer",
+    "reportDownloadsActivity": "サーバーにダウンロードを表示",
+    "reportDownloadsActivitySubtitle": "変換済みダウンロードをサーバー管理者がダッシュボードで確認できるようにします",
+    "mbValue": "{value} MB",
+    "@mbValue": {
+        "description": "Megabyte value display",
+        "placeholders": {
+            "value": {
+                "type": "int"
+            }
+        }
+    },
+    "imageCacheLimit": "画像キャッシュの上限",
+    "clearImageCache": "画像キャッシュを消去",
+    "imageCacheCleared": "画像キャッシュを消去しました"
 }

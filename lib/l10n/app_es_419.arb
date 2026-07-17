@@ -1,9 +1,5 @@
 {
     "@@locale": "es_419",
-    "appTitle": "aleta lunar",
-    "@appTitle": {
-        "description": "The application title"
-    },
     "signIn": "Iniciar sesión",
     "@signIn": {
         "description": "Sign in heading and button label"
@@ -16,10 +12,6 @@
                 "type": "String"
             }
         }
-    },
-    "quickConnect": "Conexión rápida",
-    "@quickConnect": {
-        "description": "Quick Connect toggle button label"
     },
     "password": "Contraseña",
     "@password": {
@@ -48,15 +40,6 @@
     "loginFailed": "error de inicio de sesion",
     "@loginFailed": {
         "description": "Generic login failure message"
-    },
-    "quickConnectUnavailable": "Conexión rápida no disponible: {detail}",
-    "@quickConnectUnavailable": {
-        "description": "Quick Connect generic error message",
-        "placeholders": {
-            "detail": {
-                "type": "String"
-            }
-        }
     },
     "quickConnectUnavailableWithStatus": "QuickConnect no disponible ({status}): {detail}",
     "@quickConnectUnavailableWithStatus": {
@@ -171,10 +154,6 @@
     "settingsAppearanceThemeSubtitle": "Cambia entre Moonfin y Neon Pulse sin reiniciar la aplicación",
     "@settingsAppearanceThemeSubtitle": {
         "description": "Subtitle for the theme selection screen and theme settings entry"
-    },
-    "themeMoonfin": "aleta lunar",
-    "@themeMoonfin": {
-        "description": "Display name for the Moonfin theme"
     },
     "themeMoonfinSubtitle": "Aspecto actual de Moonfin que a todos les encanta",
     "@themeMoonfinSubtitle": {
@@ -846,10 +825,6 @@
     "@librivoxPage": {
         "description": "Button label for LibriVox external link"
     },
-    "internetArchive": "Archivo de Internet",
-    "@internetArchive": {
-        "description": "Button label for Internet Archive external link"
-    },
     "rssFeed": "Fuente RSS",
     "@rssFeed": {
         "description": "Button label for RSS feed external link"
@@ -930,10 +905,6 @@
     "itemListPlaceholder": "La lista de artículos aparecerá aquí.",
     "@itemListPlaceholder": {
         "description": "Placeholder text for an empty item list screen"
-    },
-    "favoriteTracksPlaceholder": "Las pistas favoritas aparecerán aquí",
-    "@favoriteTracksPlaceholder": {
-        "description": "Placeholder text for an empty music favorites screen"
     },
     "failedToLoad": "No se pudo cargar",
     "@failedToLoad": {
@@ -2722,11 +2693,11 @@
     "@showBackdropImages": {
         "description": "Description for background backdrops"
     },
-    "seriesThumbnails": "Miniaturas de series",
+    "seriesThumbnails": "Mostrar miniaturas de series",
     "@seriesThumbnails": {
         "description": "Setting for series thumbnails"
     },
-    "seriesThumbnailsDescription": "Solo episodios: use ilustraciones de la serie que coincidan con el tipo de imagen de cada fila",
+    "seriesThumbnailsDescription": "Para las series de TV, utiliza la imagen principal de la serie en lugar de la miniatura del episodio",
     "@seriesThumbnailsDescription": {
         "description": "Description for series thumbnails setting"
     },
@@ -3284,7 +3255,7 @@
     "@syncing": {
         "description": "Label while syncing"
     },
-    "syncToProfile": "Sincronizar con el perfil",
+    "syncToProfile": "Sincronizar perfil",
     "@syncToProfile": {
         "description": "Button to sync to a profile"
     },
@@ -3589,10 +3560,6 @@
     "@mediaBarModeDescription": {
         "description": "Description for media bar style setting"
     },
-    "mediaBarModeMoonfin": "aleta lunar",
-    "@mediaBarModeMoonfin": {
-        "description": "Media bar style option: Moonfin"
-    },
     "mediaBarModeMakd": "MakD",
     "@mediaBarModeMakd": {
         "description": "Media bar style option: MakD"
@@ -3765,10 +3732,6 @@
     "@lastUser": {
         "description": "Option: last user"
     },
-    "specificUser": "Usuario específico",
-    "@specificUser": {
-        "description": "Option: specific user"
-    },
     "alwaysAuthenticate": "Autenticar siempre",
     "@alwaysAuthenticate": {
         "description": "Setting for always authenticate"
@@ -3903,14 +3866,6 @@
     "@displayClockDuringScreensaver": {
         "description": "Description for show clock"
     },
-    "rottenTomatoesCritics": "Tomates podridos (críticos)",
-    "@rottenTomatoesCritics": {
-        "description": "Rating source: Rotten Tomatoes Critics"
-    },
-    "rottenTomatoesAudience": "Tomates podridos (público)",
-    "@rottenTomatoesAudience": {
-        "description": "Rating source: Rotten Tomatoes Audience"
-    },
     "imdb": "IMDb",
     "@imdb": {
         "description": "Rating source: IMDb"
@@ -3919,25 +3874,9 @@
     "@tmdb": {
         "description": "Rating source: TMDB"
     },
-    "metacritic": "metacrítico",
-    "@metacritic": {
-        "description": "Rating source: Metacritic"
-    },
-    "metacriticUser": "Metacrítico (Usuario)",
-    "@metacriticUser": {
-        "description": "Rating source: Metacritic User"
-    },
-    "trakt": "Tracto",
-    "@trakt": {
-        "description": "Rating source: Trakt"
-    },
     "letterboxd": "Buzón",
     "@letterboxd": {
         "description": "Rating source: Letterboxd"
-    },
-    "myAnimeList": "Mi lista de animes",
-    "@myAnimeList": {
-        "description": "Rating source: MyAnimeList"
     },
     "aniList": "AniLista",
     "@aniList": {
@@ -3991,7 +3930,7 @@
     "@ratingSourcesDescription": {
         "description": "Description for rating sources"
     },
-    "pluginLabel": "Complemento",
+    "pluginLabel": "Complemento Moonbase",
     "@pluginLabel": {
         "description": "Settings title for plugin"
     },
@@ -4091,10 +4030,6 @@
     "@resetRowsToDefaults": {
         "description": "Tooltip for reset rows to defaults"
     },
-    "enableSeerr": "Habilitar vidente",
-    "@enableSeerr": {
-        "description": "Setting for enabling Seerr"
-    },
     "showSeerrInNavigation": "Mostrar Seerr en la navegación (requiere complemento del servidor)",
     "@showSeerrInNavigation": {
         "description": "Description for enable Seerr"
@@ -4119,18 +4054,6 @@
                 "type": "String"
             }
         }
-    },
-    "discoverRows": "Descubrir filas",
-    "@discoverRows": {
-        "description": "Section title for discover rows"
-    },
-    "discoverRowsDescriptionPlugin": "Arrastre para reordenar. Activar o desactivar filas. Se ha habilitado la sincronización del orden de filas con el complemento Moonfin.",
-    "@discoverRowsDescriptionPlugin": {
-        "description": "Description for discover rows with plugin"
-    },
-    "discoverRowsDescription": "Arrastre para reordenar. Activar o desactivar filas.",
-    "@discoverRowsDescription": {
-        "description": "Description for discover rows without plugin"
     },
     "enabled": "Activado",
     "@enabled": {
@@ -4161,7 +4084,7 @@
     "@sourceCode": {
         "description": "Link to source code"
     },
-    "sourceCodeUrl": "https://github.com/Moonfin-Client/Mobile-Desktop",
+    "sourceCodeUrl": "https://github.com/Moonfin-Client/Moonfin-Core",
     "@sourceCodeUrl": {
         "description": "Displayed source code repository URL"
     },
@@ -4316,10 +4239,6 @@
                 "type": "int"
             }
         }
-    },
-    "seerrSettings": "Configuración de vidente",
-    "@seerrSettings": {
-        "description": "Dialog title for Seerr browse settings"
     },
     "requestMore": "Solicitar más",
     "@requestMore": {
@@ -4599,7 +4518,6 @@
     "stop": "Detener",
     "streaming": "Transmisión",
     "time": "Tiempo",
-    "trickplay": "truco",
     "uninstall": "Desinstalar",
     "up": "Arriba",
     "update": "Actualizar",
@@ -4616,7 +4534,6 @@
     "adminDrawerTranscoding": "Transcodificación",
     "adminDrawerResume": "Reanudar",
     "adminDrawerStreaming": "Transmisión",
-    "adminDrawerTrickplay": "truco",
     "adminDrawerDevices": "Dispositivos",
     "adminDrawerActivity": "Actividad",
     "adminDrawerNetworking": "Redes",
@@ -5406,8 +5323,6 @@
     "adminAllowSegmentDeletion": "Permitir la eliminación de segmentos",
     "adminSegmentKeepSeconds": "Mantener segmento (segundos)",
     "adminThrottleBuffering": "Amortiguación del acelerador",
-    "adminTrickplaySaved": "Configuración de trucos guardada",
-    "adminTrickplayLoadFailed": "No se pudo cargar la configuración de trucos",
     "adminEnableHardwareAcceleration": "Habilitar la aceleración de hardware",
     "adminEnableKeyFrameExtraction": "Habilitar la extracción solo de fotogramas clave",
     "adminKeyFrameSubtitle": "Más rápido pero con menor precisión",
@@ -5441,7 +5356,6 @@
     "adminHttpsPort": "Puerto HTTPS",
     "adminPublicHttpsPort": "Puerto HTTPS público",
     "adminBaseUrl": "URL básica",
-    "adminBaseUrlHint": "p.ej. /gelatina",
     "https": "HTTPS",
     "adminEnableHttps": "Habilitar HTTPS",
     "adminLocalNetwork": "Red Local",
@@ -5483,7 +5397,6 @@
             }
         }
     },
-    "adminSearchRemotePerson": "Buscar persona remota",
     "adminNoRemoteMatches": "No se encontraron coincidencias remotas",
     "adminRemoteResults": "Resultados remotos",
     "adminRemoteMetadataApplied": "Metadatos remotos aplicados",
@@ -5579,9 +5492,6 @@
     },
     "adminAddTuner": "Agregar sintonizador",
     "adminTunerType": "Tipo de sintonizador",
-    "adminTunerTypeHint": "HDHomeRun, M3U, Otro",
-    "adminUrlPath": "URL/ruta",
-    "adminNameOptional": "Nombre (opcional)",
     "adminTunerAdded": "Sintonizador añadido",
     "adminTunerAddFailed": "No se pudo agregar el sintonizador: {error}",
     "@adminTunerAddFailed": {
@@ -5593,9 +5503,6 @@
     },
     "adminAddGuideProvider": "Agregar proveedor de guía",
     "adminProviderType": "Tipo de proveedor",
-    "adminProviderTypeHint": "HorariosDirect o XMLTV",
-    "adminUsernameOptional": "Nombre de usuario (opcional)",
-    "adminRefreshInterval": "Intervalo de actualización (horas)",
     "adminProviderAdded": "Proveedor agregado",
     "adminProviderAddFailed": "No se pudo agregar el proveedor: {error}",
     "@adminProviderAddFailed": {
@@ -5765,7 +5672,6 @@
     },
     "adminLogViewerNoMatches": "No hay líneas coincidentes",
     "adminMetadataEditorTitle": "Editor de metadatos",
-    "adminMetadataRemote": "Remoto",
     "adminMetadataType": "Tipo",
     "adminMetadataDetails": "Detalles",
     "adminMetadataExternalIds": "ID externos",
@@ -6151,10 +6057,8 @@
             }
         }
     },
-    "adminTrickplayDescription": "Configure la generación de imágenes de trucos para buscar miniaturas de vista previa.",
     "adminNetworkingPublicHttpsPort": "Puerto HTTPS público",
     "adminNetworkingBaseUrl": "URL básica",
-    "adminNetworkingBaseUrlHint": "p.ej. /gelatina",
     "adminNetworkingHttps": "HTTPS",
     "adminNetworkingCertPath": "Ruta del certificado",
     "adminNetworkingRemoteIpFilter": "Filtro IP remoto",
@@ -6299,21 +6203,6 @@
     "rememberMyChoice": "Recuerda mi elección",
     "playHdr10Fallback": "Reproducir el respaldo de HDR10",
     "requestTranscode": "Solicitar transcodificación",
-    "homeScreenSectionsIntegrationDescription": "Detecte filas expuestas por el complemento \"Secciones de pantalla de inicio\" de IAmParadox27. Las filas se pueden habilitar y reordenar a continuación.",
-    "homeScreenSectionsIntegrationNoServers": "Aún no hay servidores Jellyfin que informen sobre el complemento.",
-    "integrationOpenHomeSections": "Abrir secciones de inicio",
-    "integrationOpenHomeSectionsSubtitle": "Activar, desactivar y reordenar filas",
-    "integrationInstalledButDisabled": "Instalado pero deshabilitado",
-    "integrationNotInstalled": "No instalado",
-    "integrationSectionsCount": "{count, plural, one {# seccion} other {# secciones}}",
-    "@integrationSectionsCount": {
-        "description": "Plural label for number of sections discovered in integration status",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
     "integrationRowsDiscoveredCount": "{count, plural, one {# fila detectada} other {# filas detectadas}}",
     "@integrationRowsDiscoveredCount": {
         "description": "Plural label for number of rows discovered in integration status",
@@ -6323,7 +6212,6 @@
             }
         }
     },
-    "jellyseerr": "Seerr",
     "seeAll": "Ver todo",
     "noItems": "Sin artículos",
     "switchUser": "Cambiar de usuario",
@@ -6392,21 +6280,8 @@
     "pinForgot": "¿Olvidaste tu PIN?",
     "pinClear": "Claro",
     "pinBackspace": "Retroceso",
-    "quickConnectAuthorized": "Solicitud de Conexión Rápida autorizada.",
-    "quickConnectInvalidOrExpired": "El código de Conexión Rápida no es válido o ha caducado.",
     "quickConnectNotSupported": "Quick Connect no es compatible con este servidor.",
-    "quickConnectAuthorizeFailed": "No se pudo autorizar el código de Conexión rápida.",
     "quickConnectDisabled": "Quick Connect está deshabilitado en este servidor.",
-    "quickConnectForbidden": "Su cuenta no puede autorizar esta solicitud de Conexión rápida.",
-    "quickConnectNotFound": "No se encontró el código de conexión rápida. Pruebe un nuevo código.",
-    "quickConnectFailedWithMessage": "Error de conexión rápida: {message}",
-    "@quickConnectFailedWithMessage": {
-        "placeholders": {
-            "message": {
-                "type": "String"
-            }
-        }
-    },
     "quickConnectEnterCode": "Introduce el código",
     "quickConnectAuthorize": "Autorizar",
     "remoteCommandFailed": "El comando falló: {error}",
@@ -6750,7 +6625,7 @@
             }
         }
     },
-    "desktopUiScale": "Escala de interfaz de usuario de escritorio",
+    "desktopUiScale": "Escala de la interfaz",
     "@desktopUiScale": {
         "description": "Setting for desktop UI scale"
     },
@@ -6770,10 +6645,6 @@
     "email": "Correo electrónico",
     "@email": {
         "description": "Email field label"
-    },
-    "seerrAccountType": "Tipo de cuenta vidente",
-    "@seerrAccountType": {
-        "description": "Header for selecting Seerr authentication account type"
     },
     "jellyfinAccount": "Jellyfin",
     "@jellyfinAccount": {
@@ -6827,67 +6698,55 @@
     "@settingsAudioFallbackCodec": {
         "description": "Setting for fallback audio codec"
     },
-    "settingsAudioFallbackAacStereo": "Estéreo AAC",
-    "@settingsAudioFallbackAacStereo": {
-        "description": "Fallback codec option for AAC stereo"
-    },
-    "settingsAudioFallbackAc35_1": "AC3 5.1",
-    "@settingsAudioFallbackAc35_1": {
-        "description": "Fallback codec option for AC3 5.1"
-    },
-    "settingsAudioFallbackEac35_1": "EAC3 5.1",
-    "@settingsAudioFallbackEac35_1": {
-        "description": "Fallback codec option for EAC3 5.1"
-    },
-    "settingsAudioPassthroughAdvanced": "Paso a través (avanzado)",
+    "settingsAudioPassthroughAdvanced": "Passthrough (Avanzado)",
     "@settingsAudioPassthroughAdvanced": {
         "description": "Section title for advanced passthrough controls"
     },
-    "settingsAudioCodecPassthrough": "Paso de códec",
+    "settingsAudioCodecPassthrough": "Passthrough de códecs",
     "@settingsAudioCodecPassthrough": {
         "description": "Title for codec passthrough settings group"
     },
-    "settingsAudioCodecPassthroughDescription": "Habilite solo los formatos que admite su disipador AVR o HDMI.",
+    "settingsAudioCodecPassthroughDescription": "Activa únicamente los formatos compatibles con tu receptor AV (AVR) o dispositivo HDMI de destino.",
     "@settingsAudioCodecPassthroughDescription": {
         "description": "Description for codec passthrough settings group"
     },
-    "settingsAudioEac3Passthrough": "Paso EAC3",
+    "settingsAudioEac3Passthrough": "Passthrough de EAC3",
     "@settingsAudioEac3Passthrough": {
         "description": "Setting for EAC3 passthrough"
     },
-    "settingsAudioEac3JocPassthrough": "Paso EAC3 JOC (Atmos)",
+    "settingsAudioEac3JocPassthrough": "Passthrough de EAC3 JOC (Atmos)",
     "@settingsAudioEac3JocPassthrough": {
         "description": "Setting for EAC3 JOC Atmos passthrough"
     },
-    "settingsAudioDtsCorePassthrough": "Paso a través del núcleo DTS",
+    "settingsAudioDtsCorePassthrough": "Passthrough de DTS Core",
     "@settingsAudioDtsCorePassthrough": {
         "description": "Setting for DTS core passthrough"
     },
-    "settingsAudioDtsHdPassthrough": "Paso a través de DTS-HD MA",
+    "settingsAudioDtsHdPassthrough": "Passthrough de DTS-HD MA",
     "@settingsAudioDtsHdPassthrough": {
         "description": "Setting for DTS-HD MA passthrough"
     },
-    "settingsAudioTrueHdPassthrough": "Paso TrueHD",
+    "settingsAudioTrueHdPassthrough": "Passthrough de TrueHD",
     "@settingsAudioTrueHdPassthrough": {
         "description": "Setting for TrueHD passthrough"
     },
-    "settingsAudioTrueHdAtmosPassthrough": "Paso TrueHD Atmos",
+    "settingsAudioTrueHdAtmosPassthrough": "Passthrough de TrueHD Atmos",
     "@settingsAudioTrueHdAtmosPassthrough": {
         "description": "Setting for TrueHD Atmos passthrough"
     },
-    "settingsAudioBitstreamEac3ToExternalDecoder": "Bitstream Dolby Digital Plus (EAC3) a decodificador externo.",
+    "settingsAudioBitstreamEac3ToExternalDecoder": "Envía Dolby Digital Plus (EAC3) en formato bitstream a un decodificador externo.",
     "@settingsAudioBitstreamEac3ToExternalDecoder": {
         "description": "Description for EAC3 passthrough"
     },
-    "settingsAudioBitstreamEac3JocToExternalDecoder": "Bitstream Dolby Atmos sobre EAC3 (JOC) a decodificador externo.",
+    "settingsAudioBitstreamEac3JocToExternalDecoder": "Envía Dolby Atmos sobre EAC3 (JOC) en formato bitstream a un decodificador externo.",
     "@settingsAudioBitstreamEac3JocToExternalDecoder": {
         "description": "Description for EAC3 JOC passthrough"
     },
-    "settingsAudioBitstreamDtsHdToExternalDecoder": "Bitstream DTS-HD MA (incluye núcleo DTS) a decodificador externo.",
+    "settingsAudioBitstreamDtsHdToExternalDecoder": "Envía DTS-HD MA (incluye el núcleo DTS) en formato bitstream a un decodificador externo.",
     "@settingsAudioBitstreamDtsHdToExternalDecoder": {
         "description": "Description for DTS-HD MA passthrough"
     },
-    "settingsAudioBitstreamTrueHdAtmosToExternalDecoder": "Bitstream Dolby TrueHD con metadatos Atmos a decodificador externo.",
+    "settingsAudioBitstreamTrueHdAtmosToExternalDecoder": "Envía Dolby TrueHD con metadatos Atmos en formato bitstream a un decodificador externo.",
     "@settingsAudioBitstreamTrueHdAtmosToExternalDecoder": {
         "description": "Description for TrueHD Atmos passthrough"
     },
@@ -7092,7 +6951,6 @@
     },
     "savedThemesDeleteTooltip": "Eliminar tema guardado",
     "savedThemesManageSubtitle": "Administrar temas de complementos descargados en este dispositivo",
-    "homeScreenSectionsTitle": "Secciones de la pantalla de inicio",
     "themeEditor": "Editor de temas",
     "themeEditorSubtitle": "Abra el editor de temas Moonfin en su navegador.",
     "homeScreen": "Pantalla de inicio",
@@ -7212,7 +7070,6 @@
     "recentlyReleasedEpisodes": "Episodios lanzados recientemente",
     "watchAgain": "Ver de nuevo",
     "guestAppearances": "Apariciones de invitados",
-    "appearancesSeerr": "Apariciones (Vidente)",
     "watchWithGroup": "Ver con grupo",
     "errors": "Errores",
     "warnings": "Advertencias",
@@ -7279,7 +7136,6 @@
     "mixedContent": "Contenido mixto",
     "homeVideosAndPhotos": "Inicio Vídeos y fotos",
     "mixedMoviesAndShows": "Películas y programas mixtos",
-    "intelQuickSync": "Sincronización rápida Intel",
     "rockchipMpp": "MPP de chip de roca",
     "dolbyVision": "Dolby Vision",
     "noRecordingsFound": "No se encontraron grabaciones",
@@ -7354,5 +7210,277 @@
     "autoHdrSwitchingDescription": "Habilite HDR automáticamente para la reproducción de video HDR y restaure el modo de visualización al salir.",
     "whenFullscreen": "Cuando pantalla completa",
     "transcodingLimits": "Límites de transcodificación",
-    "settingsSupportMoonfinSubtitle": "Dona un café al desarrollador"
+    "settingsSupportMoonfinSubtitle": "Dona un café al desarrollador",
+    "accountPreferences": "PREFERENCIAS DE CUENTA",
+    "@accountPreferences": {
+        "description": "Section header for account preferences settings"
+    },
+    "interfaceLanguage": "Idioma de la interfaz",
+    "@interfaceLanguage": {
+        "description": "Label for the app interface language setting"
+    },
+    "systemLanguageDefault": "Predeterminado",
+    "@systemLanguageDefault": {
+        "description": "Label for using the system default language in settings"
+    },
+    "empty": "Vacío",
+    "@empty": {
+        "description": "Label indicating a section or category is empty"
+    },
+    "themeGlass": "Glass",
+    "@themeGlass": {
+        "description": "Display name for the Glass theme"
+    },
+    "themeGlassSubtitle": "Diseño tipo cristal líquido, con un degradado dinámico de fondo, paneles translúcidos con efecto vidrio esmerilado y detalles en azul característico de Apple",
+    "@themeGlassSubtitle": {
+        "description": "Preview description for the Glass theme"
+    },
+    "endsIn": "Finaliza en {time}",
+    "@endsIn": {
+        "description": "Label showing remaining time for segment or timeout",
+        "placeholders": {
+            "time": {
+                "type": "String"
+            }
+        }
+    },
+    "directors": "DIRECTORES",
+    "@directors": {
+        "description": "Metadata label for directors"
+    },
+    "writer": "ESCRITOR",
+    "@writer": {
+        "description": "Metadata label for writer"
+    },
+    "settingsScrollWheelAction": "Rueda del mouse",
+    "@settingsScrollWheelAction": {
+        "description": "Setting title for the mouse scroll wheel action during playback"
+    },
+    "settingsScrollWheelActionDescription": "Elige qué acción realiza la rueda del mouse al desplazarse sobre el video durante la reproducción",
+    "@settingsScrollWheelActionDescription": {
+        "description": "Description for the mouse scroll wheel action setting"
+    },
+    "scrollWheelActionOff": "Desactivado",
+    "@scrollWheelActionOff": {
+        "description": "Scroll wheel action option: do nothing"
+    },
+    "scrollWheelActionSeek": "Avanzar o retroceder",
+    "@scrollWheelActionSeek": {
+        "description": "Scroll wheel action option: seek forward and back"
+    },
+    "scrollWheelActionVolume": "Volumen",
+    "@scrollWheelActionVolume": {
+        "description": "Scroll wheel action option: adjust volume"
+    },
+    "playerTooltipVolume": "Volumen",
+    "@playerTooltipVolume": {
+        "description": "Tooltip for the volume control button in the player OSD"
+    },
+    "settingsAudioOutputModeDescription": "Elige cómo se decodifica el audio. Passthrough AVR envía las transmisiones Dolby/DTS sin procesar a tu receptor; Automático o Mezcla estéreo las decodifican localmente.",
+    "@settingsAudioOutputModeDescription": {
+        "description": "Description for audio output mode setting"
+    },
+    "settingsAudioFallbackCodecDescription": "Selecciona el formato de destino al que se convertirá el audio multicanal cuando la transmisión original no pueda reproducirse directamente ni enviarse mediante passthrough.",
+    "@settingsAudioFallbackCodecDescription": {
+        "description": "Description for audio fallback codec setting"
+    },
+    "settingsAudioFallbackCodecAuto": "Detección automática\n(Recomendado)",
+    "@settingsAudioFallbackCodecAuto": {
+        "description": "Fallback codec option: Auto"
+    },
+    "settingsAudioFallbackCodecAac": "AAC\n(Predeterminado)",
+    "@settingsAudioFallbackCodecAac": {
+        "description": "Fallback codec option: AAC"
+    },
+    "settingsAudioFallbackCodecAc3": "AC3\n(Dolby Digital)",
+    "@settingsAudioFallbackCodecAc3": {
+        "description": "Fallback codec option: AC3"
+    },
+    "settingsAudioFallbackCodecEac3": "EAC3\n(Dolby Digital Plus)",
+    "@settingsAudioFallbackCodecEac3": {
+        "description": "Fallback codec option: EAC3"
+    },
+    "settingsAudioFallbackCodecTrueHd": "TrueHD\n(Sin pérdida)",
+    "@settingsAudioFallbackCodecTrueHd": {
+        "description": "Fallback codec option: TrueHD"
+    },
+    "settingsAudioFallbackCodecMp3": "MP3\n(Sólo Stereo)",
+    "@settingsAudioFallbackCodecMp3": {
+        "description": "Fallback codec option: MP3"
+    },
+    "settingsAudioFallbackCodecOpus": "Opus\n(Eficiente)",
+    "@settingsAudioFallbackCodecOpus": {
+        "description": "Fallback codec option: Opus"
+    },
+    "settingsAudioFallbackCodecFlac": "FLAC\n(Sin pérdida)",
+    "@settingsAudioFallbackCodecFlac": {
+        "description": "Fallback codec option: FLAC"
+    },
+    "settingsMaxAudioChannels": "Máximo de canales de audio",
+    "@settingsMaxAudioChannels": {
+        "description": "Setting for maximum audio channels capability"
+    },
+    "settingsMaxAudioChannelsDescription": "Configura la cantidad máxima de canales de tu sistema de audio. Las transmisiones multicanal que superen este límite se mezclarán a menos canales o se convertirán a otro formato.",
+    "@settingsMaxAudioChannelsDescription": {
+        "description": "Description for maximum audio channels setting"
+    },
+    "settingsMaxAudioChannelsAuto": "Detección automática\n(Predeterminado del hardware)",
+    "@settingsMaxAudioChannelsAuto": {
+        "description": "Option: Auto detect channels"
+    },
+    "settingsMaxAudioChannelsMono": "1.0 Mono",
+    "@settingsMaxAudioChannelsMono": {
+        "description": "Option: Mono (1 channel)"
+    },
+    "settingsMaxAudioChannelsStereo": "2.0 Stéreo",
+    "@settingsMaxAudioChannelsStereo": {
+        "description": "Option: Stereo (2 channels)"
+    },
+    "settingsMaxAudioChannels3_0": "3.0 / 2.1 Surround",
+    "@settingsMaxAudioChannels3_0": {
+        "description": "Option: 3 channels"
+    },
+    "settingsMaxAudioChannels4_0": "4.0 / 3.1 Cuadrafónico",
+    "@settingsMaxAudioChannels4_0": {
+        "description": "Option: 4 channels"
+    },
+    "settingsMaxAudioChannels5_0": "5.0 / 4.1 Envolvente",
+    "@settingsMaxAudioChannels5_0": {
+        "description": "Option: 5 channels"
+    },
+    "settingsMaxAudioChannels5_1": "5.1 Envolvente",
+    "@settingsMaxAudioChannels5_1": {
+        "description": "Option: 5.1 Surround channels"
+    },
+    "settingsMaxAudioChannels6_1": "6.1 Envolvente",
+    "@settingsMaxAudioChannels6_1": {
+        "description": "Option: 6.1 Surround channels"
+    },
+    "settingsMaxAudioChannels7_1": "7.1 Envolvente",
+    "@settingsMaxAudioChannels7_1": {
+        "description": "Option: 7.1 Surround channels"
+    },
+    "showSeerrButton": "Mostrar botón de Seerr",
+    "@showSeerrButton": {
+        "description": "Setting for showing Seerr button"
+    },
+    "fullScreenRows": "Filas de inicio ampliadas",
+    "@fullScreenRows": {
+        "description": "Setting for full screen home rows"
+    },
+    "fullScreenRowsDescription": "Limita las filas de inicio a una sola fila por pantalla",
+    "@fullScreenRowsDescription": {
+        "description": "Description for full screen home rows"
+    },
+    "currentUser": "Usuario actual",
+    "@currentUser": {
+        "description": "Option: current user"
+    },
+    "clockModeStatic": "Estático",
+    "@clockModeStatic": {
+        "description": "Screensaver clock mode: fixed in a corner"
+    },
+    "clockModeBouncing": "Rebotando",
+    "@clockModeBouncing": {
+        "description": "Screensaver clock mode: bounces around the screen"
+    },
+    "seerrAccountType": "Tipo de cuenta vidente",
+    "@seerrAccountType": {
+        "description": "Header for selecting Seerr authentication account type"
+    },
+    "metacriticUser": "Metacrítico (Usuario)",
+    "@metacriticUser": {
+        "description": "Rating source: Metacritic User"
+    },
+    "quickConnectNotFound": "No se encontró el código de conexión rápida. Pruebe un nuevo código.",
+    "appearancesSeerr": "Apariciones (Vidente)",
+    "quickConnectUnavailable": "Conexión rápida no disponible: {detail}",
+    "@quickConnectUnavailable": {
+        "description": "Quick Connect generic error message",
+        "placeholders": {
+            "detail": {
+                "type": "String"
+            }
+        }
+    },
+    "adminBaseUrlHint": "p.ej. /gelatina",
+    "quickConnectInvalidOrExpired": "El código de Conexión Rápida no es válido o ha caducado.",
+    "quickConnectAuthorizeFailed": "No se pudo autorizar el código de Conexión rápida.",
+    "metacritic": "metacrítico",
+    "@metacritic": {
+        "description": "Rating source: Metacritic"
+    },
+    "appTitle": "aleta lunar",
+    "@appTitle": {
+        "description": "The application title"
+    },
+    "quickConnect": "Conexión rápida",
+    "@quickConnect": {
+        "description": "Quick Connect toggle button label"
+    },
+    "internetArchive": "Archivo de Internet",
+    "@internetArchive": {
+        "description": "Button label for Internet Archive external link"
+    },
+    "rottenTomatoesCritics": "Tomates podridos (críticos)",
+    "@rottenTomatoesCritics": {
+        "description": "Rating source: Rotten Tomatoes Critics"
+    },
+    "discoverRows": "Descubrir filas",
+    "@discoverRows": {
+        "description": "Section title for discover rows"
+    },
+    "discoverRowsDescriptionPlugin": "Arrastre para reordenar. Activar o desactivar filas. Se ha habilitado la sincronización del orden de filas con el complemento Moonfin.",
+    "@discoverRowsDescriptionPlugin": {
+        "description": "Description for discover rows with plugin"
+    },
+    "discoverRowsDescription": "Arrastre para reordenar. Activar o desactivar filas.",
+    "@discoverRowsDescription": {
+        "description": "Description for discover rows without plugin"
+    },
+    "seerrSettings": "Configuración de vidente",
+    "@seerrSettings": {
+        "description": "Dialog title for Seerr browse settings"
+    },
+    "adminTrickplayDescription": "Configure la generación de imágenes de trucos para buscar miniaturas de vista previa.",
+    "adminNetworkingBaseUrlHint": "p.ej. /gelatina",
+    "quickConnectAuthorized": "Solicitud de Conexión Rápida autorizada.",
+    "quickConnectForbidden": "Su cuenta no puede autorizar esta solicitud de Conexión rápida.",
+    "quickConnectFailedWithMessage": "Error de conexión rápida: {message}",
+    "@quickConnectFailedWithMessage": {
+        "placeholders": {
+            "message": {
+                "type": "String"
+            }
+        }
+    },
+    "intelQuickSync": "Sincronización rápida Intel",
+    "themeMoonfin": "aleta lunar",
+    "@themeMoonfin": {
+        "description": "Display name for the Moonfin theme"
+    },
+    "rottenTomatoesAudience": "Tomates podridos (público)",
+    "@rottenTomatoesAudience": {
+        "description": "Rating source: Rotten Tomatoes Audience"
+    },
+    "trakt": "Tracto",
+    "@trakt": {
+        "description": "Rating source: Trakt"
+    },
+    "myAnimeList": "Mi lista de animes",
+    "@myAnimeList": {
+        "description": "Rating source: MyAnimeList"
+    },
+    "trickplay": "truco",
+    "adminDrawerTrickplay": "truco",
+    "adminTrickplaySaved": "Configuración de trucos guardada",
+    "adminTrickplayLoadFailed": "No se pudo cargar la configuración de trucos",
+    "mediaBarModeMoonfin": "aleta lunar",
+    "@mediaBarModeMoonfin": {
+        "description": "Media bar style option: Moonfin"
+    },
+    "enableSeerr": "Habilitar vidente",
+    "@enableSeerr": {
+        "description": "Setting for enabling Seerr"
+    }
 }
