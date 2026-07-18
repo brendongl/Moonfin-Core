@@ -654,7 +654,9 @@ class _AppleTvPlayerHostScreenState extends State<AppleTvPlayerHostScreen> {
         item.type == 'MusicAlbum' ||
         item.type == 'AudioBook' ||
         mediaType == 'Audio';
-    return client.serverType == ServerType.jellyfin &&
+    // Sipflix: Emby supports the same RemoteSearch/Subtitles endpoints.
+    return (client.serverType == ServerType.jellyfin ||
+            client.serverType == ServerType.emby) &&
         canManage &&
         item.mediaSources.isNotEmpty &&
         item.type != 'Photo' &&

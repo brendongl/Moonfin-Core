@@ -892,7 +892,9 @@ class UserPreferences extends ChangeNotifier {
   /// Global like [detailScreenStyle], so it is deliberately omitted from [_scopedPreferenceKeys].
   static final detailShowTechnicalDetails = Preference(
     key: 'pref_detail_show_technical_details',
-    defaultValue: false,
+    // Sipflix: on by default — puts the file size in the detail metadata row
+    // and the technical badges (4K/HDR/codec) under it.
+    defaultValue: true,
   );
 
   /// Algorithm source for the similar items recommendation system. Global

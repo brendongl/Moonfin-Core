@@ -44,7 +44,10 @@ class MultiServerRepository {
   static const _sessionCacheDuration = Duration(seconds: 5);
   static const _serverTimeout = Duration(seconds: 8);
   static const _fields =
+      // Sipflix: ProviderIds included so resume rows can dedup the same movie
+      // existing as separate 4K/1080p library items (matched by TMDB/IMDB id).
       'DateCreated,Type,UserData,Overview,Genres,CommunityRating,CriticRating,'
+      'ProviderIds,'
       'OfficialRating,RunTimeTicks,ProductionYear,SeriesName,'
       'ParentIndexNumber,IndexNumber,Status,ImageTags,BackdropImageTags,'
       'ParentBackdropItemId,ParentBackdropImageTags,ParentThumbItemId,'
@@ -208,9 +211,33 @@ class MultiServerRepository {
     return HomeRow(
       id: 'resume',
       title: _l10n.continueWatching,
-      items: all.take(limit).toList(),
+      items: _dedupResumeItems(all).take(limit).toList(),
       rowType: HomeRowType.resume,
     );
+  }
+
+  /// Sipflix: collapse duplicate movies in Continue Watching. A movie stored
+  /// as separate 4K and 1080p library items (or on two servers) resumes as two
+  /// cards; keep only the first — the list is sorted by LastPlayedDate
+  /// descending, so that's the most recently played copy. Movies are keyed by
+  /// TMDB/IMDB id, falling back to normalized name+year; episodes keep their
+  /// own id so distinct episodes never collapse.
+  List<AggregatedItem> _dedupResumeItems(List<AggregatedItem> items) {
+    final seen = <String>{};
+    final deduped = <AggregatedItem>[];
+    for (final item in items) {
+      String key;
+      if (item.type == 'Movie') {
+        final providerId = item.tmdbId ?? item.imdbId;
+        key = providerId != null
+            ? 'movie:$providerId'
+            : 'movie:${item.name.trim().toLowerCase()}:${item.productionYear}';
+      } else {
+        key = '${item.serverId}:${item.id}';
+      }
+      if (seen.add(key)) deduped.add(item);
+    }
+    return deduped;
   }
 
   Future<HomeRow> getAggregatedResumeAudio({int limit = _defaultLimit}) async {

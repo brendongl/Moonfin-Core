@@ -193,7 +193,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   // Sipflix: auto-suggest a lower bitrate when playback keeps buffering.
   final _bitrateWatchdog = SipflixBitrateWatchdog();
   StreamSubscription<bool>? _sipflixBufferingSub;
+  // Sipflix: pending qualifies-as-sustained-stall check; cancelled if playback
+  // recovers before SipflixBitrateWatchdog.minStallDuration elapses.
+  Timer? _sipflixStallTimer;
   bool _bitrateDialogShowing = false;
+  // Sipflix: last-seen Max Streaming Bitrate pref, to detect a live change.
+  String? _lastMaxBitratePref;
   StreamSubscription<Map<String, dynamic>>? _castEventsSub;
   StreamSubscription<Map<String, dynamic>>? _dlnaEventsSub;
   StreamSubscription<Map<String, dynamic>>? _airPlayEventsSub;
@@ -389,7 +394,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         item.type == 'AudioBook' ||
         mediaType == 'Audio';
 
-    return client.serverType == ServerType.jellyfin &&
+    // Sipflix: Emby supports the same RemoteSearch/Subtitles endpoints
+    // (verified live against Emby 4.10 + Open Subtitles plugin).
+    return (client.serverType == ServerType.jellyfin ||
+            client.serverType == ServerType.emby) &&
         (user?.canManageSubtitles ?? false) &&
         item.mediaSources.isNotEmpty &&
         item.type != 'Photo' &&
@@ -768,20 +776,63 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     return int.tryParse(pref) ?? 200;
   }
 
-  // Sipflix: called on every buffering event; offers the adaptation dialog once
-  // repeated stalls cross the threshold.
+  // Sipflix: called on buffering transitions. Only a stall that persists for
+  // minStallDuration is recorded — brief rebuffers (e.g. right after a seek on
+  // a healthy link) resolve before the timer fires and never count.
   void _onSipflixBuffering(bool buffering) {
-    if (!buffering || _bitrateDialogShowing) return;
-    if (_bitrateWatchdog.recordAndShouldOffer()) {
-      unawaited(_showBitrateAdaptationDialog());
+    if (!buffering) {
+      _sipflixStallTimer?.cancel();
+      _sipflixStallTimer = null;
+      return;
     }
+    if (_bitrateDialogShowing || _sipflixStallTimer != null) return;
+    _sipflixStallTimer = Timer(SipflixBitrateWatchdog.minStallDuration, () {
+      _sipflixStallTimer = null;
+      if (!mounted || !_state.isBuffering || _bitrateDialogShowing) return;
+      if (_bitrateWatchdog.recordAndShouldOffer()) {
+        unawaited(_showBitrateAdaptationDialog());
+      }
+    });
+  }
+
+  // Sipflix: the bitrate actually being delivered, in Mbps — the file's real
+  // bitrate when it fits under the cap (direct play/stream), else the cap.
+  // Stepping down from the cap alone suggested useless changes (120 -> 80 for
+  // an 8 Mbps direct-play file); a useful cap must sit BELOW the file's rate
+  // so the server transcodes down to something the link can sustain.
+  int _sipflixEffectiveStreamMbps() {
+    final capMbps = _sipflixCurrentMaxBitrateMbps();
+    final res = _manager.currentResolution;
+    if (res == null) return capMbps;
+    int? fileBps;
+    final item = _queue.currentItem;
+    if (item is AggregatedItem) {
+      for (final source in item.mediaSources) {
+        if (source['Id'] == res.mediaSourceId) {
+          final rate = source['Bitrate'];
+          if (rate is int) fileBps = rate;
+          break;
+        }
+      }
+    }
+    if (fileBps == null) {
+      for (final stream in res.mediaStreams) {
+        if (stream['Type'] == 'Video' && stream['BitRate'] is int) {
+          fileBps = stream['BitRate'] as int;
+          break;
+        }
+      }
+    }
+    if (fileBps == null || fileBps <= 0) return capMbps;
+    final fileMbps = (fileBps / 1000000).ceil();
+    return fileMbps < capMbps ? fileMbps : capMbps;
   }
 
   // Sipflix: prompt to lower the bitrate; on accept, apply the override and
   // restart the current stream at its current position.
   Future<void> _showBitrateAdaptationDialog() async {
     if (_bitrateDialogShowing || !mounted) return;
-    final current = _sipflixCurrentMaxBitrateMbps();
+    final current = _sipflixEffectiveStreamMbps();
     final target = SipflixBitrateWatchdog.suggestLowerBitrate(current);
     if (target >= current) return;
     _bitrateDialogShowing = true;
@@ -789,7 +840,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     final lower = await showStyledPlayerDialog<bool>(
       context,
       title: 'Playback is buffering',
-      subtitle: 'Stream is $current Mbps. Lower to $target Mbps?',
+      subtitle: 'Stream is ~$current Mbps. Lower to $target Mbps?',
       builder: (ctx) {
         autoDismiss ??= Timer(const Duration(seconds: 12), () {
           if (Navigator.of(ctx).canPop()) Navigator.of(ctx).pop(false);
@@ -814,8 +865,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     autoDismiss?.cancel();
     _bitrateDialogShowing = false;
     if (!mounted || lower != true) return;
-    _manager.setBitrateOverride(target);
-    await _manager.startQueuedPlayback(startPosition: _state.position);
+    // Re-arm: the re-resolved stream gets a fresh grace window, and if the link
+    // still can't sustain the new rate the watchdog can offer the next step
+    // down (e.g. 8 -> 5 -> 3) instead of staying latched for the whole item.
+    _bitrateWatchdog.reset();
+    // Sipflix: use changeBitrate() (in-place re-resolve, forceTranscode) instead
+    // of setBitrateOverride()+startQueuedPlayback(). The latter swaps media on a
+    // still-live backend without the _teardownForReResolve guard, so a stray
+    // session-end event from the dying stream reached sessionEndedStream ->
+    // _exitPlayback() and bounced the user back to the detail page instead of
+    // playing at the lower bitrate. changeBitrate() tears down cleanly and keeps
+    // the player (same path the in-video quality selector uses).
+    await _manager.changeBitrate(target);
   }
 
   @override
@@ -824,9 +885,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     _screensaverController.setPlaybackActive(true);
     // Sipflix: watch for repeated buffering to offer a lower bitrate.
     _sipflixBufferingSub = _state.bufferingStream.listen(_onSipflixBuffering);
-    _screensaverPlayingSub = _state.playingStream.listen(
-      _screensaverController.setPlaybackActive,
-    );
+    _screensaverPlayingSub = _state.playingStream.listen((playing) {
+      // Sipflix: the watchdog's grace window starts at real playback start, so
+      // the initial buffer fill never counts as a stall.
+      if (playing) _bitrateWatchdog.markPlaybackStarted();
+      _screensaverController.setPlaybackActive(playing);
+    });
     if (PlatformDetection.useNativeVideoSurface) {
       _subtitleActive = (_manager.subtitleStreamIndex ?? -1) >= 0;
     }
@@ -844,6 +908,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     _zoomMode = _prefs.get(UserPreferences.playerZoomMode);
     _prefs.addListener(_syncMediaQueuingPreference);
     _syncMediaQueuingPreference();
+    _lastMaxBitratePref = _prefs.get(UserPreferences.maxBitrate);
+    _prefs.addListener(_syncMaxBitratePreference);
     _applySubtitleStyle();
     _scheduleHide();
     _startEndsAtTicker();
@@ -1005,6 +1071,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     _screensaverPlayingSub?.cancel();
     _screensaverController.setPlaybackActive(false);
     _prefs.removeListener(_syncMediaQueuingPreference);
+    _prefs.removeListener(_syncMaxBitratePreference);
     _manager.autoAdvanceEnabled = true;
     WidgetsBinding.instance.removeObserver(this);
     if (PlatformDetection.isDesktop) {
@@ -1052,6 +1119,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     _playingSub?.cancel();
     _bufferingSub?.cancel();
     _sipflixBufferingSub?.cancel();
+    _sipflixStallTimer?.cancel();
     _castEventsSub?.cancel();
     _dlnaEventsSub?.cancel();
     _airPlayEventsSub?.cancel();
@@ -2190,6 +2258,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     _manager.autoAdvanceEnabled = _prefs.get(
       UserPreferences.autoplayNextEpisode,
     );
+  }
+
+  // Sipflix: apply a Settings > "Max Streaming Bitrate" change to the LIVE
+  // stream. Previously the pref was only read at playback start, so changing it
+  // mid-playback had no effect until replay. changeBitrate() re-resolves in
+  // place (forces a transcode when a cap is set; 'auto'/null lifts the cap).
+  void _syncMaxBitratePreference() {
+    final value = _prefs.get(UserPreferences.maxBitrate);
+    if (value == _lastMaxBitratePref) return;
+    _lastMaxBitratePref = value;
+    if (!mounted || _isCurrentPreroll) return;
+    if (_manager.currentResolution == null) return; // nothing playing yet
+    _bitrateWatchdog.reset();
+    unawaited(_manager.changeBitrate(int.tryParse(value))); // 'auto' -> null
   }
 
   void _suppressSeekPrompts({

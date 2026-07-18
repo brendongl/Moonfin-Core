@@ -3,69 +3,55 @@ import 'package:server_core/server_core.dart';
 import '../auth/models/server.dart';
 import '../auth/store/authentication_store.dart';
 
-/// Sipflix: hardcoded Emby servers + CDN/Direct/VN route definitions.
+/// Sipflix: the hardcoded Emby server injected on first launch so customers
+/// never see an empty "Add Server" screen.
 ///
-/// Ported from the old Kotlin fork (`SipflixServerInjector` +
-/// `SipflixConnectionManager`). The two servers are injected on first launch
-/// so customers never see an empty "Add Server" screen, and each carries three
-/// switchable routes (CDN / Direct / VN proxy).
+/// Currently a single server (`emby.n2.d-crypt.io`) with no CDN, so the
+/// CDN/Direct/VN route toggle is disabled ([enableRouteToggle] = false). The
+/// route plumbing (all three routes point at the one URL) is kept dormant so a
+/// CDN/proxy can be reintroduced later by flipping the flag and adding routes.
 class SipflixServers {
   SipflixServers._();
 
-  /// Hide the "Add Server" button — customers use only the hardcoded servers.
+  /// Hide the "Add Server" button — customers use only the hardcoded server.
   static const bool hideAddServer = true;
 
-  /// Force H.264 video (advertise no HEVC/AV1 to the server) so these weak
-  /// Allwinner boxes never feed HEVC to the buggy `libOmxVdec` hardware decoder,
-  /// which SIGSEGVs and freezes the device. The server transcodes HEVC/AV1 -> H264.
+  /// Force H.264 video (advertise no HEVC/AV1 to the server) so weak Allwinner
+  /// boxes never feed HEVC to the buggy `libOmxVdec` hardware decoder, which
+  /// SIGSEGVs and freezes the device. The server transcodes HEVC/AV1 -> H.264.
   static const bool forceH264 = true;
 
-  // Fixed IDs for stable identification across launches (match old Kotlin fork).
-  static const String alphaId = '51901ff1-a001-4000-8000-000000000001';
-  static const String iduckId = '51901ff1-a001-4000-8000-000000000002';
+  /// Whether the CDN/Direct/VN connection toggle is shown. Off while there's a
+  /// single URL (no CDN); flip on and populate [routes] to re-enable it.
+  static const bool enableRouteToggle = false;
 
-  /// CDN / Direct / VN routes per server. The injected default is the CDN route.
+  static const String serverId = '51901ff1-a001-4000-8000-000000000001';
+  static const String serverUrl = 'https://emby.n2.d-crypt.io';
+
+  /// Routes per server. Single URL for now — all three point at the one server.
   static const Map<String, ServerRoutes> routes = {
-    alphaId: ServerRoutes(
-      cdn: 'https://emby.alphacdn.sipflix.net',
-      direct: 'https://emby.alpha.sipflix.net',
-      vn: 'https://emby.alphavn.sipflix.net',
-    ),
-    iduckId: ServerRoutes(
-      cdn: 'https://34335.brr.savethecdn.com',
-      direct: 'http://95.216.4.149:42418',
-      vn: 'https://emby.iduckvn.sipflix.net',
-    ),
+    serverId: ServerRoutes(cdn: serverUrl, direct: serverUrl, vn: serverUrl),
   };
 
-  static bool isSipflixServer(String serverId) => routes.containsKey(serverId);
+  static bool isSipflixServer(String id) => routes.containsKey(id);
 
-  /// Inject the hardcoded Emby servers on first launch if none exist.
+  /// Inject the hardcoded Emby server on first launch if none exist.
   static Future<void> injectIfEmpty(AuthenticationStore store) async {
     if (store.getServers().isNotEmpty) return;
-    final now = DateTime.now();
     await store.putServer(Server(
-      id: alphaId,
-      name: 'Alpha',
-      address: routes[alphaId]!.cdn,
+      id: serverId,
+      name: 'Sipflix',
+      address: serverUrl,
       version: '4.10.0.4',
       serverType: ServerType.emby,
       setupCompleted: true,
-      dateAdded: now,
-    ));
-    await store.putServer(Server(
-      id: iduckId,
-      name: 'iDuck',
-      address: routes[iduckId]!.cdn,
-      version: '4.10.0.4',
-      serverType: ServerType.emby,
-      setupCompleted: true,
-      dateAdded: now,
+      dateAdded: DateTime.now(),
     ));
   }
 }
 
-/// The three connection routes available for a Sipflix server.
+/// The connection routes available for a Sipflix server (dormant while there's
+/// a single URL — see [SipflixServers.enableRouteToggle]).
 class ServerRoutes {
   final String cdn;
   final String direct;

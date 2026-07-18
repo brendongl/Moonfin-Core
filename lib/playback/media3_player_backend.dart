@@ -192,7 +192,8 @@ class Media3PlayerBackend extends PlayerBackend {
         _errorStream.add(map.cast<String, dynamic>());
       case 'error':
         _diag(
-          'Media3 error: ${map['errorCode'] ?? ''} ${map['message'] ?? ''}',
+          'Media3 error: code=${map['code'] ?? map['errorCode'] ?? ''} '
+          'httpStatus=${map['httpStatus'] ?? ''} ${map['message'] ?? ''}',
           level: LogLevel.error,
         );
         _errorStream.add(map.cast<String, dynamic>());

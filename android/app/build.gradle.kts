@@ -26,9 +26,11 @@ fun loadAndroidTvVersionName(rootDir: File, fallback: String): String {
 
 plugins {
     id("com.android.application")
-    // START: FlutterFire Configuration
-    id("com.google.gms.google-services")
-    // END: FlutterFire Configuration
+    // Sipflix fork: Google Services (Firebase) plugin disabled. Firebase is only
+    // push messaging, which returns early on Android TV (PlatformDetection.isMobile
+    // is false), so it's never initialized here — and we don't ship against
+    // upstream Moonfin's Firebase project (google-services.json has no client for
+    // com.sipflix.moonfin). Re-add the plugin + a matching client to use Firebase.
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")

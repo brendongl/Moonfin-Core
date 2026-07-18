@@ -798,7 +798,9 @@ class _LoginScreenState extends State<LoginScreen> {
               onPressed: _isLoading ? null : _login,
               isLoading: _isLoading,
             ),
-            if (_server != null && SipflixServers.isSipflixServer(_server!.id))
+            if (SipflixServers.enableRouteToggle &&
+                _server != null &&
+                SipflixServers.isSipflixServer(_server!.id))
               _buildActionButton(
                 label:
                     'Connection: ${SipflixConnectionManager.label(SipflixConnectionManager.currentRoute(_server!))}',

@@ -299,10 +299,15 @@ class _MediaBarState extends State<MediaBar>
   /// reveal pipeline so a leave-event aborts the reveal even before
   /// _cancelTrailerPreview() runs.
   bool _trailerShouldBeActive() {
-    return mounted &&
-        !widget.externallyPaused &&
-        _isHomeRouteCurrent() &&
-        !_mainPlaybackActive;
+    // Sipflix: media-bar trailer/preview autoplay STRIPPED. Trailers play HEVC
+    // (YouTube/remote/local) that the weak Allwinner boxes cannot decode — the
+    // HEVC hardware decoder (OMX.allwinner.video.decoder.hevc) hangs and can
+    // freeze the whole box (system_server watchdog / full black-screen). This is
+    // the master gate for EVERY trailer prepare/reveal/play path, so returning
+    // false disables the feature fleet-wide (the mediaBarTrailerPreview pref did
+    // not gate this path). The static media-bar hero (image + metadata) is
+    // unaffected. Remove the trailer code entirely in a later cleanup.
+    return false;
   }
 
   bool _useMedia3TrailerEngine() {

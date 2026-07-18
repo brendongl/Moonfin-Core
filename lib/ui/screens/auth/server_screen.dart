@@ -310,7 +310,8 @@ class _ServerScreenState extends State<ServerScreen> {
                   label: Text(l10n.selectServer),
                   style: _focusableButtonStyle(context),
                 ),
-                if (SipflixServers.isSipflixServer(server.id)) ...[
+                if (SipflixServers.enableRouteToggle &&
+                    SipflixServers.isSipflixServer(server.id)) ...[
                   const SizedBox(height: 10),
                   OutlinedButton.icon(
                     onPressed: () => _toggleConnection(server),
@@ -351,7 +352,8 @@ class _ServerScreenState extends State<ServerScreen> {
                     style: _focusableButtonStyle(context),
                   ),
                 ),
-                if (SipflixServers.isSipflixServer(server.id)) ...[
+                if (SipflixServers.enableRouteToggle &&
+                    SipflixServers.isSipflixServer(server.id)) ...[
                   const SizedBox(width: 12),
                   Expanded(
                     child: OutlinedButton.icon(

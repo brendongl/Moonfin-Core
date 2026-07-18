@@ -630,21 +630,29 @@ class EmbyItemsApi implements ItemsApi {
     return const [];
   }
 
+  // Sipflix: Emby supports the same remote-subtitle endpoints as Jellyfin
+  // (both inherit them from the original Emby 3.x API). Verified live against
+  // Emby 4.10 + Open Subtitles plugin: GET returns the result list the picker
+  // reads (Id/Name/ProviderName/Format/DownloadCount/CommunityRating/
+  // IsHashMatch, with `Language` instead of `ThreeLetterISOLanguageName`).
   @override
   Future<List<Map<String, dynamic>>> searchRemoteSubtitles(
     String itemId, {
     required String language,
     bool? isPerfectMatch,
   }) async {
-    throw UnsupportedError(
-      'Remote subtitle search is only supported for Jellyfin servers.',
+    final response = await _dio.get(
+      '/Items/$itemId/RemoteSearch/Subtitles/$language',
+      queryParameters: {'IsPerfectMatch': ?isPerfectMatch},
     );
+    return ((response.data as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => e.cast<String, dynamic>())
+        .toList(growable: false);
   }
 
   @override
   Future<void> downloadRemoteSubtitle(String itemId, String subtitleId) async {
-    throw UnsupportedError(
-      'Remote subtitle download is only supported for Jellyfin servers.',
-    );
+    await _dio.post('/Items/$itemId/RemoteSearch/Subtitles/$subtitleId');
   }
 }

@@ -97,8 +97,13 @@ class AuthRepository {
             as String?);
     final policyJson = userJson?['Policy'] as Map<String, dynamic>?;
     final isAdmin = policyJson?['IsAdministrator'] as bool? ?? false;
+    // Sipflix: Emby splits the permission — EnableSubtitleDownloading governs
+    // downloading from providers (this feature) and defaults to true for
+    // customers, while EnableSubtitleManagement is the stricter manage/delete
+    // right. Accept either; Jellyfin only sends EnableSubtitleManagement.
     final canManageSubtitles =
-        policyJson?['EnableSubtitleManagement'] as bool? ?? false;
+        (policyJson?['EnableSubtitleManagement'] as bool? ?? false) ||
+        (policyJson?['EnableSubtitleDownloading'] as bool? ?? false);
     final canManageCollections =
         policyJson?['EnableCollectionManagement'] as bool? ?? false;
 

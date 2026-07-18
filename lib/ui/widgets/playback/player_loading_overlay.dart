@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 class PlayerLoadingOverlay extends StatefulWidget {
   const PlayerLoadingOverlay({
@@ -79,10 +78,12 @@ class _PlayerLoadingOverlayState extends State<PlayerLoadingOverlay>
               child: child,
             );
           },
-          child: SvgPicture.asset(
-            'assets/icons/moonfin_logo.svg',
+          // Sipflix: branded loader shows the Sipflix badge instead of the moon.
+          child: Image.asset(
+            'assets/images/sipflix_badge.png',
             width: widget.logoSize,
             height: widget.logoSize,
+            filterQuality: FilterQuality.medium,
           ),
         ),
         if (hasLabel) ...[

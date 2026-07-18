@@ -110,8 +110,12 @@ class UserPolicy {
             json['EnableSharedDeviceControl'] as bool? ?? false,
         enableCollectionManagement:
             json['EnableCollectionManagement'] as bool? ?? false,
+        // Sipflix: Emby's EnableSubtitleDownloading (default true for normal
+        // users) also grants provider subtitle downloads; Jellyfin doesn't
+        // send it, so this is a no-op there.
         enableSubtitleManagement:
-            json['EnableSubtitleManagement'] as bool? ?? false,
+            (json['EnableSubtitleManagement'] as bool? ?? false) ||
+                (json['EnableSubtitleDownloading'] as bool? ?? false),
         enableLyricManagement:
             json['EnableLyricManagement'] as bool? ?? false,
         forceRemoteSourceTranscoding:

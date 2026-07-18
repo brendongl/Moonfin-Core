@@ -53,6 +53,7 @@ import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.decoder.av1.Dav1dLibrary
 import androidx.media3.decoder.av1.Libdav1dVideoRenderer
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.analytics.AnalyticsListener
@@ -584,6 +585,10 @@ class Media3VideoView(
     private var subtitleEmbeddedStylesEnabled = true
     private var subtitleEmbeddedFontSizesEnabled = true
     private var assFallbackFontBytes: ByteArray? = null
+    // Sipflix: the AssHandler bound to the CURRENT player. Retained so teardown can
+    // stop its libass render callbacks before the player is released / the subtitle
+    // overlay detaches — see pauseAssRenderCallback()/releaseActiveAssHandler().
+    private var activeAssHandler: AssHandler? = null
     // Single pending runnable for delayed cue rendering (positive subtitle delay).
     // Replaced on every new cue group; cancelled on seek, source change, and dispose.
     private var pendingCueRunnable: Runnable? = null
@@ -731,10 +736,26 @@ class Media3VideoView(
             Media3Bridge.emitEvent(
                 mapOf(
                     "event" to "error",
+                    "code" to error.errorCode,
+                    // Sipflix: forward the HTTP status (from the cause chain) so the
+                    // Dart side can show "content unavailable" for a 404/410 (e.g. a
+                    // stale Continue-Watching item deleted server-side) instead of the
+                    // raw "Source error".
+                    "httpStatus" to httpStatusFromCause(error),
                     "message" to (error.localizedMessage ?: "Unknown Media3 playback error"),
                 ),
             )
             emitState()
+        }
+
+        private fun httpStatusFromCause(error: PlaybackException): Int {
+            var c: Throwable? = error
+            var depth = 0
+            while (c != null && depth < 8) {
+                if (c is HttpDataSource.InvalidResponseCodeException) return c.responseCode
+                c = c.cause; depth++
+            }
+            return -1
         }
 
         override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
@@ -997,6 +1018,7 @@ class Media3VideoView(
         lastPlaybackPositionMs = player.currentPosition
         isPlayerReleased = true
         isDisposed = true
+        pauseAssRenderCallback()
         cancelPendingSubtitleCue(clearView = false)
         cancelPendingAudioRekick()
         stopTicker()
@@ -1034,6 +1056,26 @@ class Media3VideoView(
         containerView.removeAllViews()
         Media3Bridge.detachView(this)
     }
+
+    // Sipflix: buffer far more than media3's ~50s default so inconsistent /
+    // bursty links bank video during good windows and ride out the bad ones.
+    // BYTE-capped (not just duration) because a duration-only buffer at a high
+    // direct-play bitrate (e.g. 40 Mbps) would blow memory on the weak boxes —
+    // 160 MB is safe on the 2-4 GB fleet. At a transcoded ~8 Mbps that's ~2.5
+    // min of cushion; at 40 Mbps ~30s. bufferForPlaybackMs stays small so start
+    // is still fast; the big buffer fills in the background. After a rebuffer we
+    // wait for an 8s cushion before resuming so we don't instantly re-stall.
+    private fun buildSipflixLoadControl(): DefaultLoadControl =
+        DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                30_000,   // minBufferMs
+                300_000,  // maxBufferMs (bounded by the byte cap below)
+                2_500,    // bufferForPlaybackMs
+                8_000,    // bufferForPlaybackAfterRebufferMs
+            )
+            .setTargetBufferBytes(160 * 1024 * 1024)
+            .setPrioritizeTimeOverSizeThresholds(false)
+            .build()
 
     private fun createPlayer(): ExoPlayer {
         // Fresh selector for every player; see the trackSelector field comment.
@@ -1091,6 +1133,7 @@ class Media3VideoView(
         return ExoPlayer.Builder(context, renderersFactory.withAssSupport(assHandler))
             .setTrackSelector(trackSelector)
             .setMediaSourceFactory(bootMediaSourceFactory)
+            .setLoadControl(buildSipflixLoadControl())
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .setPauseAtEndOfMediaItems(false)
@@ -1098,6 +1141,7 @@ class Media3VideoView(
             .also {
                 attachAssOverlay(assHandler)
                 assHandler.init(it)
+                activeAssHandler = assHandler
                 if (currentMediaType != "audio") {
                     if (useSurfaceView) {
                         it.setVideoSurfaceView(videoView as SurfaceView)
@@ -1162,11 +1206,26 @@ class Media3VideoView(
         subtitleView.withAssSupport(assHandler)
     }
 
+    // Sipflix: stop libass invalidations BEFORE a player is released or its overlay
+    // detaches. ass-media's AssSubtitleCanvasView posts frame invalidations via
+    // View.getHandler(), which returns null once the view is detached — a still-
+    // running AssTask on the render executor then NPEs on `handler.post(...)`,
+    // killing the app on a background thread (uncatchable from Dart). Nulling the
+    // render callback makes the library's `renderCallback?.invoke(...)` a no-op,
+    // closing the teardown race. (Bug still present in ass-media 0.5.0-beta01;
+    // fixed here at the lifecycle boundary. 0.4.0 has no AssHandler.release(), so
+    // the native handle is left to the player release path as before.)
+    private fun pauseAssRenderCallback() {
+        runCatching { activeAssHandler?.renderCallback = null }
+        activeAssHandler = null
+    }
+
     private fun rebuildPlayerForDecoderPreference() {
         closeExternalAudioEffectSessionIfOpen()
         currentAudioSessionId = C.AUDIO_SESSION_ID_UNSET
         restorePreferredDisplayMode()
         detectedFrameRate = null
+        pauseAssRenderCallback()
         player.removeListener(listener)
         player.removeAnalyticsListener(analyticsListener)
         player.clearVideoSurface()

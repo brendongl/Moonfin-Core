@@ -12,7 +12,13 @@ import 'track_ordinal_mapper.dart';
 class PlaybackManager implements AudioOwnable {
   static const _mediaReadyPollInterval = Duration(milliseconds: 100);
   static const _defaultMediaReadyTimeout = Duration(seconds: 60);
-  static const _onlineStartupReadyTimeout = Duration(seconds: 15);
+  // Sipflix: was 15s — too aggressive for high-bitrate direct-play files on
+  // slow/inconsistent links. A ~40 Mbps file resuming mid-way can't buffer
+  // enough to report ready in 15s, so _waitForMediaReady returned false and the
+  // player exited straight back to the detail page ("media exited to info").
+  // 45s lets a slow-but-viable stream actually start; if it still can't, the
+  // bitrate watchdog now correctly offers a transcode-down (changeBitrate).
+  static const _onlineStartupReadyTimeout = Duration(seconds: 45);
 
   PlayerBackend? _backend;
   MediaStreamResolver? _resolver;
@@ -677,7 +683,21 @@ class PlaybackManager implements AudioOwnable {
     final resolution = _currentResolution ?? _lastPlaybackResolution;
 
     void emitFailedBringupState(String fallbackMessage) {
-      final message = event['message']?.toString().trim();
+      final rawMessage = event['message']?.toString().trim();
+      final httpStatus = event['httpStatus'] is int
+          ? event['httpStatus'] as int
+          : -1;
+      // Sipflix: a 404/410 means the media is gone server-side — most often a
+      // stale Continue-Watching tile whose item was deleted. Surface a clear
+      // "no longer available" instead of the raw ExoPlayer "Source error".
+      final unavailable = httpStatus == 404 ||
+          httpStatus == 410 ||
+          (rawMessage != null && rawMessage.contains('Response code: 40'));
+      final message = unavailable
+          ? 'This content is no longer available'
+          : (rawMessage != null && rawMessage.isNotEmpty
+                ? rawMessage
+                : fallbackMessage);
       _setBringupState(
         PlaybackBringupState(
           phase: PlaybackBringupPhase.failed,
@@ -685,9 +705,7 @@ class PlaybackManager implements AudioOwnable {
           itemId: queueItem == null ? null : _traceItemId(queueItem),
           backend: _traceBackendName(_backend),
           playMethod: resolution?.playMethod.name,
-          error: message != null && message.isNotEmpty
-              ? message
-              : fallbackMessage,
+          error: message,
         ),
       );
     }

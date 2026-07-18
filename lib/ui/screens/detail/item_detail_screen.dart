@@ -7172,8 +7172,14 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
   }) async {
     if (!context.mounted) return false;
     final manager = GetIt.instance<PlaybackManager>();
+    // Sipflix: push the video player route IMMEDIATELY on Android TV too (was
+    // iOS-only), so pressing Play/Resume instantly shows the loading player
+    // instead of sitting on the detail OSD for 2-3s while the stream resolves
+    // (which felt like the button didn't register). The player screen already
+    // renders its own bringup/loading state, and pops itself if startup fails.
     final pushVideoEarly =
-        destination == Destinations.videoPlayer && PlatformDetection.isIOS;
+        destination == Destinations.videoPlayer &&
+        (PlatformDetection.isIOS || PlatformDetection.isTV);
 
     void popTopPlayerRoute() {
       final route = ModalRoute.of(context);
