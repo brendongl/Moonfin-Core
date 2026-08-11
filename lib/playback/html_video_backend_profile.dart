@@ -11,26 +11,24 @@ Map<String, dynamic> buildHtmlVideoBackendDeviceProfile(
 }) {
   final maxBitrate = prefs.resolveMaxBitrateMbps();
   final maxResolution = prefs.get(UserPreferences.maxVideoResolution);
-  final audioOutputMode = prefs.resolveAudioOutputMode();
   final audioFallbackCodec = prefs.resolveAudioFallbackCodec();
   final audioCapabilityProfile = prefs.detectedAudioCapabilities;
 
   return DeviceProfileBuilder.build(
     maxBitrateMbps: maxBitrate,
     audioCapabilityProfile: audioCapabilityProfile,
-    audioOutputMode: audioOutputMode,
     audioFallbackCodec: audioFallbackCodec,
     ac3PassthroughEnabled: prefs.resolveAc3PassthroughEnabled(),
     eac3PassthroughEnabled: prefs.resolveEac3PassthroughEnabled(),
-    eac3JocPassthroughEnabled: prefs.resolveEac3JocPassthroughEnabled(),
     dtsCorePassthroughEnabled: prefs.resolveDtsCorePassthroughEnabled(),
-    dtsHdPassthroughEnabled: prefs.resolveDtsHdPassthroughEnabled(),
     trueHdPassthroughEnabled: prefs.resolveTrueHdPassthroughEnabled(),
-    trueHdAtmosPassthroughEnabled: prefs.resolveTrueHdAtmosPassthroughEnabled(),
     maxAudioChannels: prefs.resolveMaxAudioChannels(),
+    downmixToStereo: prefs.get(UserPreferences.downmixToStereo),
     maxResolution: maxResolution,
     pgsDirectPlay: prefs.get(UserPreferences.pgsDirectPlay),
     assDirectPlay: prefs.get(UserPreferences.assDirectPlay),
+    supportsEmbeddedSubtitles: false,
+    supportsExternalTextSubtitles: false,
     supportsAvc: PlatformDetection.supportsAvc,
     supportsAvcHigh10: PlatformDetection.supportsAvcHigh10,
     avcMainLevel: PlatformDetection.avcMainLevel,

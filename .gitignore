@@ -112,6 +112,7 @@ app.*.map.json
 # Linux package artifacts
 /Moonfin-linux-*
 /Moonfin_Linux_v*.AppImage
+/Moonfin_Linux_v*.AppImage.zsync
 /Moonfin_Linux_v*.tar.gz
 /Moonfin_Linux_v*.deb
 /Moonfin_Linux_v*.rpm

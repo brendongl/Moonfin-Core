@@ -48,6 +48,7 @@ class _MobileBottomNavBarState extends State<MobileBottomNavBar> {
   List<AggregatedLibrary> _libraries = [];
   String? _userImageUrl;
   StreamSubscription? _userSub;
+  Timer? _librariesReloadDebounce;
 
   @override
   void initState() {
@@ -70,18 +71,28 @@ class _MobileBottomNavBarState extends State<MobileBottomNavBar> {
       _viewsRepo.removeListener(_onViewsChanged);
     } catch (_) {}
     _userSub?.cancel();
+    _librariesReloadDebounce?.cancel();
     super.dispose();
   }
 
   void _onPrefsChanged() {
     if (!mounted) return;
-    _loadLibraries();
+    _scheduleLibrariesReload();
     setState(() {});
   }
 
   void _onViewsChanged() {
     if (!mounted) return;
-    _loadLibraries();
+    _scheduleLibrariesReload();
+  }
+
+  // Collapses a burst of change notifications, like the settings sync
+  // applying a whole profile, into a single library reload.
+  void _scheduleLibrariesReload() {
+    _librariesReloadDebounce?.cancel();
+    _librariesReloadDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (mounted) _loadLibraries();
+    });
   }
 
   void _loadUserImage() {
@@ -315,7 +326,12 @@ class _MobileBottomNavBarState extends State<MobileBottomNavBar> {
       context.navigateTopLevel(Destinations.liveTvGuide);
     } else {
       context.navigateTopLevel(
-        gameOrLibraryRoute(lib.id, lib.collectionType, lib.name),
+        gameOrLibraryRoute(
+          lib.id,
+          lib.collectionType,
+          lib.name,
+          serverId: lib.serverId,
+        ),
       );
     }
   }

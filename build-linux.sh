@@ -8,6 +8,29 @@ APP_ICON="$REPO_ROOT/assets/icons/moonfin.png"
 BUILD_DIR="$REPO_ROOT/build/linux/release/bundle"
 TEMP_DIR="$REPO_ROOT/build/linux/temp"
 
+# Artifact names carry the architecture, except on x86_64 which keeps the plain
+# "Linux" name. An installed AppImage updates itself from a zsync file named
+# after the artifact, and the AUR package and the README point at those same
+# names, so renaming the x86_64 files would break all three.
+get_artifact_platform() {
+  case "$(uname -m)" in
+    x86_64) printf '%s\n' "Linux" ;;
+    aarch64|arm64) printf '%s\n' "LinuxARM64" ;;
+    *) printf '%s\n' "Linux_$(uname -m)" ;;
+  esac
+}
+
+PLATFORM_TAG="$(get_artifact_platform)"
+
+# Snap stage-packages land under the host's multiarch directory, so the snap's
+# library path has to name the architecture it is being built for.
+get_multiarch_triplet() {
+  case "$(uname -m)" in
+    aarch64|arm64) printf '%s\n' "aarch64-linux-gnu" ;;
+    *) printf '%s\n' "x86_64-linux-gnu" ;;
+  esac
+}
+
 get_deb_architecture() {
   local machine
   machine="$(uname -m)"
@@ -261,9 +284,14 @@ ensure_mpv_compat_symlinks() {
   local base
   base="$(basename "$mpv_real")"
 
+  # A bare "[ ! -e ] && ln" would return 1 when every symlink already exists,
+  # which under set -e kills the build with no error message.
   for alt in libmpv.so.1 libmpv.so.2 libmpv.so; do
-    [ ! -e "$dest_lib/$alt" ] && ln -sf "$base" "$dest_lib/$alt"
+    if [ ! -e "$dest_lib/$alt" ]; then
+      ln -sf "$base" "$dest_lib/$alt"
+    fi
   done
+  return 0
 }
 
 collect_transitive_libs() {
@@ -286,18 +314,43 @@ collect_transitive_libs() {
   printf '%s\n' "$all_deps" | sort -u | grep -v '^$' || true
 }
 
+# Libraries left out of the bundle because the target system has to own them,
+# either because they talk to the kernel and the display stack or because a
+# bundled copy would shadow the matching system one.
+#
+# Read this as the complete list of what we ask a machine to already have.
+# Distros vary from shipping almost everything to shipping almost nothing, so
+# anything not named here has to travel with the app. libselinux is the example
+# to remember: Ubuntu builds glib against it so it reaches the dependency graph
+# on the build host, while Arch does not install it, and leaving it out meant
+# the app refused to start there. A machine having the library is not enough
+# either: openSUSE builds ncurses without the versioned symbols Ubuntu adds, so
+# the bundled libcaca could not resolve them and the app refused to start there
+# too.
+#
+# Entries match anywhere in the file name, so a name that is a prefix of
+# another one has to say so. Asking for libcrypt used to hand libcrypto to the
+# host as well, which left the bundle carrying libssl and expecting an OpenSSL
+# it was never built against.
 runtime_skip_pattern() {
   local skip='linux-vdso|ld-linux|libc[.]so|libm[.]so|libpthread|libdl[.]so|librt[.]so'
   skip="$skip"'|libstdc[+][+]|libgcc_s'
   skip="$skip"'|libX[a-z]|libxcb|libxkb|libxshmfence|libICE|libSM'
   skip="$skip"'|libwayland|libffi|libpcre'
-  skip="$skip"'|libGL|libEGL|libGLX|libGLdispatch|libOpenGL|libdrm|libgbm'
+  skip="$skip"'|libGL[.]so|libGLX|libGLdispatch|libGLESv|libEGL|libOpenGL'
+  skip="$skip"'|libdrm|libgbm'
   skip="$skip"'|libglib|libgobject|libgio|libgmodule|libgthread'
   skip="$skip"'|libpulse|libdbus|libasound|libsndfile|libpipewire|libspa|libjack'
   skip="$skip"'|libfontconfig|libfreetype|libharfbuzz|libcairo|libpango|libpixman'
   skip="$skip"'|libatk|libgdk|libgtk|libepoxy|libgdk_pixbuf|librsvg'
-  skip="$skip"'|libmount|libblkid|libselinux|libuuid|libresolv|libnss|libnsl|libcrypt'
-  skip="$skip"'|libsystemd|libncurses|libtinfo'
+  skip="$skip"'|libmount|libblkid|libuuid|libresolv|libnss3|libnssutil'
+  skip="$skip"'|libsystemd'
+  # OpenSSL finds its trust store and its provider modules through a directory
+  # fixed when it was built, so a copy carried from another distro can stop
+  # verifying certificates. Both halves stay with the host for that reason, and
+  # they stay together: a bundled libssl against a system libcrypto is the
+  # mismatch that has to be avoided.
+  skip="$skip"'|libssl[.]so|libcrypto[.]so'
   printf '%s\n' "$skip"
 }
 
@@ -398,6 +451,59 @@ inject_linux_runtime_libs() {
   ensure_sqlite_unversioned_link "$bundle_dir/lib"
   ensure_mpv_compat_symlinks "$bundle_dir/lib"
   echo "Bundled $bundled_count runtime libraries for AppImage/Tarball"
+
+  verify_host_dependencies "$bundle_dir"
+}
+
+# Names every library the finished bundle still expects to find on the machine
+# it runs on, which is the binary's and the bundled libraries' NEEDED entries
+# minus whatever travels in the bundle.
+host_dependencies() {
+  local bundle_dir="$1"
+  local file
+  for file in "$bundle_dir"/* "$bundle_dir"/lib/*.so*; do
+    [ -f "$file" ] || continue
+    [ -L "$file" ] && continue
+    readelf -d "$file" 2>/dev/null |
+      sed -n 's/.*(NEEDED).*\[\([^]]*\)\].*/\1/p'
+  done | sort -u | while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    [ -e "$bundle_dir/lib/$name" ] && continue
+    printf '%s\n' "$name"
+  done
+}
+
+# The skip list is a promise that a machine already has those libraries. This
+# checks the finished bundle keeps that promise, so a dependency that slipped
+# past the collector shows up on the build host rather than on a user's.
+verify_host_dependencies() {
+  local bundle_dir="$1"
+  local skip deps unexpected=""
+
+  if ! command -v readelf >/dev/null 2>&1; then
+    echo "Warning: readelf not found, host dependencies were not checked." >&2
+    return 0
+  fi
+
+  skip="$(runtime_skip_pattern)"
+  deps="$(host_dependencies "$bundle_dir")"
+
+  echo "Bundle expects these from the host:"
+  printf '  %s\n' $deps
+
+  local name
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    [[ "$name" =~ $skip ]] && continue
+    unexpected="${unexpected}  ${name}"$'\n'
+  done <<< "$deps"
+
+  if [ -n "$unexpected" ]; then
+    echo "Error: these are neither bundled nor listed as system provided:" >&2
+    printf '%s' "$unexpected" >&2
+    echo "Bundle them, or add them to runtime_skip_pattern if every distro has them." >&2
+    return 1
+  fi
 }
 
 # Bundle libmpv + transitive deps for Flatpak (sandboxed, no system libs available).
@@ -430,6 +536,8 @@ inject_flatpak_libs() {
 
 create_desktop_file() {
   local dest="$1"
+  local version="${2:-}"
+  mkdir -p "$dest"
   cat > "$dest/${APP_ID}.desktop" << EOF
 [Desktop Entry]
 Type=Application
@@ -439,19 +547,26 @@ Icon=${APP_ID}
 Categories=AudioVideo;Video;
 Comment=Jellyfin & Emby media client
 Terminal=false
+StartupWMClass=${APP_ID}
 EOF
+  # AppImage launchers read the version from the embedded desktop entry rather
+  # than the filename.
+  if [ -n "$version" ]; then
+    echo "X-AppImage-Version=${version}" >> "$dest/${APP_ID}.desktop"
+  fi
 }
 
 create_metainfo_file() {
   local dest="$1"
   local version="$2"
 
+  mkdir -p "$dest"
   cat > "$dest/${APP_ID}.metainfo.xml" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
   <id>${APP_ID}</id>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>GPL-3.0</project_license>
+  <project_license>GPL-3.0-only</project_license>
   <name>Moonfin</name>
   <developer_name>Moonfin Team</developer_name>
   <summary>Jellyfin &amp; Emby media client</summary>
@@ -481,11 +596,29 @@ ensure_flatpak_runtime() {
   flatpak install --user --noninteractive flathub "$runtime" "$sdk" || true
 }
 
+icon_warning_shown=""
+
 copy_icon() {
   local dest="$1"
-  if [ -f "$APP_ICON" ]; then
-    cp "$APP_ICON" "$dest/${APP_ID}.png"
+  if [ ! -f "$APP_ICON" ]; then
+    if [ -z "$icon_warning_shown" ]; then
+      icon_warning_shown=1
+      echo "Warning: app icon missing at $APP_ICON, packages will show a placeholder." >&2
+    fi
+    return
   fi
+  mkdir -p "$dest"
+  cp "$APP_ICON" "$dest/${APP_ID}.png"
+}
+
+# Installs the icon into the hicolor theme, the path every current desktop
+# searches. On Wayland it is how a window gets an icon at all: the compositor
+# resolves it from the desktop entry named by the window's app id, never from
+# the window itself. share/pixmaps stays alongside for older lookups.
+install_icons() {
+  local share_dir="$1"
+  copy_icon "$share_dir/icons/hicolor/512x512/apps"
+  copy_icon "$share_dir/pixmaps"
 }
 
 build_flutter_binary() {
@@ -524,7 +657,7 @@ build_appimage() {
 
   local appimage_dir="$TEMP_DIR/appimage"
   local version="$(get_app_version)"
-  local appimage_name="${APP_NAME}_Linux_v${version}.AppImage"
+  local appimage_name="${APP_NAME}_${PLATFORM_TAG}_v${version}.AppImage"
 
   rm -rf "$appimage_dir"
   mkdir -p "$appimage_dir"
@@ -553,7 +686,14 @@ resolve_exact_lib() {
   return 1
 }
 
-missing_libs="$(ldd "$APPDIR/moonfin" 2>/dev/null | awk '/not found/ {print $1}' | sort -u || true)"
+ldd_output="$(ldd "$APPDIR/moonfin" 2>/dev/null || true)"
+
+# Only "libfoo.so => not found" lines name a missing library. Symbol version
+# lines start with the binary path, so matching bare "not found" reports the
+# binary itself as missing.
+missing_libs="$(printf '%s\n' "$ldd_output" | awk '$2 == "=>" && $3 == "not" && $4 == "found" {print $1}' | sort -u)"
+version_errors="$(printf '%s\n' "$ldd_output" | grep -F 'not found' | grep -v ' => ' || true)"
+
 if ! resolve_exact_lib libsqlite3.so; then
   missing_libs="$(printf '%s\n%s\n' "$missing_libs" "libsqlite3.so" | awk 'NF' | sort -u)"
 fi
@@ -565,21 +705,59 @@ if [ -n "$missing_libs" ]; then
   exit 127
 fi
 
+if [ -n "$version_errors" ]; then
+  echo "Moonfin cannot start. A library your system provides is missing symbols" >&2
+  echo "this build needs:" >&2
+  printf '%s\n' "$version_errors" >&2
+  echo "That library has to be bundled with the app for your distro." >&2
+  echo "Please report this output so the next build carries it." >&2
+  echo "A deb, rpm, flatpak or snap build works in the meantime." >&2
+  exit 127
+fi
+
 exec "$APPDIR/moonfin" "$@"
 EOF
   chmod +x "$appimage_dir/AppRun"
 
-  create_desktop_file "$appimage_dir"
+  create_desktop_file "$appimage_dir" "$version"
   copy_icon "$appimage_dir"
-  mkdir -p "$appimage_dir/usr/share/pixmaps"
-  copy_icon "$appimage_dir/usr/share/pixmaps"
+  install_icons "$appimage_dir/usr/share"
+  mkdir -p "$appimage_dir/usr/share/applications"
+  cp "$appimage_dir/${APP_ID}.desktop" \
+    "$appimage_dir/usr/share/applications/${APP_ID}.desktop"
+  # Desktop integration copies the entry and the themed icon out of the image,
+  # and file managers read the icon for the file itself from .DirIcon.
+  if [ -f "$appimage_dir/${APP_ID}.png" ]; then
+    cp "$appimage_dir/${APP_ID}.png" "$appimage_dir/.DirIcon"
+  fi
+
+  # Update information lets AppImage updaters fetch only the changed blocks from
+  # the .zsync published with each release. The wildcard matches whichever
+  # version the current release carries.
+  local update_info="${APPIMAGE_UPDATE_INFO:-gh-releases-zsync|Moonfin-Client|Moonfin-Core|latest|${APP_NAME}_${PLATFORM_TAG}_v*.AppImage.zsync}"
+  local appimagetool_args=()
+  if command -v zsyncmake >/dev/null 2>&1; then
+    appimagetool_args+=( -u "$update_info" )
+  else
+    echo "Warning: zsyncmake not found, building AppImage without embedded update information." >&2
+    echo "  Install the zsync package to enable in-place updates." >&2
+  fi
 
   cd "$TEMP_DIR"
-  appimagetool "$appimage_dir" "$appimage_name" || true
-  
+  # VERSION stamps the build. Passing an explicit output name keeps the
+  # artifact filename unchanged.
+  if ! VERSION="$version" appimagetool "${appimagetool_args[@]}" "$appimage_dir" "$appimage_name"; then
+    echo "Error: appimagetool failed." >&2
+    return 1
+  fi
+
   if [ -f "$appimage_name" ]; then
     mv "$appimage_name" "$REPO_ROOT/"
     echo "✓ Created: $REPO_ROOT/$appimage_name"
+  fi
+  if [ -f "$appimage_name.zsync" ]; then
+    mv "$appimage_name.zsync" "$REPO_ROOT/"
+    echo "✓ Created: $REPO_ROOT/$appimage_name.zsync"
   fi
 }
 
@@ -587,7 +765,7 @@ build_tarball() {
   echo "=== Building Tarball ==="
 
   local version="$(get_app_version)"
-  local tarball_name="${APP_NAME}_Linux_v${version}.tar.gz"
+  local tarball_name="${APP_NAME}_${PLATFORM_TAG}_v${version}.tar.gz"
   local tar_dir="$TEMP_DIR/tarball/moonfin-${version}"
 
   rm -rf "$TEMP_DIR/tarball"
@@ -655,10 +833,35 @@ Requirements:
   - Network access to Jellyfin/Emby server
 EOF
 
+  # The AUR package is built from this tarball, so it has to carry the desktop
+  # entry and the icon. Without them there is nothing for a packager to install
+  # and the window falls back to a placeholder.
+  create_desktop_file "$tar_dir/share/applications"
+  create_metainfo_file "$tar_dir/share/metainfo" "$version"
+  install_icons "$tar_dir/share"
+
   cd "$TEMP_DIR/tarball"
   tar -czf "$tarball_name" "moonfin-${version}"
   mv "$tarball_name" "$REPO_ROOT/"
   echo "✓ Created: $REPO_ROOT/$tarball_name"
+}
+
+# The newest glibc anything in the installed tree asks for, which is the oldest
+# glibc that can load it, since symbol versions are forward compatible only.
+# Only undefined symbols count, because a library that defines a version lists
+# every version it ever published rather than the one it needs.
+required_glibc_version() {
+  local tree="$1" file
+
+  command -v readelf >/dev/null 2>&1 || return 0
+
+  for file in "$tree"/* "$tree"/lib/*.so*; do
+    [ -f "$file" ] || continue
+    [ -L "$file" ] && continue
+    readelf --dyn-syms -W "$file" 2>/dev/null |
+      awk '$7 == "UND"' |
+      grep -o 'GLIBC_[0-9][0-9.]*' || true
+  done | sed 's/^GLIBC_//' | sort -uV | tail -n1
 }
 
 build_deb() {
@@ -669,7 +872,7 @@ build_deb() {
   fi
 
   local version="$(get_app_version)"
-  local deb_name="${APP_NAME}_Linux_v${version}.deb"
+  local deb_name="${APP_NAME}_${PLATFORM_TAG}_v${version}.deb"
   local pkg_root="$TEMP_DIR/deb/moonfin-${version}"
   local deb_arch
   deb_arch="$(get_deb_architecture)"
@@ -690,10 +893,21 @@ EOF
   chmod +x "$pkg_root/usr/bin/moonfin"
 
   create_desktop_file "$pkg_root/usr/share/applications"
-  copy_icon "$pkg_root/usr/share/pixmaps"
+  install_icons "$pkg_root/usr/share"
 
   mkdir -p "$pkg_root/usr/share/metainfo"
   create_metainfo_file "$pkg_root/usr/share/metainfo" "$version"
+
+  # glibc is deliberately not bundled, so the build host's version is the oldest
+  # one the package can run on. Declaring it turns a wall of loader errors at
+  # launch into a refused install that names the glibc the machine needs.
+  local depends="libgtk-3-0, libglib2.0-0, libsecret-1-0, libwebkit2gtk-4.1-0"
+  local glibc
+  glibc="$(required_glibc_version "$pkg_root/usr/lib/moonfin")"
+  if [ -n "$glibc" ]; then
+    depends="$depends, libc6 (>= $glibc)"
+  fi
+  echo "Depends: $depends"
 
   cat > "$pkg_root/DEBIAN/control" << EOF
 Package: moonfin
@@ -701,7 +915,7 @@ Version: ${version}
 Architecture: ${deb_arch}
 Maintainer: Moonfin Team <support@moonfin.dev>
 Installed-Size: $(du -sk "$pkg_root/usr" | cut -f1)
-Depends: libgtk-3-0, libglib2.0-0, libsecret-1-0, libwebkit2gtk-4.1-0
+Depends: ${depends}
 Description: Jellyfin & Emby media client
  Moonfin is a media client for Jellyfin and Emby servers,
  available on mobile, TV, and desktop platforms.
@@ -712,7 +926,7 @@ Description: Jellyfin & Emby media client
   - Casting support
   - DLNA playback
 Homepage: https://moonfin.app/
-License: GPL-3.0
+License: GPL-3.0-only
 EOF
 
   cat > "$pkg_root/usr/share/doc/moonfin/copyright" << EOF
@@ -723,7 +937,7 @@ Source: https://github.com/jmshrv/Moonfin
 
 Files: *
 Copyright: 2024-2025 Moonfin Team
-License: GPL-3.0
+License: GPL-3.0-only
 EOF
 
   cd "$TEMP_DIR/deb"
@@ -743,7 +957,7 @@ build_rpm() {
   fi
 
   local version="$(get_app_version)"
-  local rpm_name="${APP_NAME}_Linux_v${version}.rpm"
+  local rpm_name="${APP_NAME}_${PLATFORM_TAG}_v${version}.rpm"
   local rpm_dir="$TEMP_DIR/rpm"
   local spec_file="$rpm_dir/moonfin.spec"
 
@@ -757,7 +971,7 @@ Name:           moonfin
 Version:        ${version}
 Release:        1
 Summary:        Jellyfin & Emby media client
-License:        GPL-3.0
+License:        GPL-3.0-only
 
 %description
 Moonfin is a media client for Jellyfin and Emby servers,
@@ -784,6 +998,8 @@ cp "$rpm_dir/${APP_ID}.desktop" %{buildroot}/usr/share/applications/${APP_ID}.de
 cp "$rpm_dir/${APP_ID}.metainfo.xml" %{buildroot}/usr/share/metainfo/${APP_ID}.metainfo.xml
 
 if [ -f "$APP_ICON" ]; then
+  mkdir -p %{buildroot}/usr/share/icons/hicolor/512x512/apps
+  cp "$APP_ICON" %{buildroot}/usr/share/icons/hicolor/512x512/apps/${APP_ID}.png
   cp "$APP_ICON" %{buildroot}/usr/share/pixmaps/${APP_ID}.png
 fi
 
@@ -792,6 +1008,7 @@ fi
 %dir /usr/lib/moonfin
 /usr/lib/moonfin/*
 /usr/share/applications/${APP_ID}.desktop
+/usr/share/icons/hicolor/512x512/apps/${APP_ID}.png
 /usr/share/pixmaps/${APP_ID}.png
 /usr/share/metainfo/${APP_ID}.metainfo.xml
 
@@ -857,6 +1074,8 @@ build_snap() {
   local version="$(get_app_version)"
   local snap_mpv_package
   snap_mpv_package="$(resolve_mpv_package_name)"
+  local snap_triplet
+  snap_triplet="$(get_multiarch_triplet)"
 
   rm -rf "$snap_dir"
   mkdir -p "$snap_dir"
@@ -873,6 +1092,7 @@ description: |
 grade: stable
 confinement: strict
 base: core22
+icon: ${APP_ID}.png
 
 apps:
   moonfin:
@@ -884,7 +1104,7 @@ apps:
       - opengl
       - pulseaudio
     environment:
-      LD_LIBRARY_PATH: \$SNAP/lib:\$SNAP/lib/x86_64-linux-gnu:\$SNAP/usr/lib/x86_64-linux-gnu
+      LD_LIBRARY_PATH: \$SNAP/lib:\$SNAP/lib/${snap_triplet}:\$SNAP/usr/lib/${snap_triplet}
 
 parts:
   moonfin:
@@ -904,7 +1124,21 @@ parts:
 EOF
 
   cp -r "$BUILD_DIR"/* "$snap_dir/"
-  [ -f "$APP_ICON" ] && cp "$APP_ICON" "$snap_dir/${APP_ID}.png"
+  copy_icon "$snap_dir"
+
+  # snapcraft installs snap/gui into meta/gui and snapd rewrites the entry on
+  # install, which is the only way a strictly confined snap gets an icon.
+  mkdir -p "$snap_dir/snap/gui"
+  cat > "$snap_dir/snap/gui/moonfin.desktop" << EOF
+[Desktop Entry]
+Type=Application
+Name=Moonfin
+Exec=moonfin
+Icon=\${SNAP}/meta/gui/icon.png
+Categories=AudioVideo;Video;
+Comment=Jellyfin & Emby media client
+Terminal=false
+EOF
 
   cd "$snap_dir"
   if ! retry_with_backoff 3 snapcraft pack --destructive-mode; then
@@ -915,8 +1149,8 @@ EOF
   local snap_file
   snap_file=$(find "$snap_dir" -maxdepth 1 -name "*.snap" 2>/dev/null | head -1)
   if [ -n "$snap_file" ]; then
-    mv "$snap_file" "$REPO_ROOT/${APP_NAME}_Linux_v${version}.snap"
-    echo "✓ Created: $REPO_ROOT/${APP_NAME}_Linux_v${version}.snap"
+    mv "$snap_file" "$REPO_ROOT/${APP_NAME}_${PLATFORM_TAG}_v${version}.snap"
+    echo "✓ Created: $REPO_ROOT/${APP_NAME}_${PLATFORM_TAG}_v${version}.snap"
   else
     echo "Snap build did not produce a .snap file"
     return 1
@@ -939,7 +1173,7 @@ build_flatpak() {
 
   local flatpak_build_dir="$TEMP_DIR/flatpak-build"
   local flatpak_repo_dir="$TEMP_DIR/flatpak-repo"
-  local flatpak_name="${APP_NAME}_Linux_v${version}.flatpak"
+  local flatpak_name="${APP_NAME}_${PLATFORM_TAG}_v${version}.flatpak"
   local flatpak_src="$flatpak_dir/src"
 
   rm -rf "$flatpak_build_dir" "$flatpak_repo_dir"

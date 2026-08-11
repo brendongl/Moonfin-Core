@@ -17,8 +17,11 @@ import '../services/media_server_client_factory.dart';
 import '../utils/bounded_concurrency.dart';
 import '../utils/genre_browse_utils.dart';
 import '../utils/latest_media_row_normalizer.dart';
+import '../utils/media_deduplication_utils.dart';
+import '../utils/next_up_cutoff.dart';
 import '../utils/next_up_enrichment.dart';
 import '../utils/playlist_utils.dart';
+import 'user_views_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../../l10n/current_app_localizations.dart';
 
@@ -52,9 +55,10 @@ class MultiServerRepository {
       'ParentIndexNumber,IndexNumber,Status,ImageTags,BackdropImageTags,'
       'ParentBackdropItemId,ParentBackdropImageTags,ParentThumbItemId,'
       'ParentThumbImageTag,SeriesId,SeriesPrimaryImageTag,'
-      'ParentLogoItemId,ParentLogoImageTag,PrimaryImageTag,PrimaryImageAspectRatio';
+      'ParentLogoItemId,ParentLogoImageTag,PrimaryImageTag,'
+      'PrimaryImageAspectRatio,ProviderIds';
   // Cap image tags to one per type (server returns all by default)
-  static const _imageTypes = 'Primary,Backdrop,Thumb';
+  static const _imageTypes = 'Primary,Backdrop,Thumb,Banner';
   static const _imageTypeLimit = 1;
   static const _defaultLimit = 15;
   static const _maxItems = 100;
@@ -151,15 +155,25 @@ class MultiServerRepository {
     return sessions;
   }
 
-  Future<List<AggregatedLibrary>> getAggregatedLibraries() async {
+  // Concurrent callers share one in-flight aggregation instead of each
+  // fanning out to every server.
+  Future<List<AggregatedLibrary>>? _inFlightLibraries;
+
+  Future<List<AggregatedLibrary>> getAggregatedLibraries() =>
+      _inFlightLibraries ??= _getAggregatedLibrariesNow().whenComplete(
+        () => _inFlightLibraries = null,
+      );
+
+  Future<List<AggregatedLibrary>> _getAggregatedLibrariesNow() async {
     final sessions = await getLoggedInServers();
     final hasMultiple = sessions.length > 1;
 
     final results = await Future.wait(
       sessions.map(
         (session) => _withTimeout(() async {
-          final response = await session.client.userViewsApi.getUserViews();
+          final response = await loadVisibleUserViews(session.client);
           final items = response['Items'] as List? ?? [];
+
           return items.map((item) {
             final data = item as Map<String, dynamic>;
             final name = data['Name'] as String? ?? '';
@@ -207,37 +221,14 @@ class MultiServerRepository {
     );
 
     final all = results.expand((e) => e).toList()..sort(_compareByLastPlayed);
+    final deduplicated = MediaDeduplicationUtils.deduplicateMediaItems(all);
 
     return HomeRow(
       id: 'resume',
       title: _l10n.continueWatching,
-      items: _dedupResumeItems(all).take(limit).toList(),
+      items: deduplicated.take(limit).toList(),
       rowType: HomeRowType.resume,
     );
-  }
-
-  /// Sipflix: collapse duplicate movies in Continue Watching. A movie stored
-  /// as separate 4K and 1080p library items (or on two servers) resumes as two
-  /// cards; keep only the first — the list is sorted by LastPlayedDate
-  /// descending, so that's the most recently played copy. Movies are keyed by
-  /// TMDB/IMDB id, falling back to normalized name+year; episodes keep their
-  /// own id so distinct episodes never collapse.
-  List<AggregatedItem> _dedupResumeItems(List<AggregatedItem> items) {
-    final seen = <String>{};
-    final deduped = <AggregatedItem>[];
-    for (final item in items) {
-      String key;
-      if (item.type == 'Movie') {
-        final providerId = item.tmdbId ?? item.imdbId;
-        key = providerId != null
-            ? 'movie:$providerId'
-            : 'movie:${item.name.trim().toLowerCase()}:${item.productionYear}';
-      } else {
-        key = '${item.serverId}:${item.id}';
-      }
-      if (seen.add(key)) deduped.add(item);
-    }
-    return deduped;
   }
 
   Future<HomeRow> getAggregatedResumeAudio({int limit = _defaultLimit}) async {
@@ -282,6 +273,7 @@ class MultiServerRepository {
           enableImageTypes: _imageTypes,
           imageTypeLimit: _imageTypeLimit,
           enableResumable: false,
+          nextUpDateCutoff: nextUpDateCutoff,
         );
         final parsed = _parseItems(response, session.server.id);
         return await _enrichNextUpItemsWithSeriesLastPlayed(
@@ -293,11 +285,12 @@ class MultiServerRepository {
     );
 
     final all = results.expand((e) => e).toList()..sort(_compareByLastPlayed);
+    final deduplicated = MediaDeduplicationUtils.deduplicateMediaItems(all);
 
     return HomeRow(
       id: 'nextUp',
       title: _l10n.nextUp,
-      items: all.take(limit).toList(),
+      items: deduplicated.take(limit).toList(),
       rowType: HomeRowType.nextUp,
     );
   }
@@ -351,10 +344,13 @@ class MultiServerRepository {
       _sortAggregatedItems(all, sortBy: sortBy, sortOrder: sortOrder);
     }
 
-    final takenItems = all.take(limit).toList();
-    final totalCount = sessions.fold<int>(0, (sum, session) {
-      return sum + (_rowTotals['${cacheKeyPrefix}_${session.server.id}'] ?? 0);
-    });
+    final deduplicated = MediaDeduplicationUtils.deduplicateMediaItems(all);
+    final takenItems = deduplicated.take(limit).toList();
+    final totalCount = _totalAfterDeduplication(
+      serverTotal: _serverRowTotal(sessions, cacheKeyPrefix),
+      fetched: all.length,
+      kept: deduplicated.length,
+    );
 
     return HomeRow(
       id: cacheKeyPrefix,
@@ -804,28 +800,40 @@ class MultiServerRepository {
       }
       sortedCombined = uniqueCombined;
     } else {
-      final sortBy = switch (row.rowType) {
-        HomeRowType.favorites =>
-          prefs?.get(UserPreferences.favoritesRowSortBy).apiValue ??
-              _defaultSortBy,
-        HomeRowType.collections =>
-          prefs?.get(UserPreferences.collectionsRowSortBy).apiValue ??
-              _defaultSortBy,
-        HomeRowType.genres =>
-          prefs?.get(UserPreferences.genresRowSortBy).apiValue ??
-              _defaultSortBy,
-        HomeRowType.audioArtists ||
-        HomeRowType.audioAlbums =>
-          prefs?.get(UserPreferences.audioRowsSortBy).apiValue ??
-              _defaultSortBy,
-        _ => _defaultSortBy,
-      };
+      final collectionsSort = prefs?.get(UserPreferences.collectionsRowSortBy);
+      // For a specific pinned collection row using Playlist Order, preserve the
+      // server-returned insertion order — don't re-sort on the client side.
+      // The generic 'collections' all-BoxSets row (row.id == 'collections') has
+      // no parentId, so playlistOrder is never active for it.
+      final collectionsUsePlaylistOrder =
+          row.rowType == HomeRowType.collections &&
+          (collectionsSort?.usesDedicatedEndpoint ?? false) &&
+          row.id != 'collections';
+      if (collectionsUsePlaylistOrder) {
+        sortedCombined = uniqueCombined;
+      } else {
+        final sortBy = switch (row.rowType) {
+          HomeRowType.favorites =>
+            prefs?.get(UserPreferences.favoritesRowSortBy).apiValue ??
+                _defaultSortBy,
+          HomeRowType.collections =>
+            collectionsSort?.apiValue ?? _defaultSortBy,
+          HomeRowType.genres =>
+            prefs?.get(UserPreferences.genresRowSortBy).apiValue ??
+                _defaultSortBy,
+          HomeRowType.audioArtists ||
+          HomeRowType.audioAlbums =>
+            prefs?.get(UserPreferences.audioRowsSortBy).apiValue ??
+                _defaultSortBy,
+          _ => _defaultSortBy,
+        };
 
-      sortedCombined = _sortAggregatedItems(
-        uniqueCombined,
-        sortBy: sortBy,
-        sortOrder: 'Ascending',
-      );
+        sortedCombined = _sortAggregatedItems(
+          uniqueCombined,
+          sortBy: sortBy,
+          sortOrder: 'Ascending',
+        );
+      }
     }
 
     final totalCount = sessions.fold<int>(0, (sum, session) {
@@ -877,10 +885,13 @@ class MultiServerRepository {
       sortOrder: sortOrder,
     );
 
-    final takenItems = all.take(limit).toList();
-    final totalCount = sessions.fold<int>(0, (sum, session) {
-      return sum + (_rowTotals['${id}_${session.server.id}'] ?? 0);
-    });
+    final deduplicated = MediaDeduplicationUtils.deduplicateMediaItems(all);
+    final takenItems = deduplicated.take(limit).toList();
+    final totalCount = _totalAfterDeduplication(
+      serverTotal: _serverRowTotal(sessions, id),
+      fetched: all.length,
+      kept: deduplicated.length,
+    );
 
     return HomeRow(
       id: id,
@@ -930,13 +941,17 @@ class MultiServerRepository {
     final hasMultiple = sessions.length > 1;
     final rows = <HomeRow>[];
 
+    final mergeByType = GetIt.instance<UserPreferences>().get(
+      UserPreferences.mergeRecentRowsByType,
+    );
+    final groupedItems = <String, List<AggregatedItem>>{};
+
     for (final session in sessions) {
       try {
-        final viewsResponse = await _withTimeout(
-          () => session.client.userViewsApi.getUserViews(),
+        final views = await _withTimeout(
+          () => loadUserViews(session.client, includeHidden: true),
           label: 'views from ${session.server.name}',
         );
-        final views = viewsResponse['Items'] as List? ?? [];
 
         Set<String> latestExcludes = const {};
         try {
@@ -945,10 +960,8 @@ class MultiServerRepository {
         } catch (_) {}
 
         for (final view in views) {
-          final data = view as Map<String, dynamic>;
-          final id = data['Id']?.toString() ?? '';
-          final collectionType = (data['CollectionType'] as String?)
-              ?.toLowerCase();
+          final id = view.id;
+          final collectionType = view.collectionType.toLowerCase();
           if (collectionType == 'playlists' ||
               collectionType == 'boxsets' ||
               collectionType == 'livetv') {
@@ -956,14 +969,11 @@ class MultiServerRepository {
           }
           if (latestExcludes.contains(id)) continue;
 
-          final name = data['Name'] as String? ?? '';
-          final displayName = hasMultiple
-              ? '$name (${session.server.name})'
-              : name;
+          final name = view.name;
           final fetchLimit = latestMediaFetchLimitForCollection(
             collectionType,
             defaultLimit: _defaultLimit,
-            maxLimit: 100,
+            maxLimit: _maxItems,
           );
 
           try {
@@ -978,28 +988,41 @@ class MultiServerRepository {
               label: 'latest $name from ${session.server.name}',
             );
 
+            final parsed = _parseItems(latestResponse, session.server.id);
+            if (parsed.isEmpty) continue;
+
+            // Merged rows are built once every server has answered, so the
+            // items are only collected here.
+            if (mergeByType) {
+              groupedItems.putIfAbsent(collectionType, () => []).addAll(parsed);
+              continue;
+            }
+
             final items = normalizeLatestMediaItems(
-              _parseItems(latestResponse, session.server.id),
+              parsed,
               collectionType: collectionType,
               limit: _defaultLimit,
             );
-            if (items.isNotEmpty) {
-              final totalCount = items.length < _defaultLimit
-                  ? items.length
-                  : _maxItems;
-              _rowTotals['latest_${session.server.id}_${id}_${session.server.id}'] =
-                  totalCount;
-              rows.add(
-                HomeRow(
-                  id: 'latest_${session.server.id}_$id',
-                  title: _l10n.latestLibraryName(displayName),
-                  items: items,
-                  rowType: HomeRowType.latestMedia,
-                  totalCount: totalCount,
-                  isAudio: collectionType == 'music',
-                ),
-              );
-            }
+            if (items.isEmpty) continue;
+
+            final displayName = hasMultiple
+                ? '$name (${session.server.name})'
+                : name;
+            final totalCount = items.length < _defaultLimit
+                ? items.length
+                : _maxItems;
+            _rowTotals['latest_${session.server.id}_${id}_${session.server.id}'] =
+                totalCount;
+            rows.add(
+              HomeRow(
+                id: 'latest_${session.server.id}_$id',
+                title: _l10n.latestLibraryName(displayName),
+                items: items,
+                rowType: HomeRowType.latestMedia,
+                totalCount: totalCount,
+                isAudio: collectionType == 'music',
+              ),
+            );
           } catch (e) {
             _logger.w('MultiServer: Failed to load latest for $name: $e');
           }
@@ -1009,6 +1032,52 @@ class MultiServerRepository {
           'MultiServer: Failed to load views from ${session.server.name}: $e',
         );
       }
+    }
+
+    if (!mergeByType) return rows;
+
+    for (final entry in groupedItems.entries) {
+      final collectionType = entry.key;
+
+      // A title in two libraries, or on two servers, is kept once.
+      final seenIds = <String>{};
+      final allItems = [
+        for (final item in entry.value)
+          if (seenIds.add(item.id)) item,
+      ];
+      if (allItems.isEmpty) continue;
+
+      allItems.sort((a, b) {
+        final da = _parseDateCreated(a.rawData['DateCreated']);
+        final db = _parseDateCreated(b.rawData['DateCreated']);
+        if (da != null && db != null) return db.compareTo(da);
+        if (da != null) return -1;
+        if (db != null) return 1;
+        return 0;
+      });
+
+      final items = normalizeLatestMediaItems(
+        allItems,
+        collectionType: collectionType,
+        limit: _defaultLimit,
+      );
+      if (items.isEmpty) continue;
+
+      final rowId = '${mergedTypeRowIdPrefix}latest_$collectionType';
+      _rowTotals[rowId] = items.length;
+      rows.add(
+        HomeRow(
+          id: rowId,
+          title: _l10n.latestLibraryName(
+            genericDescriptorForCollectionType(_l10n, collectionType),
+          ),
+          items: items,
+          rowType: HomeRowType.latestMedia,
+          // Everything the row will ever hold is already here.
+          totalCount: items.length,
+          isAudio: collectionType == 'music',
+        ),
+      );
     }
 
     return rows;
@@ -1240,6 +1309,27 @@ class MultiServerRepository {
     final aDate = a.rawData['UserData']?['LastPlayedDate'] as String? ?? '';
     final bDate = b.rawData['UserData']?['LastPlayedDate'] as String? ?? '';
     return bDate.compareTo(aDate);
+  }
+
+  int _serverRowTotal(List<ServerUserSession> sessions, String rowKey) =>
+      sessions.fold<int>(
+        0,
+        (sum, session) =>
+            sum + (_rowTotals['${rowKey}_${session.server.id}'] ?? 0),
+      );
+
+  /// Each server counts its rows without knowing another holds the same title.
+  /// Only the fetched window can be checked, so this is an upper bound, but it
+  /// stops the row promising more than it has.
+  static int _totalAfterDeduplication({
+    required int serverTotal,
+    required int fetched,
+    required int kept,
+  }) {
+    final removed = fetched - kept;
+    if (removed <= 0) return serverTotal;
+    final adjusted = serverTotal - removed;
+    return adjusted < kept ? kept : adjusted;
   }
 
   Future<List<AggregatedItem>> _enrichNextUpItemsWithSeriesLastPlayed(

@@ -95,6 +95,13 @@ class SeerrPreferences {
   Future<void> setNotifyOnIssues(bool value) =>
       _store.setBool(_userKey('notify_issues'), value);
 
+  // Off by default: library churn (upgrades, re-scans) is noisy, and the
+  // Seerr "library added" pref above already covers requested media.
+  bool get notifyOnNewMedia =>
+      _store.getBool(_userKey('notify_new_media')) ?? false;
+  Future<void> setNotifyOnNewMedia(bool value) =>
+      _store.setBool(_userKey('notify_new_media'), value);
+
   SeerrFetchLimit get fetchLimit {
     final stored = _store.getString(_userKey('fetch_limit'));
     if (stored == null || stored.isEmpty) return SeerrFetchLimit.medium;
@@ -143,7 +150,7 @@ class SeerrPreferences {
     if (seerrType == null || !enabled) return false;
     final config = homeRowsConfig.firstWhere(
       (c) => c.type == seerrType,
-      orElse: () => SeerrRowConfig(type: seerrType, enabled: true, order: 0),
+      orElse: () => SeerrRowConfig(type: seerrType, enabled: false, order: 0),
     );
     return config.enabled;
   }
@@ -211,7 +218,7 @@ class SeerrPreferences {
       'show_in_navigation', 'show_in_toolbar', 'show_request_status',
       'requests_filter',
       'block_nsfw', 'notify_new_requests', 'notify_library_added',
-      'notify_issues',
+      'notify_issues', 'notify_new_media',
       'fetch_limit', 'rows_config', 'home_rows_config',
       'hd_movie_profile_id', '4k_movie_profile_id',
       'hd_tv_profile_id', '4k_tv_profile_id',

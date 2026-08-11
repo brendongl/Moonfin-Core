@@ -11,7 +11,7 @@ import sys
 
 PACKAGES = [
     'flutter_secure_storage_tvos-0.0.1',
-    'flutter_tvos-1.0.5',
+    'flutter_tvos-1.1.2',
     'path_provider_tvos-0.0.1',
     'shared_preferences_tvos-0.0.1',
     'sqflite_tvos-0.0.1',

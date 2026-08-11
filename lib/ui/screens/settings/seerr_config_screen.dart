@@ -219,10 +219,10 @@ class _SeerrConfigScreenState extends State<SeerrConfigScreen> {
     try {
       final repo = await GetIt.instance.getAsync<SeerrRepository>();
       await repo.logoutMoonfin();
-      await _seerrPrefs.setEnabled(false);
+      await _seerrPrefs.setEnabled(true);
       await GetIt.instance<UserPreferences>().set(
         UserPreferences.seerrEnabled,
-        false,
+        true,
       );
       await _pushSync();
       await _loadSeerrStatus();
@@ -270,6 +270,13 @@ class _SeerrConfigScreenState extends State<SeerrConfigScreen> {
 
   Future<void> _setNotifyOnIssues(bool value) async {
     await _seerrPrefs.setNotifyOnIssues(value);
+    if (mounted) setState(() {});
+    if (value) await _requestNotificationPermission();
+    await _pushNotificationPrefs();
+  }
+
+  Future<void> _setNotifyOnNewMedia(bool value) async {
+    await _seerrPrefs.setNotifyOnNewMedia(value);
     if (mounted) setState(() {});
     if (value) await _requestNotificationPermission();
     await _pushNotificationPrefs();
@@ -402,6 +409,7 @@ class _SeerrConfigScreenState extends State<SeerrConfigScreen> {
     SeerrRowType.seriesGenres => l10n.seriesGenres,
     SeerrRowType.upcomingSeries => l10n.upcomingSeries,
     SeerrRowType.networks => l10n.networks,
+    SeerrRowType.yourWatchlist => l10n.yourWatchlist,
   };
 
   @override
@@ -559,6 +567,13 @@ class _SeerrConfigScreenState extends State<SeerrConfigScreen> {
             subtitle: l10n.seerrNotifyIssuesSubtitle,
             value: _seerrPrefs.notifyOnIssues,
             onChanged: _setNotifyOnIssues,
+          ),
+          _buildNotificationToggle(
+            icon: Icons.fiber_new_outlined,
+            title: l10n.seerrNotifyNewMediaTitle,
+            subtitle: l10n.seerrNotifyNewMediaSubtitle,
+            value: _seerrPrefs.notifyOnNewMedia,
+            onChanged: _setNotifyOnNewMedia,
           ),
         ],
         if (showSeerrSettings)

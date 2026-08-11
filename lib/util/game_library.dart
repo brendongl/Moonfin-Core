@@ -19,11 +19,19 @@ final RegExp _gameLibraryName = RegExp('game|rom|emulat', caseSensitive: false);
 class GameLibraryRegistry {
   final Set<String> _ids = <String>{};
   bool _loaded = false;
+  Future<void>? _inFlightRefresh;
 
   bool get loaded => _loaded;
   bool contains(String id) => _ids.contains(id);
 
-  Future<void> refresh() async {
+  /// Concurrent callers share a single request instead of each hitting the
+  /// server.
+  Future<void> refresh() =>
+      _inFlightRefresh ??= _refreshNow().whenComplete(
+        () => _inFlightRefresh = null,
+      );
+
+  Future<void> _refreshNow() async {
     if (!GetIt.instance.isRegistered<MediaServerClient>()) return;
     final gamesApi = GetIt.instance<MediaServerClient>().gamesApi;
     if (gamesApi == null) return;
@@ -54,11 +62,16 @@ bool isGameLibrary(String id, String? collectionType, String? name) {
 
 /// The route a library tile should open: the games browser for game libraries,
 /// otherwise the normal library view.
-String gameOrLibraryRoute(String id, String? collectionType, String name) {
+String gameOrLibraryRoute(
+  String id,
+  String? collectionType,
+  String name, {
+  String? serverId,
+}) {
   if (isGameLibrary(id, collectionType, name)) {
     return '${Destinations.gamesLibrary(id)}?title=${Uri.encodeQueryComponent(name)}';
   }
-  return Destinations.library(id);
+  return Destinations.library(id, serverId: serverId);
 }
 
 const IconData gameLibraryIcon = Icons.sports_esports;

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/widgets.dart';
@@ -20,13 +22,19 @@ Future<void> pushBackgroundHandler(RemoteMessage message) async {}
 /// token registration and taps. Foreground messages are ignored because the
 /// SSE settings stream already shows the in-app notification.
 class PushMessagingService {
-  bool _initialized = false;
+  Future<void>? _initFuture;
   String? _lastRegisteredToken;
 
-  Future<void> initialize() async {
+  /// Set when a registration attempt was skipped or failed because the plugin
+  /// was not reachable yet, so the availability listener can retry it.
+  bool _pendingRegistration = false;
+
+  /// Repeated and concurrent callers share one initialization. A failed
+  /// initialization clears itself so a later call can retry.
+  Future<void> initialize() => _initFuture ??= _doInitialize();
+
+  Future<void> _doInitialize() async {
     if (!PlatformDetection.isMobile) return;
-    if (_initialized) return;
-    _initialized = true;
 
     try {
       await Firebase.initializeApp(
@@ -38,13 +46,15 @@ class PushMessagingService {
       // A duplicate-app error means Firebase was already initialized earlier in
       // startup, which is fine; anything else aborts push setup.
       if (e.code != 'duplicate-app') {
-        _initialized = false;
+        _initFuture = null;
         return;
       }
     } catch (_) {
-      _initialized = false;
+      _initFuture = null;
       return;
     }
+
+    _attachAvailabilityListener();
 
     final messaging = FirebaseMessaging.instance;
 
@@ -95,18 +105,35 @@ class PushMessagingService {
     } catch (_) {}
   }
 
-  /// Re-registers the current FCM token after login. Startup registration bails
-  /// before a session exists, so this is called once the client is authenticated.
+  /// Re-registers the current FCM token after login. Waits for initialization
+  /// instead of bailing: on a cold start with session restore this is reached
+  /// before the deferred [initialize] call has run.
   Future<void> registerWithCurrentToken() async {
     if (!PlatformDetection.isMobile) return;
-    if (!_initialized) {
-      debugPrint('PushMessagingService: skip register, not initialized');
-      return;
-    }
     try {
+      await initialize();
+      // A server switch reuses the same FCM token, so drop the dedupe and let
+      // the new server get its own registration.
+      _lastRegisteredToken = null;
       final token = await FirebaseMessaging.instance.getToken();
       await _registerToken(token);
-    } catch (_) {}
+    } catch (_) {
+      _pendingRegistration = true;
+    }
+  }
+
+  /// Retries enrollment once the Moonfin plugin becomes reachable, covering
+  /// registrations that were skipped while its availability check was still
+  /// in flight.
+  void _attachAvailabilityListener() {
+    if (!GetIt.instance.isRegistered<PluginSyncService>()) return;
+    final sync = GetIt.instance<PluginSyncService>();
+    sync.addListener(() {
+      if (sync.pluginAvailable && _pendingRegistration) {
+        _pendingRegistration = false;
+        unawaited(registerWithCurrentToken());
+      }
+    });
   }
 
   Future<void> _registerToken(String? token) async {
@@ -124,21 +151,28 @@ class PushMessagingService {
         client.accessToken == null ||
         client.accessToken!.isEmpty) {
       debugPrint('PushMessagingService: skip register, no active session');
+      _pendingRegistration = true;
       return;
     }
 
     if (!GetIt.instance.isRegistered<PluginSyncService>()) {
       debugPrint('PushMessagingService: skip register, plugin sync unavailable');
+      _pendingRegistration = true;
       return;
     }
     final sync = GetIt.instance<PluginSyncService>();
 
-    await sync.registerPushDevice(
+    final sent = await sync.registerPushDevice(
       client,
       token: token,
       platform: PlatformDetection.isIOS ? 'ios' : 'android',
       deviceId: _deviceId(token),
     );
+    if (!sent) {
+      _pendingRegistration = true;
+      return;
+    }
+    _pendingRegistration = false;
     _lastRegisteredToken = token;
   }
 

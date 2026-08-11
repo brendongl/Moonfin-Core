@@ -21,6 +21,7 @@ import '../../widgets/genre_grid_card.dart';
 import '../../widgets/overlay_sheet.dart';
 import '../../widgets/poster_size_settings_dialog.dart';
 import '../../widgets/focus/context_menu_sheet.dart';
+import '../../widgets/quick_return_wrapper.dart';
 import '../../../l10n/app_localizations.dart';
 
 Color get _navyBackground => AppColorScheme.background;
@@ -31,8 +32,9 @@ const _initialArtworkBatch = 12;
 const _backgroundArtworkConcurrency = 4;
 
 bool _isCompact(BuildContext context) =>
-    PlatformDetection.useMobileUi ||
-    MediaQuery.sizeOf(context).width < _kCompactBreakpoint;
+    !PlatformDetection.isTV &&
+    (PlatformDetection.useMobileUi ||
+        MediaQuery.sizeOf(context).width < _kCompactBreakpoint);
 
 class AllGenresScreen extends StatefulWidget {
   const AllGenresScreen({super.key});
@@ -45,6 +47,7 @@ class _AllGenresScreenState extends State<AllGenresScreen> {
   final _client = GetIt.instance<MediaServerClient>();
   final _backgroundService = GetIt.instance<BackgroundService>();
   final _prefs = GetIt.instance<UserPreferences>();
+  final _scrollController = ScrollController();
   StreamSubscription<String?>? _backgroundSub;
   String? _backdropUrl;
   bool _disposed = false;
@@ -76,6 +79,7 @@ class _AllGenresScreenState extends State<AllGenresScreen> {
     _disposed = true;
     _backgroundSub?.cancel();
     _prefs.removeListener(_onChanged);
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -260,7 +264,7 @@ class _AllGenresScreenState extends State<AllGenresScreen> {
     final posterSize = _posterSize;
     final baseWidth = switch (_imageType) {
       ImageType.thumb => posterSize.landscapeHeight * (16 / 9),
-      ImageType.banner => posterSize.landscapeHeight * (16 / 9),
+      ImageType.banner => kBannerCardHeight * kBannerAspectRatio,
       ImageType.poster => posterSize.portraitHeight * (2 / 3),
     };
     return baseWidth * _desktopUiScaleFactor();
@@ -269,7 +273,7 @@ class _AllGenresScreenState extends State<AllGenresScreen> {
   double _cardAspectRatio() {
     return switch (_imageType) {
       ImageType.thumb => 16 / 9,
-      ImageType.banner => 16 / 9,
+      ImageType.banner => kBannerAspectRatio,
       ImageType.poster => 2 / 3,
     };
   }
@@ -308,7 +312,12 @@ class _AllGenresScreenState extends State<AllGenresScreen> {
 
   @override
   Widget build(BuildContext context) =>
-      RequestInitialFocus(child: _buildContent(context));
+      RequestInitialFocus(
+        child: QuickReturnWrapper(
+          scrollController: _scrollController,
+          child: _buildContent(context),
+        ),
+      );
 
   Widget _buildContent(BuildContext context) {
     final isMobile = _isCompact(context);
@@ -402,7 +411,9 @@ class _AllGenresScreenState extends State<AllGenresScreen> {
         final desktopScale = _desktopUiScaleFactor();
         final hPad = isMobile ? 16.0 : _horizontalPadding * desktopScale;
         final spacing = 16.0 * desktopScale;
-        final minColumns = isMobile ? 1 : 2;
+        final minColumns = _imageType == ImageType.banner
+            ? (constraints.maxWidth < 600 ? 1 : 2)
+            : (isMobile ? 1 : 2);
         final maxColumns = isMobile ? 4 : 8;
         final crossAxisCount =
             ((constraints.maxWidth - hPad * 2 + spacing) /
@@ -411,6 +422,7 @@ class _AllGenresScreenState extends State<AllGenresScreen> {
                 .clamp(minColumns, maxColumns);
 
         return GridView.builder(
+          controller: _scrollController,
           padding: EdgeInsets.fromLTRB(hPad, 20, hPad, 32),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: crossAxisCount,

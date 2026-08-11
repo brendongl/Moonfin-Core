@@ -9,14 +9,16 @@ import '../../preference/user_preferences.dart';
 import '../models/aggregated_item.dart';
 import 'theme_audio_player.dart';
 
-class ThemeMusicService {
+class ThemeMusicService implements AudioOwnable {
   final MediaServerClient _client;
   final UserPreferences _prefs;
   final PlaybackManager _playbackManager;
+  final PlaybackArbiter _audioArbiter;
 
   ThemeAudioPlayer? _player;
   String? _currentThemeSourceId;
   Timer? _fadeTimer;
+  Completer<void>? _fadeCompleter;
   double _targetVolume = 0.0;
   final Set<Object> _activeDetailScreens = {};
   bool _fadingOut = false;
@@ -30,7 +32,13 @@ class ThemeMusicService {
   static const _fadeStepMs = 50;
   static const _validTypes = {'Series', 'Movie', 'Season', 'Episode', 'BoxSet'};
 
-  ThemeMusicService(this._client, this._prefs, this._playbackManager) {
+  ThemeMusicService(
+    this._client,
+    this._prefs,
+    this._playbackManager,
+    this._audioArbiter,
+  ) {
+    _audioArbiter.register(this);
     _mainPlaybackSub = _playbackManager.state.playingStream.listen((isPlaying) {
       if (isPlaying) {
         fadeOutAndStop();
@@ -51,6 +59,14 @@ class ThemeMusicService {
     );
   }
 
+  @override
+  AudioProducer get audioProducerId => AudioProducer.themeMusic;
+
+  @override
+  Future<void> onAudioRevoked(RevokeReason reason) {
+    return fadeOutAndStop();
+  }
+
   void registerDetailScreen(Object token) {
     _activeDetailScreens.add(token);
   }
@@ -58,7 +74,11 @@ class ThemeMusicService {
   void unregisterDetailScreen(Object token) {
     _activeDetailScreens.remove(token);
     if (_activeDetailScreens.isEmpty) {
-      fadeOutAndStop();
+      if (_player != null) {
+        fadeOutAndStop();
+      } else {
+        stop();
+      }
     }
   }
 
@@ -93,6 +113,9 @@ class ThemeMusicService {
         _fadeTimer?.cancel();
         _fadeTimer = null;
         _fadingOut = false;
+        if (_fadeCompleter != null && !_fadeCompleter!.isCompleted) {
+          _fadeCompleter!.complete();
+        }
         _fadeIn(_playGeneration);
       }
       return;
@@ -105,7 +128,7 @@ class ThemeMusicService {
     ThemeAudioPlayer? localPlayer;
     try {
       final data = await _client.itemsApi.getThemeMedia(themeItemId);
-      if (generation != _playGeneration) return;
+      if (generation != _playGeneration || _activeDetailScreens.isEmpty) return;
 
       final songsResult = data['ThemeSongsResult'] as Map<String, dynamic>?;
       final songs =
@@ -117,24 +140,33 @@ class ThemeMusicService {
       final url = _buildAudioUrl(songId);
 
       _targetVolume = _prefs.get(UserPreferences.themeMusicVolume) / 100.0;
+
+      // Ask the arbiter for permission to play. This will revoke existing previews if any.
+      await _audioArbiter.acquire(AudioProducer.themeMusic);
+      if (generation != _playGeneration ||
+          _activeDetailScreens.isEmpty ||
+          _externalAudioActive) {
+        return;
+      }
+
       localPlayer = ThemeAudioPlayer.create();
       _player = localPlayer;
 
       await localPlayer.setVolume(0);
-      if (generation != _playGeneration) {
+      if (generation != _playGeneration || _activeDetailScreens.isEmpty) {
         await _safeDispose(localPlayer);
         return;
       }
 
       await localPlayer.open(url);
-      if (generation != _playGeneration) {
+      if (generation != _playGeneration || _activeDetailScreens.isEmpty) {
         await _safeDispose(localPlayer);
         return;
       }
 
       if (_prefs.get(UserPreferences.themeMusicLoop)) {
         await localPlayer.setLoop();
-        if (generation != _playGeneration) {
+        if (generation != _playGeneration || _activeDetailScreens.isEmpty) {
           await _safeDispose(localPlayer);
           return;
         }
@@ -143,7 +175,7 @@ class ThemeMusicService {
       _fadeIn(generation);
     } catch (_) {
       if (localPlayer != null &&
-          (generation != _playGeneration || _player != localPlayer)) {
+          (generation != _playGeneration || _player != localPlayer || _activeDetailScreens.isEmpty)) {
         await _safeDispose(localPlayer);
       }
     }
@@ -182,12 +214,13 @@ class ThemeMusicService {
     });
   }
 
-  void fadeOutAndStop() {
+  Future<void> fadeOutAndStop() {
     final player = _player;
-    if (player == null || _fadingOut) return;
+    if (player == null || _fadingOut) return _fadeCompleter?.future ?? Future.value();
 
     _fadeTimer?.cancel();
     _fadingOut = true;
+    _fadeCompleter = Completer<void>();
     final generation = _playGeneration;
     final currentVolume = player.currentVolume;
     final steps = _fadeDurationMs ~/ _fadeStepMs;
@@ -196,6 +229,9 @@ class ThemeMusicService {
     _fadeTimer = Timer.periodic(Duration(milliseconds: _fadeStepMs), (timer) {
       if (generation != _playGeneration || _player != player) {
         timer.cancel();
+        if (_fadeCompleter != null && !_fadeCompleter!.isCompleted) {
+          _fadeCompleter!.complete();
+        }
         return;
       }
       step++;
@@ -206,6 +242,8 @@ class ThemeMusicService {
         stop();
       }
     });
+
+    return _fadeCompleter!.future;
   }
 
   void stop() {
@@ -224,6 +262,9 @@ class ThemeMusicService {
         player.pause();
       } catch (_) {}
       unawaited(_safeDispose(player));
+    }
+    if (_fadeCompleter != null && !_fadeCompleter!.isCompleted) {
+      _fadeCompleter!.complete();
     }
   }
 

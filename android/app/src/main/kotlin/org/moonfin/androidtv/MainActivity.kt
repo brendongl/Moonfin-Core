@@ -45,6 +45,7 @@ import com.google.android.gms.cast.framework.media.RemoteMediaClient
 import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.CastSession
 import com.google.android.gms.cast.framework.SessionManagerListener
+import com.google.android.gms.common.api.PendingResult
 import com.google.android.gms.common.images.WebImage
 import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -52,7 +53,26 @@ import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
 
-class MainActivity : AudioServiceActivity() {
+import android.hardware.input.InputManager
+import org.flame_engine.gamepads_android.GamepadsCompatibleActivity
+
+class MainActivity : AudioServiceActivity(), GamepadsCompatibleActivity {
+
+    private var keyHandler: ((KeyEvent) -> Boolean)? = null
+    private var motionHandler: ((MotionEvent) -> Boolean)? = null
+
+    override fun registerInputDeviceListener(listener: InputManager.InputDeviceListener, handler: Handler?) {
+        val inputManager = getSystemService(Context.INPUT_SERVICE) as InputManager
+        inputManager.registerInputDeviceListener(listener, handler)
+    }
+
+    override fun registerKeyEventHandler(handler: (KeyEvent) -> Boolean) {
+        keyHandler = handler
+    }
+
+    override fun registerMotionEventHandler(handler: (MotionEvent) -> Boolean) {
+        motionHandler = handler
+    }
 
     private var methodChannel: MethodChannel? = null
     private var castChannel: MethodChannel? = null
@@ -69,12 +89,21 @@ class MainActivity : AudioServiceActivity() {
     private var externalPlayerChannel: MethodChannel? = null
     private var externalPlayerPendingResult: MethodChannel.Result? = null
     private var gamepadChannel: MethodChannel? = null
+    private var libretroBridge: LibretroBridge? = null
     private var watchNextChannel: MethodChannel? = null
     private var watchNextPublisher: WatchNextPublisher? = null
+    private var previewChannelPublisher: PreviewChannelPublisher? = null
     private var pendingDeepLink: String? = null
     private var gameActive = false
     private var hatX = 0
     private var hatY = 0
+
+    // Kept separate from hatX/hatY on purpose. Sharing them would let a
+    // UI-navigation value leak into the emulator's edge detector, which would
+    // then read the first in-game press as a hold already in progress and
+    // never send its matching button-up.
+    private var navX = 0
+    private var navY = 0
     private var pipEnabled = false
     private val handler = Handler(Looper.getMainLooper())
     private var dismissRunnable: Runnable? = null
@@ -82,6 +111,7 @@ class MainActivity : AudioServiceActivity() {
     private var pendingCastListener: SessionManagerListener<CastSession>? = null
     private var castMediaListener: RemoteMediaClient.Listener? = null
     private var castProgressListener: RemoteMediaClient.ProgressListener? = null
+    private var castErrorReported = false
 
     private fun emitAudioCapabilities() {
         audioCapsSink?.success(AudioCapabilities.query(this))
@@ -204,6 +234,8 @@ class MainActivity : AudioServiceActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        libretroBridge = LibretroBridge(flutterEngine)
+
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             MediaStoreHelper.CHANNEL,
@@ -253,7 +285,13 @@ class MainActivity : AudioServiceActivity() {
             when (call.method) {
                 "setActive" -> {
                     gameActive = call.argument<Boolean>("active") ?: false
-                    if (!gameActive) { hatX = 0; hatY = 0 }
+                    // Reset on every transition, in both directions. Otherwise
+                    // the first press after the switch reads as a hold already
+                    // in progress and gets dropped.
+                    hatX = 0
+                    hatY = 0
+                    navX = 0
+                    navY = 0
                     result.success(true)
                 }
                 else -> result.notImplemented()
@@ -513,6 +551,8 @@ class MainActivity : AudioServiceActivity() {
 
         val publisher = watchNextPublisher ?: WatchNextPublisher(applicationContext)
             .also { watchNextPublisher = it }
+        val channelPublisher = previewChannelPublisher
+            ?: PreviewChannelPublisher(applicationContext).also { previewChannelPublisher = it }
         watchNextChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             WATCH_NEXT_CHANNEL,
@@ -527,6 +567,17 @@ class MainActivity : AudioServiceActivity() {
                 }
                 "clear" -> {
                     publisher.clear()
+                    result.success(null)
+                }
+                "publishChannels" -> {
+                    @Suppress("UNCHECKED_CAST")
+                    val channels = call.argument<List<Map<String, Any?>>>("channels")
+                        ?: emptyList()
+                    channelPublisher.publishChannels(channels)
+                    result.success(null)
+                }
+                "clearChannels" -> {
+                    channelPublisher.clearChannels()
                     result.success(null)
                 }
                 "getInitialDeepLink" -> {
@@ -578,7 +629,15 @@ class MainActivity : AudioServiceActivity() {
     // which injects them into the core. Consumed only while active so app navigation is intact
     // otherwise; button events are also consumed in-game so they never reach Flutter focus.
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (gameActive) {
+        if (gameActive || libretroBridge?.isActive == true) {
+            if (libretroBridge?.isActive == true &&
+                event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 &&
+                (event.keyCode == KeyEvent.KEYCODE_MENU ||
+                    event.keyCode == KeyEvent.KEYCODE_BUTTON_MODE)
+            ) {
+                libretroBridge?.onMenu()
+                return true
+            }
             val index = retroPadIndex(event.keyCode)
             if (index != null) {
                 if (event.repeatCount == 0 &&
@@ -589,11 +648,12 @@ class MainActivity : AudioServiceActivity() {
                 return true
             }
         }
+        keyHandler?.invoke(event)
         return super.dispatchKeyEvent(event)
     }
 
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
-        if (gameActive &&
+        if ((gameActive || libretroBridge?.isActive == true) &&
             event.source and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK &&
             event.action == MotionEvent.ACTION_MOVE
         ) {
@@ -613,6 +673,29 @@ class MainActivity : AudioServiceActivity() {
                 if (y == 1) sendGamepadButton(5, true)
                 hatY = y
             }
+            return true
+        }
+
+        // Outside a game the left stick drives UI focus. The d-pad needs no
+        // help, because Android already turns the hat into KEYCODE_DPAD_* key
+        // events. Only the stick is invisible to Flutter, arriving as motion.
+        if (!gameActive &&
+            event.source and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK &&
+            event.action == MotionEvent.ACTION_MOVE
+        ) {
+            val x = stickDirection(event, MotionEvent.AXIS_X)
+            if (x != navX) {
+                navX = x
+                sendGamepadNavigate("h", if (x == -1) "left" else if (x == 1) "right" else "none")
+            }
+            val y = stickDirection(event, MotionEvent.AXIS_Y)
+            if (y != navY) {
+                navY = y
+                sendGamepadNavigate("v", if (y == -1) "up" else if (y == 1) "down" else "none")
+            }
+            // Not consumed, since other views may still want the motion event.
+        }
+        if (motionHandler?.invoke(event) == true) {
             return true
         }
         return super.dispatchGenericMotionEvent(event)
@@ -653,7 +736,33 @@ class MainActivity : AudioServiceActivity() {
         return 0
     }
 
+    // -1 / 0 / +1 from an analog stick axis alone. Separate from axisDirection,
+    // which falls back from the hat to the stick. UI navigation has to ignore
+    // the hat, or every d-pad press would move focus twice.
+    private fun stickDirection(event: MotionEvent, stickAxis: Int): Int {
+        val stick = event.getAxisValue(stickAxis)
+        if (stick <= -0.5f) return -1
+        if (stick >= 0.5f) return 1
+        return 0
+    }
+
+    // The axis is "h" or "v" so Dart can tell which one a "none" recentre came
+    // from. Without it, releasing a diagonal is ambiguous.
+    private fun sendGamepadNavigate(axis: String, direction: String) {
+        runOnUiThread {
+            gamepadChannel?.invokeMethod(
+                "onNavigate",
+                mapOf("axis" to axis, "direction" to direction),
+            )
+        }
+    }
+
     private fun sendGamepadButton(index: Int, pressed: Boolean) {
+        val bridge = libretroBridge
+        if (bridge?.isActive == true) {
+            bridge.onButton(index, pressed)
+            return
+        }
         runOnUiThread {
             gamepadChannel?.invokeMethod("onButton", mapOf("index" to index, "pressed" to pressed))
         }
@@ -883,6 +992,7 @@ class MainActivity : AudioServiceActivity() {
     private fun startGoogleCastSession(args: Map<*, *>, result: MethodChannel.Result) {
         val targetId = args["targetId"] as? String
         val streamUrl = args["streamUrl"] as? String
+        val contentType = args["contentType"] as? String
         val title = args["title"] as? String ?: "Moonfin"
         val subtitle = args["subtitle"] as? String
         val posterUrl = args["posterUrl"] as? String
@@ -916,6 +1026,7 @@ class MainActivity : AudioServiceActivity() {
             loadOnCastSession(
                 session = currentSession,
                 streamUrl = streamUrl,
+                contentType = contentType,
                 title = title,
                 subtitle = subtitle,
                 posterUrl = posterUrl,
@@ -934,12 +1045,12 @@ class MainActivity : AudioServiceActivity() {
         val listener = object : SessionManagerListener<CastSession> {
             override fun onSessionStarted(session: CastSession, sessionId: String) {
                 cleanupPendingCast(sessionManager, this)
-                loadOnCastSession(session, streamUrl, title, subtitle, posterUrl, queueItems, startTicks, result)
+                loadOnCastSession(session, streamUrl, contentType, title, subtitle, posterUrl, queueItems, startTicks, result)
             }
 
             override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
                 cleanupPendingCast(sessionManager, this)
-                loadOnCastSession(session, streamUrl, title, subtitle, posterUrl, queueItems, startTicks, result)
+                loadOnCastSession(session, streamUrl, contentType, title, subtitle, posterUrl, queueItems, startTicks, result)
             }
 
             override fun onSessionStartFailed(session: CastSession, error: Int) {
@@ -980,6 +1091,7 @@ class MainActivity : AudioServiceActivity() {
     private fun loadOnCastSession(
         session: CastSession,
         streamUrl: String,
+        contentType: String?,
         title: String,
         subtitle: String?,
         posterUrl: String?,
@@ -993,11 +1105,13 @@ class MainActivity : AudioServiceActivity() {
             return
         }
 
+        castErrorReported = false
         val startMs = startTicks?.div(10000L) ?: 0L
         val effectiveQueueItems = if (queueItems.isEmpty()) {
             listOf(
                 mapOf(
                     "streamUrl" to streamUrl,
+                    "contentType" to (contentType ?: ""),
                     "title" to title,
                     "subtitle" to (subtitle ?: ""),
                     "posterUrl" to (posterUrl ?: ""),
@@ -1011,6 +1125,7 @@ class MainActivity : AudioServiceActivity() {
             val castQueueItems = effectiveQueueItems.mapNotNull { entry ->
                 buildQueueItem(
                     streamUrl = entry["streamUrl"] as? String,
+                    contentType = entry["contentType"] as? String,
                     title = entry["title"] as? String,
                     subtitle = entry["subtitle"] as? String,
                     posterUrl = entry["posterUrl"] as? String,
@@ -1032,11 +1147,12 @@ class MainActivity : AudioServiceActivity() {
                 .setCurrentTime(startMs)
                 .build()
 
-            remoteClient.load(loadRequest)
+            watchCastLoadResult(remoteClient.load(loadRequest))
         } else {
             val single = effectiveQueueItems.first()
             val mediaInfo = buildMediaInfo(
                 streamUrl = single["streamUrl"] as? String ?: streamUrl,
+                contentType = single["contentType"] as? String ?: contentType,
                 title = single["title"] as? String ?: title,
                 subtitle = single["subtitle"] as? String ?: subtitle,
                 posterUrl = single["posterUrl"] as? String ?: posterUrl,
@@ -1046,12 +1162,34 @@ class MainActivity : AudioServiceActivity() {
                 .setAutoplay(true)
                 .setCurrentTime(startMs)
                 .build()
-            remoteClient.load(loadRequest)
+            watchCastLoadResult(remoteClient.load(loadRequest))
         }
 
         registerCastMediaListeners(remoteClient)
         emitCurrentGoogleCastStatus(remoteClient)
         result.success(null)
+    }
+
+    // The Flutter result already reported success when the load was issued,
+    // so a rejected load can only reach the user through an error event.
+    private fun watchCastLoadResult(
+        pending: PendingResult<RemoteMediaClient.MediaChannelResult>,
+    ) {
+        pending.setResultCallback { mediaResult ->
+            if (!mediaResult.status.isSuccess) {
+                emitCastPlaybackError(
+                    "Receiver rejected the media (status ${mediaResult.status.statusCode})",
+                )
+            }
+        }
+    }
+
+    // A failed receiver keeps repeating the same status, so only the first
+    // report is worth showing until the next load.
+    private fun emitCastPlaybackError(message: String) {
+        if (castErrorReported) return
+        castErrorReported = true
+        emitGoogleCastEvent("error", message)
     }
 
     private fun parseQueueItems(raw: Any?): List<Map<String, Any>> {
@@ -1063,6 +1201,7 @@ class MainActivity : AudioServiceActivity() {
             buildMap<String, Any> {
                 put("streamUrl", streamUrl)
                 put("title", title)
+                (map["contentType"] as? String)?.let { put("contentType", it) }
                 (map["subtitle"] as? String)?.let { put("subtitle", it) }
                 (map["posterUrl"] as? String)?.let { put("posterUrl", it) }
             }
@@ -1071,6 +1210,7 @@ class MainActivity : AudioServiceActivity() {
 
     private fun buildMediaInfo(
         streamUrl: String,
+        contentType: String?,
         title: String,
         subtitle: String?,
         posterUrl: String?,
@@ -1089,13 +1229,14 @@ class MainActivity : AudioServiceActivity() {
 
         return MediaInfo.Builder(streamUrl)
             .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
-            .setContentType("video/*")
+            .setContentType(contentType?.takeIf { it.isNotBlank() } ?: "video/mp4")
             .setMetadata(metadata)
             .build()
     }
 
     private fun buildQueueItem(
         streamUrl: String?,
+        contentType: String?,
         title: String?,
         subtitle: String?,
         posterUrl: String?,
@@ -1103,6 +1244,7 @@ class MainActivity : AudioServiceActivity() {
         val url = streamUrl ?: return null
         val mediaInfo = buildMediaInfo(
             streamUrl = url,
+            contentType = contentType,
             title = title ?: "Moonfin",
             subtitle = subtitle,
             posterUrl = posterUrl,
@@ -1252,6 +1394,13 @@ class MainActivity : AudioServiceActivity() {
     private fun emitCurrentGoogleCastStatus(remoteClient: RemoteMediaClient? = getCurrentCastSession()?.remoteMediaClient) {
         val client = remoteClient ?: return
         val status = client.mediaStatus ?: return
+        // Without the reason an errored idle looks like an ordinary one and the
+        // failure never reaches the app.
+        if (status.playerState == MediaStatus.PLAYER_STATE_IDLE &&
+            status.idleReason == MediaStatus.IDLE_REASON_ERROR
+        ) {
+            emitCastPlaybackError("Receiver failed to play the media")
+        }
         val state = when (status.playerState) {
             MediaStatus.PLAYER_STATE_PLAYING -> "playing"
             MediaStatus.PLAYER_STATE_PAUSED -> "paused"

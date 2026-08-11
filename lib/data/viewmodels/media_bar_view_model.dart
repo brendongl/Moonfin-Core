@@ -20,7 +20,6 @@ class MediaBarViewModel extends ChangeNotifier {
   MediaBarState get state => _state;
 
   final _ratings = <String, Map<String, double>>{};
-  final _tmdbIdByItemId = <String, String?>{};
   final _bookshelfDetails = <String, BookshelfDetail>{};
   final _bookshelfDetailInFlight = <String>{};
   final _galleryDetails = <String, GalleryDetail>{};
@@ -132,7 +131,7 @@ class MediaBarViewModel extends ChangeNotifier {
       _lastMode = mode;
       _lastContentType = contentType;
       _lastItemCount = itemCount;
-      load();
+      load(force: true);
     }
   }
 
@@ -145,7 +144,9 @@ class MediaBarViewModel extends ChangeNotifier {
   Future<void> load({
     BuildContext? context,
     bool preserveCurrent = true,
+    bool force = false,
   }) async {
+    if (_state is! MediaBarLoading && !force) return;
     if (_isLoading) return;
     _isLoading = true;
     final loadGeneration = ++_loadGeneration;
@@ -153,7 +154,6 @@ class MediaBarViewModel extends ChangeNotifier {
         ? _state as MediaBarReady
         : null;
     _ratings.clear();
-    _tmdbIdByItemId.clear();
     _bookshelfDetails.clear();
     _bookshelfDetailInFlight.clear();
     _galleryDetails.clear();
@@ -206,21 +206,11 @@ class MediaBarViewModel extends ChangeNotifier {
 
   Future<void> _loadItemRatings(MediaBarSlideItem item) async {
     try {
-      var tmdbId = item.tmdbId;
-      if (tmdbId == null) {
-        if (_tmdbIdByItemId.containsKey(item.itemId)) {
-          tmdbId = _tmdbIdByItemId[item.itemId];
-        } else {
-          try {
-            final details = await _client.itemsApi.getItem(item.itemId);
-            tmdbId = (details['ProviderIds'] as Map?)?['Tmdb'] as String?;
-          } catch (_) {
-            tmdbId = null;
-          }
-          _tmdbIdByItemId[item.itemId] = tmdbId;
-        }
-      }
-
+      final tmdbId = await _mdbListRepository.resolveTmdbId(
+        itemId: item.itemId,
+        serverId: null,
+        knownTmdbId: item.tmdbId,
+      );
       if (tmdbId == null) return;
       final result = await _mdbListRepository.getRatings(
         tmdbId: tmdbId,

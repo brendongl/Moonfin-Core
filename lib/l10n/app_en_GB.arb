@@ -7564,10 +7564,6 @@
     "@settingsAudioFallbackCodecEac3": {
         "description": "Fallback codec option: EAC3"
     },
-    "settingsAudioFallbackCodecTrueHd": "TrueHD\n(Lossless)",
-    "@settingsAudioFallbackCodecTrueHd": {
-        "description": "Fallback codec option: TrueHD"
-    },
     "settingsAudioFallbackCodecMp3": "MP3\n(Stereo Only)",
     "@settingsAudioFallbackCodecMp3": {
         "description": "Fallback codec option: MP3"
@@ -7632,16 +7628,24 @@
     "@currentUser": {
         "description": "Option: current user"
     },
-    "discoverRowsDescriptionPlugin": "Drag to reorder. Enable or disable rows. Enabled row order syncs with the Moonfin plugin.",
-    "@discoverRowsDescriptionPlugin": {
-        "description": "Description for discover rows with plugin"
+    "detailScreenStyle": "Detail screen style",
+    "@detailScreenStyle": {
+        "description": "Label for the media detail screen layout style setting"
     },
-    "discoverRowsDescription": "Drag to reorder. Enable or disable rows.",
-    "@discoverRowsDescription": {
-        "description": "Description for discover rows without plugin"
+    "detailScreenStyleSubtitle": "Classic is the original centered moonfin layout. Modern is a responsive cinematic layout.",
+    "@detailScreenStyleSubtitle": {
+        "description": "Explanation under the detail screen style setting"
     },
-    "discoverRows": "Discover Rows",
-    "@discoverRows": {
-        "description": "Section title for discover rows"
+    "detailScreenStyleMoonfin": "Classic",
+    "@detailScreenStyleMoonfin": {
+        "description": "Detail screen style option: the classic centered layout"
+    },
+    "detailScreenStyleModern": "Modern",
+    "@detailScreenStyleModern": {
+        "description": "Detail screen style option: the responsive cinematic layout"
+    },
+    "expandedTabs": "Expanded Tabs",
+    "@expandedTabs": {
+        "description": "Label for the detail screen expanded tabs setting"
     }
 }

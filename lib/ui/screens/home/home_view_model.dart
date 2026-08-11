@@ -9,12 +9,16 @@ import 'package:get_it/get_it.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../../data/models/aggregated_item.dart';
+import '../../../data/models/aggregated_library.dart';
 import '../../../data/models/home_row.dart';
 import '../../../data/repositories/multi_server_repository.dart';
+import '../../../data/repositories/user_views_repository.dart';
+import '../../../data/utils/latest_media_row_normalizer.dart';
 import '../../../data/services/connectivity_service.dart';
 import '../../../data/services/home_row_cache_store.dart';
 import '../../../data/services/row_data_source.dart';
 import '../../../data/services/topshelf_service.dart';
+import '../../../data/services/tv_channels_service.dart';
 import '../../../data/services/watch_next_service.dart';
 import '../../../data/viewmodels/media_bar_view_model.dart';
 import '../../../l10n/app_localizations.dart';
@@ -27,12 +31,15 @@ import '../../../data/services/plugin_sync_service.dart';
 import '../../../data/services/seerr/seerr_api_models.dart';
 import '../../../data/utils/bounded_concurrency.dart';
 import '../../../util/platform_detection.dart';
+import '../../../util/server_url.dart';
 import '../../../preference/seerr_preferences.dart';
 import '../../../data/viewmodels/seerr_discover_view_model.dart';
-import 'package:dio/dio.dart';
 import '../../../data/services/custom_external_lists_service.dart';
 
 class HomeViewModel extends ChangeNotifier {
+  /// Cards in a merged row, matching what a single library row shows.
+  static const _mergedRowItemLimit = 15;
+
   final RowDataSource _dataSource;
   final UserPreferences _prefs;
   final MediaServerClient _client;
@@ -45,6 +52,7 @@ class HomeViewModel extends ChangeNotifier {
 
   final TopShelfService _topShelf = TopShelfService();
   final WatchNextService _watchNext = WatchNextService();
+  final TvChannelsService _tvChannels = TvChannelsService();
 
   List<HomeRow> _rows = [];
   List<HomeRow> get rows => _rows;
@@ -52,6 +60,7 @@ class HomeViewModel extends ChangeNotifier {
   bool _isLoading = false;
   bool get isLoading => _isLoading;
   bool _bgMergeInFlight = false;
+  bool _bgResumeRefreshInFlight = false;
   bool _reloadRequestedWhileLoading = false;
   bool _pendingReloadPreserveExisting = true;
   bool _pendingReloadForceRefresh = false;
@@ -68,6 +77,39 @@ class HomeViewModel extends ChangeNotifier {
 
   bool get _multiServerEnabled =>
       !_isOffline && _prefs.get(UserPreferences.enableMultiServerLibraries);
+
+  /// Whether a stored address is the server this client is on, ignoring the
+  /// harmless ways the two spellings differ, such as a trailing slash or the
+  /// `/web/index.html` the dashboard runs under.
+  bool _isThisServer(String? storedServerId) {
+    if (storedServerId == null || storedServerId.isEmpty) return false;
+    return normalizeServerBaseUrl(storedServerId) ==
+        normalizeServerBaseUrl(_serverId);
+  }
+
+  /// Whether a section should show on this server's home screen.
+  ///
+  /// The admin config page stamps dynamic rows with whatever address Moonbase
+  /// was opened at, which is often not how users reach the server, so a LAN
+  /// address against a public domain never matches however it is spelled. With
+  /// one server there is nowhere else the row could belong, so keep it anyway.
+  bool _belongsToThisServer(HomeSectionConfig cfg) {
+    if (cfg.isBuiltin || cfg.pluginSource == HomeSectionPluginSource.custom) {
+      return true;
+    }
+    if (!_multiServerEnabled) return true;
+    return _isThisServer(cfg.serverId);
+  }
+
+  /// The address a dynamic row loads from. A row carrying an address this
+  /// client can't match falls back to the active server rather than reaching
+  /// for one it may not be able to see.
+  String _sectionServerId(HomeSectionConfig cfg) {
+    final stored = cfg.serverId;
+    if (stored == null || stored.isEmpty) return _serverId;
+    if (!_multiServerEnabled || _isThisServer(stored)) return _serverId;
+    return stored;
+  }
 
   String _homeCacheKey() {
     final userId = _ownerUserId;
@@ -136,6 +178,7 @@ class HomeViewModel extends ChangeNotifier {
 
   static bool _isSeerrSectionType(HomeSectionType type) {
     return type == HomeSectionType.seerrRecentRequests ||
+        type == HomeSectionType.seerrWatchlist ||
         type == HomeSectionType.seerrRecentlyAdded ||
         type == HomeSectionType.seerrPopularMovies ||
         type == HomeSectionType.seerrUpcomingMovies ||
@@ -297,6 +340,7 @@ class HomeViewModel extends ChangeNotifier {
       return;
     }
     _isLoading = true;
+    _mediaBarViewModel.load(force: forceRefresh);
     notifyListeners();
     _rowOffsets.clear();
     _multiServerRepo.clearOffsets();
@@ -351,7 +395,6 @@ class HomeViewModel extends ChangeNotifier {
       final sinceYouWatchedNum = _prefs.get(UserPreferences.sinceYouWatchedNumRows).value;
       final showRewatch = _prefs.get(UserPreferences.displayRewatchRow);
 
-      // Plugin-dynamic sections only make sense on the active server.
       final offline = _isOffline;
       final visibleConfigsRaw = configs
           .where(
@@ -359,9 +402,7 @@ class HomeViewModel extends ChangeNotifier {
                 // When offline, only sections the downloads catalog can
                 // answer are shown.
                 (!offline || _isOfflineCapableSection(c)) &&
-                (c.isBuiltin ||
-                    c.pluginSource == HomeSectionPluginSource.custom ||
-                    (c.serverId != null && c.serverId == _serverId)) &&
+                _belongsToThisServer(c) &&
                 (showFavoritesRows || !_isFavoriteSectionType(c.type)) &&
                 (showCollectionsRows ||
                     !((c.isBuiltin && _isCollectionsSectionType(c.type)) ||
@@ -420,7 +461,7 @@ class HomeViewModel extends ChangeNotifier {
           .toList();
 
       if (!sections.contains(HomeSectionType.mediaBar)) {
-        _mediaBarViewModel.load();
+        _mediaBarViewModel.load(force: forceRefresh);
       }
 
       final merge = _prefs.get(UserPreferences.mergeContinueWatchingNextUp);
@@ -462,97 +503,99 @@ class HomeViewModel extends ChangeNotifier {
         }
       }
 
-      final completers = <Future<void>>[];
-      for (final cfg in nonResumeEffectiveConfigs) {
-        completers.add(() async {
-          List<HomeRow> sectionRows;
-          try {
-            sectionRows = await _loadConfig(cfg, forceRefresh: forceRefresh);
-          } catch (e) {
-            debugPrint('[Home] Failed to load section $cfg: $e');
-            // A thrown load is a transient failure, not a genuinely empty
-            // result. When we are refreshing and a populated row is already on
-            // screen, keep it instead of wiping it. Only fall through to
-            // clearing when there is nothing to preserve, so a cold load still
-            // drops its loading placeholder.
-            final hasVisibleRow = _rowsForConfig(
-              _rows,
-              cfg,
-            ).any((r) => !r.isLoading);
-            if (preserveExisting && hasVisibleRow) {
-              return;
-            }
-            sectionRows = const <HomeRow>[];
+      Future<void> loadConfigItem(HomeSectionConfig cfg) async {
+        List<HomeRow> sectionRows;
+        try {
+          sectionRows = await _loadConfig(cfg, forceRefresh: forceRefresh);
+        } catch (e) {
+          debugPrint('[Home] Failed to load section $cfg: $e');
+          // A thrown load is a transient failure, not a genuinely empty
+          // result. When we are refreshing and a populated row is already on
+          // screen, keep it instead of wiping it. Only fall through to
+          // clearing when there is nothing to preserve, so a cold load still
+          // drops its loading placeholder.
+          final hasVisibleRow = _rowsForConfig(
+            _rows,
+            cfg,
+          ).any((r) => !r.isLoading);
+          if (preserveExisting && hasVisibleRow) {
+            return;
           }
-          final currentConfigs = _prefs.activeHomeSectionConfigs;
-          final isStillActive = currentConfigs.any((c) => c.stableId == cfg.stableId);
-          if (!isStillActive) return;
-          // Cleanup runs even when the load failed, so the section's loading
-          // placeholder is cleared instead of spinning forever.
-          final loadedRows = sectionRows
-              .map((r) => r.copyWith(items: _filterEmptyElements(r.items)))
-              .where(
-                (r) => r.items.isNotEmpty || r.rowType == HomeRowType.liveTv,
-              )
-              .toList();
-          final placeholder = _placeholderForConfig(cfg);
-          final loadedIds = loadedRows.map((r) => r.id).toSet();
-          // Find the row that immediately follows this section's placeholder /
-          // existing rows, so we can re-anchor after removals.
+          sectionRows = const <HomeRow>[];
+        }
+        final currentConfigs = _prefs.activeHomeSectionConfigs;
+        final isStillActive = currentConfigs.any((c) => c.stableId == cfg.stableId);
+        if (!isStillActive) return;
+        // Cleanup runs even when the load failed, so the section's loading
+        // placeholder is cleared instead of spinning forever.
+        final loadedRows = sectionRows
+            .map((r) => r.copyWith(items: _filterEmptyElements(r.items)))
+            .where(
+              (r) => r.items.isNotEmpty || r.rowType == HomeRowType.liveTv,
+            )
+            .toList();
+        final placeholder = _placeholderForConfig(cfg);
+        final loadedIds = loadedRows.map((r) => r.id).toSet();
+        // Find the row that immediately follows this section's placeholder /
+        // existing rows, so we can re-anchor after removals.
 
-          String? anchorId;
-          {
-            // Walk forward past the section's current rows to find the next
-            // sibling row that won't be removed.
-            bool pastSection = false;
-            for (final r in _rows) {
-              final willRemove =
-                  (placeholder != null && r.id == placeholder.id) ||
-                  loadedIds.contains(r.id) ||
-                  _rowBelongsToConfig(r, cfg);
-              if (willRemove) {
-                pastSection = true;
-              } else if (pastSection) {
-                anchorId = r.id;
-                break;
-              }
-            }
-          }
-          final newRows = List<HomeRow>.from(_rows);
-          newRows.removeWhere(
-            (r) =>
+        String? anchorId;
+        {
+          // Walk forward past the section's current rows to find the next
+          // sibling row that won't be removed.
+          bool pastSection = false;
+          for (final r in _rows) {
+            final willRemove =
                 (placeholder != null && r.id == placeholder.id) ||
                 loadedIds.contains(r.id) ||
-                // Also clear any stale rows that belonged to this section from a
-                // prior load but were not included in the fresh result. This
-                // prevents phantom rows when the section's row-set changes
-                // (e.g. library added/removed, latestItemsExcludes updated).
-                _rowBelongsToConfig(r, cfg),
-          );
-
-          if (loadedRows.isNotEmpty) {
-            final insertIndex = anchorId != null
-                ? newRows.indexWhere((r) => r.id == anchorId)
-                : -1;
-            if (insertIndex < 0) {
-              newRows.addAll(loadedRows);
-            } else {
-              newRows.insertAll(insertIndex, loadedRows);
+                _rowBelongsToConfig(r, cfg);
+            if (willRemove) {
+              pastSection = true;
+            } else if (pastSection) {
+              anchorId = r.id;
+              break;
             }
           }
-          _rows = newRows;
-          notifyListeners();
-        }());
+        }
+        final newRows = List<HomeRow>.from(_rows);
+        newRows.removeWhere(
+          (r) =>
+              (placeholder != null && r.id == placeholder.id) ||
+              loadedIds.contains(r.id) ||
+              // Also clear any stale rows that belonged to this section from a
+              // prior load but were not included in the fresh result. This
+              // prevents phantom rows when the section's row-set changes
+              // (e.g. library added/removed, latestItemsExcludes updated).
+              _rowBelongsToConfig(r, cfg),
+        );
+
+        if (loadedRows.isNotEmpty) {
+          final insertIndex = anchorId != null
+              ? newRows.indexWhere((r) => r.id == anchorId)
+              : -1;
+          if (insertIndex < 0) {
+            newRows.addAll(loadedRows);
+          } else {
+            newRows.insertAll(insertIndex, loadedRows);
+          }
+        }
+        _rows = newRows;
+        notifyListeners();
       }
 
-      await Future.wait(completers);
+      await mapBounded<HomeSectionConfig, void>(
+        nonResumeEffectiveConfigs,
+        3,
+        (cfg) => loadConfigItem(cfg),
+      );
 
       unawaited(_cacheStore.write(_homeCacheKey(), _rows));
       _topShelf.update(_rows);
       _watchNext.update(_rows);
+      _tvChannels.update();
 
       if (showMergedResume) {
-        _loadResumeAndNextUpInBackground();
+        unawaited(_loadResumeAndNextUpInBackground());
       }
     } finally {
       _isLoading = false;
@@ -666,6 +709,8 @@ class HomeViewModel extends ChangeNotifier {
         return row.rowType == HomeRowType.activeRecordings;
       case HomeSectionType.seerrRecentRequests:
         return row.id == 'seerr_recent_requests';
+      case HomeSectionType.seerrWatchlist:
+        return row.id == 'seerr_watchlist';
       case HomeSectionType.seerrRecentlyAdded:
         return row.id == 'seerr_recently_added';
       case HomeSectionType.seerrPopularMovies:
@@ -750,6 +795,82 @@ class HomeViewModel extends ChangeNotifier {
     await load(preserveExisting: preserveExisting);
   }
 
+  /// Lightweight refresh for returning to home from a pushed route. Viewing or
+  /// playing an item only changes the resume and next-up rows, so this refetches
+  /// just those and updates them in place, leaving every other row (and its
+  /// pagination, scroll, and focus state) untouched. A full [refresh] still runs
+  /// on the Home button, pull-to-refresh, cold start, and periodic refresh.
+  Future<void> refreshResumeAndNextUp() async {
+    // A full load already covers these rows, so don't compete with it.
+    if (_isLoading) return;
+
+    if (_prefs.get(UserPreferences.mergeContinueWatchingNextUp)) {
+      await _loadResumeAndNextUpInBackground();
+      return;
+    }
+
+    if (_bgResumeRefreshInFlight) return;
+    _bgResumeRefreshInFlight = true;
+    try {
+      await Future.wait([
+        _refreshRowInPlace(
+          'resume',
+          () => _multiServerEnabled
+              ? _multiServerRepo.getAggregatedResume()
+              : _dataSource.loadResume(_serverId),
+          _prefs.filterContinueWatching,
+        ),
+        _refreshRowInPlace(
+          'nextUp',
+          () => _multiServerEnabled
+              ? _multiServerRepo.getAggregatedNextUp()
+              : _dataSource.loadNextUp(_serverId),
+          _prefs.filterNextUp,
+        ),
+        _refreshRowInPlace(
+          'resumeAudio',
+          () => _multiServerEnabled
+              ? _multiServerRepo.getAggregatedResumeAudio()
+              : _dataSource.loadResumeAudio(_serverId),
+          _prefs.filterContinueWatching,
+        ),
+      ]);
+    } finally {
+      _bgResumeRefreshInFlight = false;
+    }
+    _topShelf.update(_rows);
+    _watchNext.update(_rows);
+    _tvChannels.update();
+  }
+
+  /// Refetches the row with [rowId] and replaces it in place, or removes it when
+  /// it becomes empty. Does nothing when the row isn't currently present (e.g.
+  /// the section is disabled), so it never disturbs the rest of the list.
+  Future<void> _refreshRowInPlace(
+    String rowId,
+    Future<HomeRow> Function() fetch,
+    List<AggregatedItem> Function(List<AggregatedItem>) filter,
+  ) async {
+    if (!_rows.any((r) => r.id == rowId)) return;
+    final HomeRow fresh;
+    try {
+      fresh = await fetch();
+    } catch (_) {
+      // Transient failure: keep the existing row rather than wiping it.
+      return;
+    }
+    final index = _rows.indexWhere((r) => r.id == rowId);
+    if (index < 0) return;
+    final items = _filterEmptyElements(filter(fresh.items));
+    _rows = List.of(_rows);
+    if (items.isEmpty) {
+      _rows.removeAt(index);
+    } else {
+      _rows[index] = _rows[index].copyWith(items: items, isLoading: false);
+    }
+    notifyListeners();
+  }
+
   Future<void> loadMoreForRow(int rowIndex) async {
     if (rowIndex < 0 || rowIndex >= _rows.length) return;
     final row = _rows[rowIndex];
@@ -757,6 +878,12 @@ class HomeViewModel extends ChangeNotifier {
 
     _inFlightPagingRowIds.add(row.id);
     try {
+      final seerrType = _seerrRowTypeForId(row.id);
+      if (seerrType != null) {
+        await _loadMoreSeerrRow(rowIndex, seerrType);
+        return;
+      }
+
       final int currentOffset = _rowOffsets[row.id] ?? row.items.length;
       final (List<AggregatedItem> items, int totalCount) result;
       if (_multiServerEnabled && !row.id.startsWith('pluginDynamic:')) {
@@ -794,7 +921,7 @@ class HomeViewModel extends ChangeNotifier {
         rowId: cfg.stableId,
         section: section,
         title: cfg.pluginDisplayText ?? section,
-        serverId: cfg.serverId ?? _serverId,
+        serverId: _sectionServerId(cfg),
         additionalData: cfg.pluginAdditionalData,
         pluginSource: cfg.pluginSource,
         forceRefresh: forceRefresh,
@@ -871,6 +998,8 @@ class HomeViewModel extends ChangeNotifier {
         return const {'activeRecordings'};
       case HomeSectionType.seerrRecentRequests:
         return const {'seerrRecentRequests'};
+      case HomeSectionType.seerrWatchlist:
+        return const {'seerrWatchlist'};
       case HomeSectionType.seerrRecentlyAdded:
         return const {'seerrRecentlyAdded'};
       case HomeSectionType.seerrPopularMovies:
@@ -1169,6 +1298,12 @@ class HomeViewModel extends ChangeNotifier {
           l10n.recentRequests,
           'seerr_recent_requests',
         );
+      case HomeSectionType.seerrWatchlist:
+        return _loadSeerrRow(
+          SeerrRowType.yourWatchlist,
+          l10n.yourWatchlist,
+          'seerr_watchlist',
+        );
       case HomeSectionType.seerrRecentlyAdded:
         return _loadSeerrRow(
           SeerrRowType.recentlyAdded,
@@ -1314,92 +1449,144 @@ class HomeViewModel extends ChangeNotifier {
     }
   }
 
-  Future<List<HomeRow>> _loadLatestMediaRows() async {
-    final viewsFuture = _client.userViewsApi.getUserViews();
-    final configFuture = _client.usersApi
-        .getUserConfiguration()
-        .then<Set<String>>((config) => config.latestItemsExcludes.toSet())
-        .catchError((_) => const <String>{});
-
-    final viewsResponse = await viewsFuture;
-    final views = viewsResponse['Items'] as List? ?? [];
-    final Set<String> latestExcludes = await configFuture;
-
-    final filteredViews = views.cast<Map<String, dynamic>>().where((data) {
-      final id = data['Id']?.toString() ?? '';
-      final collectionType = (data['CollectionType'] as String?)?.toLowerCase();
-      if (collectionType == 'playlists' ||
-          collectionType == 'boxsets' ||
-          collectionType == 'livetv') {
-        return false;
-      }
-      return !latestExcludes.contains(id);
-    }).toList();
-
-    final tasks = filteredViews.map((data) async {
-      final id = data['Id']?.toString() ?? '';
-      final name = data['Name'] as String? ?? '';
-      final collectionType = (data['CollectionType'] as String?)?.toLowerCase();
-      try {
-        final row = await _dataSource.loadLatestMedia(
-          id,
-          name,
-          _serverId,
-          collectionType,
-        );
-        return row.items.isNotEmpty ? row : null;
-      } catch (_) {
-        return null;
-      }
-    }).toList();
-
-    final resolved = await Future.wait(tasks);
-    final rows = resolved.whereType<HomeRow>().toList();
-    return rows;
+  Future<List<HomeRow>> _loadLatestMediaRows() {
+    return _loadRecentRows(
+      load: (lib, type) =>
+          _dataSource.loadLatestMedia(lib.id, lib.name, _serverId, type),
+      sortKey: (item) => _parseDate(item.rawData['DateCreated']),
+      idPrefix: 'latest',
+      rowType: HomeRowType.latestMedia,
+      mergedTitle: (l10n, descriptor) => l10n.latestLibraryName(descriptor),
+    );
   }
 
-  Future<List<HomeRow>> _loadRecentlyReleasedRow() async {
-    final viewsFuture = _client.userViewsApi.getUserViews();
+  Future<List<HomeRow>> _loadRecentlyReleasedRow() {
+    return _loadRecentRows(
+      load: (lib, type) =>
+          _dataSource.loadRecentlyReleased(lib.id, lib.name, _serverId, type),
+      sortKey: _premiereDateOf,
+      idPrefix: 'recently_released',
+      rowType: HomeRowType.recentlyReleased,
+      mergedTitle: (l10n, descriptor) =>
+          l10n.recentlyReleasedLibraryName(descriptor),
+    );
+  }
+
+  /// One row per library, or one row per media kind when the user has asked for
+  /// libraries of a kind to be merged.
+  Future<List<HomeRow>> _loadRecentRows({
+    required Future<HomeRow> Function(AggregatedLibrary lib, String type) load,
+    required DateTime? Function(AggregatedItem item) sortKey,
+    required String idPrefix,
+    required HomeRowType rowType,
+    required String Function(AppLocalizations l10n, String descriptor)
+        mergedTitle,
+  }) async {
+    final viewsFuture = GetIt.instance<UserViewsRepository>()
+        .getAllViewsIncludingHidden();
     final configFuture = _client.usersApi
         .getUserConfiguration()
         .then<Set<String>>((config) => config.latestItemsExcludes.toSet())
         .catchError((_) => const <String>{});
 
-    final viewsResponse = await viewsFuture;
-    final views = viewsResponse['Items'] as List? ?? [];
+    final views = await viewsFuture;
     final Set<String> latestExcludes = await configFuture;
 
-    final filteredViews = views.cast<Map<String, dynamic>>().where((data) {
-      final id = data['Id']?.toString() ?? '';
-      final collectionType = (data['CollectionType'] as String?)?.toLowerCase();
+    final filteredViews = views.where((lib) {
+      final collectionType = lib.collectionType.toLowerCase();
       if (collectionType == 'playlists' ||
           collectionType == 'boxsets' ||
           collectionType == 'livetv') {
         return false;
       }
-      return !latestExcludes.contains(id);
+      return !latestExcludes.contains(lib.id);
     }).toList();
 
-    final tasks = filteredViews.map((data) async {
-      final id = data['Id']?.toString() ?? '';
-      final name = data['Name'] as String? ?? '';
-      final collectionType = (data['CollectionType'] as String?)?.toLowerCase();
+    Future<HomeRow?> rowFor(AggregatedLibrary lib) async {
       try {
-        final row = await _dataSource.loadRecentlyReleased(
-          id,
-          name,
-          _serverId,
-          collectionType,
-        );
-        return row.items.isNotEmpty ? row : null;
+        return await load(lib, lib.collectionType.toLowerCase());
       } catch (_) {
         return null;
       }
-    }).toList();
+    }
 
-    final resolved = await Future.wait(tasks);
-    final rows = resolved.whereType<HomeRow>().toList();
-    return rows;
+    if (!_prefs.get(UserPreferences.mergeRecentRowsByType)) {
+      final resolved = await Future.wait(filteredViews.map(rowFor));
+      return resolved
+          .whereType<HomeRow>()
+          .where((row) => row.items.isNotEmpty)
+          .toList();
+    }
+
+    final grouped = <String, List<AggregatedLibrary>>{};
+    for (final lib in filteredViews) {
+      grouped.putIfAbsent(lib.collectionType.toLowerCase(), () => []).add(lib);
+    }
+
+    final l10n = currentAppLocalizations();
+    final mergedRows = <HomeRow>[];
+    for (final entry in grouped.entries) {
+      final collectionType = entry.key;
+      final loadedRows = (await Future.wait(entry.value.map(rowFor)))
+          .whereType<HomeRow>();
+
+      // The same title can sit in more than one library, so it is kept once.
+      final seenIds = <String>{};
+      final allItems = [
+        for (final row in loadedRows)
+          for (final item in row.items)
+            if (seenIds.add(item.id)) item,
+      ];
+      if (allItems.isEmpty) continue;
+
+      allItems.sort((a, b) {
+        final da = sortKey(a);
+        final db = sortKey(b);
+        if (da != null && db != null) return db.compareTo(da);
+        if (da != null) return -1;
+        if (db != null) return 1;
+        return 0;
+      });
+
+      // Trimmed to the same length a single library row gets, so merging
+      // changes what a row holds rather than how big it is.
+      final items = normalizeLatestMediaItems(
+        allItems,
+        collectionType: collectionType,
+        limit: _mergedRowItemLimit,
+      );
+      if (items.isEmpty) continue;
+
+      mergedRows.add(
+        HomeRow(
+          id: '$mergedTypeRowIdPrefix${idPrefix}_$collectionType',
+          title: mergedTitle(
+            l10n,
+            genericDescriptorForCollectionType(l10n, collectionType),
+          ),
+          items: items,
+          rowType: rowType,
+          // Everything the row will ever hold is already here.
+          totalCount: items.length,
+          isAudio: collectionType == 'music',
+        ),
+      );
+    }
+
+    return mergedRows;
+  }
+
+  static DateTime? _parseDate(dynamic value) =>
+      value is String ? DateTime.tryParse(value) : null;
+
+  /// Release date, falling back to the production year and then to when the
+  /// item was added, so an item missing one still lands somewhere sensible.
+  static DateTime? _premiereDateOf(AggregatedItem item) {
+    final premiere = _parseDate(item.rawData['PremiereDate']);
+    if (premiere != null) return premiere;
+    final year = item.rawData['ProductionYear'];
+    if (year is int) return DateTime(year);
+    return _parseDate(item.rawData['DateCreated']);
   }
 
   HomeRow? _placeholderForSection(HomeSectionType section) {
@@ -1510,6 +1697,13 @@ class HomeViewModel extends ChangeNotifier {
         return HomeRow(
           id: 'seerr_recent_requests',
           title: l10n.recentRequests,
+          rowType: HomeRowType.pluginDynamic,
+          isLoading: true,
+        );
+      case HomeSectionType.seerrWatchlist:
+        return HomeRow(
+          id: 'seerr_watchlist',
+          title: l10n.yourWatchlist,
           rowType: HomeRowType.pluginDynamic,
           isLoading: true,
         );
@@ -1801,10 +1995,10 @@ class HomeViewModel extends ChangeNotifier {
     return 'Favorite ${filter.displayName}';
   }
 
-  void _loadResumeAndNextUpInBackground() {
-    if (_bgMergeInFlight) return;
+  Future<void> _loadResumeAndNextUpInBackground() {
+    if (_bgMergeInFlight) return Future<void>.value();
     _bgMergeInFlight = true;
-    unawaited(() async {
+    return () async {
       try {
         if (_multiServerEnabled) {
           final resumeFuture = _multiServerRepo.getAggregatedResume();
@@ -1865,7 +2059,7 @@ class HomeViewModel extends ChangeNotifier {
       } finally {
         _bgMergeInFlight = false;
       }
-    }());
+    }();
   }
 
   void _applyMergedResumeResult(List<AggregatedItem> mergedItems) {
@@ -1882,9 +2076,15 @@ class HomeViewModel extends ChangeNotifier {
     }
     notifyListeners();
     _watchNext.update(_rows);
+    _tvChannels.update();
   }
 
   static const _seerrEnrichConcurrency = 5;
+  static const _seerrRowIdPrefix = 'seerr_';
+
+  /// Last page fetched per Seerr row. Seerr counts in pages where the rest of
+  /// the home rows count in items, so this can't share `_rowOffsets`.
+  final Map<String, int> _seerrRowPages = {};
 
   Future<List<HomeRow>> _loadSeerrRow(
     SeerrRowType type,
@@ -1903,6 +2103,7 @@ class HomeViewModel extends ChangeNotifier {
       final limit = seerrPrefs.fetchLimit.limit;
 
       List<SeerrDiscoverItem> rawItems = [];
+      var hasMorePages = false;
 
       if (type == SeerrRowType.movieGenres) {
         final genres = await repo.getGenreSliderMovies();
@@ -1968,30 +2169,11 @@ class HomeViewModel extends ChangeNotifier {
           requestedBy: user.canViewAllRequests ? null : user.id,
           limit: limit,
         );
-        final mapped = response.results.where((r) => r.media != null).map((r) {
-          final media = r.media!;
-          return SeerrDiscoverItem(
-            id: media.tmdbId ?? media.id,
-            title: media.title ?? media.name,
-            name: media.name ?? media.title,
-            overview: media.overview,
-            releaseDate: media.releaseDate,
-            firstAirDate: media.firstAirDate,
-            mediaType: r.type,
-            posterPath: media.posterPath,
-            backdropPath: media.backdropPath,
-            mediaInfo: SeerrMediaInfo(
-              id: media.id,
-              tmdbId: media.tmdbId,
-              status: media.status,
-            ),
-          );
-        }).toList();
-        rawItems = (await mapBounded(
-          mapped,
-          _seerrEnrichConcurrency,
-          (item) => _enrichSeerrItem(repo, item),
-        )).whereType<SeerrDiscoverItem>().toList();
+        rawItems = await _enrichSeerrItems(
+          repo,
+          _seerrItemsFromRequests(response.results),
+        );
+        hasMorePages = (response.pageInfo?.pages ?? 1) > 1;
       } else if (type == SeerrRowType.recentlyAdded) {
         final media = await repo.getRecentlyAdded(limit: limit);
         final mapped = media
@@ -2014,67 +2196,208 @@ class HomeViewModel extends ChangeNotifier {
               ),
             )
             .toList();
-        rawItems = (await mapBounded(
-          mapped,
-          _seerrEnrichConcurrency,
-          (item) => _enrichSeerrItem(repo, item),
-        )).whereType<SeerrDiscoverItem>().toList();
+        rawItems = await _enrichSeerrItems(repo, mapped);
       } else {
-        final page = await _loadSeerrPage(repo, type, limit);
+        final page = await _loadSeerrPage(repo, type, page: 1, limit: limit);
         if (page != null) {
-          rawItems = page.results;
+          rawItems = type == SeerrRowType.yourWatchlist
+              ? await _enrichSeerrItems(repo, page.results)
+              : page.results;
+          hasMorePages = page.totalPages > 1;
         }
       }
 
-      final filtered = rawItems.where((item) {
-        if (type != SeerrRowType.recentlyAdded &&
-            type != SeerrRowType.recentRequests) {
-          if (item.isAvailable || item.isBlacklisted) return false;
-        }
-        if (blockNsfw) {
-          if (item.adult) return false;
-          final text = '${item.displayTitle} ${item.overview ?? ''}';
-          if (SeerrDiscoverViewModel.nsfwPatterns.any(
-            (p) => p.hasMatch(text),
-          )) {
-            return false;
-          }
-        }
-        return true;
-      }).toList();
+      final items = _seerrAggregatedItems(rawItems, type, blockNsfw);
+      _seerrRowPages[rowId] = 1;
 
-      final aggregatedItems = filtered.map((item) {
-        return AggregatedItem(
-          id: item.id.toString(),
-          serverId: 'seerr',
-          rawData: {
-            'Name': item.displayTitle,
-            'Type': item.mediaType == 'tv' ? 'Series' : 'Movie',
-            'Overview': item.overview ?? '',
-            'PosterPath': item.posterPath ?? '',
-            'BackdropPath': item.backdropPath ?? '',
-            'ProductionYear': _extractYear(
-              item.releaseDate ?? item.firstAirDate,
-            ),
-            'SeerrMediaType': item.mediaType,
-            'SeerrStatus': item.mediaInfo?.status,
-          },
-        );
-      }).toList();
-
-      return [_seerrRow(rowId, title, aggregatedItems)];
+      // Paging keys off `hasMore`, so a row with further pages has to claim a
+      // total above what it holds. The real total is no help because the
+      // filtering above drops items the count still includes.
+      return [
+        _seerrRow(
+          rowId,
+          title,
+          items,
+          totalCount: hasMorePages ? items.length + 1 : items.length,
+        ),
+      ];
     } catch (e) {
       debugPrint('[SeerrHomeRow] Failed to load Seerr row $type: $e');
       return [];
     }
   }
 
-  HomeRow _seerrRow(String rowId, String title, List<AggregatedItem> items) {
+  /// Appends the next Seerr page to [rowIndex]. Called from [loadMoreForRow],
+  /// which owns the in-flight guard and the `hasMore` check.
+  Future<void> _loadMoreSeerrRow(int rowIndex, SeerrRowType type) async {
+    final row = _rows[rowIndex];
+    final repo = await GetIt.instance.getAsync<SeerrRepository>();
+    final seerrPrefs = GetIt.instance<SeerrPreferences>();
+    await repo.ensureInitialized();
+    if (!repo.isAvailable) return;
+
+    final limit = seerrPrefs.fetchLimit.limit;
+    final nextPage = (_seerrRowPages[row.id] ?? 1) + 1;
+
+    // Assume this is the last page until a response says otherwise, so a row
+    // without a paged endpoint stops asking rather than retrying forever.
+    var rawItems = const <SeerrDiscoverItem>[];
+    var exhausted = true;
+
+    if (type == SeerrRowType.recentRequests) {
+      final user = await repo.getCurrentUser();
+      final response = await repo.getRequests(
+        requestedBy: user.canViewAllRequests ? null : user.id,
+        limit: limit,
+        offset: (nextPage - 1) * limit,
+      );
+      rawItems = await _enrichSeerrItems(
+        repo,
+        _seerrItemsFromRequests(response.results),
+      );
+      exhausted = nextPage >= (response.pageInfo?.pages ?? nextPage);
+    } else {
+      final page = await _loadSeerrPage(
+        repo,
+        type,
+        page: nextPage,
+        limit: limit,
+      );
+      if (page != null) {
+        rawItems = type == SeerrRowType.yourWatchlist
+            ? await _enrichSeerrItems(repo, page.results)
+            : page.results;
+        exhausted = nextPage >= page.totalPages;
+      }
+    }
+
+    // Advance even when the page contributed nothing. Availability filtering can
+    // empty a whole page, and holding the pointer back would refetch that same
+    // page on every scroll instead of moving on.
+    _seerrRowPages[row.id] = nextPage;
+
+    final existingIds = row.items.map((item) => item.id).toSet();
+    final items = [
+      ...row.items,
+      ..._seerrAggregatedItems(
+        rawItems,
+        type,
+        seerrPrefs.blockNsfw,
+      ).where((item) => !existingIds.contains(item.id)),
+    ];
+
+    _rows = List.of(_rows);
+    _rows[rowIndex] = row.copyWith(
+      items: items,
+      totalCount: exhausted ? items.length : items.length + 1,
+    );
+    notifyListeners();
+  }
+
+  /// Row ids are the prefix followed by the type's serialized name, so deriving
+  /// the type keeps this in step as row types come and go.
+  SeerrRowType? _seerrRowTypeForId(String rowId) {
+    if (!rowId.startsWith(_seerrRowIdPrefix)) return null;
+    final name = rowId.substring(_seerrRowIdPrefix.length);
+    for (final type in SeerrRowType.values) {
+      if (type.serializedName == name) return type;
+    }
+    return null;
+  }
+
+  Future<List<SeerrDiscoverItem>> _enrichSeerrItems(
+    SeerrRepository repo,
+    List<SeerrDiscoverItem> items,
+  ) async =>
+      (await mapBounded(
+        items,
+        _seerrEnrichConcurrency,
+        (item) => _enrichSeerrItem(repo, item),
+      )).whereType<SeerrDiscoverItem>().toList();
+
+  List<SeerrDiscoverItem> _seerrItemsFromRequests(List<SeerrRequest> requests) {
+    return requests.where((r) => r.media != null).map((r) {
+      final media = r.media!;
+      return SeerrDiscoverItem(
+        id: media.tmdbId ?? media.id,
+        title: media.title ?? media.name,
+        name: media.name ?? media.title,
+        overview: media.overview,
+        releaseDate: media.releaseDate,
+        firstAirDate: media.firstAirDate,
+        mediaType: r.type,
+        posterPath: media.posterPath,
+        backdropPath: media.backdropPath,
+        mediaInfo: SeerrMediaInfo(
+          id: media.id,
+          tmdbId: media.tmdbId,
+          status: media.status,
+        ),
+      );
+    }).toList();
+  }
+
+  List<AggregatedItem> _seerrAggregatedItems(
+    List<SeerrDiscoverItem> rawItems,
+    SeerrRowType type,
+    bool blockNsfw,
+  ) {
+    // The request, watchlist and recently added rows are meant to show media the
+    // user already has, so only the discovery rows hide what is available.
+    final hidesAvailable =
+        type != SeerrRowType.recentlyAdded &&
+        type != SeerrRowType.recentRequests &&
+        type != SeerrRowType.yourWatchlist;
+
+    return rawItems
+        .where((item) {
+          if (hidesAvailable && (item.isAvailable || item.isBlacklisted)) {
+            return false;
+          }
+          if (blockNsfw) {
+            if (item.adult) return false;
+            final text = '${item.displayTitle} ${item.overview ?? ''}';
+            if (SeerrDiscoverViewModel.nsfwPatterns.any(
+              (p) => p.hasMatch(text),
+            )) {
+              return false;
+            }
+          }
+          return true;
+        })
+        .map(
+          (item) => AggregatedItem(
+            id: item.id.toString(),
+            serverId: 'seerr',
+            rawData: {
+              'Name': item.displayTitle,
+              'Type': item.mediaType == 'tv' ? 'Series' : 'Movie',
+              'Overview': item.overview ?? '',
+              'PosterPath': item.posterPath ?? '',
+              'BackdropPath': item.backdropPath ?? '',
+              'ProductionYear': _extractYear(
+                item.releaseDate ?? item.firstAirDate,
+              ),
+              'SeerrMediaType': item.mediaType,
+              'SeerrStatus': item.mediaInfo?.status,
+            },
+          ),
+        )
+        .toList();
+  }
+
+  HomeRow _seerrRow(
+    String rowId,
+    String title,
+    List<AggregatedItem> items, {
+    int totalCount = 0,
+  }) {
     return HomeRow(
       id: rowId,
       title: title,
       rowType: HomeRowType.pluginDynamic,
       items: items,
+      totalCount: totalCount,
     );
   }
 
@@ -2104,20 +2427,24 @@ class HomeViewModel extends ChangeNotifier {
 
   Future<SeerrDiscoverPage?> _loadSeerrPage(
     SeerrRepository repo,
-    SeerrRowType type,
-    int limit,
-  ) async {
+    SeerrRowType type, {
+    required int page,
+    required int limit,
+  }) async {
+    final offset = (page - 1) * limit;
     switch (type) {
+      case SeerrRowType.yourWatchlist:
+        return repo.getWatchlist(page: page);
       case SeerrRowType.trending:
-        return repo.getTrending(limit: limit, offset: 0);
+        return repo.getTrending(limit: limit, offset: offset);
       case SeerrRowType.popularMovies:
-        return repo.getTrendingMovies(limit: limit, offset: 0);
+        return repo.getTrendingMovies(limit: limit, offset: offset);
       case SeerrRowType.popularSeries:
-        return repo.getTrendingTv(limit: limit, offset: 0);
+        return repo.getTrendingTv(limit: limit, offset: offset);
       case SeerrRowType.upcomingMovies:
-        return repo.getUpcomingMovies();
+        return repo.getUpcomingMovies(page: page);
       case SeerrRowType.upcomingSeries:
-        return repo.getUpcomingTv();
+        return repo.getUpcomingTv(page: page);
       default:
         return null;
     }
@@ -2543,6 +2870,13 @@ class HomeViewModel extends ChangeNotifier {
     }
   }
 
+  /// Entries written before CacheVerV2 have a different shape, so the marker on
+  /// its own decides staleness. Artwork fields are deliberately not checked,
+  /// because an entry whose poster is genuinely missing is still valid and
+  /// refetching it only writes the same empty value back.
+  static bool _isStaleCalendarCache(List<AggregatedItem> items) =>
+      items.any((x) => !x.rawData.containsKey('CacheVerV2'));
+
   Future<List<AggregatedItem>> _loadRadarrCalendarFromCache() async {
     try {
       final dir = await getApplicationSupportDirectory();
@@ -2551,9 +2885,11 @@ class HomeViewModel extends ChangeNotifier {
         final content = await file.readAsString();
         final list = jsonDecode(content) as List;
         final items = list.map((x) => _aggregatedItemFromJson(x as Map<String, dynamic>)).toList();
-        final hasOldCache = items.any((x) => !x.rawData.containsKey('CalendarDate') || x.rawData['PosterPath'] == '' || !x.rawData.containsKey('CacheVerV2'));
-        if (hasOldCache) {
+        if (_isStaleCalendarCache(items)) {
           debugPrint('[RadarrCalendarCache] Old cache detected, invalidating to force fresh fetch');
+          try {
+            await file.delete();
+          } catch (_) {}
           return const [];
         }
         return items;
@@ -2583,9 +2919,11 @@ class HomeViewModel extends ChangeNotifier {
         final content = await file.readAsString();
         final list = jsonDecode(content) as List;
         final items = list.map((x) => _aggregatedItemFromJson(x as Map<String, dynamic>)).toList();
-        final hasOldCache = items.any((x) => !x.rawData.containsKey('CalendarDate') || x.rawData['PosterPath'] == '' || !x.rawData.containsKey('CacheVerV2'));
-        if (hasOldCache) {
+        if (_isStaleCalendarCache(items)) {
           debugPrint('[SonarrCalendarCache] Old cache detected, invalidating to force fresh fetch');
+          try {
+            await file.delete();
+          } catch (_) {}
           return const [];
         }
         return items;
@@ -2626,37 +2964,13 @@ class HomeViewModel extends ChangeNotifier {
   Future<List<AggregatedItem>?> _fetchRadarrCalendarFromApi() async {
     try {
       final repo = await GetIt.instance.getAsync<SeerrRepository>();
-      final radarrServers = await repo.getRadarrSettings();
-      if (radarrServers.isEmpty) return null;
-      final server = radarrServers.first;
-
-      final protocol = server.useSsl ? 'https' : 'http';
-      final host = server.hostname;
-      final port = server.port;
-      final basePath = server.baseUrl ?? '';
-      final cleanBasePath = basePath.endsWith('/') ? basePath.substring(0, basePath.length - 1) : basePath;
-      final apiKey = server.apiKey;
-
       final now = DateTime.now();
       final start = now.toIso8601String().substring(0, 10);
       final end = now.add(const Duration(days: 90)).toIso8601String().substring(0, 10);
 
-      final dio = Dio();
-      final url = '$protocol://$host:$port$cleanBasePath/api/v3/calendar';
-      final response = await dio.get(
-        url,
-        queryParameters: {
-          'apikey': apiKey,
-          'start': start,
-          'end': end,
-        },
-      ).timeout(const Duration(seconds: 15));
-
-      if (response.statusCode != 200 || response.data == null) {
-        return null;
-      }
-
-      final results = response.data as List;
+      // The plugin fetches the Radarr calendar server side, so the API key stays on the server and
+      // this still works when a remote client cant reach a LAN only Radarr.
+      final results = await repo.getRadarrCalendar(start: start, end: end);
 
       final enrichCompleters = await mapBounded(
         results,
@@ -2703,14 +3017,13 @@ class HomeViewModel extends ChangeNotifier {
               if (img is! Map) continue;
               final type = img['coverType'] as String?;
               final remoteUrl = img['remoteUrl'] as String? ?? img['url'] as String?;
-              if (remoteUrl != null && remoteUrl.isNotEmpty) {
-                final fullUrl = remoteUrl.startsWith('http')
-                    ? remoteUrl
-                    : '$protocol://$host:$port$cleanBasePath$remoteUrl${remoteUrl.contains('?') ? '&' : '?'}apikey=$apiKey';
+              // Only external image URLs are used. A local arr image would need the API key and
+              // wouldnt be reachable from a remote client anyway.
+              if (remoteUrl != null && remoteUrl.startsWith('http')) {
                 if (type == 'poster') {
-                  posterPath = fullUrl;
+                  posterPath = remoteUrl;
                 } else if (type == 'fanart') {
-                  backdropPath = fullUrl;
+                  backdropPath = remoteUrl;
                 }
               }
             }
@@ -2761,38 +3074,13 @@ class HomeViewModel extends ChangeNotifier {
   Future<List<AggregatedItem>?> _fetchSonarrCalendarFromApi() async {
     try {
       final repo = await GetIt.instance.getAsync<SeerrRepository>();
-      final sonarrServers = await repo.getSonarrSettings();
-      if (sonarrServers.isEmpty) return null;
-      final server = sonarrServers.first;
-
-      final protocol = server.useSsl ? 'https' : 'http';
-      final host = server.hostname;
-      final port = server.port;
-      final basePath = server.baseUrl ?? '';
-      final cleanBasePath = basePath.endsWith('/') ? basePath.substring(0, basePath.length - 1) : basePath;
-      final apiKey = server.apiKey;
-
       final now = DateTime.now();
       final start = now.toIso8601String().substring(0, 10);
       final end = now.add(const Duration(days: 90)).toIso8601String().substring(0, 10);
 
-      final dio = Dio();
-      final url = '$protocol://$host:$port$cleanBasePath/api/v3/calendar';
-      final response = await dio.get(
-        url,
-        queryParameters: {
-          'apikey': apiKey,
-          'start': start,
-          'end': end,
-          'includeSeries': 'true',
-        },
-      ).timeout(const Duration(seconds: 15));
-
-      if (response.statusCode != 200 || response.data == null) {
-        return null;
-      }
-
-      final results = response.data as List;
+      // The plugin fetches the Sonarr calendar server side, so the API key stays on the server and
+      // this still works when a remote client cant reach a LAN only Sonarr.
+      final results = await repo.getSonarrCalendar(start: start, end: end);
 
       final groupedEpisodes = <int, Map<String, dynamic>>{};
       for (final res in results) {
@@ -2857,14 +3145,13 @@ class HomeViewModel extends ChangeNotifier {
               if (img is! Map) continue;
               final type = img['coverType'] as String?;
               final remoteUrl = img['remoteUrl'] as String? ?? img['url'] as String?;
-              if (remoteUrl != null && remoteUrl.isNotEmpty) {
-                final fullUrl = remoteUrl.startsWith('http')
-                    ? remoteUrl
-                    : '$protocol://$host:$port$cleanBasePath$remoteUrl${remoteUrl.contains('?') ? '&' : '?'}apikey=$apiKey';
+              // Only external image URLs are used. A local arr image would need the API key and
+              // wouldnt be reachable from a remote client anyway.
+              if (remoteUrl != null && remoteUrl.startsWith('http')) {
                 if (type == 'poster') {
-                  posterPath = fullUrl;
+                  posterPath = remoteUrl;
                 } else if (type == 'fanart') {
-                  backdropPath = fullUrl;
+                  backdropPath = remoteUrl;
                 }
               }
             }

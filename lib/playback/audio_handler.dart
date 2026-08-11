@@ -653,7 +653,10 @@ Future<void> initAudioService({
       androidNotificationChannelId: 'com.moonfin.app.audio',
       androidNotificationChannelName: 'Music Playback',
       androidNotificationOngoing: false,
-      androidStopForegroundOnPause: false,
+      // Must stay true. When false, audio_service holds its partial wake lock
+      // and the media playback foreground service forever after a pause, which
+      // is what makes Android warn about the app draining the battery.
+      androidStopForegroundOnPause: true,
       notificationColor: const Color(0xFF1A1A2E),
       androidNotificationIcon: 'drawable/ic_notification',
       androidBrowsableRootExtras: {

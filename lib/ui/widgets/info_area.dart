@@ -21,9 +21,6 @@ const _myMediaSummaryMaxParts = 3;
 final Map<String, String?> _myMediaSummaryCache = {};
 final Map<String, Future<String?>> _myMediaSummaryRequests = {};
 
-// Caches tmdbId lookups for items that arrive without ProviderIds (e.g. home rows).
-final Map<String, String?> _tmdbIdCache = {};
-
 class _MyMediaSummaryTypeQuery {
   final List<String>? itemTypes;
   final _MyMediaSummaryLabel label;
@@ -148,31 +145,15 @@ class _InfoAreaContentState extends State<_InfoAreaContent> {
   Future<void> _loadRatings() async {
     if (!_prefs.get(UserPreferences.enableAdditionalRatings)) return;
 
-    var tmdbId = widget.item.tmdbId;
-    if (tmdbId == null) {
-      final cacheKey = '${widget.item.serverId}:${widget.item.id}';
-      if (_tmdbIdCache.containsKey(cacheKey)) {
-        tmdbId = _tmdbIdCache[cacheKey];
-      } else {
-        final clientFactory = GetIt.instance<MediaServerClientFactory>();
-        final client =
-            clientFactory.getClientIfExists(widget.item.serverId) ??
-            clientFactory.getActiveClient();
-        try {
-          final details = await client.itemsApi.getItem(widget.item.id);
-          tmdbId = (details['ProviderIds'] as Map?)?['Tmdb'] as String?;
-        } catch (_) {
-          tmdbId = null;
-        }
-        _tmdbIdCache[cacheKey] = tmdbId;
-      }
-    }
+    final clientFactory = GetIt.instance<MediaServerClientFactory>();
+    final resolveClient =
+        clientFactory.getClientIfExists(widget.item.serverId) ??
+        clientFactory.getActiveClient();
 
-    if (tmdbId == null) return;
-
-    final result = await GetIt.instance<MdbListRepository>().getRatings(
-      tmdbId: tmdbId,
-      mediaType: widget.item.type ?? 'Movie',
+    final result = await GetIt.instance<MdbListRepository>().getRatingsForItem(
+      widget.item,
+      resolveClient: resolveClient,
+      episodeRatingsEnabled: _prefs.canFetchEpisodeRatings,
     );
     if (mounted && result != null && result.isNotEmpty) {
       setState(() => _ratings = result);

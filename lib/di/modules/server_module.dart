@@ -3,14 +3,14 @@ import 'package:server_core/server_core.dart';
 
 import '../../data/offline/connectivity_aware_media_server_client.dart';
 import '../../data/offline/offline_catalog.dart';
-import '../../data/services/connectivity_service.dart';
+import '../../data/services/background_download_coordinator.dart';
 import '../../data/services/download_notification_service.dart';
 import '../../data/services/download_service.dart';
 import '../../data/services/media_server_client_factory.dart';
 import '../../data/services/push_messaging_service.dart';
 import '../../data/services/seerr_notification_service.dart';
 import '../../data/services/storage_path_service.dart';
-import '../../util/platform_detection.dart';
+import '../../playback/server_transcode_capabilities.dart';
 
 final _getIt = GetIt.instance;
 
@@ -27,6 +27,14 @@ void registerServerModule() {
     );
   }
 
+  // App-lifetime: owns the background_downloader singleton across server
+  // switches, while DownloadService instances attach/detach to it.
+  if (!_getIt.isRegistered<BackgroundDownloadCoordinator>()) {
+    _getIt.registerLazySingleton<BackgroundDownloadCoordinator>(
+      () => BackgroundDownloadCoordinator(),
+    );
+  }
+
   if (!_getIt.isRegistered<SeerrNotificationService>()) {
     _getIt.registerLazySingleton<SeerrNotificationService>(
       () => SeerrNotificationService(),
@@ -38,6 +46,12 @@ void registerServerModule() {
       () => PushMessagingService(),
     );
   }
+
+  if (!_getIt.isRegistered<ServerTranscodeCapabilities>()) {
+    _getIt.registerLazySingleton<ServerTranscodeCapabilities>(
+      () => ServerTranscodeCapabilities(),
+    );
+  }
 }
 
 void setActiveServerClient(MediaServerClient client) {
@@ -47,14 +61,9 @@ void setActiveServerClient(MediaServerClient client) {
   final rawClient = client is ConnectivityAwareMediaServerClient
       ? client.onlineClient
       : client;
-  // TV can't download, so it keeps the online client and its cached home
-  // rows instead of an empty offline catalog.
   final wrapped = ConnectivityAwareMediaServerClient(
     rawClient,
-    useOffline: () =>
-        !PlatformDetection.isTV &&
-        _getIt.isRegistered<ConnectivityService>() &&
-        !_getIt<ConnectivityService>().canReachServer,
+    useOffline: shouldUseOfflineCatalog,
     catalog: _getIt<OfflineCatalog>(),
     storagePath: _getIt<StoragePathService>(),
   );
@@ -74,4 +83,8 @@ void setActiveServerClient(MediaServerClient client) {
   _getIt.registerSingleton<DownloadService>(downloadService);
 
   downloadService.recoverIncompleteDownloads();
+
+  // Fire and forget: device profiles read the cached result and fall back to
+  // the H264-only transcode offer until the probe lands.
+  _getIt<ServerTranscodeCapabilities>().refresh(rawClient);
 }

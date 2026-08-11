@@ -10,6 +10,7 @@ ALLOW_PROVISIONING_UPDATES="${ALLOW_PROVISIONING_UPDATES:-1}"
 BUILD_APPSTORE_PKG="${BUILD_APPSTORE_PKG:-1}"
 BUILD_DMG_GITHUB="${BUILD_DMG_GITHUB:-1}"
 CLEAN_FLUTTER="${CLEAN_FLUTTER:-0}"
+FETCH_CORES="${FETCH_CORES:-1}"
 
 DEVELOPER_ID="${DEVELOPER_ID:-}"
 APP_SIGN_ID="${APP_SIGN_ID:-$DEVELOPER_ID}"
@@ -70,6 +71,8 @@ FINAL_PKG_OUTPUT="$REPO_ROOT/${APP_NAME}_macOS_v${APP_VERSION}.pkg"
 APP_FROM_ARCHIVE="$ARCHIVE_PATH/Products/Applications/${APP_NAME}.app"
 DMG_OUTPUT="$REPO_ROOT/${APP_NAME}_macOS_v${APP_VERSION}.dmg"
 STAGING_DIR="$REPO_ROOT/build/macos/dmg-staging"
+DMG_RW_IMAGE="$REPO_ROOT/build/macos/dmg-rw.dmg"
+DMG_MOUNTPOINT="$REPO_ROOT/build/macos/dmg-mount"
 
 if [ -n "$APP_SIGN_ID" ] && ! command -v codesign >/dev/null 2>&1; then
   echo "Error: codesign is required when APP_SIGN_ID/DEVELOPER_ID is set." >&2
@@ -87,6 +90,25 @@ fi
 
 echo "Resolving packages..."
 flutter pub get
+
+if [ "$FETCH_CORES" = "1" ]; then
+  echo "Fetching bundled emulator cores..."
+  "$REPO_ROOT/macos/game_host/fetch_cores.sh"
+fi
+
+UNSIGNED=0
+if [ -z "$APP_SIGN_ID" ] && [ -z "$TEAM_ID" ]; then
+  UNSIGNED=1
+  echo "No signing identity available, ad-hoc signing so PR builds still run."
+  PBXPROJ="$REPO_ROOT/macos/Runner.xcodeproj/project.pbxproj"
+  cp "$PBXPROJ" "$PBXPROJ.signing.bak"
+  trap 'mv -f "$PBXPROJ.signing.bak" "$PBXPROJ" 2>/dev/null || true' EXIT
+  sed -i '' \
+    -e 's/DEVELOPMENT_TEAM = [A-Z0-9]*;/DEVELOPMENT_TEAM = "";/g' \
+    -e 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' \
+    -e 's/"CODE_SIGN_IDENTITY\[sdk=macosx\*\]" = "Apple Development";/"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";/g' \
+    "$PBXPROJ"
+fi
 
 echo "Preparing Flutter macOS generated files..."
 if [ "$BUILD_APPSTORE_PKG" = "1" ]; then
@@ -107,11 +129,20 @@ ARCHIVE_CMD=(
   -configuration "$CONFIGURATION"
   -destination "generic/platform=macOS"
   -archivePath "$ARCHIVE_PATH"
-  CODE_SIGN_STYLE=Automatic
   archive
 )
-if [ -n "$TEAM_ID" ]; then
-  ARCHIVE_CMD+=( DEVELOPMENT_TEAM="$TEAM_ID" )
+if [ "$UNSIGNED" = "1" ]; then
+  # Ad-hoc sign rather than skipping signing. Don't add CODE_SIGNING_REQUIRED=NO
+  # here, because the CocoaPods framework script and the embedded emulator cores
+  # both check it and leave their bundles unsigned, which then fails the final
+  # CodeSign of the app. Arm64 binaries also need at least an ad-hoc signature
+  # to launch at all.
+  ARCHIVE_CMD+=( CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="-" )
+else
+  ARCHIVE_CMD+=( CODE_SIGN_STYLE=Automatic )
+  if [ -n "$TEAM_ID" ]; then
+    ARCHIVE_CMD+=( DEVELOPMENT_TEAM="$TEAM_ID" )
+  fi
 fi
 if [ "$ALLOW_PROVISIONING_UPDATES" = "1" ]; then
   ARCHIVE_CMD+=( -allowProvisioningUpdates )
@@ -241,16 +272,32 @@ if [ "$BUILD_DMG_GITHUB" = "1" ]; then
     codesign --force --deep --timestamp --options runtime --sign "$APP_SIGN_ID" "$STAGING_DIR/${APP_NAME}.app"
   fi
 
-  ln -s /Applications "$STAGING_DIR/Applications"
-
+  DMG_SIZE_MB=$(( $(du -sk "$STAGING_DIR" | awk '{print $1}') / 1024 + 100 ))
+  hdiutil detach "$DMG_MOUNTPOINT" -quiet 2>/dev/null || true
+  rm -rf "$DMG_MOUNTPOINT"
+  mkdir -p "$DMG_MOUNTPOINT"
   hdiutil create \
+    -size "${DMG_SIZE_MB}m" \
+    -fs HFS+ \
     -volname "$APP_NAME" \
-    -srcfolder "$STAGING_DIR" \
     -ov \
-    -format UDZO \
-    "$DMG_OUTPUT"
+    "$DMG_RW_IMAGE"
 
-  rm -rf "$STAGING_DIR"
+  (
+    trap 'hdiutil detach "$DMG_MOUNTPOINT" -quiet 2>/dev/null || true' EXIT
+    hdiutil attach "$DMG_RW_IMAGE" \
+      -mountpoint "$DMG_MOUNTPOINT" \
+      -nobrowse \
+      -noautoopen
+    ditto "$STAGING_DIR/${APP_NAME}.app" "$DMG_MOUNTPOINT/${APP_NAME}.app"
+    ln -s /Applications "$DMG_MOUNTPOINT/Applications"
+    hdiutil detach "$DMG_MOUNTPOINT" -quiet
+  )
+
+  hdiutil convert "$DMG_RW_IMAGE" -format UDZO -ov -o "$DMG_OUTPUT"
+
+  rm -f "$DMG_RW_IMAGE"
+  rm -rf "$DMG_MOUNTPOINT" "$STAGING_DIR"
 
   if [ -n "$APP_SIGN_ID" ]; then
     echo "Signing DMG with $APP_SIGN_ID..."

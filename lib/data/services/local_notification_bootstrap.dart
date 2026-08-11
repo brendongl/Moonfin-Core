@@ -16,6 +16,14 @@ import 'seerr/seerr_models.dart';
 /// iOS category tying the approve/decline buttons to request notifications.
 const String seerrRequestCategoryId = 'seerr_request';
 
+/// Android channel for Seerr and plugin notifications. The manifest names the
+/// same id as the default FCM channel, and the server sends it on every push,
+/// so all three have to stay in sync.
+const String seerrNotificationChannelId = 'seerr_notifications';
+const String seerrNotificationChannelName = 'Requests';
+const String seerrNotificationChannelDesc =
+    'Seerr request, library, and issue notifications';
+
 /// Action ids shared with the plugin's push payloads.
 const String seerrApproveActionId = 'approve';
 const String seerrDeclineActionId = 'decline';
@@ -332,6 +340,21 @@ class LocalNotificationBootstrap {
       onDidReceiveNotificationResponse: _handleNotificationResponse,
       onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
     );
+
+    // Create the channel up front rather than on the first local show, or a
+    // push that arrives before any local notification lands in the generic
+    // channel Android makes up on our behalf. Creating it twice is harmless.
+    try {
+      await plugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(const AndroidNotificationChannel(
+            seerrNotificationChannelId,
+            seerrNotificationChannelName,
+            description: seerrNotificationChannelDesc,
+            importance: Importance.high,
+          ));
+    } catch (_) {}
     _initialized = true;
   }
 

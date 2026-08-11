@@ -117,13 +117,6 @@ class CustomExternalListsService {
     final source = rowConfig['source'] as String?;
     final type = rowConfig['type'] as String?;
     final params = rowConfig['params'] as Map<String, dynamic>? ?? {};
-    final modifiableParams = Map<String, dynamic>.from(params);
-    if (forceRefresh) {
-      // The plugin keys its cache on source:type:sha256(params), so changing params
-      // is what actually forces a fresh fetch. This is an authed Dio call with no HTTP
-      // cache in between, so cache-control headers and query flags would do nothing.
-      modifiableParams['_nocache'] = DateTime.now().millisecondsSinceEpoch.toString();
-    }
 
     if (source == null || type == null) return [];
 
@@ -140,7 +133,7 @@ class CustomExternalListsService {
       return loadCustomRowFromCache(config);
     }
 
-    final paramsJson = jsonEncode(modifiableParams);
+    final paramsJson = jsonEncode(params);
     final url = '$baseUrl/Moonfin/CustomRows/Items';
 
     try {
@@ -150,9 +143,18 @@ class CustomExternalListsService {
           'source': source,
           'type': type,
           'params': paramsJson,
+          // The plugin bypasses and overwrites its canonical cache entry on
+          // refresh=true, so all devices see the refreshed list.
+          if (forceRefresh) 'refresh': 'true',
         },
         options: Options(
-          headers: {'Authorization': 'MediaBrowser Token="$token"'},
+          headers: {
+            'Authorization': buildServerAuthorizationHeader(
+              scheme: 'MediaBrowser',
+              deviceInfo: client.deviceInfo,
+              accessToken: token,
+            ),
+          },
         ),
       );
 
@@ -179,6 +181,12 @@ class CustomExternalListsService {
         final year = (rawItem['productionYear'] ?? rawItem['ProductionYear'] ?? rawItem['year'] ?? rawItem['Year']) as int?;
         final itemType = (rawItem['type'] ?? rawItem['Type']) as String? ?? 'Movie';
         final userRating = (rawItem['userRating'] ?? rawItem['UserRating']) as String?;
+        // The popularity and rating sort options rely on these two fields.
+        final rating =
+            ((rawItem['rating'] ?? rawItem['Rating']) as num?)?.toDouble();
+        final popularity =
+            ((rawItem['popularity'] ?? rawItem['Popularity']) as num?)
+                ?.toDouble();
 
         if (imdbId.isNotEmpty || tmdbId.isNotEmpty) {
           items.add(ImdbExternalListItem(
@@ -190,6 +198,8 @@ class CustomExternalListsService {
             year: year,
             type: itemType,
             userRating: userRating,
+            rating: rating,
+            popularity: popularity,
           ));
         }
       }

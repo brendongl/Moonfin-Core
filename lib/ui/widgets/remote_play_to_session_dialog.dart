@@ -4,12 +4,23 @@ import 'package:moonfin_design/moonfin_design.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
+import 'package:playback_core/playback_core.dart';
 
 import '../../data/models/aggregated_item.dart';
 import '../../data/services/cast/cast_service.dart';
 import '../../data/services/cast/cast_target.dart';
 import '../../l10n/app_localizations.dart';
 import 'overlay_sheet.dart';
+
+/// Hands playback to the remote session once a target has accepted the item.
+/// Players call this after the dialog, otherwise the local one keeps going
+/// underneath and the audio plays twice.
+Future<void> pauseLocalPlaybackForCastHandoff() async {
+  if (GetIt.instance<CastService>().activeKind == null) return;
+  final manager = GetIt.instance<PlaybackManager>();
+  if (!manager.state.isPlaying) return;
+  await manager.pause();
+}
 
 Future<void> showRemotePlayToSessionDialog(
   BuildContext context, {

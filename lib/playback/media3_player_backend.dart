@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
 import 'package:get_it/get_it.dart';
 import 'package:playback_core/playback_core.dart';
@@ -12,10 +13,12 @@ import '../util/platform_detection.dart';
 
 import 'device_profile_builder.dart';
 import 'known_defects.dart';
+import 'server_transcode_capabilities.dart';
 
 class Media3PlayerBackend extends PlayerBackend {
   static const _discontinuityWindowMs = 15000;
   static const _discontinuityThreshold = 3;
+  static const _audioSinkErrorThreshold = 2;
 
   Media3PlayerBackend(this._prefs) {
     _eventSub = _events.receiveBroadcastStream().listen(
@@ -31,6 +34,56 @@ class Media3PlayerBackend extends PlayerBackend {
 
   static Stream<Map<String, dynamic>> get activityActionStream =>
       _activityActionController.stream;
+
+  /// One-shot FFmpeg audio-extension state reported by the native side at
+  /// first player build. Read by the playback diagnostics so silent-TrueHD
+  /// reports show whether the bundled decoder registered at all.
+  static Map<String, dynamic>? ffmpegDecoderDiagnostics;
+
+  /// The audio slice of the setDecoderPreferences payload. The native side
+  /// constrains its audio sink and downmix from exactly these values, so this
+  /// stays a pure function of the prefs for the wire-contract tests.
+  @visibleForTesting
+  static Map<String, dynamic> audioDecoderPreferencesPayload(
+    UserPreferences prefs,
+  ) {
+    return <String, dynamic>{
+      'passthroughMode': prefs.get(UserPreferences.audioPassthroughMode).name,
+      'passthroughCodecs': prefs
+          .resolvedPassthroughCodecs()
+          .map((codec) => codec.wireName)
+          .toList(growable: false),
+      'downmixToStereo': prefs.get(UserPreferences.downmixToStereo),
+    };
+  }
+
+  /// How the native side should treat a Dolby Vision profile 7 stream.
+  @visibleForTesting
+  static Media3DoviCompatMode doviCompatMode(
+    UserPreferences prefs, {
+    bool? supportsP7,
+    bool? supportsP8,
+    bool? displaySupportsDolbyVision,
+  }) {
+    final behavior = prefs.get(
+      UserPreferences.dolbyVisionProfile7DirectPlayBehavior,
+    );
+    if (behavior == DolbyVisionProfile7DirectPlayBehavior.disabled) {
+      return Media3DoviCompatMode.off;
+    }
+    if (supportsP7 ?? PlatformDetection.supportsDoViProfile7) {
+      return Media3DoviCompatMode.native;
+    }
+    if (prefs.get(UserPreferences.media3MapDolbyVisionProfile7ToHevc)) {
+      return Media3DoviCompatMode.strip;
+    }
+    final canShowDolbyVision =
+        (supportsP8 ?? PlatformDetection.supportsDoViProfile8) &&
+        (displaySupportsDolbyVision ?? PlatformDetection.supportsDolbyVision);
+    return canShowDolbyVision
+        ? Media3DoviCompatMode.convert
+        : Media3DoviCompatMode.strip;
+  }
 
   final UserPreferences _prefs;
 
@@ -55,11 +108,15 @@ class Media3PlayerBackend extends PlayerBackend {
   int _textTrackCount = 0;
   bool _tracksKnown = false;
   Completer<void>? _tracksReadyCompleter;
+  List<EmbeddedCaptionTrack> _embeddedCaptionTracks = const [];
+  final StreamController<void> _tracksChangedController =
+      StreamController<void>.broadcast();
 
   bool _disposed = false;
   bool _activityStarted = false;
   bool _sessionTunnelingDisabled = false;
   final List<int> _discontinuityTimestamps = <int>[];
+  final List<int> _audioSinkErrorTimestamps = <int>[];
   Timer? _audioDelayDebounce;
 
   // Freeze diagnostics: surface decode/render stalls into the in-app report so
@@ -158,12 +215,18 @@ class Media3PlayerBackend extends PlayerBackend {
       case 'tracksChanged':
         _tracksKnown = true;
         _textTrackCount = _toInt(map['textTrackCount']);
+        _embeddedCaptionTracks = EmbeddedCaptionTrack.listFromWire(
+          map['closedCaptionTracks'],
+        );
         _requestedSubtitleRendererMode = _modeFromWire(
           map['subtitleRendererModeRequested'],
         );
         if (_tracksReadyCompleter != null &&
             !_tracksReadyCompleter!.isCompleted) {
           _tracksReadyCompleter!.complete();
+        }
+        if (!_tracksChangedController.isClosed) {
+          _tracksChangedController.add(null);
         }
       case 'completed':
         _completed = _toBool(map['completed']);
@@ -191,9 +254,15 @@ class Media3PlayerBackend extends PlayerBackend {
         );
         _errorStream.add(map.cast<String, dynamic>());
       case 'error':
+        final cause = map['cause']?.toString();
         _diag(
-          'Media3 error: code=${map['code'] ?? map['errorCode'] ?? ''} '
-          'httpStatus=${map['httpStatus'] ?? ''} ${map['message'] ?? ''}',
+          // Sipflix: keep httpStatus in the line — the player-error mapper
+          // turns it into the customer-facing reason, so it must be visible
+          // in diagnostics too.
+          'Media3 error: ${map['errorCode'] ?? map['code'] ?? ''} '
+          '${map['errorCodeName'] ?? ''} '
+          'httpStatus=${map['httpStatus'] ?? ''} ${map['message'] ?? ''}'
+          '${cause == null || cause.isEmpty ? '' : ' caused by $cause'}',
           level: LogLevel.error,
         );
         _errorStream.add(map.cast<String, dynamic>());
@@ -232,6 +301,30 @@ class Media3PlayerBackend extends PlayerBackend {
           'Media3: audio sink error: ${map['message'] ?? ''}',
           level: LogLevel.warning,
         );
+        _onAudioSinkError();
+      case 'tunnelingDisabledOnAudioTrackFailure':
+        _sessionTunnelingDisabled = true;
+        _diag(
+          'Media3: AudioTrack init failed under tunneling, '
+          'retried untunneled for this session',
+          level: LogLevel.warning,
+        );
+      case 'stereoDownmixReset':
+        _diag(
+          'Media3: sticky stereo downmix cleared '
+          '(${map['reason'] ?? 'route change'})',
+        );
+      case 'ffmpegDecoderDiagnostics':
+        ffmpegDecoderDiagnostics = <String, dynamic>{
+          'available': map['available'] == true,
+          'version': map['version']?.toString() ?? '',
+          'supportsTrueHd': map['supportsTrueHd'] == true,
+        };
+        _diag(
+          'Media3: FFmpeg decoder available=${map['available']} '
+          'version=${map['version']} supportsTrueHd=${map['supportsTrueHd']}',
+          level: map['available'] == true ? LogLevel.info : LogLevel.warning,
+        );
       case 'playerRebuilt':
         _diag(
           'Media3: player rebuilt for new source '
@@ -239,11 +332,102 @@ class Media3PlayerBackend extends PlayerBackend {
         );
       case 'videoDecoderInit':
         _diag('Media3: video decoder initialized (${map['decoder'] ?? ''})');
+      case 'audioDecoderInit':
+        _diag('Media3: audio decoder initialized (${map['decoder'] ?? ''})');
+      case 'audioTrackInitialized':
+        _onAudioTrackInitialized(map);
+      case 'audioTrackMapping':
+        _onAudioTrackMapping(map);
+      case 'doviCompat':
+        _onDoviCompat(map);
       case 'videoSizeChanged':
         _diag(
           'Media3: video size ${_toInt(map['width'])}x${_toInt(map['height'])}',
         );
     }
+  }
+
+  void _onAudioTrackInitialized(Map<String, dynamic> map) {
+    final passthrough = map['passthrough'] == true;
+    final encodingName = map['encodingName']?.toString() ?? '';
+    final channels = _toInt(map['outputChannels']);
+
+    _diag(
+      'Media3: audio track opened $encodingName ${channels}ch '
+      '@${_toInt(map['sampleRate'])}Hz '
+      '(passthrough=$passthrough tunneling=${map['tunneling'] == true} '
+      'offload=${map['offload'] == true} buffer=${_toInt(map['bufferSize'])}B)',
+    );
+  }
+
+  void _onAudioTrackMapping(Map<String, dynamic> map) {
+    final tracks = (map['tracks'] as List<dynamic>? ?? const [])
+        .whereType<Map<dynamic, dynamic>>()
+        .toList(growable: false);
+    if (tracks.isEmpty) return;
+
+    final rendered = tracks
+        .map(
+          (track) =>
+              '#${track['position']} ${track['codec']} '
+              '${track['channels']}ch ${track['language']} '
+              'on ${track['renderer']}'
+              '${track['selected'] == true ? ' [selected]' : ''}'
+              '${track['supported'] == false ? ' [unsupported]' : ''}',
+        )
+        .join(', ');
+
+    // Audio spanning more than one renderer is what makes the source ordering
+    // matter, so a report should say when it happened.
+    final split = map['splitAcrossRenderers'] == true;
+    _diag(
+      'Media3: audio tracks $rendered'
+      '${split ? ' (split across renderers)' : ''}',
+      level: split ? LogLevel.warning : LogLevel.info,
+    );
+  }
+
+  /// Records what the Dolby Vision profile 7 chain did with a track. A P7
+  /// stream that plays wrong is otherwise indistinguishable from a bad file,
+  /// so the report carries the decision, where the RPU came from, and the
+  /// running counts behind it.
+  void _onDoviCompat(Map<String, dynamic> map) {
+    final reason = map['reason']?.toString() ?? 'decided';
+    final applied = map['mode']?.toString() ?? 'none';
+    final requested = map['requestedMode']?.toString() ?? 'none';
+    final detail = map['detail']?.toString();
+
+    final headline = switch (reason) {
+      'untouched' => 'DoVi P7 left untouched',
+      'progress' => 'DoVi P7 still handled as $applied',
+      'converterFailed' => 'DoVi P7 conversion stopped working',
+      'disarmed' => 'DoVi P7 rewriting stood down',
+      _ =>
+        applied == requested
+            ? 'DoVi P7 handled as $applied'
+            : 'DoVi P7 asked for $requested, settled on $applied',
+    };
+
+    final counts =
+        'samples ${_toInt(map['samplesFiltered'])}, '
+        'RPUs seen ${_toInt(map['rpusSeen'])} '
+        '(converted ${_toInt(map['rpusConverted'])}, '
+        'dropped ${_toInt(map['rpusDropped'])}, '
+        'failed ${_toInt(map['rpusFailed'])}), '
+        'EL units dropped ${_toInt(map['enhancementUnitsDropped'])}, '
+        'block additions ${_toInt(map['blockAdditionsRead'])}, '
+        'bytes ${_toInt(map['bytesIn'])} in ${_toInt(map['bytesOut'])} out';
+
+    _diag(
+      'Media3: $headline${detail == null ? '' : ' ($detail)'}. '
+      'Codecs ${map['codecs']}, RPU source ${map['rpuSource']}, '
+      'converter ${map['converterStatus']}. $counts. '
+      'NAL types ${map['nalCensus']}, layout ${map['sampleLayout']}. '
+      'Format ${map['formatSummary']}',
+      level: reason == 'converterFailed' || reason == 'disarmed'
+          ? LogLevel.warning
+          : LogLevel.info,
+    );
   }
 
   void _onTunnelingDiscontinuity() {
@@ -263,6 +447,37 @@ class Media3PlayerBackend extends PlayerBackend {
 
     _discontinuityTimestamps.clear();
     unawaited(disableTunnelingFallback());
+  }
+
+  /// Tunneled sink failures don't always surface as discontinuity
+  /// exceptions. Some chains fail with generic sink errors, so repeated
+  /// bare sink errors while tunneling is active are treated as a tunneling
+  /// problem and trigger the same fallback as discontinuities.
+  void _onAudioSinkError() {
+    if (_sessionTunnelingDisabled) {
+      return;
+    }
+
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    _audioSinkErrorTimestamps.removeWhere(
+      (timestamp) => nowMs - timestamp > _discontinuityWindowMs,
+    );
+    _audioSinkErrorTimestamps.add(nowMs);
+
+    if (_audioSinkErrorTimestamps.length < _audioSinkErrorThreshold) {
+      return;
+    }
+
+    _audioSinkErrorTimestamps.clear();
+    _diag(
+      'Media3: repeated audio sink errors under tunneling, '
+      'disabling tunneling for this session',
+      level: LogLevel.warning,
+    );
+    // Session-only fallback. Generic sink errors are a weaker tunneling
+    // signal than discontinuity exceptions, so they don't persist the
+    // tunneling-disabled preference the way _onTunnelingDiscontinuity does.
+    unawaited(disableTunnelingFallback(persist: false));
   }
 
   void _diag(String message, {LogLevel level = LogLevel.debug}) {
@@ -444,8 +659,10 @@ class Media3PlayerBackend extends PlayerBackend {
     _completed = false;
     _tracksKnown = false;
     _textTrackCount = 0;
+    _embeddedCaptionTracks = const [];
     _tracksReadyCompleter = null;
     _discontinuityTimestamps.clear();
+    _audioSinkErrorTimestamps.clear();
     if (isPreview) {
       // Muted previews/trailers are routinely canceled mid-load; disarm the
       // never-started watchdog instead of re-arming it and logging warnings.
@@ -460,37 +677,43 @@ class Media3PlayerBackend extends PlayerBackend {
     _skipSilenceEnabled = _prefs.get(UserPreferences.media3SkipSilence);
     _volumeBoostLevel = 0;
     final preferredAudioLanguage = _normalizeTrackLanguagePref(
-      _prefs.get(UserPreferences.defaultAudioLanguage),
+      payload['preferredAudioLanguage']?.toString() ??
+          _prefs.get(UserPreferences.defaultAudioLanguage),
     );
     final preferredSubtitleLanguage = _normalizeTrackLanguagePref(
-      _prefs.get(UserPreferences.defaultSubtitleLanguage),
+      payload['preferredTextLanguage']?.toString() ??
+          _prefs.get(UserPreferences.defaultSubtitleLanguage),
     );
     final tunnelingDisabledByUser = _prefs.get(
       UserPreferences.media3TunnelingDisabled,
     );
-    final dvFallbackBehavior = _prefs.get(
-      UserPreferences.dolbyVisionFallbackBehavior,
-    );
-    final mapDolbyVisionProfile7ToHevc =
-        _prefs.get(UserPreferences.media3MapDolbyVisionProfile7ToHevc) ||
-        (!PlatformDetection.supportsDoViProfile7 &&
-            dvFallbackBehavior != DolbyVisionFallbackBehavior.transcode);
     _sessionTunnelingDisabled =
         _prefs.get(UserPreferences.tunnelingFallbackDisabled) ||
         tunnelingDisabledByUser;
 
     await _ensureActivityStarted();
 
+    // The probes behind this only exist on the device, so a report has to say
+    // what they resolved to or the handling of a P7 file can't be explained.
+    final doviMode = doviCompatMode(_prefs);
+    _diag(
+      'Media3: DoVi P7 policy ${doviMode.name} '
+      '(P7 decoder ${PlatformDetection.supportsDoViProfile7}, '
+      'P8 decoder ${PlatformDetection.supportsDoViProfile8}, '
+      'DoVi display ${PlatformDetection.supportsDolbyVision})',
+    );
+
     await _invoke<void>('setDecoderPreferences', {
       'preferFfmpeg': _prefs.get(UserPreferences.preferExoPlayerFfmpeg),
       'tunnelingDisabled': _sessionTunnelingDisabled,
-      'mapDolbyVisionProfile7ToHevc': mapDolbyVisionProfile7ToHevc,
+      'doviCompatMode': doviMode.name,
       'allowExternalAudioEffects': _prefs.get(
         UserPreferences.media3AllowExternalAudioEffects,
       ),
       'frameRateSwitchingBehavior': _prefs
           .get(UserPreferences.refreshRateSwitchingBehavior)
           .name,
+      ...audioDecoderPreferencesPayload(_prefs),
     });
     await _invoke<void>('setSource', {
       'url': url,
@@ -500,10 +723,13 @@ class Media3PlayerBackend extends PlayerBackend {
       'container': container,
       'videoRangeType': videoRangeType,
       'mediaType': mediaType,
+      'isLive': payload['isLive'] == true,
       'normalizationGainDb': normalizationGainDb,
       'skipSilenceEnabled': _skipSilenceEnabled,
       'preferredAudioLanguage': preferredAudioLanguage,
       'preferredTextLanguage': preferredSubtitleLanguage,
+      if (payload['audioTrackOrdinal'] is int)
+        'audioTrackOrdinal': payload['audioTrackOrdinal'],
       'selectUndeterminedTextLanguage': false,
       'forceSubtitlesDisabledOnStart':
           _prefs.get(UserPreferences.subtitleMode) == SubtitleMode.none,
@@ -618,21 +844,15 @@ class Media3PlayerBackend extends PlayerBackend {
     return DeviceProfileBuilder.build(
       maxBitrateMbps: maxBitrate,
       audioCapabilityProfile: audioCapabilityProfile,
-      audioOutputMode: _prefs.resolveAudioOutputMode(),
       audioFallbackCodec: _prefs.resolveAudioFallbackCodec(),
       ac3PassthroughEnabled: _prefs.resolveAc3PassthroughEnabled(),
       eac3PassthroughEnabled: _prefs.resolveEac3PassthroughEnabled(),
-      eac3JocPassthroughEnabled: _prefs.resolveEac3JocPassthroughEnabled(),
       dtsCorePassthroughEnabled: _prefs.resolveDtsCorePassthroughEnabled(),
-      dtsHdPassthroughEnabled: _prefs.resolveDtsHdPassthroughEnabled(),
-      dtsXPassthroughEnabled: _prefs.resolveDtsXPassthroughEnabled(),
       trueHdPassthroughEnabled: _prefs.resolveTrueHdPassthroughEnabled(),
-      trueHdAtmosPassthroughEnabled: _prefs
-          .resolveTrueHdAtmosPassthroughEnabled(),
       maxAudioChannels: _prefs.resolveMaxAudioChannels(),
-      // Media3 bundles the FFmpeg audio decoder extension: every advertised
-      // codec decodes in software, so stereo routes downmix locally instead
-      // of forcing a server transcode.
+      downmixToStereo: _prefs.get(UserPreferences.downmixToStereo),
+      // Media3 bundles the FFmpeg audio decoder extension, so every advertised
+      // codec has a software decoder behind it.
       universalAudioDecode: true,
       maxResolution: maxResolution,
       pgsDirectPlay: _prefs.get(UserPreferences.pgsDirectPlay) && canRenderBitmapSubtitles,
@@ -646,6 +866,7 @@ class Media3PlayerBackend extends PlayerBackend {
       supportsHevc: PlatformDetection.supportsHevc && !SipflixServers.forceH264,
       supportsHevcMain10:
           PlatformDetection.supportsHevcMain10 && !SipflixServers.forceH264,
+      transcodeHevcAllowed: serverAllowsHevcTranscode(),
       hevcMainLevel: PlatformDetection.hevcMainLevel,
       supportsHevcDolbyVision: PlatformDetection.supportsHevcDolbyVision &&
           !SipflixServers.forceH264,
@@ -661,6 +882,7 @@ class Media3PlayerBackend extends PlayerBackend {
       supportsAv1Hdr10: PlatformDetection.supportsAv1Hdr10,
       supportsAv1Hdr10Plus: PlatformDetection.supportsAv1Hdr10Plus,
       supportsVc1: PlatformDetection.supportsVc1,
+      supportsMpeg4: PlatformDetection.supportsMpeg4,
       maxResolutionAvcWidth: PlatformDetection.maxResolutionAvcWidth,
       maxResolutionAvcHeight: PlatformDetection.maxResolutionAvcHeight,
       maxResolutionHevcWidth: PlatformDetection.maxResolutionHevcWidth,
@@ -680,7 +902,9 @@ class Media3PlayerBackend extends PlayerBackend {
             ),
             hasHardwareDolbyVisionDecoder:
                 PlatformDetection.supportsHevcDolbyVision,
+            hasDoviCompat: true,
           ),
+      directPlayVideoContainers: media3DirectPlayVideoContainers,
     );
   }
 
@@ -755,6 +979,17 @@ class Media3PlayerBackend extends PlayerBackend {
       'isExternalSubtitle': isExternalSubtitle,
       'externalSubtitleUrl': externalSubtitleUrl,
     });
+  }
+
+  @override
+  List<EmbeddedCaptionTrack> get embeddedCaptionTracks => _embeddedCaptionTracks;
+
+  @override
+  Stream<void> get tracksChangedStream => _tracksChangedController.stream;
+
+  @override
+  Future<void> setEmbeddedCaptionTrack(int id) async {
+    await _invoke<void>('setClosedCaptionTrack', {'id': id});
   }
 
   @override
@@ -895,6 +1130,9 @@ class Media3PlayerBackend extends PlayerBackend {
   bool get supportsRuntimeTrackSelection => true;
 
   @override
+  bool get supportsDirectPlayAudioSwitch => true;
+
+  @override
   bool get requiresStartupMediaReadyCheck => false;
 
   @override
@@ -925,5 +1163,17 @@ class Media3PlayerBackend extends PlayerBackend {
     _bufferingStream.close();
     _completedStream.close();
     _errorStream.close();
+    _tracksChangedController.close();
   }
 }
+
+/// What the native side does with a Dolby Vision profile 7 stream. Names
+/// travel over the wire and match the Kotlin enum.
+enum Media3DoviCompatMode { native, convert, strip, off }
+
+/// Containers media3 can actually demux. The shared default list carries
+/// asf, wmv, ogm, and ogv for the mpv backends, none of which media3 reads
+/// (its Ogg support is audio only), so those route to a server remux here.
+/// AVI and FLV extractors exist in media3 and join in their place.
+const String media3DirectPlayVideoContainers =
+    'avi,dash,flv,hls,m4v,mkv,mov,mp4,ts,vob,webm,xvid';

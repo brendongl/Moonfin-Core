@@ -1,5 +1,4 @@
 {
-  "originHash" : "c62dc5461e926fd270f4d28af1687b64c19afe58aa159ee4ece180d2bd11caa9",
   "pins" : [
     {
       "identity" : "abseil-cpp-binary",
@@ -8,6 +7,14 @@
       "state" : {
         "revision" : "bbe8b69694d7873315fd3a4ad41efe043e1c07c5",
         "version" : "1.2024072200.0"
+      }
+    },
+    {
+      "identity" : "aetherengine",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/RadicalMuffinMan/AetherEngine",
+      "state" : {
+        "revision" : "2e388e39ac4eecd7c3ad033b003f0172903ea5d3"
       }
     },
     {
@@ -56,6 +63,15 @@
       }
     },
     {
+      "identity" : "ffmpegbuild",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/superuser404notfound/FFmpegBuild",
+      "state" : {
+        "revision" : "87a5655979b9d6fa9f4b8db69e0a7e8df9075639",
+        "version" : "2.4.0"
+      }
+    },
+    {
       "identity" : "firebase-ios-sdk",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/firebase/firebase-ios-sdk",
@@ -87,8 +103,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/google/GoogleDataTransport.git",
       "state" : {
-        "revision" : "617af071af9aa1d6a091d59a202910ac482128f9",
-        "version" : "10.1.0"
+        "revision" : "ba3358d3c3dbae8ef230b58a46b97ad65e84e974",
+        "version" : "10.1.1"
       }
     },
     {
@@ -137,6 +153,24 @@
       }
     },
     {
+      "identity" : "libass-build",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/mpvkit/libass-build",
+      "state" : {
+        "revision" : "e08eb5bb3be5137e845f781dc9477d1843f23261",
+        "version" : "0.17.5"
+      }
+    },
+    {
+      "identity" : "libdovi",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/superuser404notfound/LibDovi",
+      "state" : {
+        "revision" : "89be93431c2a5f2e54fb77e93059071b8d2ddb3a",
+        "version" : "2.0.0"
+      }
+    },
+    {
       "identity" : "nanopb",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/firebase/nanopb.git",
@@ -164,6 +198,15 @@
       }
     },
     {
+      "identity" : "smbclient",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/kishikawakatsumi/SMBClient",
+      "state" : {
+        "revision" : "e636c2b2458930770932a36d311ec9d478575b90",
+        "version" : "0.3.1"
+      }
+    },
+    {
       "identity" : "swiftygif",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/kirualex/SwiftyGif.git",
@@ -182,5 +225,5 @@
       }
     }
   ],
-  "version" : 3
+  "version" : 2
 }

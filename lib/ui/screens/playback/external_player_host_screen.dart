@@ -109,7 +109,6 @@ class _ExternalPlayerHostScreenState extends State<ExternalPlayerHostScreen> {
         final profile = DeviceProfileBuilder.build(
           maxBitrateMbps: maxBitrateOption,
           audioCapabilityProfile: const AudioCapabilityProfile.optimistic(),
-          audioOutputMode: AudioOutputMode.auto,
           audioFallbackCodec: AudioFallbackCodec.auto,
           // External players (VLC, mpv, Just Player, …) decode audio in
           // software; never restrict them by the detected output route.
@@ -146,6 +145,10 @@ class _ExternalPlayerHostScreenState extends State<ExternalPlayerHostScreen> {
           supportsDvProfile7: true,
           supportsDvProfile8: true,
           allowDolbyVisionProfile7ElDirectPlay: true,
+          // The external app decodes with its own pipeline, so this device's
+          // decoder quirks (like the Fire TV DoVi HDR10+ exclusion) must not
+          // force a transcode that the external handoff then rejects.
+          applyKnownDeviceDefects: false,
         );
         final overrideMbps = _manager.maxBitrateOverrideMbps;
         if (overrideMbps != null) {

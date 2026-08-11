@@ -76,9 +76,18 @@ class JellyfinAdminItemsApi implements AdminItemsApi {
     String searchType,
     Map<String, dynamic> query,
   ) async {
+    final normalized = switch (searchType.toLowerCase()) {
+      'movie' => 'Movie',
+      'series' => 'Series',
+      'boxset' => 'BoxSet',
+      'person' => 'Person',
+      'musicalbum' => 'MusicAlbum',
+      'musicartist' => 'MusicArtist',
+      _ => searchType,
+    };
     return _requestWithFallback<List<Map<String, dynamic>>>(
       methods: const ['POST'],
-      paths: ['/Items/RemoteSearch/$searchType'],
+      paths: ['/Items/RemoteSearch/$normalized', '/Items/RemoteSearch/$searchType'],
       data: query,
       convert: _asList,
     );
@@ -93,14 +102,16 @@ class JellyfinAdminItemsApi implements AdminItemsApi {
   @override
   Future<void> applyRemoteSearchResult(
     String itemId,
-    Map<String, dynamic> result,
-  ) async {
+    Map<String, dynamic> result, {
+    bool replaceAllImages = true,
+  }) async {
     await _requestWithFallback<void>(
       methods: const ['POST'],
       paths: [
         '/Items/RemoteSearch/Apply/$itemId',
         '/Items/$itemId/RemoteSearch/Apply',
       ],
+      queryParameters: {'replaceAllImages': replaceAllImages},
       data: result,
       convert: _ignoreResponse,
     );

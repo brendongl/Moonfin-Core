@@ -5,6 +5,7 @@ import 'package:get_it/get_it.dart';
 import '../data/models/home_row.dart';
 import '../data/services/media_server_client_factory.dart';
 import '../data/services/row_data_source.dart';
+import '../data/services/tv_channels_service.dart';
 import '../data/services/watch_next_service.dart';
 import '../di/injection.dart';
 import '../playback/car_artwork.dart';
@@ -16,10 +17,14 @@ Future<void> watchNextBackgroundMain() async {
   const channel = MethodChannel('org.moonfin.androidtv/watch_next');
 
   var ok = false;
+  // Tells the worker that retrying can't help, so it stops booting an engine
+  // on every backoff.
+  var permanent = false;
   try {
     await configureBackgroundDependencies();
 
     final client = await HeadlessSessionBootstrap().restoreClient();
+    permanent = client == null;
     if (client != null) {
       final factory = GetIt.instance<MediaServerClientFactory>();
       var serverId = client.baseUrl;
@@ -43,7 +48,7 @@ Future<void> watchNextBackgroundMain() async {
       } catch (_) {}
 
       await CarArtwork.instance.ensureReady();
-      final items = WatchNextService.buildItems(rows, client.imageApi);
+      final items = WatchNextService.buildItems(rows, client);
       await CarArtwork.instance.persistHosts();
 
       if (items.isEmpty) {
@@ -51,11 +56,24 @@ Future<void> watchNextBackgroundMain() async {
       } else {
         await channel.invokeMethod('publish', {'items': items});
       }
+
+      try {
+        final channels =
+            await TvChannelsService.buildChannels(client, serverId: serverId);
+        await CarArtwork.instance.persistHosts();
+        if (channels.isEmpty) {
+          await channel.invokeMethod('clearChannels');
+        } else {
+          await channel.invokeMethod('publishChannels', {'channels': channels});
+        }
+      } catch (_) {}
+
       ok = true;
     }
   } catch (_) {}
 
   try {
-    await channel.invokeMethod('backgroundComplete', {'ok': ok});
+    await channel
+        .invokeMethod('backgroundComplete', {'ok': ok, 'permanent': permanent});
   } catch (_) {}
 }

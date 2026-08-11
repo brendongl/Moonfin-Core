@@ -190,11 +190,10 @@ class SeerrUser {
 
   String get bestName => displayName ?? username ?? email ?? 'Unknown';
 
-  bool get isOwner => id == 1;
-
+  /// Mirrors Seerr's own bitmask check. There is deliberately no shortcut for
+  /// user id 1, since Seerr grants the owner nothing beyond their bits.
   bool hasPermission(int permission) {
     final perms = permissions ?? 0;
-    if (isOwner) return true;
     if (perms & SeerrPermission.admin != 0) return true;
     return perms & permission != 0;
   }
@@ -600,6 +599,30 @@ class SeerrCrewMember {
   Map<String, dynamic> toJson() => _$SeerrCrewMemberToJson(this);
 }
 
+/// Per-season availability, as Seerr reports it on a series' media info. The
+/// request list can only approximate this, so it is what the season markers
+/// read.
+///
+/// Season numbers here are TMDB's. A series that TVDB splits differently, which
+/// is common for anime, can disagree with the library's own season numbering.
+@JsonSerializable()
+class SeerrSeasonAvailability {
+  final int seasonNumber;
+  final int? status;
+  final int? status4k;
+
+  const SeerrSeasonAvailability({
+    required this.seasonNumber,
+    this.status,
+    this.status4k,
+  });
+
+  factory SeerrSeasonAvailability.fromJson(Map<String, dynamic> json) =>
+      _$SeerrSeasonAvailabilityFromJson(json);
+
+  Map<String, dynamic> toJson() => _$SeerrSeasonAvailabilityToJson(this);
+}
+
 @JsonSerializable()
 class SeerrMediaInfo {
   final int? id;
@@ -610,6 +633,7 @@ class SeerrMediaInfo {
   final List<SeerrDownloadingItem>? downloadStatus;
   final List<SeerrDownloadingItem>? downloadStatus4k;
   final List<SeerrRequest>? requests;
+  final List<SeerrSeasonAvailability>? seasons;
   final String? jellyfinMediaId;
   final String? jellyfinMediaId4k;
 
@@ -622,6 +646,7 @@ class SeerrMediaInfo {
     this.downloadStatus,
     this.downloadStatus4k,
     this.requests,
+    this.seasons,
     this.jellyfinMediaId,
     this.jellyfinMediaId4k,
   });

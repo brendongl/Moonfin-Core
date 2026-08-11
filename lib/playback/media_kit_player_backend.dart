@@ -12,9 +12,9 @@ import 'package:playback_core/playback_core.dart';
 import '../preference/preference_constants.dart';
 import '../preference/user_preferences.dart';
 import '../util/platform_detection.dart';
-import 'audio_capability_profile.dart';
 import 'device_profile_builder.dart';
 import 'known_defects.dart';
+import 'server_transcode_capabilities.dart';
 
 class _ParsedMpvConfCacheEntry {
   final DateTime modified;
@@ -179,6 +179,7 @@ class MediaKitPlayerBackend extends PlayerBackend {
   final bool _hwDecodingEnabled;
   bool _didNotifyNativeHandle = false;
   bool _didConfigureAppleMobileLibassFont = false;
+  bool _didConfigureAndroidLibassFonts = false;
   Map<String, String>? _appliedAudioPassthroughProperties;
   bool _audioPassthroughApplyInProgress = false;
   bool _audioPassthroughApplyQueued = false;
@@ -203,22 +204,26 @@ class MediaKitPlayerBackend extends PlayerBackend {
   }
 
   static bool _passthroughActive(UserPreferences prefs) {
-    return passthroughCodecsFromPreferences(
-      audioOutputMode: prefs.resolveAudioOutputMode(),
-      ac3PassthroughEnabled: prefs.resolveAc3PassthroughEnabled(),
-      eac3PassthroughEnabled: prefs.resolveEac3PassthroughEnabled(),
-      eac3JocPassthroughEnabled: prefs.resolveEac3JocPassthroughEnabled(),
-      dtsCorePassthroughEnabled: prefs.resolveDtsCorePassthroughEnabled(),
-      dtsHdPassthroughEnabled: prefs.resolveDtsHdPassthroughEnabled(),
-      dtsXPassthroughEnabled: prefs.resolveDtsXPassthroughEnabled(),
-      trueHdPassthroughEnabled: prefs.resolveTrueHdPassthroughEnabled(),
-      trueHdAtmosPassthroughEnabled:
-          prefs.resolveTrueHdAtmosPassthroughEnabled(),
+    return passthroughCodecsFromSet(
+      prefs.resolvedPassthroughCodecs(),
+      downmixToStereo: prefs.get(UserPreferences.downmixToStereo),
     ).isNotEmpty;
   }
 
   bool _isStale = false;
   String? _currentUrl;
+
+  // The viewer asked for no subtitles. Held here so the deferred visibility
+  // pass can tell a fresh source apart from a choice it must not undo.
+  bool _subtitlesDisabled = false;
+
+  // Captions mpv found inside the video, cached from the async track-list
+  // property so the sync getter can serve them. An EmbeddedCaptionTrack id is
+  // a 1-based position into [_ccTrackSids], which holds the real mpv sids.
+  List<EmbeddedCaptionTrack> _embeddedCaptionTracks = const [];
+  List<int> _ccTrackSids = const [];
+  StreamSubscription<dynamic>? _ccTracksSub;
+  final _tracksChangedController = StreamController<void>.broadcast();
 
   late final Stream<bool> _playingStream = _mergeWithStale<bool>(
     _player.stream.playing,
@@ -256,13 +261,32 @@ class MediaKitPlayerBackend extends PlayerBackend {
   /// A track entry from mpv's `track-list` property, in list order.
   /// [externalFilename] is the URL/path a sub-added external track was
   /// loaded from (null for demuxed embedded tracks).
-  static List<({int id, bool external, String? externalFilename})>
-      _extractTrackEntries(String? trackListRaw, {required String type}) {
+  static List<
+    ({
+      int id,
+      bool external,
+      String? externalFilename,
+      String codec,
+      String? title,
+      String? lang,
+    })
+  >
+  _extractTrackEntries(String? trackListRaw, {required String type}) {
     if (trackListRaw == null || trackListRaw.isEmpty) return const [];
     try {
       final decoded = jsonDecode(trackListRaw);
       if (decoded is! List) return const [];
-      final entries = <({int id, bool external, String? externalFilename})>[];
+      final entries =
+          <
+            ({
+              int id,
+              bool external,
+              String? externalFilename,
+              String codec,
+              String? title,
+              String? lang,
+            })
+          >[];
       for (final item in decoded) {
         if (item is! Map) continue;
         if (item['type']?.toString() != type) continue;
@@ -275,6 +299,9 @@ class MediaKitPlayerBackend extends PlayerBackend {
           id: parsed,
           external: item['external'] == true,
           externalFilename: item['external-filename']?.toString(),
+          codec: item['codec']?.toString() ?? '',
+          title: item['title']?.toString(),
+          lang: item['lang']?.toString(),
         ));
       }
       return entries;
@@ -283,11 +310,23 @@ class MediaKitPlayerBackend extends PlayerBackend {
     }
   }
 
+  /// True for the subtitle track mpv creates from the CEA-608/708 captions a
+  /// broadcaster carries inside the video (see `sub-create-cc-track`). These
+  /// have no server stream to map to, so every place that lines mpv's track
+  /// list up against the server's must skip them.
+  static bool _isClosedCaptionCodec(String codec) {
+    final c = codec.toLowerCase();
+    return c == 'eia_608' || c == 'eia_708' || c == 'cea708' || c == 'cea_708';
+  }
+
   // Whether an mpv external track was sub-added from the requested URL. mpv can
   // re-encode the URL it reports in `external-filename`, so an exact compare
   // misses. Jellyfin external subtitle URLs carry the unique subtitle stream
   // index in the path, so a decoded-path match still identifies the sub.
-  static bool _externalFilenameMatches(String? mpvFilename, String requestedUrl) {
+  static bool _externalFilenameMatches(
+    String? mpvFilename,
+    String requestedUrl,
+  ) {
     if (mpvFilename == null || mpvFilename.isEmpty) return false;
     if (mpvFilename == requestedUrl) return true;
     final a = Uri.tryParse(mpvFilename);
@@ -345,8 +384,7 @@ class MediaKitPlayerBackend extends PlayerBackend {
   }
 
   static bool get _useLibass =>
-      PlatformDetection.isAndroid ||
-      PlatformDetection.isIOS;
+      PlatformDetection.isAndroid || PlatformDetection.isIOS;
 
   // libass needs a font with CJK glyphs bundled or Asian subtitles show as
   // tofu. The family name has to match the font's internal name.
@@ -363,6 +401,9 @@ class MediaKitPlayerBackend extends PlayerBackend {
     this._hwDecodingEnabled,
   ) {
     _prefs.addListener(_onPreferencesChanged);
+    _ccTracksSub = _player.stream.tracks.listen(
+      (_) => unawaited(_refreshEmbeddedCaptionTracks()),
+    );
   }
 
   factory MediaKitPlayerBackend(
@@ -391,14 +432,30 @@ class MediaKitPlayerBackend extends PlayerBackend {
     final platform = player.platform;
     if (platform is NativePlayer) {
       _nativeSetProperty(platform, 'network-timeout', '120');
+      // mpv stops reading ahead at 150MiB, which a high bitrate remux burns
+      // through in seconds, so bursty networks stutter. A larger demuxer
+      // budget keeps a real runway on desktop, but a filled 256MiB cache on
+      // top of decode buffers can get the app killed on phones and TV boxes,
+      // so those stay at the mpv default.
+      if (!PlatformDetection.isAndroid && !PlatformDetection.isIOS) {
+        _nativeSetProperty(platform, 'demuxer-max-bytes', '256MiB');
+      }
       _nativeSetProperty(
         platform,
         'stream-lavf-o',
         'reconnect=1,reconnect_on_network_error=1,reconnect_streamed=1,reconnect_delay_max=5',
       );
+      // Surface the CEA-608/708 captions broadcasters carry inside the video
+      // as an mpv subtitle track. It only appears once caption data is seen,
+      // and every server-index mapping in this file skips it by codec.
+      _nativeSetProperty(platform, 'sub-create-cc-track', 'yes');
 
       final maxChannels = prefs.get(UserPreferences.maxAudioChannels);
-      final audioChannelsLayout = (maxChannels == 0 || _passthroughActive(prefs))
+      // An explicit downmix wins over any channel cap. Passthrough streams
+      // skip the mpv mixer entirely, so they stay unaffected.
+      final audioChannelsLayout = prefs.get(UserPreferences.downmixToStereo)
+          ? 'stereo'
+          : (maxChannels == 0 || _passthroughActive(prefs))
           ? (PlatformDetection.isIOS ? 'stereo' : 'auto')
           : _mpvAudioChannelsLayout(maxChannels);
       _nativeSetProperty(platform, 'audio-channels', audioChannelsLayout);
@@ -502,23 +559,19 @@ class MediaKitPlayerBackend extends PlayerBackend {
     return DeviceProfileBuilder.build(
       maxBitrateMbps: maxBitrate,
       audioCapabilityProfile: audioCapabilityProfile,
-      audioOutputMode: _prefs.resolveAudioOutputMode(),
       audioFallbackCodec: _prefs.resolveAudioFallbackCodec(),
       ac3PassthroughEnabled: _prefs.resolveAc3PassthroughEnabled(),
       eac3PassthroughEnabled: _prefs.resolveEac3PassthroughEnabled(),
-      eac3JocPassthroughEnabled: _prefs.resolveEac3JocPassthroughEnabled(),
       dtsCorePassthroughEnabled: _prefs.resolveDtsCorePassthroughEnabled(),
-      dtsHdPassthroughEnabled: _prefs.resolveDtsHdPassthroughEnabled(),
-      dtsXPassthroughEnabled: _prefs.resolveDtsXPassthroughEnabled(),
       trueHdPassthroughEnabled: _prefs.resolveTrueHdPassthroughEnabled(),
-      trueHdAtmosPassthroughEnabled: _prefs
-          .resolveTrueHdAtmosPassthroughEnabled(),
       maxAudioChannels: _prefs.resolveMaxAudioChannels(),
+      downmixToStereo: _prefs.get(UserPreferences.downmixToStereo),
       // mpv decodes all advertised audio codecs in software and downmixes
       // locally, so stereo routes never need a server-side audio transcode.
       universalAudioDecode: true,
       maxResolution: maxResolution,
-      pgsDirectPlay: _prefs.get(UserPreferences.pgsDirectPlay) && canRenderBitmapSubtitles,
+      pgsDirectPlay:
+          _prefs.get(UserPreferences.pgsDirectPlay) && canRenderBitmapSubtitles,
       assDirectPlay: _prefs.get(UserPreferences.assDirectPlay),
       supportsAvc: capabilities.supportsAvc,
       supportsAvcHigh10: capabilities.supportsAvcHigh10,
@@ -526,6 +579,7 @@ class MediaKitPlayerBackend extends PlayerBackend {
       avcHigh10Level: capabilities.avcHigh10Level,
       supportsHevc: capabilities.supportsHevc,
       supportsHevcMain10: capabilities.supportsHevcMain10,
+      transcodeHevcAllowed: serverAllowsHevcTranscode(),
       hevcMainLevel: capabilities.hevcMainLevel,
       supportsHevcDolbyVision: capabilities.supportsHevcDolbyVision,
       supportsHevcDolbyVisionEl: capabilities.supportsHevcDolbyVisionEl,
@@ -566,9 +620,12 @@ class MediaKitPlayerBackend extends PlayerBackend {
 
     _currentUrl = url;
     _isStale = true;
+    _embeddedCaptionTracks = const [];
+    _ccTrackSids = const [];
 
     await _notifyNativeHandleReady();
     await _configureAppleMobileLibassFont();
+    await _configureAndroidLibassFonts();
     await _applyAudioPassthroughOptions();
     await _applyCustomMpvConfIfEnabled();
     await _applyAssOverrideMode();
@@ -638,77 +695,48 @@ class MediaKitPlayerBackend extends PlayerBackend {
     } catch (_) {}
   }
 
-  @visibleForTesting
-  static List<String> passthroughCodecsFromPreferences({
-    required AudioOutputMode audioOutputMode,
-    required bool ac3PassthroughEnabled,
-    required bool eac3PassthroughEnabled,
-    required bool eac3JocPassthroughEnabled,
-    required bool dtsCorePassthroughEnabled,
-    required bool dtsHdPassthroughEnabled,
-    required bool dtsXPassthroughEnabled,
-    required bool trueHdPassthroughEnabled,
-    required bool trueHdAtmosPassthroughEnabled,
+  /// Maps the effective passthrough codec set to mpv spdif names. Downmixing
+  /// decodes everything locally, so it empties the set.
+  static List<String> passthroughCodecsFromSet(
+    Set<PassthroughCodec> codecs, {
+    required bool downmixToStereo,
   }) {
-    if (audioOutputMode == AudioOutputMode.forceStereo) {
+    if (downmixToStereo) {
       return const <String>[];
     }
 
-    final effectiveEac3JocPassthroughEnabled =
-        eac3PassthroughEnabled && eac3JocPassthroughEnabled;
-    final effectiveDtsHdPassthroughEnabled =
-        dtsCorePassthroughEnabled && dtsHdPassthroughEnabled;
-    final effectiveDtsXPassthroughEnabled =
-        effectiveDtsHdPassthroughEnabled && dtsXPassthroughEnabled;
-    final effectiveTrueHdAtmosPassthroughEnabled =
-        trueHdPassthroughEnabled && trueHdAtmosPassthroughEnabled;
-
-    final codecs = <String>[];
-    if (ac3PassthroughEnabled) {
-      codecs.add('ac3');
+    final names = <String>[];
+    if (codecs.contains(PassthroughCodec.ac3)) {
+      names.add('ac3');
     }
-    if (eac3PassthroughEnabled || effectiveEac3JocPassthroughEnabled) {
-      codecs.add('eac3');
+    if (codecs.contains(PassthroughCodec.eac3)) {
+      names.add('eac3');
     }
-    if (effectiveDtsHdPassthroughEnabled || effectiveDtsXPassthroughEnabled) {
-      codecs.add('dts-hd');
-    } else if (dtsCorePassthroughEnabled) {
-      codecs.add('dts');
+    if (codecs.contains(PassthroughCodec.dtsHd)) {
+      names.add('dts-hd');
+    } else if (codecs.contains(PassthroughCodec.dtsCore)) {
+      names.add('dts');
     }
-    if (trueHdPassthroughEnabled || effectiveTrueHdAtmosPassthroughEnabled) {
-      codecs.add('truehd');
+    if (codecs.contains(PassthroughCodec.trueHd)) {
+      names.add('truehd');
     }
-    return codecs;
+    return names;
   }
 
   @visibleForTesting
-  static Map<String, String> passthroughMpvPropertiesFromPreferences({
-    required AudioOutputMode audioOutputMode,
-    required bool ac3PassthroughEnabled,
-    required bool eac3PassthroughEnabled,
-    required bool eac3JocPassthroughEnabled,
-    required bool dtsCorePassthroughEnabled,
-    required bool dtsHdPassthroughEnabled,
-    required bool dtsXPassthroughEnabled,
-    required bool trueHdPassthroughEnabled,
-    required bool trueHdAtmosPassthroughEnabled,
+  static Map<String, String> passthroughMpvPropertiesFromSet(
+    Set<PassthroughCodec> codecs, {
+    required bool downmixToStereo,
     required bool includeAudioExclusive,
   }) {
-    final codecs = passthroughCodecsFromPreferences(
-      audioOutputMode: audioOutputMode,
-      ac3PassthroughEnabled: ac3PassthroughEnabled,
-      eac3PassthroughEnabled: eac3PassthroughEnabled,
-      eac3JocPassthroughEnabled: eac3JocPassthroughEnabled,
-      dtsCorePassthroughEnabled: dtsCorePassthroughEnabled,
-      dtsHdPassthroughEnabled: dtsHdPassthroughEnabled,
-      dtsXPassthroughEnabled: dtsXPassthroughEnabled,
-      trueHdPassthroughEnabled: trueHdPassthroughEnabled,
-      trueHdAtmosPassthroughEnabled: trueHdAtmosPassthroughEnabled,
+    final names = passthroughCodecsFromSet(
+      codecs,
+      downmixToStereo: downmixToStereo,
     );
 
-    final properties = <String, String>{'audio-spdif': codecs.join(',')};
+    final properties = <String, String>{'audio-spdif': names.join(',')};
     if (includeAudioExclusive) {
-      properties['audio-exclusive'] = codecs.isNotEmpty ? 'yes' : 'no';
+      properties['audio-exclusive'] = names.isNotEmpty ? 'yes' : 'no';
     }
     return properties;
   }
@@ -720,17 +748,9 @@ class MediaKitPlayerBackend extends PlayerBackend {
 
     try {
       final native = _player.platform as NativePlayer;
-      final properties = passthroughMpvPropertiesFromPreferences(
-        audioOutputMode: _prefs.resolveAudioOutputMode(),
-        ac3PassthroughEnabled: _prefs.resolveAc3PassthroughEnabled(),
-        eac3PassthroughEnabled: _prefs.resolveEac3PassthroughEnabled(),
-        eac3JocPassthroughEnabled: _prefs.resolveEac3JocPassthroughEnabled(),
-        dtsCorePassthroughEnabled: _prefs.resolveDtsCorePassthroughEnabled(),
-        dtsHdPassthroughEnabled: _prefs.resolveDtsHdPassthroughEnabled(),
-        dtsXPassthroughEnabled: _prefs.resolveDtsXPassthroughEnabled(),
-        trueHdPassthroughEnabled: _prefs.resolveTrueHdPassthroughEnabled(),
-        trueHdAtmosPassthroughEnabled: _prefs
-            .resolveTrueHdAtmosPassthroughEnabled(),
+      final properties = passthroughMpvPropertiesFromSet(
+        _prefs.resolvedPassthroughCodecs(),
+        downmixToStereo: _prefs.get(UserPreferences.downmixToStereo),
         includeAudioExclusive: PlatformDetection.isDesktop,
       );
 
@@ -1095,6 +1115,8 @@ class MediaKitPlayerBackend extends PlayerBackend {
         await fontFile.writeAsBytes(data.buffer.asUint8List(), flush: true);
       }
 
+      await _copyBundledScriptFonts(fontsDirectory);
+
       final native = _player.platform as NativePlayer;
       await _nativeSetProperty(native, 'sub-fonts-dir', fontsDirectory.path);
       await _nativeSetProperty(native, 'sub-font', _libassFontFamily);
@@ -1102,6 +1124,97 @@ class MediaKitPlayerBackend extends PlayerBackend {
       await _nativeSetProperty(native, 'sub-visibility', 'yes');
       _didConfigureAppleMobileLibassFont = true;
     } catch (_) {}
+  }
+
+  static const String _subtitleFontAssetDir = 'assets/subtitle_fonts';
+
+  Future<void> _copyBundledScriptFonts(Directory fontsDirectory) async {
+    try {
+      final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
+      final assets = manifest.listAssets().where(
+        (asset) => asset.startsWith('$_subtitleFontAssetDir/'),
+      );
+      for (final asset in assets) {
+        final name = asset.split('/').last;
+        final target = File('${fontsDirectory.path}/$name');
+        if (await target.exists()) continue;
+        final data = await rootBundle.load(asset);
+        await target.writeAsBytes(data.buffer.asUint8List(), flush: true);
+      }
+    } catch (_) {}
+  }
+
+  static const List<String> _androidScriptFontPrefixes = [
+    'NotoNaskhArabic',
+    'NotoSansArabic',
+    'NotoSansDevanagari',
+    'NotoSansBengali',
+    'NotoSansTamil',
+    'NotoSansTelugu',
+    'NotoSansKannada',
+    'NotoSansMalayalam',
+    'NotoSansGujarati',
+    'NotoSansGurmukhi',
+    'NotoSansOriya',
+    'NotoSansSinhala',
+    'NotoSansThai',
+    'NotoSansLao',
+    'NotoSansKhmer',
+    'NotoSansMyanmar',
+    'NotoSansHebrew',
+    'NotoSansGeorgian',
+    'NotoSansArmenian',
+    'NotoSansEthiopic',
+    'NotoSansSymbols',
+    'NotoSansSymbols2',
+    'NotoSansMath',
+    'NotoMusic',
+  ];
+
+  Future<void> _configureAndroidLibassFonts() async {
+    if (!PlatformDetection.isAndroid || _didConfigureAndroidLibassFonts) {
+      return;
+    }
+    if (_player.platform is! NativePlayer) return;
+    try {
+      final native = _player.platform as NativePlayer;
+      final fontsDirPath =
+          ((await (native as dynamic).getProperty('sub-fonts-dir')) as String)
+              .trim();
+      if (fontsDirPath.isEmpty) return;
+      final fontsDir = Directory(fontsDirPath);
+      if (!await fontsDir.exists()) return;
+
+      final systemFonts = Directory('/system/fonts');
+      if (!await systemFonts.exists()) return;
+      final systemFiles = systemFonts.listSync().whereType<File>().toList();
+
+      for (final prefix in _androidScriptFontPrefixes) {
+        final source = _firstScriptFont(systemFiles, prefix);
+        if (source == null) continue;
+        final name = source.path.split('/').last;
+        final target = File('${fontsDir.path}/$name');
+        if (await target.exists()) continue;
+        await target.writeAsBytes(await source.readAsBytes(), flush: true);
+      }
+      _didConfigureAndroidLibassFonts = true;
+    } catch (_) {}
+  }
+
+  // Match by filename prefix, but the following character must not be a digit so
+  // "NotoSansSymbols" does not swallow "NotoSansSymbols2".
+  static File? _firstScriptFont(List<File> fonts, String prefix) {
+    final lowerPrefix = prefix.toLowerCase();
+    for (final font in fonts) {
+      final name = font.path.split('/').last;
+      if (!name.toLowerCase().startsWith(lowerPrefix)) continue;
+      if (name.length > prefix.length) {
+        final next = name.codeUnitAt(prefix.length);
+        if (next >= 0x30 && next <= 0x39) continue;
+      }
+      return font;
+    }
+    return null;
   }
 
   Future<void> _applyAssOverrideMode() async {
@@ -1324,9 +1437,14 @@ class MediaKitPlayerBackend extends PlayerBackend {
       if (active.id == 'auto') {
         return null;
       }
+      // An active CC track isn't a server-stream selection, so the server
+      // menu shows nothing selected, the same as the other backends.
+      if (_isCcSid(active.id)) {
+        return -1;
+      }
       final subtitleTracks = _player.state.tracks.subtitle;
       final playableSubtitleTracks = subtitleTracks
-          .where((t) => t.id != 'auto' && t.id != 'no')
+          .where((t) => t.id != 'auto' && t.id != 'no' && !_isCcSid(t.id))
           .toList();
       final idx = playableSubtitleTracks.indexWhere((t) => t.id == active.id);
       if (idx >= 0) {
@@ -1337,8 +1455,8 @@ class MediaKitPlayerBackend extends PlayerBackend {
   }
 
   @override
-  Future<int?> getActiveSubtitleTrackIndexAsync() async => activeSubtitleTrackIndex;
-
+  Future<int?> getActiveSubtitleTrackIndexAsync() async =>
+      activeSubtitleTrackIndex;
 
   static void _subtitleDebug(String message) {
     if (kDebugMode) {
@@ -1355,10 +1473,16 @@ class MediaKitPlayerBackend extends PlayerBackend {
     String? externalSubtitleUrl,
   }) async {
     if (mpvTrackId < 1) return;
+    _subtitlesDisabled = false;
     try {
       final native = _player.platform as NativePlayer;
       final trackListBefore = await _tryNativeGetProperty(native, 'track-list');
-      final subEntries = _extractTrackEntries(trackListBefore, type: 'sub');
+      // The CC track mpv creates from in-video captions has no server stream,
+      // so it must not shift the positions this mapping hands out.
+      final subEntries = _extractTrackEntries(
+        trackListBefore,
+        type: 'sub',
+      ).where((e) => !_isClosedCaptionCodec(e.codec)).toList();
       final subtitleIds = subEntries.map((e) => e.id).toList();
 
       // Resolve the 1-based position to a real mpv sid. External tracks are
@@ -1371,7 +1495,9 @@ class MediaKitPlayerBackend extends PlayerBackend {
         for (final entry in subEntries) {
           if (entry.external &&
               _externalFilenameMatches(
-                  entry.externalFilename, externalSubtitleUrl)) {
+                entry.externalFilename,
+                externalSubtitleUrl,
+              )) {
             resolvedSid = entry.id.toString();
             break;
           }
@@ -1393,13 +1519,14 @@ class MediaKitPlayerBackend extends PlayerBackend {
           resolvedSid = embedded[mpvTrackId - 1].id.toString();
         }
       }
-      final sidToApply = resolvedSid ??
+      final sidToApply =
+          resolvedSid ??
           ((mpvTrackId <= subtitleIds.length)
               ? subtitleIds[mpvTrackId - 1].toString()
               : mpvTrackId.toString());
       final subtitleTracks = _player.state.tracks.subtitle;
       final playableSubtitleTracks = subtitleTracks
-          .where((t) => t.id != 'auto' && t.id != 'no')
+          .where((t) => t.id != 'auto' && t.id != 'no' && !_isCcSid(t.id))
           .toList();
 
       var sidAfter = await _tryNativeGetProperty(native, 'sid');
@@ -1411,8 +1538,7 @@ class MediaKitPlayerBackend extends PlayerBackend {
           break;
         }
       }
-      target ??=
-          (mpvTrackId <= playableSubtitleTracks.length && mpvTrackId > 0)
+      target ??= (mpvTrackId <= playableSubtitleTracks.length && mpvTrackId > 0)
           ? playableSubtitleTracks[mpvTrackId - 1]
           : null;
       if (target != null) {
@@ -1447,8 +1573,62 @@ class MediaKitPlayerBackend extends PlayerBackend {
     }
   }
 
+  /// Re-reads mpv's track list for the CC track it creates once caption data
+  /// is seen, which on a live channel can be well after playback began.
+  Future<void> _refreshEmbeddedCaptionTracks() async {
+    if (_isDisposed) return;
+    final platform = _player.platform;
+    if (platform is! NativePlayer) return;
+    final raw = await _tryNativeGetProperty(platform, 'track-list');
+    if (_isDisposed) return;
+    final ccEntries = _extractTrackEntries(
+      raw,
+      type: 'sub',
+    ).where((e) => _isClosedCaptionCodec(e.codec)).toList();
+
+    final sids = [for (final e in ccEntries) e.id];
+    final changed = !listEquals(sids, _ccTrackSids);
+    _ccTrackSids = sids;
+    _embeddedCaptionTracks = List.unmodifiable([
+      for (var i = 0; i < ccEntries.length; i++)
+        EmbeddedCaptionTrack(
+          id: i + 1,
+          label: (ccEntries[i].title?.isNotEmpty ?? false)
+              ? ccEntries[i].title!
+              : 'CC${i + 1}',
+          language: (ccEntries[i].lang?.isNotEmpty ?? false)
+              ? ccEntries[i].lang
+              : null,
+        ),
+    ]);
+    if (changed && !_tracksChangedController.isClosed) {
+      _tracksChangedController.add(null);
+    }
+  }
+
+  @override
+  List<EmbeddedCaptionTrack> get embeddedCaptionTracks =>
+      _embeddedCaptionTracks;
+
+  @override
+  Stream<void> get tracksChangedStream => _tracksChangedController.stream;
+
+  @override
+  Future<void> setEmbeddedCaptionTrack(int id) async {
+    if (id <= 0 || id > _ccTrackSids.length) return;
+    _subtitlesDisabled = false;
+    final platform = _player.platform;
+    if (platform is! NativePlayer) return;
+    final sid = _ccTrackSids[id - 1].toString();
+    await _nativeSetProperty(platform, 'sid', sid);
+    await _nativeSetProperty(platform, 'secondary-sid', 'no');
+    await _nativeSetProperty(platform, 'sub-visibility', 'yes');
+    await _nativeSetProperty(platform, 'sub-ass', 'yes');
+  }
+
   @override
   Future<void> disableSubtitleTrack() async {
+    _subtitlesDisabled = true;
     await _player.setSubtitleTrack(SubtitleTrack.no());
     try {
       final native = _player.platform as NativePlayer;
@@ -1475,11 +1655,17 @@ class MediaKitPlayerBackend extends PlayerBackend {
     } catch (_) {}
   }
 
+  /// Whether an mpv track id (a sid rendered as a string) is the CC track
+  /// created from in-video captions.
+  bool _isCcSid(String id) => _ccTrackSids.contains(int.tryParse(id));
+
   // media_kit's track list includes the 'auto' and 'no' pseudo-tracks.
   // Counting them lets waits finish early, so external sub-adds can race
-  // the embedded track demux and scramble the sid order.
-  static int _realSubtitleTrackCount(List<SubtitleTrack> tracks) =>
-      tracks.where((t) => t.id != 'auto' && t.id != 'no').length;
+  // the embedded track demux and scramble the sid order. The CC track isn't
+  // a server stream either, so it must not satisfy a server-count wait.
+  int _realSubtitleTrackCount(List<SubtitleTrack> tracks) => tracks
+      .where((t) => t.id != 'auto' && t.id != 'no' && !_isCcSid(t.id))
+      .length;
 
   @override
   Future<void> waitForEmbeddedSubtitleCount(int count) async {
@@ -1590,6 +1776,9 @@ class MediaKitPlayerBackend extends PlayerBackend {
 
   void _enableNativeSubtitleRendering() {
     Future.delayed(const Duration(milliseconds: 500), () async {
+      // Read on the way out rather than on the way in, since the viewer can
+      // turn subtitles off while this is still pending.
+      if (_subtitlesDisabled) return;
       try {
         final native = _player.platform as NativePlayer;
         await _nativeSetProperty(native, 'sub-visibility', 'yes');
@@ -1643,6 +1832,8 @@ class MediaKitPlayerBackend extends PlayerBackend {
   void dispose() {
     _isDisposed = true;
     _prefs.removeListener(_onPreferencesChanged);
+    _ccTracksSub?.cancel();
+    _tracksChangedController.close();
     _player.dispose();
   }
 }

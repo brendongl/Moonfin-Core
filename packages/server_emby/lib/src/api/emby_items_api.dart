@@ -167,6 +167,9 @@ class EmbyItemsApi implements ItemsApi {
     int? limit,
     String? fields,
     bool? enableResumable,
+    // Emby has no cutoff parameter on this endpoint, so it is accepted and
+    // ignored.
+    DateTime? nextUpDateCutoff,
     String? enableImageTypes,
     int? imageTypeLimit,
   }) async {
@@ -252,11 +255,13 @@ class EmbyItemsApi implements ItemsApi {
     String? fields,
     String? enableImageTypes,
     int? imageTypeLimit,
+    bool recursive = false,
   }) async {
     final response = await _dio.get(
       '/Items',
       queryParameters: {
         if (parentId != null) 'ParentId': parentId,
+        if (recursive) 'Recursive': true,
         if (includeItemTypes != null)
           'IncludeItemTypes': includeItemTypes.join(','),
         if (limit != null) 'Limit': limit,
@@ -395,14 +400,20 @@ class EmbyItemsApi implements ItemsApi {
   }
 
   @override
-  Future<Map<String, dynamic>> getPlaylistItems(String playlistId) async {
+  Future<Map<String, dynamic>> getPlaylistItems(
+    String playlistId, {
+    int? startIndex,
+    int? limit,
+  }) async {
     final response = await _dio.get(
       '/Playlists/$playlistId/Items',
       queryParameters: {
         'Fields':
-            'BasicSyncInfo,PrimaryImageAspectRatio,RunTimeTicks,Artists,AlbumArtist,IndexNumber,MediaType,PlaylistItemId,BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId,SeriesName,ParentIndexNumber,Genres',
+            'BasicSyncInfo,PrimaryImageAspectRatio,RunTimeTicks,Artists,AlbumArtist,IndexNumber,MediaType,PlaylistItemId,BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId,SeriesName,ParentIndexNumber,Genres,Chapters,Overview,UserData,MediaStreams',
         'EnableImageTypes': 'Primary,Backdrop,Logo,Thumb',
         'ImageTypeLimit': 1,
+        'StartIndex': ?startIndex,
+        'Limit': ?limit,
       },
     );
     return response.data as Map<String, dynamic>;
@@ -627,7 +638,84 @@ class EmbyItemsApi implements ItemsApi {
 
   @override
   Future<List<Map<String, dynamic>>> getMediaSegments(String itemId) async {
-    return const [];
+    // Emby has no MediaSegments API. It marks intros and credits as chapter
+    // markers on the item instead, so pull the chapters and translate the
+    // markers into the same segment shape the app already understands.
+    final Map<String, dynamic> item;
+    try {
+      item = await getItem(itemId, fields: 'Chapters');
+    } catch (_) {
+      return const [];
+    }
+
+    final chapters = (item['Chapters'] as List?) ?? const [];
+    if (chapters.isEmpty) return const [];
+
+    int? introStart;
+    int? introEnd;
+    int? creditsStart;
+    for (final raw in chapters) {
+      if (raw is! Map) continue;
+      final ticks = (raw['StartPositionTicks'] as num?)?.toInt();
+      if (ticks == null) continue;
+      switch (_markerType(raw['MarkerType'])) {
+        case 'introstart':
+          introStart ??= ticks;
+        case 'introend':
+          introEnd ??= ticks;
+        case 'creditsstart':
+          creditsStart ??= ticks;
+      }
+    }
+
+    final segments = <Map<String, dynamic>>[];
+    if (introStart != null && introEnd != null && introEnd > introStart) {
+      segments.add({
+        'Id': 'emby-intro-$itemId',
+        'ItemId': itemId,
+        'Type': 'Intro',
+        'StartTicks': introStart,
+        'EndTicks': introEnd,
+      });
+    }
+
+    // Credits have no end marker, so they run to the end of the item.
+    final runtime = (item['RunTimeTicks'] as num?)?.toInt();
+    if (creditsStart != null && runtime != null && runtime > creditsStart) {
+      segments.add({
+        'Id': 'emby-credits-$itemId',
+        'ItemId': itemId,
+        'Type': 'Outro',
+        'StartTicks': creditsStart,
+        'EndTicks': runtime,
+      });
+    }
+
+    return segments;
+  }
+
+  // Declaration order matters, since a marker sent as a number is read as an
+  // index into this.
+  static const _markerTypes = [
+    'chapter',
+    'introstart',
+    'introend',
+    'creditsstart',
+  ];
+
+  /// The chapter marker in lower case, or null for one worth nothing here.
+  /// Markers arrive as their enum name, but a server is free to send the
+  /// ordinal instead and then no name ever matches, so both are read.
+  static String? _markerType(Object? raw) {
+    if (raw == null) return null;
+    if (raw is num) {
+      final index = raw.toInt();
+      return index >= 0 && index < _markerTypes.length
+          ? _markerTypes[index]
+          : null;
+    }
+    final name = raw.toString().trim().toLowerCase();
+    return _markerTypes.contains(name) ? name : null;
   }
 
   // Sipflix: Emby supports the same remote-subtitle endpoints as Jellyfin

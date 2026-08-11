@@ -6,36 +6,42 @@ enum SubtitleMode {
   none,
 }
 
-enum AudioOutputMode {
-  auto,
-  forceStereo,
-  avrPassthrough,
-}
-
+/// What the server re-encodes audio to when it has no choice. TrueHD isn't an
+/// option, since Jellyfin can't repackage it into a streaming container and the
+/// track lands silent.
 enum AudioFallbackCodec {
   auto,
   aac,
   ac3,
   eac3,
-  truehd,
   mp3,
   opus,
   flac,
 }
 
-/// High-level audio output choice shown to the user. It is a convenience that
-/// bulk-writes through to [AudioOutputMode] and the individual passthrough
-/// toggles, so the device-profile builder never needs to know about it.
-/// - [auto]: decode locally / let detection drive passthrough (toggles unset).
-/// - [surroundReceiver]: AVR passthrough; advertise everything the receiver
-///   reports it supports (toggles unset, capability-authoritative).
-/// - [stereo]: force a stereo downmix.
-/// - [advanced]: user manages [AudioOutputMode] + per-codec toggles directly.
-enum AudioPassthroughPreset {
+/// How compressed surround audio reaches the output device.
+/// - [disabled]: never bitstream, every codec decodes locally.
+/// - [auto]: bitstream whatever the platform reports the route can take.
+/// - [manual]: bitstream only the codecs the user toggled on.
+enum AudioPassthroughMode {
+  disabled,
   auto,
-  surroundReceiver,
-  stereo,
-  advanced,
+  manual,
+}
+
+/// Passthrough-controllable base codecs. Variants ride inside the base
+/// bitstream: Atmos (JOC) in eac3, DTS:X in dtsHd, Atmos in trueHd.
+enum PassthroughCodec {
+  ac3('ac3'),
+  eac3('eac3'),
+  dtsCore('dts'),
+  dtsHd('dtshd'),
+  trueHd('truehd');
+
+  const PassthroughCodec(this.wireName);
+
+  /// The codec token shared with the native player and mpv synthesis.
+  final String wireName;
 }
 
 enum PlaybackEnginePreference {
@@ -155,6 +161,36 @@ enum ZoomMode {
   stretch,
 }
 
+/// What a trailing time label next to a progress bar shows.
+enum PlaybackTimeDisplay {
+  /// Total runtime of the item, e.g. `1:58:33`.
+  totalDuration,
+
+  /// Time left until the item ends, e.g. `-1:16:23`.
+  timeRemaining,
+
+  /// Wall-clock time the item will finish at, e.g. `Ends at 21:45`.
+  endsAt,
+}
+
+/// What one of the six configurable slots around the video progress bar shows.
+enum PlaybackTimeSlot {
+  /// Nothing is rendered and the slot collapses.
+  none,
+
+  /// How far into the item playback is, e.g. `42:10`.
+  elapsed,
+
+  /// Total runtime of the item, e.g. `1:58:33`.
+  totalDuration,
+
+  /// Time left until the item ends, e.g. `-1:16:23`.
+  timeRemaining,
+
+  /// Wall-clock time the item will finish at, e.g. `Ends at 21:45`.
+  endsAt,
+}
+
 enum DesktopScrollWheelAction {
   off,
   seek,
@@ -165,6 +201,18 @@ enum DesktopScrollWheelAction {
 /// hardware, zero-blur sheen on TV boxes/web); `full` forces real blur;
 /// `reduced` forces the zero-blur sheen everywhere.
 enum GlassQualityMode { auto, full, reduced }
+
+/// Persisted settled quality of the adaptive glass renderer, mirroring the
+/// package's GlassQuality tiers. `unset` means no benchmark has settled yet,
+/// so the adaptive scope runs its warm-up pass on next launch. Kept as a
+/// Moonfin enum so the preference layer doesn't depend on
+/// liquid_glass_widgets.
+enum GlassSettledQuality { unset, minimal, standard, premium }
+
+/// Layered on top of whichever theme is active. `subtle` and `vivid` crush
+/// chrome toward pure black so OLED pixels switch off, and boost artwork
+/// saturation/contrast. `off` leaves every theme exactly as authored.
+enum OledMode { off, subtle, vivid }
 
 enum AppTheme {
   white(0xFFFFFFFF),
@@ -246,6 +294,26 @@ enum MediaSegmentCountdown {
   none,
 }
 
+/// How long the skip intro and outro button stays up before it hides itself.
+/// Off is zero, which means no timer runs.
+enum MediaSegmentAutoHide {
+  s5(5),
+  s10(10),
+  off(0);
+
+  const MediaSegmentAutoHide(this.seconds);
+  final int seconds;
+}
+
+/// Banner artwork is authored at 1000x185. Card geometry and image requests
+/// both use this so the artwork that comes back matches what gets drawn.
+const double kBannerAspectRatio = 1000 / 185;
+
+/// Card height for banner mode. Banner mode hides the poster size control, so
+/// it reads this instead of PosterSize.landscapeHeight, which would otherwise
+/// keep resizing banners with no way to change them.
+const double kBannerCardHeight = 110;
+
 enum ImageType {
   poster,
   thumb,
@@ -285,6 +353,7 @@ enum HomeSectionType {
   genres('genres'),
   liveTv('livetv'),
   seerrRecentRequests('seerr_recent_requests'),
+  seerrWatchlist('seerr_watchlist'),
   seerrRecentlyAdded('seerr_recently_added'),
   seerrPopularMovies('seerr_popular_movies'),
   seerrUpcomingMovies('seerr_upcoming_movies'),
@@ -337,6 +406,7 @@ enum HomeSectionType {
 }
 
 enum LibrarySortBy {
+  playlistOrder('SortName', 'Playlist Order', usesDedicatedEndpoint: true),
   name('SortName', 'Name'),
   dateAdded('DateCreated', 'Date Added'),
   premiereDate('PremiereDate', 'Premiere Date'),
@@ -344,11 +414,37 @@ enum LibrarySortBy {
   runtime('Runtime', 'Runtime'),
   random('Random', 'Random'),
   criticRating('CriticRating', 'Critic Rating'),
-  communityRating('CommunityRating', 'Community Rating');
+  communityRating('CommunityRating', 'Community Rating'),
+  albumArtist('AlbumArtist,Album,SortName', 'Album Artist'),
+  album('Album,SortName', 'Album'),
+  genre('Genre,SortName', 'Genre');
 
-  const LibrarySortBy(this.apiValue, this.displayName);
+  const LibrarySortBy(
+    this.apiValue,
+    this.displayName, {
+    this.usesDedicatedEndpoint = false,
+  });
+
+  /// Always a value the Items API accepts, so any caller can pass it through.
   final String apiValue;
   final String displayName;
+
+  /// Whether the row this option belongs to reads from its own endpoint rather
+  /// than sorting through the Items API. Rows that know about the endpoint act
+  /// on this, and everything else falls back to [apiValue].
+  final bool usesDedicatedEndpoint;
+
+  /// The options a row can offer when it only ever sorts through the Items API.
+  static List<LibrarySortBy> get itemsApiValues =>
+      values.where((v) => !v.usesDedicatedEndpoint).toList();
+}
+
+enum LibraryGroupBy {
+  none,
+  genres,
+  parentalRatings,
+  decade,
+  studio,
 }
 
 enum ChannelSortBy {
@@ -385,6 +481,11 @@ enum SeriesStatusFilter {
   all,
   continuing,
   ended,
+}
+
+enum LibraryScrollDirection {
+  vertical,
+  horizontal,
 }
 
 enum FavoriteTypeFilter {
@@ -452,6 +553,7 @@ enum SeerrFetchLimit {
 
 enum SeerrRowType {
   recentRequests('recent_requests'),
+  yourWatchlist('watchlist'),
   recentlyAdded('recently_added'),
   trending('trending'),
   popularMovies('popular_movies'),
@@ -476,6 +578,7 @@ enum SeerrRowType {
 extension SeerrRowTypeHomeSection on SeerrRowType {
   HomeSectionType get homeSectionType => switch (this) {
         SeerrRowType.recentRequests => HomeSectionType.seerrRecentRequests,
+        SeerrRowType.yourWatchlist => HomeSectionType.seerrWatchlist,
         SeerrRowType.recentlyAdded => HomeSectionType.seerrRecentlyAdded,
         SeerrRowType.trending => HomeSectionType.seerrTrending,
         SeerrRowType.popularMovies => HomeSectionType.seerrPopularMovies,
@@ -492,6 +595,7 @@ extension SeerrRowTypeHomeSection on SeerrRowType {
 extension HomeSectionTypeSeerrRow on HomeSectionType {
   SeerrRowType? get seerrRowType => switch (this) {
         HomeSectionType.seerrRecentRequests => SeerrRowType.recentRequests,
+        HomeSectionType.seerrWatchlist => SeerrRowType.yourWatchlist,
         HomeSectionType.seerrRecentlyAdded => SeerrRowType.recentlyAdded,
         HomeSectionType.seerrTrending => SeerrRowType.trending,
         HomeSectionType.seerrPopularMovies => SeerrRowType.popularMovies,

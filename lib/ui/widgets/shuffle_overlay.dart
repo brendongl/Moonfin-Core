@@ -77,7 +77,6 @@ class _ShuffleOverlayState extends State<_ShuffleOverlay> {
   AggregatedItem? _selectedItem;
   int _selectedIndex = 0;
   Map<String, double> _selectedRatings = const {};
-  final Map<String, String?> _tmdbIdCache = <String, String?>{};
   final Map<String, Map<String, double>> _ratingsCache =
       <String, Map<String, double>>{};
   final Map<String, String?> _cardImageUrlCache = <String, String?>{};
@@ -615,41 +614,10 @@ class _ShuffleOverlayState extends State<_ShuffleOverlay> {
     return '${minutes}m';
   }
 
-  Future<String?> _resolveTmdbId(AggregatedItem item) async {
-    var tmdbId = item.tmdbId;
-    if (tmdbId != null && tmdbId.isNotEmpty) {
-      return tmdbId;
-    }
-
-    final cacheKey = '${item.serverId}:${item.id}';
-    if (_tmdbIdCache.containsKey(cacheKey)) {
-      return _tmdbIdCache[cacheKey];
-    }
-
+  MediaServerClient _resolveClientFor(AggregatedItem item) {
     final clientFactory = GetIt.instance<MediaServerClientFactory>();
-    final client =
-        clientFactory.getClientIfExists(item.serverId) ??
+    return clientFactory.getClientIfExists(item.serverId) ??
         clientFactory.getActiveClient();
-    try {
-      final details = await client.itemsApi.getItem(item.id);
-      tmdbId = (details['ProviderIds'] as Map?)?['Tmdb'] as String?;
-    } catch (error, stackTrace) {
-      _logShuffleLoadError(
-        'failed to resolve tmdb id from item details',
-        error,
-        stackTrace,
-        context: {
-          'itemId': item.id,
-          'serverId': item.serverId,
-          'cacheKey': cacheKey,
-          'errorDetail': _describeError(error),
-        },
-      );
-      tmdbId = null;
-    }
-
-    _tmdbIdCache[cacheKey] = tmdbId;
-    return tmdbId;
   }
 
   void _warmRatingsCache(
@@ -675,15 +643,11 @@ class _ShuffleOverlayState extends State<_ShuffleOverlay> {
     String cacheKey,
   ) async {
     try {
-      final tmdbId = await _resolveTmdbId(item);
-      if (tmdbId == null || tmdbId.isEmpty) {
-        _ratingsCache[cacheKey] = const <String, double>{};
-        return;
-      }
-
-      final result = await GetIt.instance<MdbListRepository>().getRatings(
-        tmdbId: tmdbId,
-        mediaType: item.type ?? 'Movie',
+      final result = await GetIt.instance<MdbListRepository>()
+          .getRatingsForItem(
+        item,
+        resolveClient: _resolveClientFor(item),
+        episodeRatingsEnabled: _prefs.canFetchEpisodeRatings,
       );
 
       _ratingsCache[cacheKey] = (result != null && result.isNotEmpty)
@@ -733,20 +697,12 @@ class _ShuffleOverlayState extends State<_ShuffleOverlay> {
       setState(() => _selectedRatings = const {});
     }
 
-    final tmdbId = await _resolveTmdbId(item);
-
-    if (!mounted || requestId != _ratingsRequestId) return;
-
-    if (tmdbId == null || tmdbId.isEmpty) {
-      _ratingsCache[cacheKey] = const <String, double>{};
-      return;
-    }
-
     Map<String, double>? result;
     try {
-      result = await GetIt.instance<MdbListRepository>().getRatings(
-        tmdbId: tmdbId,
-        mediaType: item.type ?? 'Movie',
+      result = await GetIt.instance<MdbListRepository>().getRatingsForItem(
+        item,
+        resolveClient: _resolveClientFor(item),
+        episodeRatingsEnabled: _prefs.canFetchEpisodeRatings,
       );
     } catch (error, stackTrace) {
       _logShuffleLoadError(
@@ -756,7 +712,6 @@ class _ShuffleOverlayState extends State<_ShuffleOverlay> {
         context: {
           'ratingsRequestId': requestId,
           'cacheKey': cacheKey,
-          'tmdbId': tmdbId,
           'errorDetail': _describeError(error),
         },
       );

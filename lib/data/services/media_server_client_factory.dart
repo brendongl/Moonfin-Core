@@ -1,8 +1,12 @@
+import 'package:get_it/get_it.dart';
 import 'package:server_core/server_core.dart';
-import 'package:server_jellyfin/server_jellyfin.dart';
 import 'package:server_emby/server_emby.dart';
+import 'package:server_jellyfin/server_jellyfin.dart';
 
 import '../../util/server_url.dart';
+import '../offline/connectivity_aware_media_server_client.dart';
+import '../offline/offline_catalog.dart';
+import 'storage_path_service.dart';
 
 class MediaServerClientFactory {
   final DeviceInfo deviceInfo;
@@ -43,12 +47,40 @@ class MediaServerClientFactory {
     return null;
   }
 
+  /// The loaded client for [serverId], or the active client when it is empty or
+  /// that server is not loaded.
+  MediaServerClient clientForServerOrActive(String? serverId) {
+    final active = GetIt.instance<MediaServerClient>();
+    if (serverId == null || serverId.isEmpty) return active;
+    return getClientIfExists(serverId) ?? active;
+  }
+
   MediaServerClient getActiveClient() {
     if (_clients.isEmpty) throw StateError('No active server clients');
     return _clients.values.last;
   }
 
   MediaServerClient _createClient({
+    required ServerType serverType,
+    required String baseUrl,
+  }) {
+    final raw = _createRawClient(serverType: serverType, baseUrl: baseUrl);
+    final getIt = GetIt.instance;
+    // Background isolates skip the offline stack, so there's nothing to route
+    // to and the raw client is all they need.
+    if (!getIt.isRegistered<OfflineCatalog>() ||
+        !getIt.isRegistered<StoragePathService>()) {
+      return raw;
+    }
+    return ConnectivityAwareMediaServerClient(
+      raw,
+      useOffline: shouldUseOfflineCatalog,
+      catalog: getIt<OfflineCatalog>(),
+      storagePath: getIt<StoragePathService>(),
+    );
+  }
+
+  MediaServerClient _createRawClient({
     required ServerType serverType,
     required String baseUrl,
   }) {

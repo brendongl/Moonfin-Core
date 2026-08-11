@@ -15,6 +15,7 @@ import '../../../di/providers.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../preference/user_preferences.dart';
 import '../../../util/download_utils.dart';
+import '../../../util/platform_detection.dart';
 import '../../widgets/adaptive/adaptive_dialog.dart';
 import '../../widgets/adaptive/adaptive_slider.dart';
 import '../../widgets/overlay_sheet.dart';
@@ -169,11 +170,12 @@ class _DownloadsPanelState extends ConsumerState<DownloadsPanel> {
                 if (!_selectMode) _selected.clear();
               }),
             ),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () =>
-                context.pushSettingsScreen(const DownloadSettingsScreen()),
-          ),
+          if (!PlatformDetection.isTV)
+            IconButton(
+              icon: const Icon(Icons.settings_outlined),
+              onPressed: () =>
+                  context.pushSettingsScreen(const DownloadSettingsScreen()),
+            ),
         ],
       ),
       body: ListView(
@@ -523,16 +525,50 @@ class _ActiveDownloadsSection extends StatelessWidget {
                 ),
                 subtitle: Padding(
                   padding: const EdgeInsets.only(top: 6),
-                  child: ClipRRect(
-                    borderRadius: AppRadius.circular(2),
-                    child: LinearProgressIndicator(
-                      value: p.progress >= 0 ? p.progress : null,
-                      backgroundColor: AppColorScheme.onSurface.withValues(
-                        alpha: 0.12,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (p.isTranscoded)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            l10n.transcodingTimeRemainingUnavailable,
+                            style: TextStyle(
+                              color: AppColorScheme.onSurface.withValues(
+                                alpha: 0.7,
+                              ),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ClipRRect(
+                        borderRadius: AppRadius.circular(2),
+                        child: LinearProgressIndicator(
+                          value: p.isFinalizing || p.progress < 0
+                              ? null
+                              : p.progress,
+                          backgroundColor: AppColorScheme.onSurface.withValues(
+                            alpha: 0.12,
+                          ),
+                          color: AppColorScheme.accent,
+                          minHeight: 4,
+                        ),
                       ),
-                      color: AppColorScheme.accent,
-                      minHeight: 4,
-                    ),
+                      if (p.isFinalizing)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            l10n.finalizingDownload,
+                            style: TextStyle(
+                              color: AppColorScheme.onSurface.withValues(
+                                alpha: 0.7,
+                              ),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
                 trailing: IconButton(

@@ -52,7 +52,11 @@ class PlatformDetection {
   /// UI and is handled by [isAppleTV]/[useLeanbackUi].
   static bool get isApple => isIOS || isMacOS;
 
-  static bool get isTV => _isTv || isTizen || isAppleTV;
+  static bool get isTV =>
+      _isTv ||
+      isTizen ||
+      isAppleTV ||
+      const bool.fromEnvironment('MOONFIN_FORCE_TV');
   static bool _isTv = false;
   static void setTvMode(bool value) => _isTv = value;
 
@@ -95,12 +99,6 @@ class PlatformDetection {
       _audioCapabilityBool('canPassthroughEac3');
   static bool get supportsDtsHdAudio =>
       _audioCapabilityBool('canPassthroughDtsHd');
-  static bool get supportsDtsXAudio =>
-      _audioCapabilityBool('canPassthroughDtsX');
-  static bool get supportsEac3JocAudio =>
-      _audioCapabilityBool('canPassthroughEac3Joc');
-  static bool get supportsTrueHdJocAudio =>
-      _audioCapabilityBool('canPassthroughTrueHdJoc');
   static int get maxPcmChannelsAudio => _audioCapabilityInt('maxPcmChannels');
   static String get activeAudioRouteType =>
       _audioCapabilityString('activeRouteType') ?? 'other';
@@ -133,6 +131,7 @@ class PlatformDetection {
       _capabilityBool('supportsAv1Hdr10Plus');
 
   static bool get supportsVc1 => _capabilityBool('supportsVc1');
+  static bool get supportsMpeg4 => _capabilityBool('supportsMpeg4');
 
   static int get maxResolutionAvcWidth =>
       _resolutionInt('maxResolutionAvc', 'width');
@@ -308,6 +307,7 @@ class PlatformDetection {
   }
 
   static bool get _hasMobileFormFactor {
+    if (isDesktop) return false;
     if (isAndroid || isIOS) return true;
     final size = _screenLogicalSize;
     if (size == null) return _isMobilePlatformSignal;
@@ -321,4 +321,9 @@ class PlatformDetection {
   static bool get useMobileUi => _hasMobileFormFactor && !isTV;
 
   static bool get useNativeVideoSurface => isAndroid && isTV;
+
+  /// Apple platforms use the shared AVPlayer-based preview/theme channels
+  /// (`moonfin/appletv_preview`, `moonfin/appletv_theme_music`) instead of a
+  /// media_kit Player for inline trailers, home-row previews and theme music.
+  static bool get useApplePreviewPlayer => isAppleTV || isIOS || isMacOS;
 }

@@ -12,6 +12,23 @@ class MoonfinProxyConfig {
   });
 }
 
+/// Outcome of the password-less Quick Connect sign in. Parsed by hand from any
+/// status code so the caller can read the plugin's errorCode, since an old
+/// plugin answers the attempt with a generic 401 body.
+class MoonfinQuickConnectResult {
+  final bool success;
+  final String? errorCode;
+  final int? seerrUserId;
+  final String? displayName;
+
+  const MoonfinQuickConnectResult({
+    this.success = false,
+    this.errorCode,
+    this.seerrUserId,
+    this.displayName,
+  });
+}
+
 @JsonSerializable()
 class MoonfinStatusResponse {
   final bool enabled;

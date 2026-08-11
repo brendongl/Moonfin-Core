@@ -47,6 +47,16 @@ class SeerrRequestException implements Exception {
           SeerrRequestErrorKind.permission,
           message,
         );
+      case 401:
+        // Seerr answers permission denials on a healthy session with 401 and
+        // a message. The plugin's own expired and missing session bodies
+        // carry error and code instead, and those keep the generic path.
+        if (message != null) {
+          return SeerrRequestException(
+            SeerrRequestErrorKind.permission,
+            message,
+          );
+        }
     }
     return null;
   }

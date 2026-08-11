@@ -108,6 +108,31 @@ class StoragePathService {
   /// Check if [path] is writable.
   Future<bool> canWriteTo(String path) => _canWrite(Directory(path));
 
+  /// Download folders on removable storage, one per card or drive Android
+  /// reports past the built-in one.
+  ///
+  /// Android 11 and up refuses raw writes to the rest of shared storage even
+  /// after the user grants a folder through the system picker, so these and
+  /// the MediaStore Downloads folder are the only places a download can land
+  /// besides the default.
+  Future<List<Directory>> getRemovableDownloadDirs() async {
+    if (!PlatformDetection.isAndroid) return const [];
+    try {
+      final volumes = await getExternalStorageDirectories() ?? const [];
+      final removable = <Directory>[];
+      // The built-in volume comes first and is where the default already
+      // writes, so it isn't worth offering twice.
+      for (final volume in volumes.skip(1)) {
+        if (await volume.exists()) {
+          removable.add(Directory('${volume.path}/Moonfin'));
+        }
+      }
+      return removable;
+    } catch (_) {
+      return const [];
+    }
+  }
+
   Future<File> getDatabaseFile() async {
     final docs = await getApplicationDocumentsDirectory();
     final dbDir = Directory('${docs.path}/Moonfin/DB');

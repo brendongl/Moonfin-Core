@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:ui';
 
 import '../../widgets/offline_aware_image.dart';
+import '../../widgets/identify_dialog.dart';
+import '../../widgets/focus/context_action.dart' show canIdentifyItemType;
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -26,8 +28,12 @@ import '../../../data/services/media_server_client_factory.dart';
 import '../../../data/services/book_reader_service.dart';
 import '../../../data/services/theme_music_service.dart';
 import '../../../data/viewmodels/item_detail_view_model.dart';
+import '../../../data/viewmodels/seerr_media_detail_view_model.dart';
 import '../../../data/services/plugin_sync_service.dart';
 import '../../navigation/route_lifecycle_observer.dart';
+import '../../navigation/home_refresh_bus.dart';
+import '../../navigation/app_router.dart';
+import 'detail_buttons.dart';
 import 'modern/modern_detail_content.dart';
 import '../../../data/repositories/seerr_repository.dart';
 import '../../../data/services/seerr/seerr_api_models.dart';
@@ -46,6 +52,18 @@ import '../../widgets/settings/settings_panel.dart';
 import '../../widgets/add_to_playlist_dialog.dart';
 import '../../widgets/logo_view.dart';
 import '../../widgets/media_card.dart';
+import '../../widgets/seerr/seerr_cancel_request_dialog.dart';
+import '../../widgets/seerr/seerr_collection_banner.dart';
+import '../../widgets/seerr/seerr_image_urls.dart';
+import '../../widgets/seerr/seerr_item_chips.dart';
+import '../../widgets/seerr/seerr_item_status.dart';
+import '../../widgets/seerr/seerr_manage_requests_sheet.dart';
+import '../../widgets/seerr/seerr_report_issue_dialog.dart';
+import '../../widgets/seerr/seerr_request_action.dart';
+import '../../widgets/seerr/seerr_request_dialog.dart';
+import '../../widgets/seerr/seerr_stats_card.dart';
+import '../../widgets/seerr/seerr_status_dot.dart';
+import '../../widgets/seerr/seerr_status_pill.dart';
 import '../../widgets/change_artwork_dialog.dart';
 import '../../widgets/navigation_layout.dart';
 import '../../widgets/horizontal_scroll_section.dart';
@@ -66,6 +84,7 @@ import '../../../syncplay/syncplay_manager.dart';
 import '../../../util/audio_labels.dart';
 import '../../../util/download_utils.dart';
 import '../../../util/episode_playability.dart';
+import '../../../util/season_queue_context.dart';
 import '../../../util/focus/dpad_keys.dart';
 import '../../../util/language_matching.dart';
 import '../../../util/subtitle_track_logic.dart';
@@ -76,8 +95,9 @@ const _textShadows = [Shadow(blurRadius: 4, color: Colors.black54)];
 const _kCompactBreakpoint = 600.0;
 
 bool _isCompact(BuildContext context) =>
-    PlatformDetection.useMobileUi ||
-    MediaQuery.sizeOf(context).width < _kCompactBreakpoint;
+    !PlatformDetection.isTV &&
+    (PlatformDetection.useMobileUi ||
+        MediaQuery.sizeOf(context).width < _kCompactBreakpoint);
 
 bool _useDesktopDetailLayout(BuildContext context) {
   final size = MediaQuery.sizeOf(context);
@@ -103,6 +123,59 @@ void _animateScrollToTop(ScrollPosition position) {
   );
 }
 
+const _destructiveRed = Color(0xFFD32F2F);
+const _destructiveRedDim = Color(0xFFB71C1C);
+
+String _deleteFailureMessage(
+  AppLocalizations l10n,
+  DeleteItemFailure failure, {
+  required bool isPlaylist,
+}) {
+  // Lacking the Jellyfin delete permission is the usual reason this fails, so
+  // it gets its own string.
+  if (failure.statusCode == 401 || failure.statusCode == 403) {
+    return l10n.requestErrorPermission;
+  }
+  final detail = failure.detail;
+  if (detail == null || detail.isEmpty) {
+    return isPlaylist ? l10n.failedToDeletePlaylist : l10n.failedToDeleteItem;
+  }
+  return l10n.failedToDeleteItemWithError(detail);
+}
+
+/// Runs the delete once the caller has navigated away, so the result comes
+/// back through the root navigator rather than the disposed detail screen.
+void _deleteItemInBackground(
+  ItemDetailViewModel viewModel, {
+  required bool isPlaylist,
+}) {
+  unawaited(
+    viewModel.deleteItem().then((failure) {
+      // Ask for the refresh before looking for a context, otherwise a missing
+      // navigator would also skip the refresh.
+      if (failure == null) {
+        homeRefreshBus.requestNowOrAfterNavigation();
+      }
+
+      final activeContext =
+          appRouter.routerDelegate.navigatorKey.currentContext;
+      if (activeContext == null || !activeContext.mounted) return;
+      final l10n = AppLocalizations.of(activeContext);
+
+      ScaffoldMessenger.of(activeContext).showSnackBar(
+        failure == null
+            ? SnackBar(content: Text(l10n.itemDeleted))
+            : SnackBar(
+                content: Text(
+                  _deleteFailureMessage(l10n, failure, isPlaylist: isPlaylist),
+                ),
+                backgroundColor: _destructiveRed,
+              ),
+      );
+    }),
+  );
+}
+
 Future<bool> _showDeleteConfirmationDialog(
   BuildContext context, {
   required String title,
@@ -117,17 +190,18 @@ Future<bool> _showDeleteConfirmationDialog(
       actions: [
         adaptiveDialogAction(
           onPressed: () => Navigator.pop(ctx, false),
-          child: Text(
-            AppLocalizations.of(ctx).cancel,
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.8)),
-          ),
+          focusRingColor: AppColorScheme.accent,
+          child: Text(AppLocalizations.of(ctx).cancel),
         ),
-        FilledButton(
+        adaptiveDialogAction(
           onPressed: () => Navigator.pop(ctx, true),
-          style: FilledButton.styleFrom(
-            backgroundColor: const Color(0xFFD32F2F),
+          isDestructive: true,
+          backgroundColor: _destructiveRedDim,
+          focusedBackgroundColor: _destructiveRed,
+          child: Text(
+            AppLocalizations.of(ctx).delete,
+            style: const TextStyle(fontWeight: FontWeight.bold),
           ),
-          child: Text(AppLocalizations.of(ctx).delete),
         ),
       ],
     ),
@@ -141,11 +215,20 @@ class ItemDetailScreen extends StatefulWidget {
   final String? serverId;
   final bool autoPlay;
 
+  /// Only used to resolve an IMDb-keyed Seerr id by searching for it.
+  final String? seerrTitle;
+
+  /// The season the viewer came from, when it is not this item's own season —
+  /// see [ItemDetailViewModel.contextSeasonId].
+  final String? contextSeasonId;
+
   const ItemDetailScreen({
     super.key,
     required this.itemId,
     this.serverId,
     this.autoPlay = false,
+    this.seerrTitle,
+    this.contextSeasonId,
   });
 
   @override
@@ -163,6 +246,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen>
   final ValueNotifier<String?> _backdropUrl = ValueNotifier<String?>(null);
   StreamSubscription<String?>? _backgroundSub;
   bool _themeMusicStarted = false;
+  bool _seerrRedirectDone = false;
   String? _selectedMediaSourceId;
   bool _showNavbar = true;
   bool _actionsExpanded = false;
@@ -191,11 +275,13 @@ class _ItemDetailScreenState extends State<ItemDetailScreen>
     _viewModel = ItemDetailViewModel(
       itemId: widget.itemId,
       serverId: widget.serverId,
+      contextSeasonId: widget.contextSeasonId,
       client: client,
       mutations: GetIt.instance<ItemMutationRepository>(),
       mdbListRepository: GetIt.instance<MdbListRepository>(),
       tmdbRepository: GetIt.instance<TmdbRepository>(),
     );
+    _viewModel.seerrOnlyTitle = widget.seerrTitle;
     _viewModel.addListener(_onChanged);
     _prefs.addListener(_onPrefsChanged);
     GetIt.instance<PluginSyncService>().addListener(_onPrefsChanged);
@@ -297,6 +383,17 @@ class _ItemDetailScreenState extends State<ItemDetailScreen>
 
   void _onChanged() {
     if (!mounted) return;
+    final resolvedLibraryId = _viewModel.seerrResolvedLibraryId;
+    if (resolvedLibraryId != null && !_seerrRedirectDone) {
+      _seerrRedirectDone = true;
+      // A notify can arrive mid build, and pushing a route from there throws.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          context.pushReplacement(Destinations.item(resolvedLibraryId));
+        }
+      });
+      return;
+    }
     setState(() {});
     final item = _viewModel.item;
     if (item != null) {
@@ -392,6 +489,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen>
   void _resumeThemeMusicIfEligible() {
     final item = _viewModel.item;
     if (item == null) return;
+    // There is no theme song on a server that has never heard of this title.
+    if (_viewModel.isSeerrOnly) return;
 
     _themeMusicStarted = true;
     _themeMusicService.playForItem(item);
@@ -1623,6 +1722,7 @@ class _DetailContentState extends State<_DetailContent> {
 
   List<Widget> _buildMovieContent(BuildContext context, AggregatedItem item) {
     final l10n = AppLocalizations.of(context);
+    final seerrFirstNode = _seerrSectionChain().firstOrNull;
     final hasChapters = item.chapters.isNotEmpty;
 
     final groupedFeatures = <String, List<AggregatedItem>>{};
@@ -1699,7 +1799,7 @@ class _DetailContentState extends State<_DetailContent> {
       if (viewModel.actors.isNotEmpty) ...[
         const SizedBox(height: 32),
         HorizontalScrollSection(
-          title: l10n.cast,
+          title: l10n.castMembers,
           titleStyle: Theme.of(context).textTheme.titleLarge?.copyWith(
             color: ThemeRegistry.active.id == ThemeRegistry.neonPulseId
                 ? AppColorScheme.onSurface
@@ -1773,18 +1873,149 @@ class _DetailContentState extends State<_DetailContent> {
                   collectionFocusNode ??
                   castFocusNode ??
                   chapterFeatureLastNode,
+              downTarget: seerrFirstNode,
               itemCount: viewModel.similar.length,
-              consumeDownWhenNoTarget: true,
+              consumeDownWhenNoTarget: seerrFirstNode == null,
             ),
           ),
         ),
       ],
+      ..._buildSeerrSections(
+        context,
+        upTarget: similarFocusNode ?? castFocusNode ?? chapterFeatureLastNode,
+      ),
       const SizedBox(height: 48),
+    ];
+  }
+
+  void Function(int seasonNumber)? _seerrSeasonTap() {
+    final seerr = viewModel.seerr;
+    if (!viewModel.isSeerrOnly || seerr == null) return null;
+    return (seasonNumber) => showSeerrRequestDialog(
+          context: context,
+          vm: seerr,
+          is4k: false,
+          qualityToggle: true,
+          season: seasonNumber > 0 ? seasonNumber : null,
+        );
+  }
+
+  /// The focusable pieces of the Seerr block, in the order they appear, so each
+  /// can hand off to its neighbour and the section above has somewhere to land.
+  List<FocusNode> _seerrSectionChain() {
+    final state = seerrItemTabState(viewModel);
+    if (state == null) return const [];
+    return [
+      if (SeerrItemChips.hasContent(state))
+        _sectionFocusNode('detailSeerrChips'),
+      if (state.recommendations.isNotEmpty)
+        _sectionFocusNode('detailSeerrRecommendations'),
+      if (state.similar.isNotEmpty) _sectionFocusNode('detailSeerrSimilar'),
+      if (state.movie?.collection != null)
+        _sectionFocusNode('detailSeerrCollection'),
+    ];
+  }
+
+  /// The Seerr side of a title, as rows under the library ones: what it is
+  /// filed under, the facts behind it, and what it leads to.
+  List<Widget> _buildSeerrSections(
+    BuildContext context, {
+    FocusNode? upTarget,
+  }) {
+    final state = seerrItemTabState(viewModel);
+    if (state == null) return const [];
+
+    final l10n = AppLocalizations.of(context);
+    final titleStyle = Theme.of(context).textTheme.titleLarge?.copyWith(
+      color: ThemeRegistry.active.id == ThemeRegistry.neonPulseId
+          ? AppColorScheme.onSurface
+          : Colors.white,
+      fontWeight: FontWeight.w700,
+    );
+    final seerrLabel =
+        GetIt.instance<SeerrPreferences>().labelOrDefault(l10n.seerr);
+    final collection = state.movie?.collection;
+    final chain = _seerrSectionChain();
+    final chipsNode = _sectionFocusNode('detailSeerrChips');
+    final bannerNode = _sectionFocusNode('detailSeerrCollection');
+
+    FocusNode? above(FocusNode node) {
+      final i = chain.indexOf(node);
+      return i > 0 ? chain[i - 1] : upTarget;
+    }
+
+    FocusNode? below(FocusNode node) {
+      final i = chain.indexOf(node);
+      return i >= 0 && i < chain.length - 1 ? chain[i + 1] : null;
+    }
+
+    Widget row(String title, List<SeerrDiscoverItem> items, FocusNode node) {
+      final down = below(node);
+      return HorizontalScrollSection(
+        title: '$seerrLabel · $title',
+        titleStyle: titleStyle,
+        builder: (_, ctrl) => SeerrAppearancesRow(
+          items: items,
+          prefs: prefs,
+          firstFocusNode: node,
+          scrollController: ctrl,
+          onItemKeyEvent: _buildVerticalRowHandler(
+            sourceFocusNode: node,
+            upTarget: above(node),
+            downTarget: down,
+            itemCount: items.length,
+            consumeDownWhenNoTarget: down == null,
+          ),
+        ),
+      );
+    }
+
+    return [
+      if (SeerrItemChips.hasContent(state)) ...[
+        const SizedBox(height: 32),
+        Text(seerrLabel, style: titleStyle),
+        const SizedBox(height: 12),
+        SeerrItemChips(
+          state: state,
+          firstFocusNode: chipsNode,
+          onNavigateUp: above(chipsNode)?.requestFocus,
+          onNavigateDown: below(chipsNode)?.requestFocus,
+        ),
+      ],
+      if (SeerrStatsCard.hasContent(state, l10n)) ...[
+        const SizedBox(height: 24),
+        SeerrStatsCard(state: state),
+      ],
+      if (state.recommendations.isNotEmpty) ...[
+        const SizedBox(height: 32),
+        row(
+          l10n.recommendations,
+          state.recommendations,
+          _sectionFocusNode('detailSeerrRecommendations'),
+        ),
+      ],
+      if (state.similar.isNotEmpty) ...[
+        const SizedBox(height: 32),
+        row(
+          l10n.similar,
+          state.similar,
+          _sectionFocusNode('detailSeerrSimilar'),
+        ),
+      ],
+      if (collection != null) ...[
+        const SizedBox(height: 24),
+        SeerrCollectionBanner(
+          collection: collection,
+          focusNode: bannerNode,
+          onNavigateUp: above(bannerNode)?.requestFocus,
+        ),
+      ],
     ];
   }
 
   List<Widget> _buildSeriesContent(BuildContext context, AggregatedItem item) {
     final l10n = AppLocalizations.of(context);
+    final seerrFirstNode = _seerrSectionChain().firstOrNull;
     final hasSeasons = viewModel.seasons.isNotEmpty;
     final hasCast = viewModel.actors.isNotEmpty;
     final hasSimilar = viewModel.similar.isNotEmpty;
@@ -1862,6 +2093,7 @@ class _DetailContentState extends State<_DetailContent> {
         DetailNextUpCard(
           episode: viewModel.nextUp!,
           imageApi: viewModel.imageApi,
+          contextSeasonId: viewModel.effectiveSeasonId,
           focusNode: seriesNextUpFocusNode,
           onKeyEvent: (event) {
             if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
@@ -1903,6 +2135,8 @@ class _DetailContentState extends State<_DetailContent> {
           ),
           builder: (_, ctrl) => DetailSeasonsRow(
             seasons: viewModel.seasons,
+            seerrSeasonStatus: seerrItemSeasonStatus(viewModel),
+            onSeasonTap: _seerrSeasonTap(),
             imageApi: viewModel.imageApi,
             prefs: prefs,
             onItemLongPress: _showItemContextMenu,
@@ -1926,7 +2160,7 @@ class _DetailContentState extends State<_DetailContent> {
       if (hasCast) ...[
         const SizedBox(height: 32),
         HorizontalScrollSection(
-          title: l10n.cast,
+          title: l10n.castMembers,
           titleStyle: Theme.of(context).textTheme.titleLarge?.copyWith(
             color: ThemeRegistry.active.id == ThemeRegistry.neonPulseId
                 ? AppColorScheme.onSurface
@@ -2001,6 +2235,15 @@ class _DetailContentState extends State<_DetailContent> {
             seriesNextUpFocusNode ??
             metadataFocusNode ??
             actionButtonsFocusNode,
+        nextSectionFocusNode: seerrFirstNode,
+      ),
+      ..._buildSeerrSections(
+        context,
+        upTarget: similarFocusNode ??
+            castFocusNode ??
+            seasonsFocusNode ??
+            metadataFocusNode ??
+            actionButtonsFocusNode,
       ),
       const SizedBox(height: 48),
     ];
@@ -2031,6 +2274,7 @@ class _DetailContentState extends State<_DetailContent> {
               imageApi: viewModel.imageApi,
               onChanged: () => viewModel.load(),
               isActive: viewModel.nextUp?.id == ep.id,
+              contextSeasonId: item.id,
             ),
           ),
         ),
@@ -2152,6 +2396,7 @@ class _DetailContentState extends State<_DetailContent> {
               DetailNextUpCard(
                 episode: nextEpisode,
                 imageApi: viewModel.imageApi,
+                contextSeasonId: viewModel.effectiveSeasonId,
                 focusNode: nextEpisodeFocusNode,
                 onKeyEvent: (event) {
                   if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
@@ -2195,6 +2440,7 @@ class _DetailContentState extends State<_DetailContent> {
             currentEpisodeId: item.id,
             imageApi: viewModel.imageApi,
             onChanged: () => viewModel.load(),
+            contextSeasonId: viewModel.effectiveSeasonId,
             scrollController: _trackSectionScrollController(
               episodesFocusNode,
               ctrl,
@@ -2212,7 +2458,7 @@ class _DetailContentState extends State<_DetailContent> {
       if (hasCast) ...[
         const SizedBox(height: 32),
         HorizontalScrollSection(
-          title: l10n.cast,
+          title: l10n.castMembers,
           titleStyle: Theme.of(context).textTheme.titleLarge?.copyWith(
             color: ThemeRegistry.active.id == ThemeRegistry.neonPulseId
                 ? AppColorScheme.onSurface
@@ -3251,20 +3497,8 @@ class _DetailContentState extends State<_DetailContent> {
     );
     if (!confirmed) return;
 
-    final success = await viewModel.deleteItem();
-    if (!context.mounted) return;
-    if (success) {
-      context.pop(true);
-      return;
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          isPlaylist ? l10n.failedToDeletePlaylist : l10n.failedToDeleteItem,
-        ),
-      ),
-    );
+    appRouter.go(Destinations.home);
+    _deleteItemInBackground(viewModel, isPlaylist: isPlaylist);
   }
 
   Future<void> _showRenamePlaylistDialog(
@@ -3474,7 +3708,7 @@ class _DetailContentState extends State<_DetailContent> {
       if (viewModel.actors.isNotEmpty) ...[
         const SizedBox(height: 32),
         HorizontalScrollSection(
-          title: l10n.cast,
+          title: l10n.castMembers,
           titleStyle: Theme.of(context).textTheme.titleLarge?.copyWith(
             color: ThemeRegistry.active.id == ThemeRegistry.neonPulseId
                 ? AppColorScheme.onSurface
@@ -3610,6 +3844,7 @@ class _HeaderSection extends StatelessWidget {
     final showLyrics =
         useDesktopLayout && isMusicItem && viewModel.lyrics.isNotEmpty;
     final isCollection = item.type == 'BoxSet';
+    final seerrStatus = seerrItemStatus(viewModel);
 
     final infoColumn = Column(
       crossAxisAlignment: isMobile
@@ -3695,7 +3930,14 @@ class _HeaderSection extends StatelessWidget {
             textAlign: isMobile ? TextAlign.center : null,
           ),
         const SizedBox(height: 8),
-        DetailMetadataRow(item: item, selectedMediaSource: selectedMediaSource),
+        DetailMetadataRow(
+          item: item,
+          selectedMediaSource: selectedMediaSource,
+          extraBadges: [
+            if (seerrStatus != null)
+              SeerrStatusPills(state: seerrStatus, onlyNoteworthy: true),
+          ],
+        ),
         if (viewModel.ratings.isNotEmpty ||
             item.communityRating != null ||
             item.criticRating != null) ...[
@@ -3945,7 +4187,11 @@ class DetailPosterImage extends StatelessWidget {
     final w = isMobile ? 120.0 : 165.0 * desktopScale;
     final h = isMobile ? 180.0 : 248.0 * desktopScale;
 
-    if (item.primaryImageTag == null) return SizedBox(width: w, height: h);
+    final posterPath = item.rawData['PosterPath'] as String?;
+    if (item.primaryImageTag == null &&
+        (posterPath == null || posterPath.isEmpty)) {
+      return SizedBox(width: w, height: h);
+    }
 
     return SizedBox(
       width: w,
@@ -3955,11 +4201,13 @@ class DetailPosterImage extends StatelessWidget {
           ClipRRect(
             borderRadius: AppRadius.circular(8),
             child: OfflineAwareImage(
-              imageUrl: imageApi.getPrimaryImageUrl(
-                item.id,
-                maxHeight: isMobile ? 360 : (500 * desktopScale).round(),
-                tag: item.primaryImageTag,
-              ),
+              imageUrl: item.primaryImageTag == null
+                  ? '$seerrPosterBase$posterPath'
+                  : imageApi.getPrimaryImageUrl(
+                      item.id,
+                      maxHeight: isMobile ? 360 : (500 * desktopScale).round(),
+                      tag: item.primaryImageTag,
+                    ),
               width: w,
               height: h,
               fit: BoxFit.cover,
@@ -4128,10 +4376,14 @@ class DetailMetadataRow extends StatelessWidget {
   /// tab, where those fields already live in the hero metadata row.
   final bool technicalOnly;
 
+  /// Trailing badges from elsewhere, laid out with the technical chips.
+  final List<Widget> extraBadges;
+
   const DetailMetadataRow({
     required this.item,
     this.selectedMediaSource,
     this.technicalOnly = false,
+    this.extraBadges = const [],
   });
 
   @override
@@ -4227,14 +4479,18 @@ class DetailMetadataRow extends StatelessWidget {
           runSpacing: 4,
           children: separated,
         ),
-        if (badges.isNotEmpty)
+        if (badges.isNotEmpty || extraBadges.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Wrap(
               alignment: compact ? WrapAlignment.center : WrapAlignment.start,
+              crossAxisAlignment: WrapCrossAlignment.center,
               spacing: 6,
               runSpacing: 4,
-              children: badges.map((b) => _techChip(theme, b)).toList(),
+              children: [
+                ...badges.map((b) => _techChip(theme, b)),
+                ...extraBadges,
+              ],
             ),
           ),
       ],
@@ -4361,6 +4617,11 @@ class DetailActionButtons extends StatefulWidget {
   /// When false the pill is content-width and sits inline with the secondary
   /// circular buttons (landscape).
   final bool fullWidthPrimary;
+
+  /// How wide the column hosting the row is. The two column layout measures
+  /// its buttons against this to decide when they stop fitting on one line,
+  /// which the per device count gets wrong in a column this narrow.
+  final double? rowMaxWidth;
   final FocusNode? actionRowRightFocusNode;
   final FocusNode? extraFirstFocusNode;
   final ValueChanged<bool>? onFocusExtra;
@@ -4381,6 +4642,7 @@ class DetailActionButtons extends StatefulWidget {
     this.onArrowRightAtEnd,
     this.modernStyle = false,
     this.fullWidthPrimary = false,
+    this.rowMaxWidth,
     this.actionRowRightFocusNode,
     this.extraFirstFocusNode,
     this.onFocusExtra,
@@ -5429,6 +5691,26 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
     _focusTarget(widget.downTarget, alignment: 0.42);
   }
 
+  /// The widest a modern row of [buttonCount] buttons can get. Only one
+  /// button is focused at a time, so the worst case is everything at rest
+  /// except the one grown to its focused width, whichever of the two that
+  /// leaves wider. The sizes match what _buildModernChild lays out.
+  double _modernRowWorstWidth(int buttonCount, double spacing) {
+    const playResting = 54.0;
+    const playFocused = 200.0;
+    const circleResting = 52.0;
+    const circleFocused = 200.0;
+
+    final circles = buttonCount - 1;
+    if (circles <= 0) return playFocused;
+
+    final playGrown = playFocused + circles * circleResting;
+    final circleGrown =
+        playResting + circleFocused + (circles - 1) * circleResting;
+    return circles * spacing +
+        (playGrown > circleGrown ? playGrown : circleGrown);
+  }
+
   void _focusUpTarget() {
     final upTarget = widget.upTarget;
     if (upTarget != null &&
@@ -5580,8 +5862,15 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
       if (!mounted) return;
 
       // Consume autoPlay from the current detail route so back navigation
-      // doesn't re-trigger playback.
-      context.replace(Destinations.item(item.id, serverId: item.serverId));
+      // doesn't re-trigger playback. The browsed season has to survive the
+      // rewrite, or the screen reloads against the item's own season.
+      context.replace(
+        Destinations.item(
+          item.id,
+          serverId: item.serverId,
+          seasonContext: viewModel.contextSeasonId,
+        ),
+      );
 
       final isPhoto = item.type == 'Photo';
       final ws = _computeWatchState(item);
@@ -5765,6 +6054,11 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
       );
     }
 
+    final prefs = GetIt.instance<UserPreferences>();
+    final hidden = detailButtonLayout.hidden(prefs);
+    bool shows(DetailButton button) =>
+        !button.canHide || !hidden.contains(button.id);
+
     final isNeon = ThemeRegistry.active.id == ThemeRegistry.neonPulseId;
     final isPhoto = item.type == 'Photo';
     final isBook = _isReadableBookItem(item);
@@ -5892,38 +6186,48 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
 
     _ensureTvPlayFocus(item.id);
 
-    var allButtons = <Widget>[
-      _DetailActionButton(
-        label: playButtonLabel,
-        isPrimary: true,
-        icon: isPhoto
-            ? Icons.photo
-            : isBook
-            ? Icons.menu_book
-            : Icons.play_arrow,
-        focusNode: _tvPlayFocusNode,
-        autofocus: autofocusPlay,
-        onPressed: () {
-          if (isSeason && viewModel.episodes.isNotEmpty) {
-            final targetEp = seasonNextUpEp ?? viewModel.episodes[0];
-            _play(context, targetEp, resume: seasonNextUpEp != null);
-          } else {
-            _play(
-              context,
-              item,
-              resume: isBoxSet
-                  ? (!boxSetAllWatched && !boxSetAllUnwatched)
-                  : (!isPhoto && hasProgress),
-            );
-          }
-        },
-        onLongPress: isVideo
-            ? () => _showAdvancedPlaybackMenu(context, item)
-            : null,
-      ),
-      if (_supportsShuffle(item))
-        _DetailActionButton(
-          label: l10n.shuffle,
+    final playButton = _DetailActionButton(
+      label: playButtonLabel,
+      isPrimary: true,
+      icon: isPhoto
+          ? Icons.photo
+          : isBook
+          ? Icons.menu_book
+          : Icons.play_arrow,
+      focusNode: _tvPlayFocusNode,
+      autofocus: autofocusPlay,
+      onPressed: () {
+        if (isSeason && viewModel.episodes.isNotEmpty) {
+          final targetEp = seasonNextUpEp ?? viewModel.episodes[0];
+          _play(context, targetEp, resume: seasonNextUpEp != null);
+        } else {
+          _play(
+            context,
+            item,
+            resume: isBoxSet
+                ? (!boxSetAllWatched && !boxSetAllUnwatched)
+                : (!isPhoto && hasProgress),
+          );
+        }
+      },
+      onLongPress: isVideo
+          ? () => _showAdvancedPlaybackMenu(context, item)
+          : null,
+    );
+
+    // Null until the lookup lands, and null when it found nothing, so a title
+    // Seerr doesn't have never grows a request button.
+    final overlay = viewModel.seerr;
+    final seerr = overlay != null && overlay.state.tmdbId != 0 ? overlay : null;
+    final onWatchlist = seerr?.state.onUserWatchlist ?? false;
+    final seerrTrailer = seerr?.state.bestTrailer;
+
+    final byButton = <DetailButton, Widget>{
+      if (_supportsShuffle(item) && shows(DetailButton.shuffle))
+        DetailButton.shuffle: _DetailActionButton(
+          label: (item.type == 'MusicArtist' || item.type == 'AlbumArtist')
+              ? l10n.shuffleAll
+              : l10n.shuffle,
           icon: Icons.shuffle_rounded,
           onPressed: () => _shuffle(context, item),
         ),
@@ -5931,7 +6235,7 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
           (isBoxSet
               ? !(boxSetAllWatched || boxSetAllUnwatched)
               : (hasProgress && !isPhoto)))
-        _DetailActionButton(
+        DetailButton.restart: _DetailActionButton(
           label: isBook ? l10n.startOver : l10n.restart,
           icon: Icons.restart_alt,
           onPressed: () => _play(context, item),
@@ -5946,73 +6250,87 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
       // Playback is local-first, so this plays the downloaded copy. The
       // button mostly signals that one exists.
       if (_availableOffline)
-        _DetailActionButton(
+        DetailButton.playOffline: _DetailActionButton(
           label: isBook ? l10n.readOffline : l10n.playOffline,
           icon: isBook ? Icons.menu_book : Icons.offline_pin,
           onPressed: () => _play(context, item),
           isActive: true,
           activeColor: const Color(0xFF4CAF50),
         ),
-      if (isPlayableVideo) ...[
-        if (audioStreams.length > 1)
-          _DetailActionButton(
-            label: l10n.audio,
-            icon: Icons.audiotrack,
-            onPressed: () => _showAudioSelector(context, audioStreams),
-          ),
-        if (subtitleStreams.isNotEmpty || _canDownloadRemoteSubtitles(item))
-          _DetailActionButton(
-            label: l10n.subtitles,
-            icon: Icons.subtitles,
-            onPressed: () => _openSubtitleSelector(context, item),
-          ),
-      ],
-      if (isPlayableMedia && item.mediaSources.length > 1)
-        _DetailActionButton(
+      if (isPlayableVideo &&
+          audioStreams.length > 1 &&
+          shows(DetailButton.audio))
+        DetailButton.audio: _DetailActionButton(
+          label: l10n.audio,
+          icon: Icons.audiotrack,
+          onPressed: () => _showAudioSelector(context, audioStreams),
+        ),
+      if (isPlayableVideo &&
+          (subtitleStreams.isNotEmpty || _canDownloadRemoteSubtitles(item)) &&
+          shows(DetailButton.subtitles))
+        DetailButton.subtitles: _DetailActionButton(
+          label: l10n.subtitles,
+          icon: Icons.subtitles,
+          onPressed: () => _openSubtitleSelector(context, item),
+        ),
+      if (isPlayableMedia &&
+          item.mediaSources.length > 1 &&
+          shows(DetailButton.version))
+        DetailButton.version: _DetailActionButton(
           label: l10n.version,
           icon: Icons.video_file,
           onPressed: () => _showVersionSelector(context, item.mediaSources),
           isActive: widget.selectedMediaSourceId != null,
           activeColor: AppColorScheme.accent,
         ),
-      if (!isBook && !PlatformDetection.isTV)
-        _DetailActionButton(
+      if (!isBook && !PlatformDetection.isTV && shows(DetailButton.cast))
+        DetailButton.cast: _DetailActionButton(
           label: l10n.cast,
           icon: Icons.cast,
           onPressed: () => _castToDevice(context, item),
         ),
-      if (item.type == 'Series' || _hasTrailer(item))
-        _DetailActionButton(
+      if (viewModel.isSeerrOnly
+          ? seerrTrailer != null && shows(DetailButton.trailer)
+          : (item.type == 'Series' || _hasTrailer(item)) &&
+              shows(DetailButton.trailer))
+        DetailButton.trailer: _DetailActionButton(
           label: l10n.trailer,
           icon: Icons.movie_outlined,
-          onPressed: () => _playTrailer(context, item),
+          onPressed: () => viewModel.isSeerrOnly
+              ? openSeerrTrailer(context, seerrTrailer!)
+              : _playTrailer(context, item),
         ),
-      if (!isBook && !isPhoto && _isInSyncPlayGroup())
-        _DetailActionButton(
+      if (!isBook &&
+          !isPhoto &&
+          _isInSyncPlayGroup() &&
+          shows(DetailButton.watchWithGroup))
+        DetailButton.watchWithGroup: _DetailActionButton(
           label: l10n.watchWithGroup,
           icon: Icons.groups_rounded,
           onPressed: () => _watchWithGroup(context, item),
           isActive: true,
           activeColor: AppColorScheme.accent,
         ),
-      _DetailActionButton(
-        label: isBook
-            ? (item.isPlayed ? l10n.finished : l10n.unread)
-            : (item.isPlayed ? l10n.watched : l10n.unwatched),
-        icon: item.isPlayed ? Icons.check_circle : Icons.check_circle_outline,
-        onPressed: viewModel.togglePlayed,
-        isActive: item.isPlayed,
-        activeColor: AppColorScheme.accent,
-      ),
-      _DetailActionButton(
-        label: item.isFavorite ? l10n.favorited : l10n.favorite,
-        icon: Icons.favorite,
-        onPressed: viewModel.toggleFavorite,
-        isActive: item.isFavorite,
-        activeColor: const Color(0xFFFF4757),
-      ),
-      if (!isBook)
-        _DetailActionButton(
+      if (shows(DetailButton.watched))
+        DetailButton.watched: _DetailActionButton(
+          label: isBook
+              ? (item.isPlayed ? l10n.finished : l10n.unread)
+              : (item.isPlayed ? l10n.watched : l10n.unwatched),
+          icon: item.isPlayed ? Icons.check_circle : Icons.check_circle_outline,
+          onPressed: viewModel.togglePlayed,
+          isActive: item.isPlayed,
+          activeColor: AppColorScheme.accent,
+        ),
+      if (shows(DetailButton.favorite))
+        DetailButton.favorite: _DetailActionButton(
+          label: item.isFavorite ? l10n.favorited : l10n.favorite,
+          icon: Icons.favorite,
+          onPressed: viewModel.toggleFavorite,
+          isActive: item.isFavorite,
+          activeColor: const Color(0xFFFF4757),
+        ),
+      if (!isBook && shows(DetailButton.playlist))
+        DetailButton.playlist: _DetailActionButton(
           label: l10n.playlist,
           icon: Icons.playlist_add,
           onPressed: () => AddToPlaylistDialog.show(
@@ -6021,27 +6339,159 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
             serverId: item.serverId,
           ),
         ),
-      if (canShowDownloadActions)
-        _DownloadButton(item: item, viewModel: viewModel),
-      if (canShowDownloadActions) _DeleteDownloadButton(item: item),
-      if (item.type == 'Episode' && item.seriesId != null)
-        _DetailActionButton(
+      if (canShowDownloadActions && shows(DetailButton.download))
+        DetailButton.download: _DownloadButton(item: item, viewModel: viewModel),
+      if (canShowDownloadActions && shows(DetailButton.deleteFiles) && _availableOffline)
+        DetailButton.deleteFiles: _DeleteDownloadButton(item: item),
+      if (item.type == 'Episode' &&
+          item.seriesId != null &&
+          shows(DetailButton.goToSeries))
+        DetailButton.goToSeries: _DetailActionButton(
           label: l10n.goToSeries,
           icon: Icons.tv,
           onPressed: () => context.push(
             Destinations.item(item.seriesId!, serverId: item.serverId),
           ),
         ),
+      if (shows(DetailButton.seerrRequest))
+        DetailButton.seerrRequest: ?_seerrRequestButton(
+          context,
+          seerr,
+          l10n,
+          is4k: false,
+        ),
+      if (shows(DetailButton.seerrRequest4k))
+        DetailButton.seerrRequest4k: ?_seerrRequestButton(
+          context,
+          seerr,
+          l10n,
+          is4k: true,
+        ),
+      if (seerr != null && shows(DetailButton.seerrWatchlist))
+        DetailButton.seerrWatchlist: _DetailActionButton(
+          label: onWatchlist ? l10n.onWatchlist : l10n.watchlist,
+          icon: onWatchlist ? Icons.bookmark : Icons.bookmark_border,
+          onPressed: () => seerr.toggleWatchlist(),
+          isActive: onWatchlist,
+          activeColor: AppColorScheme.accent,
+        ),
+      if (seerr != null &&
+          seerr.canReportIssue &&
+          shows(DetailButton.seerrReportIssue))
+        DetailButton.seerrReportIssue: _DetailActionButton(
+          label: l10n.reportIssue,
+          icon: Icons.report_problem_outlined,
+          onPressed: () =>
+              showSeerrReportIssueDialog(context: context, vm: seerr),
+        ),
+      if (seerr != null &&
+          seerr.canManageRequests &&
+          seerrPendingRequests(seerr.state).isNotEmpty &&
+          shows(DetailButton.seerrManage))
+        DetailButton.seerrManage: _DetailActionButton(
+          label: l10n.manageRequests,
+          icon: Icons.rule,
+          onPressed: () =>
+              showSeerrManageRequestsSheet(context: context, vm: seerr),
+        ),
       if ((GetIt.instance<UserRepository>().currentUser?.isAdministrator ??
               false) &&
-          GetIt.instance<MediaServerClient>().serverType == ServerType.jellyfin)
-        _DetailActionButton(
+          GetIt.instance<MediaServerClient>().serverType ==
+              ServerType.jellyfin &&
+          shows(DetailButton.admin))
+        DetailButton.admin: _DetailActionButton(
           label: l10n.admin,
           icon: Icons.settings,
           onPressed: () => _showAdminDialog(context, item),
           isActive: true,
           activeColor: const Color(0xFFD32F2F),
         ),
+    };
+
+    // Taking a request back rides in the same arrangement slot as the track's
+    // request button, so moving or hiding seerrRequest carries its cancel
+    // along with it.
+    final cancelByButton = <DetailButton, Widget>{
+      if (shows(DetailButton.seerrRequest))
+        DetailButton.seerrRequest: ?_seerrCancelButton(
+          context,
+          seerr,
+          l10n,
+          is4k: false,
+        ),
+      if (shows(DetailButton.seerrRequest4k))
+        DetailButton.seerrRequest4k: ?_seerrCancelButton(
+          context,
+          seerr,
+          l10n,
+          is4k: true,
+        ),
+    };
+
+    // Requesting is the only thing to do with a title you don't have, so it
+    // takes the primary slot, keeping Play's focus node so everything that
+    // reaches for that anchor still finds it. The request entry then leaves the
+    // arranged row, since it is already leading it.
+    final Widget? primaryAction;
+    if (viewModel.isSeerrOnly) {
+      // One slot covers both tracks, since the sheet it opens carries the
+      // quality switch. It is built off the HD track, falling back to the 4K
+      // one for a viewer who is only allowed that.
+      Widget? requestSlot(bool is4k) => _seerrRequestButton(
+        context,
+        seerr,
+        l10n,
+        is4k: is4k,
+        qualityToggle: true,
+        isPrimary: true,
+        focusNode: _tvPlayFocusNode,
+        autofocus: autofocusPlay,
+      );
+      // A title with nothing left to ask for leads with its cancel instead, so
+      // focus still has a primary button to land on. The row then drops that
+      // copy rather than offering the same button twice.
+      Widget? cancelSlot() {
+        for (final slot in [
+          DetailButton.seerrRequest,
+          DetailButton.seerrRequest4k,
+        ]) {
+          final cancel = _seerrCancelButton(
+            context,
+            seerr,
+            l10n,
+            is4k: slot == DetailButton.seerrRequest4k,
+            isPrimary: true,
+            focusNode: _tvPlayFocusNode,
+            autofocus: autofocusPlay,
+          );
+          if (cancel != null) {
+            cancelByButton.remove(slot);
+            return cancel;
+          }
+        }
+        return null;
+      }
+
+      primaryAction = requestSlot(false) ?? requestSlot(true) ?? cancelSlot();
+      byButton.removeWhere(
+        (button, _) =>
+            !button.availableInSeerrOnly ||
+            button == DetailButton.seerrRequest,
+      );
+    } else {
+      primaryAction = playButton;
+    }
+
+    var allButtons = <Widget>[
+      ?primaryAction,
+      for (final button in detailButtonLayout.ordered(
+        DetailButton.values,
+        (button) => button.id,
+        prefs,
+      )) ...[
+        ?byButton[button],
+        ?cancelByButton[button],
+      ],
     ];
 
     if (isNeon) {
@@ -6097,7 +6547,21 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
     // compact (mobile) layout every type uses the full-width primary + overflow.
     final bool isTwoColumnLayout = !isModernMobile && isTvShow;
 
-    if (isTwoColumnLayout) {
+    // The buttons only fold into More once they stop fitting on one line.
+    // Measuring the worst case, where whichever button is focused has grown
+    // to its widest, means focus can never push the end of the row past the
+    // column and behind the Next Up card. Hosts that do not report a width
+    // fall back to the count for this device.
+    final rowBudget = widget.rowMaxWidth;
+    final fitsOneLine = widget.modernStyle && rowBudget != null
+        ? _modernRowWorstWidth(allButtons.length, buttonSpacing) <= rowBudget
+        : allButtons.length <= maxVisible;
+
+    if (isTwoColumnLayout && fitsOneLine) {
+      primaryButtons = allButtons;
+      extraButtons = const [];
+      needsOverflow = false;
+    } else if (isTwoColumnLayout) {
       final List<Widget> prim = [];
       final List<Widget> ext = [];
       for (final btn in allButtons) {
@@ -6148,14 +6612,11 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
         final existingUp = button is _DetailActionButton
             ? button.onArrowUp
             : null;
-        final fNode = index == 0
-            ? (widget.tvPlayFocusNode ?? _primaryFocusNode(0))
-            : _primaryFocusNode(index);
         return _wireButton(
           button,
           focusNode: index == allButtons.length - 1
-              ? (widget.actionRowRightFocusNode ?? fNode)
-              : fNode,
+              ? (widget.actionRowRightFocusNode ?? _primaryNodePlain(index))
+              : _primaryNodePlain(index),
           onArrowUp:
               existingUp ??
               (NavigationLayout.focusNavbarNotifier.value != null ||
@@ -6472,6 +6933,20 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
       }
     }
 
+    // Under the row rather than in it, so a bar never takes a focus slot. The
+    // row is left exactly as it was when nothing is downloading, since a Column
+    // around it would re-align it.
+    final downloads = seerrItemDownloads(viewModel);
+    final withDownloads = downloads == null
+        ? rowContent
+        : Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              rowContent,
+              SeerrItemDownloadBars(state: downloads),
+            ],
+          );
+
     return Focus(
       canRequestFocus: false,
       skipTraversal: true,
@@ -6492,7 +6967,7 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
           );
         });
       },
-      child: rowContent,
+      child: withDownloads,
     );
   }
 
@@ -6508,7 +6983,7 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
     final l10n = AppLocalizations.of(context);
     showDialog(
       context: context,
-      builder: (context) {
+      builder: (dialogCtx) {
         return AlertDialog(
           backgroundColor: const Color(0xFF1E1E24),
           title: Text(
@@ -6521,10 +6996,118 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (canIdentifyItemType(item.type))
+                Focus(
+                  onKeyEvent: (_, event) {
+                    if (isActivateKey(event)) {
+                      Navigator.of(dialogCtx).pop();
+                      IdentifyDialog.show(
+                        context,
+                        itemId: item.id,
+                        itemType: item.type,
+                        itemName: item.name,
+                        itemYear: item.productionYear,
+                      ).then((applied) {
+                        if (applied == true) {
+                          viewModel.load();
+                        }
+                      });
+                      return KeyEventResult.handled;
+                    }
+                    return KeyEventResult.ignored;
+                  },
+                  child: Builder(
+                    builder: (buttonCtx) {
+                      final hasFocus = Focus.of(buttonCtx).hasFocus;
+                      return InkWell(
+                        onTap: () async {
+                          Navigator.of(dialogCtx).pop();
+                          final applied = await IdentifyDialog.show(
+                            context,
+                            itemId: item.id,
+                            itemType: item.type,
+                            itemName: item.name,
+                            itemYear: item.productionYear,
+                          );
+                          if (applied == true) {
+                            viewModel.load();
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                            horizontal: 16,
+                          ),
+                          decoration: BoxDecoration(
+                            color: hasFocus ? Colors.white12 : Colors.transparent,
+                            borderRadius: AppRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.search, color: Colors.white70),
+                              const SizedBox(width: 12),
+                              Text(
+                                l10n.adminMetadataIdentify,
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              if (!PlatformDetection.isTV)
+                Focus(
+                  onKeyEvent: (_, event) {
+                    if (isActivateKey(event)) {
+                      Navigator.of(dialogCtx).pop();
+                      context.push(Destinations.adminMetadata(item.id));
+                      return KeyEventResult.handled;
+                    }
+                    return KeyEventResult.ignored;
+                  },
+                  child: Builder(
+                    builder: (buttonCtx) {
+                      final hasFocus = Focus.of(buttonCtx).hasFocus;
+                      return InkWell(
+                        onTap: () {
+                          Navigator.of(dialogCtx).pop();
+                          context.push(Destinations.adminMetadata(item.id));
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                            horizontal: 16,
+                          ),
+                          decoration: BoxDecoration(
+                            color: hasFocus
+                                ? Colors.white12
+                                : Colors.transparent,
+                            borderRadius: AppRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.edit_note,
+                                color: Colors.white70,
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                l10n.editMetadata,
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
               Focus(
                 onKeyEvent: (_, event) {
                   if (isActivateKey(event)) {
-                    Navigator.of(context).pop();
+                    Navigator.of(dialogCtx).pop();
                     ChangeArtworkDialog.show(context, item: item).then((
                       changed,
                     ) {
@@ -6537,11 +7120,11 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
                   return KeyEventResult.ignored;
                 },
                 child: Builder(
-                  builder: (context) {
-                    final hasFocus = Focus.of(context).hasFocus;
+                  builder: (buttonCtx) {
+                    final hasFocus = Focus.of(buttonCtx).hasFocus;
                     return InkWell(
                       onTap: () async {
-                        Navigator.of(context).pop();
+                        Navigator.of(dialogCtx).pop();
                         final changed = await ChangeArtworkDialog.show(
                           context,
                           item: item,
@@ -6574,69 +7157,22 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
                   },
                 ),
               ),
-              if (!PlatformDetection.isTV)
-                Focus(
-                  onKeyEvent: (_, event) {
-                    if (isActivateKey(event)) {
-                      Navigator.of(context).pop();
-                      context.push(Destinations.adminMetadata(item.id));
-                      return KeyEventResult.handled;
-                    }
-                    return KeyEventResult.ignored;
-                  },
-                  child: Builder(
-                    builder: (context) {
-                      final hasFocus = Focus.of(context).hasFocus;
-                      return InkWell(
-                        onTap: () {
-                          Navigator.of(context).pop();
-                          context.push(Destinations.adminMetadata(item.id));
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 12,
-                            horizontal: 16,
-                          ),
-                          decoration: BoxDecoration(
-                            color: hasFocus
-                                ? Colors.white12
-                                : Colors.transparent,
-                            borderRadius: AppRadius.circular(8),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.edit_note,
-                                color: Colors.white70,
-                              ),
-                              const SizedBox(width: 12),
-                              Text(
-                                l10n.editMetadata,
-                                style: const TextStyle(color: Colors.white),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
               if (item.canDelete)
                 Focus(
                   onKeyEvent: (_, event) {
                     if (isActivateKey(event)) {
-                      Navigator.of(context).pop();
+                      Navigator.of(dialogCtx).pop();
                       _confirmDeleteItem(context, item);
                       return KeyEventResult.handled;
                     }
                     return KeyEventResult.ignored;
                   },
                   child: Builder(
-                    builder: (context) {
-                      final hasFocus = Focus.of(context).hasFocus;
+                    builder: (buttonCtx) {
+                      final hasFocus = Focus.of(buttonCtx).hasFocus;
                       return InkWell(
                         onTap: () {
-                          Navigator.of(context).pop();
+                          Navigator.of(dialogCtx).pop();
                           _confirmDeleteItem(context, item);
                         },
                         child: Container(
@@ -6685,23 +7221,8 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
     );
     if (!confirmed) return;
 
-    final success = await viewModel.deleteItem();
-    if (!mounted || !context.mounted) return;
-
-    if (success) {
-      if (Navigator.of(context).canPop()) {
-        context.pop(true);
-      } else {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(l10n.itemDeleted)));
-      }
-      return;
-    }
-
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(l10n.failedToDeleteItem)));
+    appRouter.go(Destinations.home);
+    _deleteItemInBackground(viewModel, isPlaylist: false);
   }
 
   int? _activePlaybackAudioIndex() {
@@ -6732,15 +7253,19 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
     }
 
     final prefs = GetIt.instance<UserPreferences>();
+    final manager = GetIt.instance<PlaybackManager>();
     return computeEffectiveAudioIndex(
       audioStreams: audioStreams,
-      preferredAudioLanguage: prefs.get(UserPreferences.defaultAudioLanguage),
+      preferredAudioLanguage: manager.lastExplicitAudioLanguage ??
+          prefs.get(UserPreferences.defaultAudioLanguage),
       fallbackAudioLanguage: prefs.get(UserPreferences.fallbackAudioLanguage),
       preferDefaultAudioTrack: prefs.get(
         UserPreferences.preferDefaultAudioTrack,
       ),
       preferAudioDescription: prefs.get(UserPreferences.preferAudioDescription),
       explicitAudioIndex: null,
+      lastExplicitAudioIndex: manager.lastExplicitAudioIndex,
+      lastExplicitAudioTitle: manager.lastExplicitAudioTitle,
     );
   }
 
@@ -6760,6 +7285,13 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
       activeAudioLanguage = activeAudioStream['Language'] as String?;
     }
 
+    // Only for the item on screen. Callers naming a different episode want it
+    // resolved against that episode's own streams, where an index picked here
+    // means nothing.
+    if (item == null && _selectedSubtitleIndex != null) {
+      return _selectedSubtitleIndex;
+    }
+
     final targetItem = item ?? widget.viewModel.item;
     var preferredLanguage = prefs.get(UserPreferences.defaultSubtitleLanguage);
     var subtitleMode = prefs.get(UserPreferences.subtitleMode);
@@ -6767,14 +7299,15 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
     if (targetItem != null) {
       final seriesId = targetItem.seriesId;
       if (seriesId != null && seriesId.isNotEmpty) {
-        final seriesLanguage = prefs.getSeriesSubtitleLanguage(seriesId);
-        if (seriesLanguage == 'none') {
+        final seriesSubPref = prefs.getSeriesSubtitlePreference(seriesId);
+        if (seriesSubPref.isNone) {
           return -1;
-        } else if (seriesLanguage.isNotEmpty) {
-          preferredLanguage = seriesLanguage;
-          if (subtitleMode == SubtitleMode.none) {
-            subtitleMode = SubtitleMode.always;
-          }
+        } else if (seriesSubPref.isNotEmpty) {
+          final matchedIndex = matchSeriesTrackIndex(
+            streams: subtitleStreams,
+            pref: seriesSubPref,
+          );
+          if (matchedIndex != null) return matchedIndex;
         }
       }
     }
@@ -7005,6 +7538,22 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
           return childCount > 1;
         }
         return true;
+      case 'MusicArtist':
+      case 'AlbumArtist':
+        if (viewModel.tracks.isNotEmpty) return viewModel.tracks.length > 1;
+        if (viewModel.albums.isNotEmpty) return true;
+        final childCount = item.rawData['ChildCount'] ?? item.rawData['SongCount'];
+        if (childCount is num) return childCount > 1;
+        return true;
+      case 'MusicAlbum':
+      case 'Playlist':
+        if (viewModel.tracks.isNotEmpty) return viewModel.tracks.length > 1;
+        final childCount =
+            item.rawData['ChildCount'] ??
+            item.rawData['SongCount'] ??
+            item.rawData['RecursiveItemCount'];
+        if (childCount is num) return childCount > 1;
+        return true;
       default:
         return false;
     }
@@ -7019,19 +7568,51 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
     return clientFactory.getClientIfExists(item.serverId) ?? defaultClient;
   }
 
-  Future<List<AggregatedItem>> _moviePrerollsForStart(
+  Future<AggregatedItem> _ensureHydrated(AggregatedItem target) async {
+    if (target.mediaSources.isNotEmpty) {
+      return target;
+    }
+    try {
+      final client = _clientForItem(target);
+      final fullData = await client.itemsApi.getItem(target.id);
+      return AggregatedItem(
+        id: target.id,
+        serverId: target.serverId,
+        rawData: Map<String, dynamic>.from(fullData),
+      );
+    } catch (_) {
+      return target;
+    }
+  }
+
+  Future<List<AggregatedItem>> _prerollsForStart(
     AggregatedItem item,
-    Duration startPosition,
-  ) async {
-    if (item.type != 'Movie') {
+    Duration startPosition, {
+    required bool useExternalPlayer,
+  }) async {
+    if (useExternalPlayer) {
+      return const [];
+    }
+    // The server decides which libraries actually get prerolls, so all we rule
+    // out here are the things that can't ever carry one.
+    if ((item.rawData['MediaType'] as String?) != 'Video') {
+      return const [];
+    }
+    if (item.type == 'TvChannel') {
+      return const [];
+    }
+    if ((item.rawData['Status'] as String?) == 'InProgress') {
       return const [];
     }
     if (startPosition > Duration.zero) {
       return const [];
     }
-    if (!GetIt.instance<UserPreferences>().get(
-      UserPreferences.cinemaModeEnabled,
-    )) {
+    final prefs = GetIt.instance<UserPreferences>();
+    if (!prefs.get(UserPreferences.cinemaModeEnabled)) {
+      return const [];
+    }
+    if (item.type == 'Episode' &&
+        !prefs.get(UserPreferences.cinemaModeEpisodesEnabled)) {
       return const [];
     }
 
@@ -7060,9 +7641,65 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
     }
   }
 
+  /// Starts [queue] with any [prerolls] playing ahead of [target].
+  ///
+  /// The prerolls go in front of the target rather than in front of the queue,
+  /// which can open on an earlier episode, so [startIndex] ends up pointing at
+  /// the first preroll. The stream picks belong to the target, so when a
+  /// preroll plays first they're held back instead of landing on the preroll.
+  Future<void> _playQueueWithPrerolls(
+    PlaybackManager manager, {
+    required List<AggregatedItem> queue,
+    required List<AggregatedItem> prerolls,
+    required AggregatedItem target,
+    required Duration startPosition,
+    required bool directAllowed,
+    int startIndex = 0,
+    int? audioStreamIndex,
+    int? subtitleStreamIndex,
+    String? mediaSourceId,
+    bool audioSelectionExplicit = false,
+    bool subtitleSelectionExplicit = false,
+  }) async {
+    final applyNow = prerolls.isEmpty;
+    final playItemsFuture = manager.playItems(
+      applyNow
+          ? queue
+          : <AggregatedItem>[
+              ...queue.take(startIndex),
+              ...prerolls,
+              ...queue.skip(startIndex),
+            ],
+      startIndex: startIndex,
+      startPosition: startPosition,
+      audioStreamIndex: applyNow ? audioStreamIndex : null,
+      subtitleStreamIndex: applyNow ? subtitleStreamIndex : null,
+      audioSelectionExplicit: applyNow && audioSelectionExplicit,
+      subtitleSelectionExplicit: applyNow && subtitleSelectionExplicit,
+      mediaSourceId: applyNow ? mediaSourceId : null,
+      enableDirectPlay: directAllowed,
+      enableDirectStream: directAllowed,
+    );
+    // playItems wipes any pending overrides as its first act, so the held back
+    // picks have to land after the call and before the await.
+    if (!applyNow &&
+        (audioStreamIndex != null ||
+            subtitleStreamIndex != null ||
+            (mediaSourceId?.isNotEmpty ?? false))) {
+      manager.setPendingItemOverrides(
+        itemId: target.id,
+        audioStreamIndex: audioStreamIndex,
+        subtitleStreamIndex: subtitleStreamIndex,
+        mediaSourceId: mediaSourceId,
+        audioSelectionExplicit: audioSelectionExplicit,
+        subtitleSelectionExplicit: subtitleSelectionExplicit,
+      );
+    }
+    await playItemsFuture;
+  }
+
   Future<List<AggregatedItem>> _shuffleQueueForItem(AggregatedItem item) async {
-    const shuffleQueueFields =
-        'MediaStreams,MediaSources,RunTimeTicks,Trickplay,Chapters';
+    const shuffleQueueFields = 'Overview,RunTimeTicks,UserData';
     switch (item.type) {
       case 'Series':
         if (viewModel.episodes.length > 1) {
@@ -7086,6 +7723,39 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
           item,
           fields: shuffleQueueFields,
         );
+      case 'MusicArtist':
+      case 'AlbumArtist':
+        if (viewModel.tracks.isNotEmpty) {
+          return viewModel.tracks;
+        }
+        final client = _clientForItem(item);
+        final data = await client.itemsApi.getItems(
+          artistIds: [item.id],
+          includeItemTypes: const ['Audio'],
+          sortBy: 'Album,ParentIndexNumber,IndexNumber,SortName',
+          recursive: true,
+          fields: 'PrimaryImageAspectRatio,BasicSyncInfo',
+        );
+        return _mapRawItemsForServer(data['Items'], item.serverId);
+      case 'MusicAlbum':
+        if (viewModel.tracks.isNotEmpty) {
+          return viewModel.tracks;
+        }
+        final client = _clientForItem(item);
+        final data = await client.itemsApi.getItems(
+          parentId: item.id,
+          includeItemTypes: const ['Audio'],
+          sortBy: 'ParentIndexNumber,IndexNumber,SortName',
+          fields: 'PrimaryImageAspectRatio,BasicSyncInfo',
+        );
+        return _mapRawItemsForServer(data['Items'], item.serverId);
+      case 'Playlist':
+        if (viewModel.tracks.isNotEmpty) {
+          return viewModel.tracks;
+        }
+        final client = _clientForItem(item);
+        final data = await client.itemsApi.getPlaylistItems(item.id);
+        return _mapRawItemsForServer(data['Items'], item.serverId);
       default:
         return const [];
     }
@@ -7148,20 +7818,87 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
         .toList();
   }
 
-  List<AggregatedItem> _truncateQueueIfImmediateNextUnplayable(
+  /// The playable season list that actually holds [target], as the season pages
+  /// display it.
+  ///
+  /// A special is filed under Specials but shown inside a regular season once
+  /// the library inlines it, and nothing on the item says which season claimed
+  /// it. So for a special, ask about the seasons of its neighbours in aired
+  /// order — the one that lists it is the one to queue. Regular episodes take
+  /// the first candidate, their own season, on the first request.
+  Future<List<AggregatedItem>> _seasonQueueContaining(
+    MediaServerClient client, {
+    required String seriesId,
+    required String serverId,
+    required AggregatedItem target,
+    required List<AggregatedItem> airedEpisodes,
+    required String fields,
+  }) async {
+    final candidates = <String>[];
+    void addCandidate(String? seasonId) {
+      if (seasonId == null || seasonId.isEmpty) return;
+      if (candidates.contains(seasonId)) return;
+      candidates.add(seasonId);
+    }
+
+    if (isSpecialEpisode(target)) {
+      final at = airedEpisodes.indexWhere((e) => e.id == target.id);
+      if (at >= 0) {
+        // Airs-before is the common case, so the season that follows leads.
+        for (var i = at + 1; i < airedEpisodes.length; i++) {
+          if (isSpecialEpisode(airedEpisodes[i])) continue;
+          addCandidate(airedEpisodes[i].seasonId);
+          break;
+        }
+        for (var i = at - 1; i >= 0; i--) {
+          if (isSpecialEpisode(airedEpisodes[i])) continue;
+          addCandidate(airedEpisodes[i].seasonId);
+          break;
+        }
+      }
+    }
+    addCandidate(target.seasonId);
+
+    for (final seasonId in candidates) {
+      try {
+        final seasonData = await client.itemsApi.getEpisodes(
+          seriesId,
+          seasonId: seasonId,
+          fields: fields,
+        );
+        final seasonEpisodes = _mapRawItemsForServer(
+          seasonData['Items'],
+          serverId,
+        );
+        if (!seasonEpisodes.any((e) => e.id == target.id)) continue;
+        final playable = seasonEpisodes
+            .where(isEligibleNextEpisodeCandidate)
+            .toList();
+        if (playable.isNotEmpty) return playable;
+      } catch (_) {}
+    }
+    return const <AggregatedItem>[];
+  }
+
+  Future<List<AggregatedItem>> _truncateQueueIfImmediateNextUnplayable(
     List<AggregatedItem> queue, {
     required int startIndex,
-  }) {
+  }) async {
     if (startIndex < 0 || startIndex >= queue.length - 1) {
       return queue;
     }
 
-    final immediateNext = queue[startIndex + 1];
+    // Queues arrive without MediaSources and a missing key reads as playable,
+    // so hydrate the next item first or a broken episode passes the check and
+    // fails once the current one ends.
+    final nextIndex = startIndex + 1;
+    final immediateNext = await _ensureHydrated(queue[nextIndex]);
+    queue[nextIndex] = immediateNext;
     if (isEligibleNextEpisodeCandidate(immediateNext)) {
       return queue;
     }
 
-    return queue.sublist(0, startIndex + 1);
+    return queue.sublist(0, nextIndex);
   }
 
   Future<bool> _pushPlayerRouteWhileStartingPlayback(
@@ -7241,10 +7978,20 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
           lastPlayedType == 'episode' &&
           lastPlayed.id != widget.itemId) {
         if (context.mounted) {
-          final currentSeasonId = viewModel.item?.seasonId;
-          if (lastPlayed.seasonId != null &&
-              lastPlayed.seasonId!.isNotEmpty &&
-              lastPlayed.seasonId != currentSeasonId) {
+          // An inlined special owns the Specials season while being listed in
+          // the one on screen, so membership of the loaded list — not the
+          // season id — decides whether playback left the season.
+          final browsedSeasonId = viewModel.effectiveSeasonId;
+          final stayedInSeason =
+              viewModel.episodes.any((e) => e.id == lastPlayed.id) ||
+              lastPlayed.seasonId == browsedSeasonId;
+          // A special's own season is Specials, which is never the season the
+          // viewer was moved into — rebuilding the stack under it would land
+          // them exactly where this whole change keeps them out of.
+          if (!stayedInSeason &&
+              !isSpecialEpisode(lastPlayed) &&
+              lastPlayed.seasonId != null &&
+              lastPlayed.seasonId!.isNotEmpty) {
             final router = GoRouter.of(context);
             router.pushReplacement(
               Destinations.item(
@@ -7259,7 +8006,14 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
             });
           } else {
             context.pushReplacement(
-              Destinations.item(lastPlayed.id, serverId: lastPlayed.serverId),
+              Destinations.item(
+                lastPlayed.id,
+                serverId: lastPlayed.serverId,
+                seasonContext: seasonContextParam(
+                  contextSeasonId: browsedSeasonId,
+                  episodeSeasonId: lastPlayed.seasonId,
+                ),
+              ),
             );
           }
         }
@@ -7268,7 +8022,10 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
           lastPlayedType == 'episode' &&
           lastPlayed.seasonId != null &&
           lastPlayed.seasonId!.isNotEmpty &&
-          lastPlayed.seasonId != widget.itemId) {
+          lastPlayed.seasonId != widget.itemId &&
+          // A special inlined into this season is displayed here, so finishing
+          // on one must not bounce the viewer over to the Specials season.
+          !viewModel.episodes.any((e) => e.id == lastPlayed.id)) {
         if (context.mounted) {
           context.pushReplacement(
             Destinations.item(
@@ -7285,6 +8042,32 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
       viewModel.load();
     }
     return true;
+  }
+
+  /// Resolves where a mixed video queue should start playing. Resumes an item
+  /// left partway through, otherwise the first unwatched one, and the top when
+  /// everything is watched or nothing has been started.
+  static (int, Duration) _resolveQueueResumeStart(List<AggregatedItem> items) {
+    final allWatched = items.every((e) => e.isPlayed);
+    final allUnwatched = items.every(
+      (e) =>
+          !e.isPlayed &&
+          (e.playbackPosition == null || e.playbackPosition == Duration.zero),
+    );
+    if (allWatched || allUnwatched) return (0, Duration.zero);
+
+    final resumeIndex = items.indexWhere(
+      (e) =>
+          !e.isPlayed &&
+          e.playbackPosition != null &&
+          e.playbackPosition! > Duration.zero,
+    );
+    if (resumeIndex >= 0) {
+      return (resumeIndex, items[resumeIndex].playbackPosition ?? Duration.zero);
+    }
+
+    final nextUnwatchedIndex = items.indexWhere((e) => !e.isPlayed);
+    return (nextUnwatchedIndex >= 0 ? nextUnwatchedIndex : 0, Duration.zero);
   }
 
   Future<void> _playInternal(
@@ -7359,8 +8142,7 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
       () async {
         switch (item.type) {
           case 'Series':
-            const episodeQueueFields =
-                'Overview,MediaStreams,MediaSources,RunTimeTicks,Trickplay,UserData,Chapters';
+            const episodeQueueFields = 'Overview,RunTimeTicks,UserData';
 
             final client = _clientForItem(item);
             final data = await client.itemsApi.getEpisodes(
@@ -7391,47 +8173,46 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
 
             AggregatedItem targetEpisode;
             if (isFullyWatched || isFullyUnwatched) {
-              final s1e1 = allEpisodes.firstWhere(
+              targetEpisode = allEpisodes.firstWhere(
                 (e) => e.parentIndexNumber == 1 && e.indexNumber == 1,
                 orElse: () => allEpisodes.first,
               );
-              targetEpisode = s1e1;
             } else {
-              final firstUnwatched = allEpisodes.firstWhere(
-                (e) => !e.isPlayed,
-                orElse: () => allEpisodes.first,
-              );
-              targetEpisode = firstUnwatched;
+              // Next Up arrives on its own future, so fall back to whatever is part
+              // way through. First unwatched can sit behind the user, since a
+              // skipped episode or a special counts as unwatched.
+              targetEpisode =
+                  viewModel.nextUp ??
+                  allEpisodes.firstWhere(
+                    (e) => !e.isPlayed && (e.playedPercentage ?? 0) > 0,
+                    orElse: () => allEpisodes.firstWhere(
+                      (e) => !e.isPlayed,
+                      orElse: () => allEpisodes.first,
+                    ),
+                  );
             }
 
-            final targetSeasonId = targetEpisode.seasonId;
-            var queueEpisodes = <AggregatedItem>[targetEpisode];
-            if (targetSeasonId != null && targetSeasonId.isNotEmpty) {
-              try {
-                final seasonData = await client.itemsApi.getEpisodes(
-                  item.id,
-                  seasonId: targetSeasonId,
-                  fields: episodeQueueFields,
-                );
-                final seasonEpisodes = _mapRawItemsForServer(
-                  seasonData['Items'],
-                  item.serverId,
-                );
-                final playableSeasonEpisodes = seasonEpisodes
-                    .where(isEligibleNextEpisodeCandidate)
-                    .toList();
-                if (playableSeasonEpisodes.isNotEmpty) {
-                  queueEpisodes = playableSeasonEpisodes;
-                }
-              } catch (_) {}
-            }
+            final playableSeasonEpisodes = await _seasonQueueContaining(
+              client,
+              seriesId: item.id,
+              serverId: item.serverId,
+              target: targetEpisode,
+              airedEpisodes: allEpisodes,
+              fields: episodeQueueFields,
+            );
+            final queueEpisodes = playableSeasonEpisodes.isNotEmpty
+                ? playableSeasonEpisodes
+                : <AggregatedItem>[targetEpisode];
 
             final startIndex = queueEpisodes.indexWhere(
               (e) => e.id == targetEpisode.id,
             );
             final idx = startIndex >= 0 ? startIndex : 0;
-            final selectedEpisode = queueEpisodes[idx];
-            final seriesQueue = _truncateQueueIfImmediateNextUnplayable(
+            var selectedEpisode = queueEpisodes[idx];
+            selectedEpisode = await _ensureHydrated(selectedEpisode);
+            queueEpisodes[idx] = selectedEpisode;
+
+            final seriesQueue = await _truncateQueueIfImmediateNextUnplayable(
               queueEpisodes,
               startIndex: idx,
             );
@@ -7439,6 +8220,12 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
                 ? (selectedEpisode.playbackPosition ?? Duration.zero)
                 : Duration.zero;
 
+            if (!context.mounted) return;
+            final prerolls = await _prerollsForStart(
+              selectedEpisode,
+              startPosition,
+              useExternalPlayer: useExternalPlayer,
+            );
             if (!context.mounted) return;
             final dvForceTranscode = await _shouldForceTranscodeForDolbyVision(
               context,
@@ -7456,16 +8243,16 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
               item: selectedEpisode,
             );
 
-            await manager.playItems(
-              seriesQueue,
+            await _playQueueWithPrerolls(
+              manager,
+              queue: seriesQueue,
+              prerolls: prerolls,
+              target: selectedEpisode,
               startIndex: idx,
               startPosition: startPosition,
               audioStreamIndex: epAudioStreamIndex,
               subtitleStreamIndex: epSubtitleStreamIndex,
-              audioSelectionExplicit: false,
-              subtitleSelectionExplicit: false,
-              enableDirectPlay: directAllowed,
-              enableDirectStream: directAllowed,
+              directAllowed: directAllowed,
             );
 
           case 'Season':
@@ -7479,14 +8266,25 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
                   )
                 : episodes.indexWhere((e) => !e.isPlayed);
             final idx = startIndex >= 0 ? startIndex : 0;
-            final selectedEpisode = episodes[idx];
-            final seasonQueue = _truncateQueueIfImmediateNextUnplayable(
+            var selectedEpisode = episodes[idx];
+            selectedEpisode = await _ensureHydrated(selectedEpisode);
+            episodes[idx] = selectedEpisode;
+            if (!context.mounted) return;
+
+            final seasonQueue = await _truncateQueueIfImmediateNextUnplayable(
               episodes,
               startIndex: idx,
             );
             final startPosition = resume
                 ? (selectedEpisode.playbackPosition ?? Duration.zero)
                 : Duration.zero;
+            if (!context.mounted) return;
+            final prerolls = await _prerollsForStart(
+              selectedEpisode,
+              startPosition,
+              useExternalPlayer: useExternalPlayer,
+            );
+            if (!context.mounted) return;
             final dvForceTranscode = await _shouldForceTranscodeForDolbyVision(
               context,
               [selectedEpisode],
@@ -7503,27 +8301,28 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
               item: selectedEpisode,
             );
 
-            await manager.playItems(
-              seasonQueue,
+            await _playQueueWithPrerolls(
+              manager,
+              queue: seasonQueue,
+              prerolls: prerolls,
+              target: selectedEpisode,
               startIndex: idx,
               startPosition: startPosition,
               audioStreamIndex: epAudioStreamIndex,
               subtitleStreamIndex: epSubtitleStreamIndex,
-              audioSelectionExplicit: false,
-              subtitleSelectionExplicit: false,
-              enableDirectPlay: directAllowed,
-              enableDirectStream: directAllowed,
+              directAllowed: directAllowed,
             );
 
           case 'Episode':
             var episodes = viewModel.episodes;
             if (episodes.isEmpty || !episodes.any((e) => e.id == item.id)) {
               final seriesId = item.seriesId;
-              final seasonId = item.seasonId;
+              // Matches the list on screen, which for an inlined special is the
+              // season being browsed rather than Specials.
+              final seasonId = viewModel.effectiveSeasonId ?? item.seasonId;
               if (seriesId != null && seriesId.isNotEmpty) {
                 try {
-                  const episodeQueueFields =
-                      'Overview,MediaStreams,MediaSources,RunTimeTicks,Trickplay,UserData,Chapters';
+                  const episodeQueueFields = 'Overview,RunTimeTicks,UserData';
                   final client = _clientForItem(item);
                   final data = await client.itemsApi.getEpisodes(
                     seriesId,
@@ -7549,11 +8348,17 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
                 (e) => e.id == item.id,
               );
               final idx = startIndex >= 0 ? startIndex : 0;
-              final selectedEpisode = playableEpisodes[idx];
-              final episodeQueue = _truncateQueueIfImmediateNextUnplayable(
-                playableEpisodes,
-                startIndex: idx,
-              );
+              var selectedEpisode = playableEpisodes[idx];
+              selectedEpisode = await _ensureHydrated(selectedEpisode);
+              playableEpisodes[idx] = selectedEpisode;
+              if (!context.mounted) return;
+
+              final episodeQueue =
+                  await _truncateQueueIfImmediateNextUnplayable(
+                    playableEpisodes,
+                    startIndex: idx,
+                  );
+              if (!context.mounted) return;
 
               // Fallback to the master item's position context if it's the target episode
               final startPosition = resume
@@ -7563,23 +8368,32 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
                         Duration.zero)
                   : Duration.zero;
 
+              final prerolls = await _prerollsForStart(
+                selectedEpisode,
+                startPosition,
+                useExternalPlayer: useExternalPlayer,
+              );
+              if (!context.mounted) return;
+
               final dvForceTranscode =
                   await _shouldForceTranscodeForDolbyVision(context, [
                     selectedEpisode,
                   ], mediaSourceId: widget.selectedMediaSourceId);
               final directAllowed = !dvForceTranscode && !forceTranscode;
-              await manager.playItems(
-                episodeQueue,
+              await _playQueueWithPrerolls(
+                manager,
+                queue: episodeQueue,
+                prerolls: prerolls,
+                target: selectedEpisode,
                 startIndex: idx,
                 startPosition: startPosition,
                 audioStreamIndex: audioStreamIndex,
                 subtitleStreamIndex: subtitleStreamIndex,
+                mediaSourceId: widget.selectedMediaSourceId,
                 audioSelectionExplicit: viewModel.selectedAudioIndex != null,
                 subtitleSelectionExplicit:
                     viewModel.selectedSubtitleIndex != null,
-                mediaSourceId: widget.selectedMediaSourceId,
-                enableDirectPlay: directAllowed,
-                enableDirectStream: directAllowed,
+                directAllowed: directAllowed,
               );
               break;
             }
@@ -7588,8 +8402,7 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
           case 'BoxSet':
             final playableQueue = await _loadFolderPlayableItemsForShuffle(
               item,
-              fields:
-                  'Overview,MediaStreams,MediaSources,RunTimeTicks,Trickplay,UserData',
+              fields: 'Overview,RunTimeTicks,UserData',
             );
             if (playableQueue.isEmpty) {
               if (context.mounted) {
@@ -7604,43 +8417,16 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
               throw PlaybackStartupRecoveryAbortedException();
             }
 
-            final allWatched = playableQueue.every((e) => e.isPlayed);
-            final allUnwatched = playableQueue.every(
-              (e) =>
-                  !e.isPlayed &&
-                  (e.playbackPosition == null ||
-                      e.playbackPosition == Duration.zero),
+            final (startIndex, startPosition) = _resolveQueueResumeStart(
+              playableQueue,
             );
 
-            int startIndex = 0;
-            Duration startPosition = Duration.zero;
-
-            if (allWatched || allUnwatched) {
-              startIndex = 0;
-              startPosition = Duration.zero;
-            } else {
-              final resumeIndex = playableQueue.indexWhere(
-                (e) =>
-                    !e.isPlayed &&
-                    (e.playbackPosition != null &&
-                        e.playbackPosition! > Duration.zero),
-              );
-              if (resumeIndex >= 0) {
-                startIndex = resumeIndex;
-                startPosition =
-                    playableQueue[resumeIndex].playbackPosition ??
-                    Duration.zero;
-              } else {
-                final nextUnwatchedIndex = playableQueue.indexWhere(
-                  (e) => !e.isPlayed,
-                );
-                startIndex = nextUnwatchedIndex >= 0 ? nextUnwatchedIndex : 0;
-                startPosition = Duration.zero;
-              }
-            }
-
             if (!context.mounted) return;
-            final targetItem = playableQueue[startIndex];
+            var targetItem = playableQueue[startIndex];
+            targetItem = await _ensureHydrated(targetItem);
+            playableQueue[startIndex] = targetItem;
+            if (!context.mounted) return;
+
             final dvForceTranscode = await _shouldForceTranscodeForDolbyVision(
               context,
               [targetItem],
@@ -7701,7 +8487,7 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
                 parentId: item.id,
                 includeItemTypes: const ['Audio'],
                 sortBy: 'ParentIndexNumber,IndexNumber,SortName',
-                fields: 'PrimaryImageAspectRatio,BasicSyncInfo',
+                fields: 'PrimaryImageAspectRatio,BasicSyncInfo,UserData,RunTimeTicks',
               );
               tracks = _mapRawItemsForServer(data['Items'], item.serverId);
             }
@@ -7715,7 +8501,24 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
               }
               throw PlaybackStartupRecoveryAbortedException();
             }
-            await manager.playItems(tracks);
+            int albumStartIndex = 0;
+            if (resume) {
+              final resumeIdx = tracks.indexWhere(
+                (e) =>
+                    !e.isPlayed &&
+                    ((e.playbackPosition?.inMilliseconds ?? 0) > 0 ||
+                        (e.playedPercentage ?? 0) > 0),
+              );
+              if (resumeIdx >= 0) {
+                albumStartIndex = resumeIdx;
+              }
+            }
+            // Music remembers which track was playing but starts it from the
+            // beginning, matching standard music player behavior.
+            await manager.playItems(
+              tracks,
+              startIndex: albumStartIndex,
+            );
             break;
 
           case 'Playlist':
@@ -7736,6 +8539,11 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
               throw PlaybackStartupRecoveryAbortedException();
             }
             if (!context.mounted) return;
+
+            // Start at the first unwatched item, or resume the one left partway
+            // through, instead of always restarting from the top.
+            final (startIndex, startPosition) = _resolveQueueResumeStart(tracks);
+
             // Playlists can contain video, so honor the Dolby Vision
             // force-transcode check before allowing direct play/stream.
             final dvForceTranscode = await _shouldForceTranscodeForDolbyVision(
@@ -7745,6 +8553,8 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
             final directAllowed = !dvForceTranscode && !forceTranscode;
             await manager.playItems(
               tracks,
+              startIndex: startIndex,
+              startPosition: startPosition,
               enableDirectPlay: directAllowed,
               enableDirectStream: directAllowed,
             );
@@ -7753,7 +8563,7 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
           case 'AudioBook':
             final client = _clientForItem(item);
             const audioChildFields =
-                'BasicSyncInfo,PrimaryImageAspectRatio,RunTimeTicks,MediaSources,MediaSourceCount,MediaType,IndexNumber,ParentIndexNumber,Artists,AlbumArtist,Genres,Chapters';
+                'BasicSyncInfo,PrimaryImageAspectRatio,RunTimeTicks,MediaSources,MediaSourceCount,MediaType,IndexNumber,ParentIndexNumber,Artists,AlbumArtist,Genres,Chapters,UserData';
             bool isAudioChild(dynamic e) {
               final childType = e is Map ? e['Type']?.toString() : null;
               return childType == 'Audio' || childType == 'AudioBook';
@@ -7772,8 +8582,31 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
             final rawChildren = (data['Items'] as List?) ?? const [];
             final childItems = rawChildren.where(isAudioChild).toList();
             if (childItems.isNotEmpty) {
+              final children = _mapRawItemsForServer(childItems, item.serverId);
+              int startIndex = 0;
+              Duration startPos = Duration.zero;
+              if (resume) {
+                final resumeIdx = children.indexWhere(
+                  (e) =>
+                      !e.isPlayed &&
+                      ((e.playbackPosition?.inMilliseconds ?? 0) > 0 ||
+                          (e.playedPercentage ?? 0) > 0),
+                );
+                if (resumeIdx >= 0) {
+                  startIndex = resumeIdx;
+                  startPos =
+                      children[resumeIdx].playbackPosition ?? Duration.zero;
+                } else {
+                  final nextUnplayed = children.indexWhere((e) => !e.isPlayed);
+                  if (nextUnplayed >= 0) {
+                    startIndex = nextUnplayed;
+                  }
+                }
+              }
               await manager.playItems(
-                _mapRawItemsForServer(childItems, item.serverId),
+                children,
+                startIndex: startIndex,
+                startPosition: startPos,
               );
               break;
             }
@@ -7795,7 +8628,17 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
               );
               final startIndex = siblings.indexWhere((t) => t.id == item.id);
               if (siblings.isNotEmpty && startIndex >= 0) {
-                await manager.playItems(siblings, startIndex: startIndex);
+                final targetSibling = siblings[startIndex];
+                final startPos = resume
+                    ? (targetSibling.playbackPosition ??
+                        item.playbackPosition ??
+                        Duration.zero)
+                    : Duration.zero;
+                await manager.playItems(
+                  siblings,
+                  startIndex: startIndex,
+                  startPosition: startPos,
+                );
                 break;
               }
             }
@@ -7807,59 +8650,33 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
             final startPosition = resume
                 ? (item.playbackPosition ?? Duration.zero)
                 : Duration.zero;
-            final prerolls = useExternalPlayer
-                ? const <AggregatedItem>[]
-                : await _moviePrerollsForStart(item, startPosition);
+            final prerolls = await _prerollsForStart(
+              item,
+              startPosition,
+              useExternalPlayer: useExternalPlayer,
+            );
             if (!context.mounted) return;
-            final applyMainItemStreamOverrides = prerolls.isEmpty;
             final selectedMediaSourceId = widget.selectedMediaSourceId;
-            final hasMainItemStreamOverrides =
-                audioStreamIndex != null ||
-                subtitleStreamIndex != null ||
-                (selectedMediaSourceId != null &&
-                    selectedMediaSourceId.isNotEmpty);
-            final queue = prerolls.isEmpty
-                ? <AggregatedItem>[item]
-                : <AggregatedItem>[...prerolls, item];
             final dvForceTranscode =
                 !isAudio &&
                 await _shouldForceTranscodeForDolbyVision(context, [
                   item,
                 ], mediaSourceId: selectedMediaSourceId);
             final directAllowed = !dvForceTranscode && !forceTranscode;
-            final playItemsFuture = manager.playItems(
-              queue,
+            await _playQueueWithPrerolls(
+              manager,
+              queue: <AggregatedItem>[item],
+              prerolls: prerolls,
+              target: item,
               startPosition: startPosition,
-              audioStreamIndex: applyMainItemStreamOverrides
-                  ? audioStreamIndex
-                  : null,
-              subtitleStreamIndex: applyMainItemStreamOverrides
-                  ? subtitleStreamIndex
-                  : null,
-              audioSelectionExplicit:
-                  applyMainItemStreamOverrides &&
-                  viewModel.selectedAudioIndex != null,
+              audioStreamIndex: audioStreamIndex,
+              subtitleStreamIndex: subtitleStreamIndex,
+              mediaSourceId: selectedMediaSourceId,
+              audioSelectionExplicit: viewModel.selectedAudioIndex != null,
               subtitleSelectionExplicit:
-                  applyMainItemStreamOverrides &&
                   viewModel.selectedSubtitleIndex != null,
-              mediaSourceId: applyMainItemStreamOverrides
-                  ? selectedMediaSourceId
-                  : null,
-              enableDirectPlay: directAllowed,
-              enableDirectStream: directAllowed,
+              directAllowed: directAllowed,
             );
-            if (!applyMainItemStreamOverrides && hasMainItemStreamOverrides) {
-              manager.setPendingItemOverrides(
-                itemId: item.id,
-                audioStreamIndex: audioStreamIndex,
-                subtitleStreamIndex: subtitleStreamIndex,
-                mediaSourceId: selectedMediaSourceId,
-                audioSelectionExplicit: viewModel.selectedAudioIndex != null,
-                subtitleSelectionExplicit:
-                    viewModel.selectedSubtitleIndex != null,
-              );
-            }
-            await playItemsFuture;
         }
       },
     );
@@ -7882,10 +8699,14 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
     final playableQueue = queue
         .where((e) => isEligibleNextEpisodeCandidate(e) || e.id == item.id)
         .toList();
-    if (playableQueue.length < 2) return;
+    if (playableQueue.isEmpty) return;
     if (!context.mounted) return;
 
     final shuffled = List<AggregatedItem>.from(playableQueue)..shuffle();
+    if (shuffled.isNotEmpty) {
+      shuffled[0] = await _ensureHydrated(shuffled.first);
+    }
+    if (!context.mounted) return;
     final isAudio = shuffled.every((queuedItem) {
       final mediaType = queuedItem.rawData['MediaType'] as String?;
       return queuedItem.type == 'Audio' || mediaType == 'Audio';
@@ -7916,7 +8737,29 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
     );
   }
 
-  Future<void> _castToDevice(BuildContext context, AggregatedItem item) {
+  Future<void> _castToDevice(BuildContext context, AggregatedItem item) async {
+    // A series, season or box set carries no media sources of its own, and
+    // asking the server for PlaybackInfo on one fails with a 500. Cast
+    // whatever the play button would play instead.
+    if (item.mediaSources.isEmpty) {
+      final nextUp = widget.viewModel.nextUp;
+      if (nextUp == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppLocalizations.of(context).failedToLoad)),
+        );
+        return;
+      }
+      final resumeTicks = nextUp.playbackPosition == null
+          ? null
+          : nextUp.playbackPosition!.inMicroseconds * 10;
+      await showRemotePlayToSessionDialog(
+        context,
+        item: nextUp,
+        startPositionTicks: resumeTicks,
+      );
+      return;
+    }
+
     final mediaStreams = _mediaStreamsForCurrentSelection(item);
     final audioStreams = mediaStreams
         .where((s) => s['Type'] == 'Audio')
@@ -7933,7 +8776,7 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
     final positionTicks = item.playbackPosition == null
         ? null
         : item.playbackPosition!.inMicroseconds * 10;
-    return showRemotePlayToSessionDialog(
+    await showRemotePlayToSessionDialog(
       context,
       item: item,
       startPositionTicks: positionTicks,
@@ -8525,14 +9368,11 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
       if (streamIndex != null) {
         setState(() => _selectedSubtitleIndex = streamIndex);
         if (item.type == 'Episode' && item.seriesId != null) {
-          final selectedStream = streams.firstWhere(
-            (s) => s['Index'] == streamIndex,
-            orElse: () => <String, dynamic>{},
+          final pref = createSeriesTrackPreferenceFromStream(
+            streams: streams,
+            selectedIndex: streamIndex,
           );
-          final language = selectedStream.isEmpty
-              ? 'none'
-              : (selectedStream['Language'] as String? ?? '');
-          await prefs.setSeriesSubtitleLanguage(item.seriesId!, language);
+          await prefs.setSeriesSubtitlePreference(item.seriesId!, pref);
         }
       }
     }
@@ -8613,6 +9453,8 @@ List<Map<String, dynamic>> mediaStreamsForItem(
 bool _allowDolbyVisionProfile7ElDirectPlay(UserPreferences prefs) {
   return KnownDefects.shouldAllowDolbyVisionProfile7ElDirectPlay(
     behavior: prefs.get(UserPreferences.dolbyVisionProfile7DirectPlayBehavior),
+    hasHardwareDolbyVisionDecoder: PlatformDetection.supportsHevcDolbyVision,
+    hasDoviCompat: PlatformDetection.isAndroid,
   );
 }
 
@@ -9258,9 +10100,15 @@ class _DownloadButtonState extends State<_DownloadButton> {
         if (progress != null &&
             !progress.isComplete &&
             progress.error == null) {
-          final label = progress.progress >= 0
+          // Transcoded downloads on the native engine report no byte counts,
+          // so show an ellipsis rather than a misleading "0.0 MB".
+          final label = progress.isFinalizing
+              ? AppLocalizations.of(context).finalizingDownload
+              : progress.progress >= 0
               ? '${(progress.progress * 100).toInt()}%'
-              : '${(progress.bytesReceived / 1048576).toStringAsFixed(1)} MB';
+              : progress.bytesReceived > 0
+              ? '${(progress.bytesReceived / 1048576).toStringAsFixed(1)} MB'
+              : '…';
           return wire(
             label: label,
             icon: Icons.close,
@@ -9699,7 +10547,8 @@ class _DetailActionButtonState extends State<_DetailActionButton>
       // so the pill always has enough room for labels like "Resume S12:E24".
       // Flexible in the parent Row lets the pill grow beyond the minimum.
       final Widget pill;
-      if (isExpanded || fullWidth) {
+      final shouldExpand = isExpanded || fullWidth || isMobile;
+      if (shouldExpand) {
         final pillInner = Container(
           height: height,
           width: fullWidth ? double.infinity : null,
@@ -9711,7 +10560,7 @@ class _DetailActionButtonState extends State<_DetailActionButton>
           decoration: BoxDecoration(
             color: showHighlight
                 ? AppColorScheme.buttonFocused
-                : Colors.white.withValues(alpha: 0.06),
+                : AppColorScheme.accent,
             borderRadius: AppRadius.circular(height / 2),
             border: Border.all(
               color: showHighlight ? focusColor : Colors.transparent,
@@ -9788,7 +10637,7 @@ class _DetailActionButtonState extends State<_DetailActionButton>
               height: height,
               width: height,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.06),
+                color: AppColorScheme.accent,
                 borderRadius: AppRadius.circular(height / 2),
                 border: Border.all(color: Colors.transparent, width: 3),
               ),
@@ -10258,6 +11107,7 @@ class DetailCastRow extends StatelessWidget {
           final personId = person['Id']?.toString();
           final tag = person['PrimaryImageTag'] as String?;
 
+          final profilePath = person['ProfilePath'] as String?;
           String? imageUrl;
           if (personId != null && tag != null) {
             imageUrl = imageApi.getPrimaryImageUrl(
@@ -10265,6 +11115,8 @@ class DetailCastRow extends StatelessWidget {
               maxHeight: isMobile ? 140 : (200 * desktopScale).round(),
               tag: tag,
             );
+          } else if (profilePath != null && profilePath.isNotEmpty) {
+            imageUrl = '$seerrProfileBase$profilePath';
           }
 
           return _CastPersonCard(
@@ -10279,11 +11131,15 @@ class DetailCastRow extends StatelessWidget {
             onKeyEvent: onItemKeyEvent == null
                 ? null
                 : (event) => onItemKeyEvent!(index, event),
-            onTap: personId != null
-                ? () => context.push(
-                    Destinations.item(personId, serverId: serverId),
-                  )
-                : null,
+            onTap: personId == null
+                ? null
+                : () => context.push(
+                      // A person who only exists in Seerr has a TMDB id, which
+                      // the library wouldn't know what to do with.
+                      serverId == 'seerr'
+                          ? Destinations.seerrPerson(personId)
+                          : Destinations.item(personId, serverId: serverId),
+                    ),
           );
         },
       ),
@@ -11493,6 +12349,77 @@ class _EpisodeProgressBar extends StatelessWidget {
   }
 }
 
+/// The request slot for one quality track: Request or Request More, and
+/// nothing when there is nothing left to ask for on that track.
+Widget? _seerrRequestButton(
+  BuildContext context,
+  SeerrMediaDetailViewModel? seerr,
+  AppLocalizations l10n, {
+  required bool is4k,
+  bool qualityToggle = false,
+  bool isPrimary = false,
+  FocusNode? focusNode,
+  bool autofocus = false,
+}) {
+  if (seerr == null) return null;
+  // A series counts as continuing until it has settled. An unknown status
+  // stays false, so a lookup that found nothing never opens the button.
+  final status = (seerr.state.tv?.status ?? '').toLowerCase();
+  final isContinuing =
+      status.isNotEmpty && status != 'ended' && status != 'canceled';
+  final action = seerrRequestActionFor(
+    seerr.state.quality(is4k: is4k),
+    l10n,
+    allowed: is4k ? seerr.canRequest4k : seerr.canRequest,
+    isTv: seerr.state.isTv,
+    isContinuing: isContinuing,
+  );
+  if (action.kind != SeerrRequestActionKind.request) return null;
+  return _DetailActionButton(
+    label: action.label,
+    icon: Icons.add,
+    isPrimary: isPrimary,
+    focusNode: focusNode,
+    autofocus: autofocus,
+    onPressed: () => showSeerrRequestDialog(
+      context: context,
+      vm: seerr,
+      is4k: is4k,
+      qualityToggle: qualityToggle,
+      isContinuing: isContinuing,
+    ),
+  );
+}
+
+/// Takes this track's open request back. Rides in the same arrangement slot
+/// as the track's request button, so an open request on a partially available
+/// series shows Request More and Cancel Request side by side.
+Widget? _seerrCancelButton(
+  BuildContext context,
+  SeerrMediaDetailViewModel? seerr,
+  AppLocalizations l10n, {
+  required bool is4k,
+  bool isPrimary = false,
+  FocusNode? focusNode,
+  bool autofocus = false,
+}) {
+  if (seerr == null) return null;
+  final label = seerrCancelLabelFor(seerr.state.quality(is4k: is4k), l10n);
+  if (label == null) return null;
+  return _DetailActionButton(
+    label: label,
+    icon: Icons.close,
+    isPrimary: isPrimary,
+    focusNode: focusNode,
+    autofocus: autofocus,
+    onPressed: () => showSeerrCancelRequestDialog(
+      context: context,
+      vm: seerr,
+      is4k: is4k,
+    ),
+  );
+}
+
 class DetailSeasonsRow extends StatelessWidget {
   final List<AggregatedItem> seasons;
   final ImageApi imageApi;
@@ -11502,6 +12429,15 @@ class DetailSeasonsRow extends StatelessWidget {
   final KeyEventResult Function(int index, KeyEvent event)? onItemKeyEvent;
   final void Function(AggregatedItem item)? onItemLongPress;
 
+  /// Season number to Seerr media status. Drawn in the top left rather than
+  /// through MediaCard's own `seerrStatus`, which would take the top right
+  /// corner from the watched checkmark.
+  final Map<int, int>? seerrSeasonStatus;
+
+  /// Replaces opening the season, for a series with no season to open because
+  /// it is not in the library.
+  final void Function(int seasonNumber)? onSeasonTap;
+
   const DetailSeasonsRow({
     required this.seasons,
     required this.imageApi,
@@ -11510,6 +12446,8 @@ class DetailSeasonsRow extends StatelessWidget {
     this.firstItemFocusNode,
     this.onItemKeyEvent,
     this.onItemLongPress,
+    this.seerrSeasonStatus,
+    this.onSeasonTap,
   });
 
   @override
@@ -11533,6 +12471,8 @@ class DetailSeasonsRow extends StatelessWidget {
             SizedBox(width: isMobile ? 8 : 12 * desktopScale),
         itemBuilder: (context, index) {
           final season = seasons[index];
+          final seerrStatus = seerrSeasonStatus?[season.indexNumber];
+          final hasSeerrDot = SeerrMediaStatus.hasDot(seerrStatus);
           return MediaCard(
             title: season.name,
             subtitle: _progressText(season),
@@ -11543,6 +12483,15 @@ class DetailSeasonsRow extends StatelessWidget {
             imageUrl: _seasonImageUrl(season, isMobile: isMobile),
             width: cardWidth,
             aspectRatio: 2 / 3,
+            overlayOccupiesTopLeft: hasSeerrDot,
+            imageOverlays: [
+              if (hasSeerrDot)
+                Positioned(
+                  top: 6,
+                  left: 6,
+                  child: SeerrStatusDot(status: seerrStatus, size: 18),
+                ),
+            ],
             focusColor: isNeon
                 ? AppColorScheme.accent
                 : Color(prefs.get(UserPreferences.focusColor).colorValue),
@@ -11556,9 +12505,11 @@ class DetailSeasonsRow extends StatelessWidget {
             onKeyEvent: onItemKeyEvent == null
                 ? null
                 : (_, event) => onItemKeyEvent!(index, event),
-            onTap: () => context.push(
-              Destinations.item(season.id, serverId: season.serverId),
-            ),
+            onTap: onSeasonTap != null
+                ? () => onSeasonTap!(season.indexNumber ?? 0)
+                : () => context.push(
+                      Destinations.item(season.id, serverId: season.serverId),
+                    ),
             onLongPress: onItemLongPress != null
                 ? () => onItemLongPress!(season)
                 : null,
@@ -11630,6 +12581,10 @@ class _EpisodesRow extends StatelessWidget {
   final KeyEventResult Function(int index, KeyEvent event)? onItemKeyEvent;
   final VoidCallback? onChanged;
 
+  /// The season these episodes are listed under — see
+  /// [DetailEpisodeCard.contextSeasonId].
+  final String? contextSeasonId;
+
   const _EpisodesRow({
     required this.episodes,
     required this.currentEpisodeId,
@@ -11638,6 +12593,7 @@ class _EpisodesRow extends StatelessWidget {
     this.firstItemFocusNode,
     this.onItemKeyEvent,
     this.onChanged,
+    this.contextSeasonId,
   });
 
   @override
@@ -11677,6 +12633,7 @@ class _EpisodesRow extends StatelessWidget {
                 ? null
                 : (event) => onItemKeyEvent!(index, event),
             onChanged: onChanged,
+            contextSeasonId: contextSeasonId,
           );
         },
       ),
@@ -11693,6 +12650,10 @@ class _EpisodeListCard extends StatefulWidget {
   final KeyEventResult Function(KeyEvent event)? onKeyEvent;
   final VoidCallback? onChanged;
 
+  /// The season this card is listed under — see
+  /// [DetailEpisodeCard.contextSeasonId].
+  final String? contextSeasonId;
+
   const _EpisodeListCard({
     required this.episode,
     required this.isCurrent,
@@ -11701,6 +12662,7 @@ class _EpisodeListCard extends StatefulWidget {
     this.focusNode,
     this.onKeyEvent,
     this.onChanged,
+    this.contextSeasonId,
   });
 
   @override
@@ -11719,6 +12681,19 @@ class _EpisodeListCardState extends State<_EpisodeListCard>
 
   void _handleLongPress() {
     showContextMenu(context, widget.episode, onChanged: widget.onChanged);
+  }
+
+  void _open() {
+    context.push(
+      Destinations.item(
+        widget.episode.id,
+        serverId: widget.episode.serverId,
+        seasonContext: seasonContextParam(
+          contextSeasonId: widget.contextSeasonId,
+          episodeSeasonId: widget.episode.seasonId,
+        ),
+      ),
+    );
   }
 
   @override
@@ -11753,8 +12728,7 @@ class _EpisodeListCardState extends State<_EpisodeListCard>
           }
           final handlerResult = _selectKeyHandler.handleKeyEvent(
             event,
-            onTap: () =>
-                context.push(Destinations.item(ep.id, serverId: ep.serverId)),
+            onTap: _open,
             onLongPress: _handleLongPress,
           );
           if (handlerResult != KeyEventResult.ignored) {
@@ -11763,8 +12737,7 @@ class _EpisodeListCardState extends State<_EpisodeListCard>
           return KeyEventResult.ignored;
         },
         child: GestureDetector(
-          onTap: () =>
-              context.push(Destinations.item(ep.id, serverId: ep.serverId)),
+          onTap: _open,
           onLongPress: _handleLongPress,
           onSecondaryTap: _handleLongPress,
           child: Container(
@@ -11916,11 +12889,16 @@ class DetailNextUpCard extends StatefulWidget {
   final FocusNode? focusNode;
   final KeyEventResult Function(KeyEvent event)? onKeyEvent;
 
+  /// The season this card is listed under — see
+  /// [DetailEpisodeCard.contextSeasonId].
+  final String? contextSeasonId;
+
   const DetailNextUpCard({
     required this.episode,
     required this.imageApi,
     this.focusNode,
     this.onKeyEvent,
+    this.contextSeasonId,
   });
 
   @override
@@ -11929,6 +12907,19 @@ class DetailNextUpCard extends StatefulWidget {
 
 class DetailNextUpCardState extends State<DetailNextUpCard>
     with FocusStateMixin {
+  void _open() {
+    context.push(
+      Destinations.item(
+        widget.episode.id,
+        serverId: widget.episode.serverId,
+        seasonContext: seasonContextParam(
+          contextSeasonId: widget.contextSeasonId,
+          episodeSeasonId: widget.episode.seasonId,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final episode = widget.episode;
@@ -11962,17 +12953,13 @@ class DetailNextUpCardState extends State<DetailNextUpCard>
             return customResult;
           }
           if (isActivateKey(event)) {
-            context.push(
-              Destinations.item(episode.id, serverId: episode.serverId),
-            );
+            _open();
             return KeyEventResult.handled;
           }
           return KeyEventResult.ignored;
         },
         child: GestureDetector(
-          onTap: () => context.push(
-            Destinations.item(episode.id, serverId: episode.serverId),
-          ),
+          onTap: _open,
           child: AnimatedScale(
             scale: cardExpansion && showFocusBorder ? 1.02 : 1.0,
             duration: const Duration(milliseconds: 120),
@@ -12091,6 +13078,10 @@ class DetailEpisodeCard extends StatefulWidget {
   final FocusNode? focusNode;
   final FocusOnKeyEventCallback? onKeyEvent;
 
+  /// The season this card is listed under, forwarded so an inlined special
+  /// opens in the season the viewer is browsing instead of Specials.
+  final String? contextSeasonId;
+
   final bool isActive;
 
   const DetailEpisodeCard({
@@ -12099,6 +13090,7 @@ class DetailEpisodeCard extends StatefulWidget {
     this.onChanged,
     this.focusNode,
     this.onKeyEvent,
+    this.contextSeasonId,
     this.isActive = false,
   });
 
@@ -12118,6 +13110,19 @@ class DetailEpisodeCardState extends State<DetailEpisodeCard>
 
   void _handleLongPress() {
     showContextMenu(context, widget.episode, onChanged: widget.onChanged);
+  }
+
+  void _open() {
+    context.push(
+      Destinations.item(
+        widget.episode.id,
+        serverId: widget.episode.serverId,
+        seasonContext: seasonContextParam(
+          contextSeasonId: widget.contextSeasonId,
+          episodeSeasonId: widget.episode.seasonId,
+        ),
+      ),
+    );
   }
 
   @override
@@ -12157,9 +13162,7 @@ class DetailEpisodeCardState extends State<DetailEpisodeCard>
           }
           final handlerResult = _selectKeyHandler.handleKeyEvent(
             event,
-            onTap: () => context.push(
-              Destinations.item(episode.id, serverId: episode.serverId),
-            ),
+            onTap: _open,
             onLongPress: _handleLongPress,
           );
           if (handlerResult != KeyEventResult.ignored) {
@@ -12168,9 +13171,7 @@ class DetailEpisodeCardState extends State<DetailEpisodeCard>
           return KeyEventResult.ignored;
         },
         child: GestureDetector(
-          onTap: () => context.push(
-            Destinations.item(episode.id, serverId: episode.serverId),
-          ),
+          onTap: _open,
           onLongPress: _handleLongPress,
           onSecondaryTap: _handleLongPress,
           child: AnimatedScale(
@@ -12593,7 +13594,9 @@ class ExpandableBiography extends StatefulWidget {
 class _ExpandableBiographyState extends State<ExpandableBiography> {
   bool _expanded = false;
   bool _focused = false;
-  static const double _contentHorizontalPadding = 8;
+  // Tracks the padding the toggle container puts around the text, so the
+  // measurement runs against the width the text actually gets.
+  static const double _contentHorizontalPadding = 12;
   final ScrollController _scrollbarController = ScrollController();
 
   @override
@@ -12654,6 +13657,10 @@ class _ExpandableBiographyState extends State<ExpandableBiography> {
       text: TextSpan(text: widget.text, style: style),
       maxLines: limit,
       textDirection: TextDirection.ltr,
+      // UI scaling arrives as a text scaler, so measuring without it reads
+      // short at the larger sizes and the text ends up clipped with no way to
+      // expand it.
+      textScaler: MediaQuery.textScalerOf(context),
     )..layout(maxWidth: maxWidth);
     return tp.didExceedMaxLines;
   }
@@ -13066,8 +14073,10 @@ class SeerrAppearancesRow extends StatelessWidget {
             onTap: () {
               final mediaType = item.mediaType ?? 'movie';
               context.push(
-                Destinations.seerrMedia(item.id.toString()),
-                extra: {'mediaType': mediaType},
+                Destinations.seerrMedia(
+                  item.id.toString(),
+                  mediaType: mediaType,
+                ),
               );
             },
           );
@@ -13148,8 +14157,10 @@ class SeerrCrewCreditsRow extends StatelessWidget {
             onTap: () {
               final mediaType = item.mediaType ?? 'movie';
               context.push(
-                Destinations.seerrMedia(item.id.toString()),
-                extra: {'mediaType': mediaType},
+                Destinations.seerrMedia(
+                  item.id.toString(),
+                  mediaType: mediaType,
+                ),
               );
             },
           );
@@ -13650,6 +14661,7 @@ class DetailTrackList extends StatelessWidget {
   final ValueChanged<int>? onMoveUp;
   final ValueChanged<int>? onMoveDown;
   final bool isPlaylist;
+  final bool showAlbum;
   final ImageApi? imageApi;
 
   const DetailTrackList({
@@ -13666,6 +14678,7 @@ class DetailTrackList extends StatelessWidget {
     this.onMoveUp,
     this.onMoveDown,
     this.isPlaylist = false,
+    this.showAlbum = false,
     this.imageApi,
   });
 
@@ -13681,7 +14694,7 @@ class DetailTrackList extends StatelessWidget {
         itemBuilder: (context, index) {
           final track = tracks[index];
           final keyId = track.rawData['PlaylistItemId']?.toString() ?? track.id;
-          return _TrackTile(
+          return TrackTile(
             key: ValueKey('playlist-track-$keyId'),
             track: track,
             focusNode: getFocusNode(track.id),
@@ -13700,6 +14713,7 @@ class DetailTrackList extends StatelessWidget {
             onMoveDown: onMoveDown,
             isAudiobook: isAudiobook,
             isPlaylist: isPlaylist,
+            showAlbum: showAlbum,
             imageApi: imageApi,
           );
         },
@@ -13733,7 +14747,7 @@ class DetailTrackList extends StatelessWidget {
       }
 
       children.add(
-        _TrackTile(
+        TrackTile(
           track: track,
           focusNode: getFocusNode(track.id),
           onArrowUp: index == 0 ? onFirstTrackUp : null,
@@ -13751,6 +14765,7 @@ class DetailTrackList extends StatelessWidget {
           onMoveDown: onMoveDown,
           isAudiobook: isAudiobook,
           isPlaylist: isPlaylist,
+          showAlbum: showAlbum,
           imageApi: imageApi,
         ),
       );
@@ -13762,13 +14777,14 @@ class DetailTrackList extends StatelessWidget {
   }
 }
 
-class _TrackTile extends StatefulWidget {
+class TrackTile extends StatefulWidget {
   final AggregatedItem track;
   final FocusNode? focusNode;
   final VoidCallback? onFocused;
   final VoidCallback? onArrowUp;
   final bool isAudiobook;
   final bool isPlaylist;
+  final bool showAlbum;
   final ImageApi? imageApi;
   final int index;
   final int currentIndex;
@@ -13780,7 +14796,7 @@ class _TrackTile extends StatefulWidget {
   final ValueChanged<int>? onMoveUp;
   final ValueChanged<int>? onMoveDown;
 
-  const _TrackTile({
+  const TrackTile({
     super.key,
     required this.track,
     this.focusNode,
@@ -13788,6 +14804,7 @@ class _TrackTile extends StatefulWidget {
     this.onArrowUp,
     this.isAudiobook = false,
     this.isPlaylist = false,
+    this.showAlbum = false,
     this.imageApi,
     required this.index,
     required this.currentIndex,
@@ -13801,10 +14818,10 @@ class _TrackTile extends StatefulWidget {
   });
 
   @override
-  State<_TrackTile> createState() => _TrackTileState();
+  State<TrackTile> createState() => _TrackTileState();
 }
 
-class _TrackTileState extends State<_TrackTile> with FocusStateMixin {
+class _TrackTileState extends State<TrackTile> with FocusStateMixin {
   Timer? _selectLongPressTimer;
   bool _selectLongPressTriggered = false;
 
@@ -13936,6 +14953,15 @@ class _TrackTileState extends State<_TrackTile> with FocusStateMixin {
             final artistText = widget.track.artists.isNotEmpty
                 ? widget.track.artists.join(', ')
                 : widget.track.albumArtist ?? '';
+            if (widget.showAlbum) {
+              final albumText = widget.track.album ?? widget.track.rawData['Album'] as String?;
+              if (albumText != null && albumText.isNotEmpty) {
+                if (artistText.isNotEmpty) {
+                  return '$albumText • $artistText';
+                }
+                return albumText;
+              }
+            }
             return artistText.isNotEmpty ? artistText : null;
           }();
 
@@ -13997,17 +15023,55 @@ class _TrackTileState extends State<_TrackTile> with FocusStateMixin {
         ),
         child: ClipRRect(
           borderRadius: AppRadius.circular(2.5),
-          child: OfflineAwareImage(
-            imageUrl: imageUrl,
-            fit: fit,
-            errorWidget: (context, url, error) => Container(
-              color: Colors.white.withValues(alpha: 0.05),
-              child: const Icon(
-                Icons.movie_outlined,
-                color: Colors.white24,
-                size: 16,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              OfflineAwareImage(
+                imageUrl: imageUrl,
+                fit: fit,
+                errorWidget: (context, url, error) => Container(
+                  color: Colors.white.withValues(alpha: 0.05),
+                  child: const Icon(
+                    Icons.movie_outlined,
+                    color: Colors.white24,
+                    size: 16,
+                  ),
+                ),
               ),
-            ),
+              if (widget.track.isPlayed)
+                Positioned(
+                  top: 2,
+                  right: 2,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: AppColorScheme.accent,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Padding(
+                      padding: EdgeInsets.all(2),
+                      child: AdaptiveIcon(
+                        Icons.check,
+                        color: Colors.white,
+                        size: 9,
+                      ),
+                    ),
+                  ),
+                )
+              else if ((widget.track.playedPercentage ?? 0) > 0)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: LinearProgressIndicator(
+                    value: widget.track.playedPercentage! / 100.0,
+                    minHeight: 3,
+                    backgroundColor: Colors.black54,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      AppColorScheme.accent,
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
       );

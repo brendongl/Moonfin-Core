@@ -66,6 +66,7 @@ class NativeCastChannel {
     required String targetId,
     required String streamUrl,
     required String title,
+    String? contentType,
     String? subtitle,
     String? posterUrl,
     List<Map<String, dynamic>>? queueItems,
@@ -77,6 +78,7 @@ class NativeCastChannel {
     await _channel.invokeMethod<void>('startGoogleCastSession', {
       'targetId': targetId,
       'streamUrl': streamUrl,
+      'contentType': ?contentType,
       'title': title,
       'subtitle': ?subtitle,
       'posterUrl': ?posterUrl,

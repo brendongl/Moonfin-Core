@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../theme/vibrance.dart';
 import 'image_source.dart';
 
 /// A [CachedNetworkImage] whose decoded pixel width is bounded to the
@@ -17,6 +18,7 @@ class BoundedNetworkImage extends StatelessWidget {
   final Duration fadeInDuration;
   final Widget Function(BuildContext context, String url, Object error)?
       errorBuilder;
+  final VoidCallback? onLoadFinished;
 
   /// Multiplier applied to the resolved width before clamping. Useful for
   /// blurred images where a low-resolution decode is acceptable.
@@ -35,6 +37,7 @@ class BoundedNetworkImage extends StatelessWidget {
     this.alignment = Alignment.center,
     this.fadeInDuration = Duration.zero,
     this.errorBuilder,
+    this.onLoadFinished,
     this.scale = 1.0,
     this.minWidth = 64,
     this.maxWidth = 1024,
@@ -87,6 +90,10 @@ class BoundedNetworkImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dpr = MediaQuery.devicePixelRatioOf(context);
+    return Vibrance.wrap(_buildImage(context, dpr));
+  }
+
+  Widget _buildImage(BuildContext context, double dpr) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final cacheW = _cacheWidthFor(
@@ -102,10 +109,21 @@ class BoundedNetworkImage extends StatelessWidget {
             fit: fit,
             alignment: alignment,
             cacheWidth: cacheW,
-            errorBuilder: errorBuilder == null
+            frameBuilder: onLoadFinished == null
                 ? null
-                : (context, error, stackTrace) =>
-                    errorBuilder!(context, imageUrl, error),
+                : (context, child, frame, wasSynchronouslyLoaded) {
+                    if (frame != null || wasSynchronouslyLoaded) {
+                      _notifyLoadFinished();
+                    }
+                    return child;
+                  },
+            errorBuilder: errorBuilder == null && onLoadFinished == null
+                ? null
+                : (context, error, stackTrace) {
+                    _notifyLoadFinished();
+                    return errorBuilder?.call(context, imageUrl, error) ??
+                        const SizedBox.shrink();
+                  },
           );
         }
         return CachedNetworkImage(
@@ -114,11 +132,39 @@ class BoundedNetworkImage extends StatelessWidget {
           alignment: alignment,
           fadeInDuration: fadeInDuration,
           memCacheWidth: cacheW,
-          errorWidget: errorBuilder == null
+          imageBuilder: onLoadFinished == null
               ? null
-              : (context, url, error) => errorBuilder!(context, url, error),
+              : (context, imageProvider) {
+                  _notifyLoadFinished();
+                  // CachedNetworkImage hands this builder the unwrapped
+                  // provider, so memCacheWidth above never reaches it and the
+                  // bound has to be applied again or the decode runs at the
+                  // full source size.
+                  return Image(
+                    image: ResizeImage.resizeIfNeeded(
+                      cacheW,
+                      null,
+                      imageProvider,
+                    ),
+                    fit: fit,
+                    alignment: alignment,
+                  );
+                },
+          errorWidget: errorBuilder == null && onLoadFinished == null
+              ? null
+              : (context, url, error) {
+                  _notifyLoadFinished();
+                  return errorBuilder?.call(context, url, error) ??
+                      const SizedBox.shrink();
+                },
         );
       },
     );
+  }
+
+  void _notifyLoadFinished() {
+    final callback = onLoadFinished;
+    if (callback == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) => callback());
   }
 }

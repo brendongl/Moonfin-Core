@@ -12,6 +12,7 @@ import 'cast_provider.dart';
 import 'cast_target.dart';
 import 'cast_transport_controls.dart';
 import 'native_cast_channel.dart';
+import 'receiver_device_profiles.dart';
 
 class GoogleCastProvider implements CastProvider, CastTransportControls {
   final NativeCastChannel _native;
@@ -28,16 +29,44 @@ class GoogleCastProvider implements CastProvider, CastTransportControls {
     };
   }
 
-  Future<String> _streamUrlForItem(
+  Future<StreamResolutionResult> _resolveForItem(
     MediaServerClient client,
-    AggregatedItem item,
-    {String? mediaSourceId,}
-  ) async {
-    final resolution = await _resolverForClient(client).resolve(
+    AggregatedItem item, {
+    String? mediaSourceId,
+    int? audioStreamIndex,
+    int? subtitleStreamIndex,
+  }) {
+    // An explicit track pick forces a transcode so the server applies it,
+    // since the receiver has no track selection of its own.
+    final hasExplicitIndices =
+        audioStreamIndex != null || subtitleStreamIndex != null;
+    return _resolverForClient(client).resolve(
       item,
+      deviceProfile: chromecastDeviceProfile(),
       mediaSourceId: mediaSourceId,
+      audioStreamIndex: audioStreamIndex,
+      subtitleStreamIndex: subtitleStreamIndex,
+      enableDirectPlay: !hasExplicitIndices,
+      enableDirectStream: !hasExplicitIndices,
     );
-    return resolution.streamUrl;
+  }
+
+  // The receiver picks its player from the MIME type, since the stream URL
+  // carries no file extension to go on.
+  String _contentTypeFor(StreamResolutionResult resolution) {
+    if (resolution.playMethod == StreamPlayMethod.transcode ||
+        resolution.streamUrl.contains('.m3u8')) {
+      return 'application/x-mpegURL';
+    }
+    final container =
+        resolution.container?.split(',').first.trim().toLowerCase();
+    return container == 'webm' ? 'video/webm' : 'video/mp4';
+  }
+
+  String? _posterUrlFor(MediaServerClient client, AggregatedItem item) {
+    final tag = item.primaryImageTag;
+    if (tag == null || tag.isEmpty) return null;
+    return client.imageApi.getPrimaryImageUrl(item.id, maxWidth: 800, tag: tag);
   }
 
   @override
@@ -72,24 +101,30 @@ class GoogleCastProvider implements CastProvider, CastTransportControls {
   }) async {
     final client =
         _clientFactory.getClientIfExists(item.serverId) ?? GetIt.instance<MediaServerClient>();
-    final streamUrl = await _streamUrlForItem(
+    final resolution = await _resolveForItem(
       client,
       item,
       mediaSourceId: mediaSourceId,
+      audioStreamIndex: audioStreamIndex,
+      subtitleStreamIndex: subtitleStreamIndex,
     );
+    final streamUrl = resolution.streamUrl;
     final effectiveQueueItems =
         (queueItems == null || queueItems.isEmpty)
             ? <AggregatedItem>[item]
             : queueItems;
     final queuePayload = <Map<String, dynamic>>[];
     for (final entry in effectiveQueueItems) {
-      final entryStreamUrl =
-          entry.id == item.id ? streamUrl : await _streamUrlForItem(client, entry);
+      final entryResolution =
+          entry.id == item.id ? resolution : await _resolveForItem(client, entry);
+      final posterUrl = _posterUrlFor(client, entry);
       queuePayload.add(
         <String, dynamic>{
-          'streamUrl': entryStreamUrl,
+          'streamUrl': entryResolution.streamUrl,
+          'contentType': _contentTypeFor(entryResolution),
           'title': entry.name,
           if (entry.overview?.isNotEmpty == true) 'subtitle': entry.overview,
+          'posterUrl': ?posterUrl,
         },
       );
     }
@@ -97,8 +132,10 @@ class GoogleCastProvider implements CastProvider, CastTransportControls {
     await _native.startGoogleCastSession(
       targetId: target.id,
       streamUrl: streamUrl,
+      contentType: _contentTypeFor(resolution),
       title: item.name,
       subtitle: item.overview,
+      posterUrl: _posterUrlFor(client, item),
       queueItems: queuePayload.length > 1 ? queuePayload : null,
       startPositionTicks: startPositionTicks,
     );

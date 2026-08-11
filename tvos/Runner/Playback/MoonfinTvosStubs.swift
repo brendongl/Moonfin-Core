@@ -1,28 +1,10 @@
+import AVFoundation
 import Foundation
 import UIKit
-
-protocol StringRepresentableEnum {
-    var rawValue: String { get }
-    init?(rawValue: String)
-}
 
 enum AppConstants {
     static let clientVersion =
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
-}
-
-enum VideoDynamicRange: String {
-    case sdr
-    case hdr10
-    case hlg
-    case hdr10Plus
-    case dolbyVision
-    case unknown
-}
-
-enum PlaybackBackendDirective: String {
-    case mpv
-    case native
 }
 
 enum VideoCapabilityDetector {
@@ -64,28 +46,20 @@ enum VideoCapabilityDetector {
         return UIScreen.main
     }
 
+    /// Whether the connected television can show HDR. The caller pairs this
+    /// with what the box itself decodes.
+    ///
+    /// The display gamut trait reports the mode the box is outputting rather
+    /// than what the set accepts, so a television sitting in SDR reads as
+    /// having no HDR and every HDR title goes back for a tone mapping transcode
+    /// the server cannot produce fast enough to play. AVFoundation answers for
+    /// the display, so ask it first and let the trait fill in when it reports
+    /// nothing.
     static func displaySupportsHdr() -> Bool {
-        let supportsHdr10: Bool
-        switch currentGeneration() {
-        case .hd:
-            supportsHdr10 = false
-        case .k4Gen1, .k4Gen2, .k4Gen3, .unknown:
-            supportsHdr10 = true
+        if !AVPlayer.availableHDRModes.isEmpty {
+            return true
         }
-        return supportsHdr10 && activeScreen().traitCollection.displayGamut == .P3
-    }
-
-    static func outputProvidesHdr() -> Bool {
-        return displaySupportsHdr() && activeScreen().potentialEDRHeadroom > 1.0
-    }
-
-    static func dynamicRange(fromRangeType rangeType: String?) -> VideoDynamicRange {
-        let value = (rangeType ?? "").uppercased()
-        if value.contains("DOVI") || value.contains("DOLBYVISION") { return .dolbyVision }
-        if value.contains("HDR10PLUS") || value.contains("HDR10+") { return .hdr10Plus }
-        if value.contains("HLG") { return .hlg }
-        if value.contains("HDR") { return .hdr10 }
-        return .sdr
+        return activeScreen().traitCollection.displayGamut == .P3
     }
 
     static func deviceProfileCapabilities() -> [String: Any] {
@@ -127,39 +101,54 @@ enum VideoCapabilityDetector {
         let dolbyVision = dolbyVisionGen && sinkHdrCapable
         let width = is4K ? 3840 : 1920
         let height = is4K ? 2160 : 1080
+
+        // AV1 has no hardware decoder on any Apple TV, so AetherEngine decodes
+        // it in software with dav1d. Only advertise it on A12+ boxes and cap it
+        // at 1080p so a 4K AV1 rip transcodes instead of stuttering.
+        let generation = currentGeneration()
+        let softwareAv1 = generation == .k4Gen2 || generation == .k4Gen3
+
+        // Apple TV HD is an A8 with no HEVC decoder, and not enough headroom to
+        // decode HEVC, High 10 or VC-1 in software either. Claiming them made
+        // the server direct play files the box then couldn't decode, so nothing
+        // played. Advertising H.264 only gets those transcoded instead.
+        let isHd = generation == .hd
+        let avcLevel = isHd ? 42 : 52
+
         return [
             "supportsAvc": true,
-            "avcMainLevel": 52,
-            "supportsAvcHigh10": true,
-            "avcHigh10Level": 52,
-            "supportsHevc": true,
+            "avcMainLevel": avcLevel,
+            "supportsAvcHigh10": !isHd,
+            "avcHigh10Level": avcLevel,
+            "supportsHevc": !isHd,
             "hevcMainLevel": 153,
-            "supportsHevcMain10": true,
+            "supportsHevcMain10": !isHd,
             "hevcMain10Level": 153,
             "supportsHevcDolbyVision": dolbyVision,
-            "supportsHevcDolbyVisionEl": false,
+            // AetherEngine converts P7 dual-layer to P8.1 per-packet (libdovi),
+            // so EL sources direct-play (base-layer quality, no FEL decode).
+            "supportsHevcDolbyVisionEl": dolbyVision,
             "supportsHevcHdr10": hdr10,
             "supportsHevcHdr10Plus": hdr10Plus,
             "supportsDvP5": dolbyVision,
             "supportsDvP7": dolbyVision,
             "supportsDvP8": dolbyVision,
             "knownHevcDoviHdr10PlusBug": false,
+            // Software decode paths (AVSampleBufferDisplayLayer): VP9, MPEG-2,
+            // VC-1, interlaced H.264 all play without server transcode.
+            "supportsVc1": !isHd,
+            "supportsAv1": softwareAv1,
+            "supportsAv1Main10": softwareAv1,
+            "supportsAv1Hdr10": softwareAv1 && hdr10,
+            "supportsAv1Hdr10Plus": false,
+            "supportsAv1DolbyVision": false,
             "maxResolutionAvc": ["width": width, "height": height],
             "maxResolutionHevc": ["width": width, "height": height],
+            "maxResolutionAv1": ["width": 1920, "height": 1080],
+            "maxResolutionVc1": ["width": 1920, "height": 1080],
             "deviceModel": deviceModelIdentifier(),
             "clientVersion": AppConstants.clientVersion,
         ]
     }
 }
 
-enum PlaybackQualityProfile: String {
-    case auto
-    case compatibility
-    case highQuality
-
-    static func recommended(for generation: VideoCapabilityDetector.AppleTVGeneration)
-        -> PlaybackQualityProfile
-    {
-        return .compatibility
-    }
-}

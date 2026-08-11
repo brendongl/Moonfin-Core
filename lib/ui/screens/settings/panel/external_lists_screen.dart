@@ -1205,6 +1205,7 @@ class _SeerrListsScreenState extends State<_SeerrListsScreen> {
 
   String _rowLabel(SeerrRowType type, AppLocalizations l10n) => switch (type) {
     SeerrRowType.recentRequests => l10n.recentRequests,
+    SeerrRowType.yourWatchlist => l10n.yourWatchlist,
     SeerrRowType.recentlyAdded => l10n.recentlyAdded,
     SeerrRowType.trending => l10n.trending,
     SeerrRowType.popularMovies => l10n.popularMovies,
@@ -1778,14 +1779,26 @@ class _AddEditCustomRowDialogState extends State<_AddEditCustomRowDialog> {
       params['id'] = rawId;
     } else if (_source == 'mdblist') {
       if (_type == 'list_url') {
+        // Accept https://mdblist.com/lists/{username}/{listname} with an
+        // optional trailing slash, query string, or fragment. Anchoring on the
+        // /lists/ segment keeps extra path segments from producing the wrong
+        // username and listname pair.
         var rawUrl = _mdblistListNameController.text.trim();
-        if (rawUrl.endsWith('/')) {
+        final queryStart = rawUrl.indexOf(RegExp(r'[?#]'));
+        if (queryStart >= 0) {
+          rawUrl = rawUrl.substring(0, queryStart);
+        }
+        while (rawUrl.endsWith('/')) {
           rawUrl = rawUrl.substring(0, rawUrl.length - 1);
         }
-        final parts = rawUrl.split('/');
+        final parts = rawUrl.split('/').where((s) => s.isNotEmpty).toList();
         String parsedUser = '';
         String parsedList = '';
-        if (parts.length >= 2) {
+        final listsIndex = parts.lastIndexOf('lists');
+        if (listsIndex >= 0 && parts.length >= listsIndex + 3) {
+          parsedUser = parts[listsIndex + 1];
+          parsedList = parts[listsIndex + 2];
+        } else if (parts.length >= 2) {
           parsedList = parts.last;
           parsedUser = parts[parts.length - 2];
         }
@@ -1923,7 +1936,11 @@ class _AddEditCustomRowDialogState extends State<_AddEditCustomRowDialog> {
 
     final prefs = GetIt.instance<UserPreferences>();
     final tmdbApiKey = prefs.get(UserPreferences.tmdbApiKey);
-    final mdblistApiKey = prefs.get(UserPreferences.mdblistApiKey);
+    // A server-wide admin key also works and never syncs to this device, so only
+    // warn when the plugin reports MDBList as unavailable too.
+    final mdblistConfigured =
+        prefs.get(UserPreferences.mdblistApiKey).isNotEmpty ||
+        GetIt.instance<PluginSyncService>().mdblistAvailable;
 
     return withCleanSettingsTypography(
       context,
@@ -2178,10 +2195,10 @@ class _AddEditCustomRowDialogState extends State<_AddEditCustomRowDialog> {
                          focusNode: _mdblistListNameFocusNode,
                        ),
                      ],
-                     if (mdblistApiKey.isEmpty) ...[
+                     if (!mdblistConfigured) ...[
                        const SizedBox(height: 12),
                        const Text(
-                         'WARNING: MDBList API Key must be configured in settings to fetch MDBList lists.',
+                         'WARNING: MDBList API Key must be configured in settings (or server-wide by your admin) to fetch MDBList lists.',
                          style: TextStyle(color: Colors.orangeAccent, fontSize: 11, fontWeight: FontWeight.bold),
                        ),
                      ],

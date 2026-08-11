@@ -59,6 +59,17 @@ class _DetailsScreenSettingsScreenState
                       divisions: 25,
                       labelOf: (v) => '$v',
                       onChangeEnd: _pushPersonalizationSync,
+                    )
+                  else
+                    SliderPreferenceTile(
+                      preference: UserPreferences.detailsBackgroundBlurAmount,
+                      title: l10n.detailsBackgroundOpacity,
+                      icon: Icons.opacity,
+                      min: 0,
+                      max: 25,
+                      divisions: 25,
+                      labelOf: (v) => '$v',
+                      onChangeEnd: _pushPersonalizationSync,
                     ),
                   if (_prefs.get(UserPreferences.detailScreenStyle) == DetailScreenStyle.modern)
                     SwitchPreferenceTile(
@@ -94,6 +105,14 @@ class _DetailsScreenSettingsScreenState
                       subtitle: l10n.recommendationsApplyParentalRatingCapSubtitle,
                       icon: Icons.family_restroom,
                       onChanged: _pushPersonalizationSync,
+                    ),
+                    _TvSettingsListTile(
+                      leading: const Icon(Icons.smart_button_outlined),
+                      title: Text(l10n.detailButtons),
+                      subtitle: Text(l10n.detailButtonsDescription),
+                      onTap: () => context.pushSettingsScreen(
+                        const _DetailButtonsScreen(),
+                      ),
                     ),
                 ],
               ),

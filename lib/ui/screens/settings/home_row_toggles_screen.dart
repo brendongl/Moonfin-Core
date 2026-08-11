@@ -100,6 +100,11 @@ class _HomeRowTogglesScreenState extends State<HomeRowTogglesScreen> {
     _reloadHomeRows();
   }
 
+  void _onCollectionsEpisodesChanged() {
+    _pushPersonalizationSync();
+    _reloadHomeRows();
+  }
+
   void _onGenresSortChanged() {
     _pushPersonalizationSync();
     _reloadHomeRows();
@@ -123,6 +128,11 @@ class _HomeRowTogglesScreenState extends State<HomeRowTogglesScreen> {
   }
 
   void _onPlaylistsSortChanged() {
+    _pushPersonalizationSync();
+    _reloadHomeRows();
+  }
+
+  void _onPlaylistsEpisodesChanged() {
     _pushPersonalizationSync();
     _reloadHomeRows();
   }
@@ -377,6 +387,166 @@ class _HomeRowTogglesScreenState extends State<HomeRowTogglesScreen> {
                 ],
               ),
 
+              _SectionHeader(l10n.collections),
+              adaptiveListSection(
+                children: [
+                  SwitchPreferenceTile(
+                    preference: UserPreferences.displayCollectionsRows,
+                    title: l10n.displayCollectionsRows,
+                    subtitle: l10n.displayCollectionsRowsSubtitle,
+                    icon: Icons.collections,
+                    onChanged: _onCollectionsRowsToggleChanged,
+                  ),
+                  if (showCollectionsRows)
+                    EnumPreferenceTile<LibrarySortBy>(
+                      preference: UserPreferences.collectionsRowSortBy,
+                      title: l10n.collectionsRowSorting,
+                      description: l10n.collectionsRowSortingDescription,
+                      icon: Icons.sort,
+                      labelOf: (v) => v.displayName,
+                      onChanged: _onCollectionsSortChanged,
+                    ),
+                  if (showCollectionsRows)
+                    SwitchPreferenceTile(
+                      preference: UserPreferences.collectionsRowShowEpisodes,
+                      title: l10n.collectionsRowShowEpisodes,
+                      subtitle: l10n.collectionsRowShowEpisodesSubtitle,
+                      icon: Icons.video_library_outlined,
+                      onChanged: _onCollectionsEpisodesChanged,
+                    ),
+                ],
+              ),
+
+              _SectionHeader(l10n.favorites),
+              adaptiveListSection(
+                children: [
+                  SwitchPreferenceTile(
+                    preference: UserPreferences.displayFavoritesRows,
+                    title: l10n.displayFavoritesRows,
+                    subtitle: l10n.displayFavoritesRowsSubtitle,
+                    icon: Icons.favorite,
+                    onChanged: _onFavoritesRowsToggleChanged,
+                  ),
+                  if (showFavoritesRows)
+                    EnumPreferenceTile<LibrarySortBy>(
+                      preference: UserPreferences.favoritesRowSortBy,
+                      title: l10n.favoritesRowSorting,
+                      description: l10n.favoritesRowSortingDescription,
+                      icon: Icons.sort,
+                      values: LibrarySortBy.itemsApiValues,
+                      labelOf: (v) => v.displayName,
+                      onChanged: _onFavoritesSortChanged,
+                    ),
+                ],
+              ),
+
+              _SectionHeader(l10n.genres),
+              adaptiveListSection(
+                children: [
+                  SwitchPreferenceTile(
+                    preference: UserPreferences.displayGenresRows,
+                    title: l10n.displayGenresRows,
+                    subtitle: l10n.displayGenresRowsSubtitle,
+                    icon: Icons.theater_comedy,
+                    onChanged: _onGenresRowsToggleChanged,
+                  ),
+                  if (showGenresRows) ...[
+                    EnumPreferenceTile<LibrarySortBy>(
+                      preference: UserPreferences.genresRowSortBy,
+                      title: l10n.genresRowSorting,
+                      description: l10n.genresRowSortingDescription,
+                      icon: Icons.sort,
+                      values: LibrarySortBy.itemsApiValues,
+                      labelOf: (v) => v.displayName,
+                      onChanged: _onGenresSortChanged,
+                    ),
+                    EnumPreferenceTile<GenresRowItemFilter>(
+                      preference: UserPreferences.genresRowItemFilter,
+                      title: l10n.genresRowItems,
+                      description: l10n.genresRowItemsDescription,
+                      icon: Icons.filter_list,
+                      labelOf: (v) => v.displayName,
+                      onChanged: _onGenresItemFilterChanged,
+                    ),
+                  ],
+                ],
+              ),
+
+              _SectionHeader(l10n.playlists),
+              adaptiveListSection(
+                children: [
+                  SwitchPreferenceTile(
+                    preference: UserPreferences.displayPlaylistsRows,
+                    title: l10n.displayPlaylistsRows,
+                    subtitle: l10n.displayPlaylistsRowsSubtitle,
+                    icon: Icons.playlist_play,
+                    onChanged: _onPlaylistsRowsToggleChanged,
+                  ),
+                  if (showPlaylistsRows)
+                    EnumPreferenceTile<LibrarySortBy>(
+                      preference: UserPreferences.playlistsRowSortBy,
+                      title: l10n.playlistsRowSorting,
+                      description: l10n.playlistsRowSortingDescription,
+                      icon: Icons.sort,
+                      labelOf: (v) => v.displayName,
+                      onChanged: _onPlaylistsSortChanged,
+                    ),
+                  if (showPlaylistsRows)
+                    SwitchPreferenceTile(
+                      preference: UserPreferences.playlistsRowShowEpisodes,
+                      title: l10n.playlistsRowShowEpisodes,
+                      subtitle: l10n.playlistsRowShowEpisodesSubtitle,
+                      icon: Icons.video_library_outlined,
+                      onChanged: _onPlaylistsEpisodesChanged,
+                    ),
+                ],
+              ),
+
+              _SectionHeader('REWATCH'),
+              adaptiveListSection(
+                children: [
+                  SwitchPreferenceTile(
+                    preference: UserPreferences.displayRewatchRow,
+                    title: 'Display Rewatch Row',
+                    subtitle: 'Show Rewatch row in Home Sections',
+                    icon: Icons.replay,
+                    onChanged: _onRewatchRowToggleChanged,
+                  ),
+                  if (showRewatchRow) ...[
+                    EnumPreferenceTile<RewatchSortBy>(
+                      preference: UserPreferences.rewatchSortBy,
+                      title: 'Sort By',
+                      description: 'Choose sorting method for completed items',
+                      icon: Icons.sort,
+                      values: RewatchSortBy.values,
+                      labelOf: (v) => v.displayName,
+                      onChanged: _onRewatchConfigChanged,
+                    ),
+                    SwitchPreferenceTile(
+                      preference: UserPreferences.rewatchIncludeMovies,
+                      title: 'Include Movies',
+                      subtitle: 'Show watched movies in the rewatch row',
+                      icon: Icons.movie,
+                      onChanged: _onRewatchConfigChanged,
+                    ),
+                    SwitchPreferenceTile(
+                      preference: UserPreferences.rewatchIncludeShows,
+                      title: 'Include Shows',
+                      subtitle: 'Show watched TV shows in the rewatch row',
+                      icon: Icons.tv,
+                      onChanged: _onRewatchConfigChanged,
+                    ),
+                    SwitchPreferenceTile(
+                      preference: UserPreferences.rewatchIncludeCollections,
+                      title: 'Include Collections',
+                      subtitle: 'Show watched collections in the rewatch row',
+                      icon: Icons.collections,
+                      onChanged: _onRewatchConfigChanged,
+                    ),
+                  ],
+                ],
+              ),
+
               _SectionHeader('SINCE YOU WATCHED'),
               adaptiveListSection(
                 children: [
@@ -432,147 +602,6 @@ class _HomeRowTogglesScreenState extends State<HomeRowTogglesScreen> {
                         icon: Icons.history,
                         onChanged: _onSinceYouWatchedConfigChanged,
                       ),
-                  ],
-                ],
-              ),
-
-              _SectionHeader(l10n.collections),
-              adaptiveListSection(
-                children: [
-                  SwitchPreferenceTile(
-                    preference: UserPreferences.displayCollectionsRows,
-                    title: l10n.displayCollectionsRows,
-                    subtitle: l10n.displayCollectionsRowsSubtitle,
-                    icon: Icons.collections,
-                    onChanged: _onCollectionsRowsToggleChanged,
-                  ),
-                  if (showCollectionsRows)
-                    EnumPreferenceTile<LibrarySortBy>(
-                      preference: UserPreferences.collectionsRowSortBy,
-                      title: l10n.collectionsRowSorting,
-                      description: l10n.collectionsRowSortingDescription,
-                      icon: Icons.sort,
-                      labelOf: (v) => v.displayName,
-                      onChanged: _onCollectionsSortChanged,
-                    ),
-                ],
-              ),
-
-              _SectionHeader(l10n.favorites),
-              adaptiveListSection(
-                children: [
-                  SwitchPreferenceTile(
-                    preference: UserPreferences.displayFavoritesRows,
-                    title: l10n.displayFavoritesRows,
-                    subtitle: l10n.displayFavoritesRowsSubtitle,
-                    icon: Icons.favorite,
-                    onChanged: _onFavoritesRowsToggleChanged,
-                  ),
-                  if (showFavoritesRows)
-                    EnumPreferenceTile<LibrarySortBy>(
-                      preference: UserPreferences.favoritesRowSortBy,
-                      title: l10n.favoritesRowSorting,
-                      description: l10n.favoritesRowSortingDescription,
-                      icon: Icons.sort,
-                      labelOf: (v) => v.displayName,
-                      onChanged: _onFavoritesSortChanged,
-                    ),
-                ],
-              ),
-
-              _SectionHeader(l10n.genres),
-              adaptiveListSection(
-                children: [
-                  SwitchPreferenceTile(
-                    preference: UserPreferences.displayGenresRows,
-                    title: l10n.displayGenresRows,
-                    subtitle: l10n.displayGenresRowsSubtitle,
-                    icon: Icons.theater_comedy,
-                    onChanged: _onGenresRowsToggleChanged,
-                  ),
-                  if (showGenresRows) ...[
-                    EnumPreferenceTile<LibrarySortBy>(
-                      preference: UserPreferences.genresRowSortBy,
-                      title: l10n.genresRowSorting,
-                      description: l10n.genresRowSortingDescription,
-                      icon: Icons.sort,
-                      labelOf: (v) => v.displayName,
-                      onChanged: _onGenresSortChanged,
-                    ),
-                    EnumPreferenceTile<GenresRowItemFilter>(
-                      preference: UserPreferences.genresRowItemFilter,
-                      title: l10n.genresRowItems,
-                      description: l10n.genresRowItemsDescription,
-                      icon: Icons.filter_list,
-                      labelOf: (v) => v.displayName,
-                      onChanged: _onGenresItemFilterChanged,
-                    ),
-                  ],
-                ],
-              ),
-
-              _SectionHeader(l10n.playlists),
-              adaptiveListSection(
-                children: [
-                  SwitchPreferenceTile(
-                    preference: UserPreferences.displayPlaylistsRows,
-                    title: l10n.displayPlaylistsRows,
-                    subtitle: l10n.displayPlaylistsRowsSubtitle,
-                    icon: Icons.playlist_play,
-                    onChanged: _onPlaylistsRowsToggleChanged,
-                  ),
-                  if (showPlaylistsRows)
-                    EnumPreferenceTile<LibrarySortBy>(
-                      preference: UserPreferences.playlistsRowSortBy,
-                      title: l10n.playlistsRowSorting,
-                      description: l10n.playlistsRowSortingDescription,
-                      icon: Icons.sort,
-                      labelOf: (v) => v.displayName,
-                      onChanged: _onPlaylistsSortChanged,
-                    ),
-                ],
-              ),
-              _SectionHeader('REWATCH'),
-              adaptiveListSection(
-                children: [
-                  SwitchPreferenceTile(
-                    preference: UserPreferences.displayRewatchRow,
-                    title: 'Display Rewatch Row',
-                    subtitle: 'Show Rewatch row in Home Sections',
-                    icon: Icons.replay,
-                    onChanged: _onRewatchRowToggleChanged,
-                  ),
-                  if (showRewatchRow) ...[
-                    EnumPreferenceTile<RewatchSortBy>(
-                      preference: UserPreferences.rewatchSortBy,
-                      title: 'Sort By',
-                      description: 'Choose sorting method for completed items',
-                      icon: Icons.sort,
-                      values: RewatchSortBy.values,
-                      labelOf: (v) => v.displayName,
-                      onChanged: _onRewatchConfigChanged,
-                    ),
-                    SwitchPreferenceTile(
-                      preference: UserPreferences.rewatchIncludeMovies,
-                      title: 'Include Movies',
-                      subtitle: 'Show watched movies in the rewatch row',
-                      icon: Icons.movie,
-                      onChanged: _onRewatchConfigChanged,
-                    ),
-                    SwitchPreferenceTile(
-                      preference: UserPreferences.rewatchIncludeShows,
-                      title: 'Include Shows',
-                      subtitle: 'Show watched TV shows in the rewatch row',
-                      icon: Icons.tv,
-                      onChanged: _onRewatchConfigChanged,
-                    ),
-                    SwitchPreferenceTile(
-                      preference: UserPreferences.rewatchIncludeCollections,
-                      title: 'Include Collections',
-                      subtitle: 'Show watched collections in the rewatch row',
-                      icon: Icons.collections,
-                      onChanged: _onRewatchConfigChanged,
-                    ),
                   ],
                 ],
               ),

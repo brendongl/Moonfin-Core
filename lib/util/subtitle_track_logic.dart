@@ -1,9 +1,12 @@
 import 'dart:ui' as ui;
+import '../data/models/series_track_preference.dart';
 import '../preference/preference_constants.dart';
 import 'language_matching.dart';
 
 bool isExternalSubtitleStream(Map<String, dynamic> stream) {
-  if (stream['IsExternal'] == true) return true;
+  if (stream['IsExternal'] == true) {
+    return true;
+  }
   final deliveryMethod =
       (stream['DeliveryMethod'] as String?)?.trim().toLowerCase();
   return deliveryMethod == 'external';
@@ -270,6 +273,41 @@ int computeSubtitleDialogSelectedIndex(
   return displayStreams.indexWhere((s) => s['IsDefault'] == true) + 1;
 }
 
+/// Where a row of a subtitle menu points when the menu offers both the
+/// server's subtitle streams and the captions the player found inside the
+/// video. Row 0 is off, the streams follow, and the captions come last so
+/// their arrival part way through a channel can't renumber the streams a
+/// viewer already picked from.
+///
+/// Both positions are null for the off row and for a row past the end.
+({int? streamPosition, int? captionPosition}) subtitleMenuRowTarget({
+  required int row,
+  required int streamCount,
+  required int captionCount,
+}) {
+  if (row <= 0) return (streamPosition: null, captionPosition: null);
+  if (row <= streamCount) {
+    return (streamPosition: row - 1, captionPosition: null);
+  }
+  final captionPosition = row - streamCount - 1;
+  if (captionPosition >= captionCount) {
+    return (streamPosition: null, captionPosition: null);
+  }
+  return (streamPosition: null, captionPosition: captionPosition);
+}
+
+/// The row to mark as selected, given whichever of the two is active. A
+/// caption wins when both are set, since selecting one turns the other off.
+int subtitleMenuSelectedRow({
+  required int streamPosition,
+  required int captionPosition,
+  required int streamCount,
+}) {
+  if (captionPosition >= 0) return streamCount + captionPosition + 1;
+  if (streamPosition >= 0) return streamPosition + 1;
+  return 0;
+}
+
 /// Maps a dialog result back to a stream index for state storage.
 /// Returns -1 when the user selected "None" (result == 0).
 int? mapSubtitleResultToStreamIndex(
@@ -282,4 +320,119 @@ int? mapSubtitleResultToStreamIndex(
     return displayStreams[streamPosition]['Index'] as int?;
   }
   return null;
+}
+
+/// Leading track numbers vary between files, so they are dropped before two
+/// titles are compared.
+final _trackNumberPrefix = RegExp(r'^\d+\s*-\s*');
+
+String _normalizedTitle(String raw) =>
+    raw.replaceAll(_trackNumberPrefix, '').trim().toLowerCase();
+
+String _normalizedStreamTitle(Map<String, dynamic> stream) => _normalizedTitle(
+  (stream['Title'] ?? stream['DisplayTitle'] ?? stream['Name']) as String? ?? '',
+);
+
+/// The stream in [streams] that best answers a remembered choice, or null when
+/// none of them can be it.
+///
+/// The title comes first because it survives files listing their tracks in a
+/// different order, then the position among same-language tracks, then a looser
+/// title match for releases that word the same track slightly differently.
+int? matchSeriesTrackIndex({
+  required List<Map<String, dynamic>> streams,
+  required SeriesTrackPreference pref,
+}) {
+  if (pref.isEmpty) return null;
+  if (pref.isNone) return -1;
+
+  final targetTitle = _normalizedTitle(pref.title);
+
+  // An untagged track leaves only its title to go on. Falling back to position
+  // there would hand back some unrelated track, so it matches or it doesn't.
+  if (pref.language.isEmpty) {
+    final candidates = streams.where((s) => s['Index'] != null);
+    return _titleMatch(candidates, targetTitle, loose: false) ??
+        _titleMatch(candidates, targetTitle);
+  }
+
+  final normPref = normalizeLanguage(pref.language);
+  final iso3Pref = toIso3Language(normPref);
+  final matchingStreams = streams
+      .where((s) => s['Index'] != null)
+      .where(
+        (s) => languageMatchesPreferred(
+          s['Language'] as String? ?? '',
+          normPref,
+          iso3Pref,
+        ),
+      )
+      .toList();
+  if (matchingStreams.isEmpty) return null;
+
+  final exact = _titleMatch(matchingStreams, targetTitle, loose: false);
+  if (exact != null) return exact;
+
+  if (pref.relativeIndex >= 0 && pref.relativeIndex < matchingStreams.length) {
+    return matchingStreams[pref.relativeIndex]['Index'] as int?;
+  }
+
+  return _titleMatch(matchingStreams, targetTitle) ??
+      matchingStreams.first['Index'] as int?;
+}
+
+/// The first stream whose title reads as [targetTitle], or null. A [loose]
+/// match also accepts one title containing the other, for releases that word
+/// the same track slightly differently.
+int? _titleMatch(
+  Iterable<Map<String, dynamic>> streams,
+  String targetTitle, {
+  bool loose = true,
+}) {
+  if (targetTitle.isEmpty) return null;
+  for (final stream in streams) {
+    final streamTitle = _normalizedStreamTitle(stream);
+    if (streamTitle.isEmpty) continue;
+    final hit = loose
+        ? streamTitle.contains(targetTitle) || targetTitle.contains(streamTitle)
+        : streamTitle == targetTitle;
+    if (hit) return stream['Index'] as int?;
+  }
+  return null;
+}
+
+SeriesTrackPreference createSeriesTrackPreferenceFromStream({
+  required List<Map<String, dynamic>> streams,
+  required int? selectedIndex,
+}) {
+  if (selectedIndex == null) return SeriesTrackPreference.empty;
+  if (selectedIndex == -1) return SeriesTrackPreference.none;
+
+  final selectedStream = streams.firstWhere(
+    (s) => s['Index'] == selectedIndex,
+    orElse: () => <String, dynamic>{},
+  );
+
+  if (selectedStream.isEmpty) return SeriesTrackPreference.empty;
+
+  final language = selectedStream['Language'] as String? ?? '';
+  final title = _normalizedStreamTitle(selectedStream);
+
+  int relativeIndex = 0;
+  final normLang = normalizeLanguage(language);
+  final iso3Lang = toIso3Language(normLang);
+
+  for (final stream in streams) {
+    if (stream['Index'] == selectedIndex) break;
+    final l = stream['Language'] as String? ?? '';
+    if (languageMatchesPreferred(l, normLang, iso3Lang)) {
+      relativeIndex++;
+    }
+  }
+
+  return SeriesTrackPreference(
+    language: language,
+    title: title,
+    relativeIndex: relativeIndex,
+  );
 }

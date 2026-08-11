@@ -45,6 +45,7 @@ class _TvSettingsListTile extends StatefulWidget {
   final VoidCallback? onTap;
 
   const _TvSettingsListTile({
+    super.key,
     this.focusNode,
     this.autofocus = false,
     this.leading,

@@ -9,13 +9,13 @@ import 'package:playback_core/playback_core.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../../data/models/aggregated_item.dart';
-import '../../../data/models/media_segment.dart';
 import '../../../data/models/trickplay_info.dart';
+import '../../../data/services/log_service.dart';
 import '../../../data/services/media_segment_service.dart';
 import '../../../data/services/media_server_client_factory.dart';
 import '../../../data/repositories/item_mutation_repository.dart';
 import '../../../auth/repositories/user_repository.dart';
-import '../../../playback/appletv_mpv_backend.dart';
+import '../../../playback/appletv_backend.dart';
 import '../../../playback/playback_profile_diagnostics.dart';
 import '../../../syncplay/syncplay_manager.dart';
 import '../../theme/app_theme_controller.dart';
@@ -25,7 +25,10 @@ import '../../navigation/destinations.dart';
 import '../../../preference/preference_constants.dart';
 import '../../../preference/user_preferences.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../util/episode_playability.dart';
 import '../../../util/play_method_label.dart';
+import 'appletv_playback_prompt_controller.dart';
+import 'osd_buttons.dart';
 
 class AppleTvPlayerHostScreen extends StatefulWidget {
   const AppleTvPlayerHostScreen({super.key});
@@ -44,19 +47,18 @@ class _AppleTvPlayerHostScreenState extends State<AppleTvPlayerHostScreen> {
   bool _exiting = false;
   final Map<String, List<Map<String, dynamic>>> _castCache = {};
   String? _castResolving;
-  final Map<String, List<Map<String, dynamic>>> _segmentCache = {};
-  String? _segmentResolving;
-  int _consecutiveEpisodes = 0;
-  String? _stillWatchingLastItemId;
-  bool _pendingStillWatching = false;
+  AppleTvPlaybackPromptController? _prompts;
+  MediaSegmentService? _segmentService;
+  String? _segmentsLoadedForItemId;
+  StreamSubscription<Duration>? _positionSub;
   SyncPlayManager? _syncPlay;
   AppThemeController? _themeController;
   ScreensaverController? _screensaverController;
   StreamSubscription<bool>? _screensaverPlayingSub;
 
-  AppleTvMpvBackend? get _backend {
+  AppleTvBackend? get _backend {
     try {
-      return GetIt.instance<AppleTvMpvBackend>();
+      return GetIt.instance<AppleTvBackend>();
     } catch (_) {
       return null;
     }
@@ -87,11 +89,32 @@ class _AppleTvPlayerHostScreenState extends State<AppleTvPlayerHostScreen> {
       _sessionEndedSub = manager.sessionEndedStream.listen(
         (_) => _handleExit(),
       );
-      _bringupSub = manager.bringupStateStream.listen((_) => _pushMetadata());
+      _bringupSub = manager.bringupStateStream.listen((_) {
+        _pushMetadata();
+        // The initState load can run before the queue item resolves, so retry
+        // here. The per-item guard makes repeat events a no-op.
+        _loadSegmentsForCurrentItem();
+      });
       _screensaverPlayingSub = manager.state.playingStream.listen(
         (playing) => _screensaverController?.setPlaybackActive(playing),
       );
+      _positionSub = manager.state.positionStream.listen(
+        (position) => _prompts?.onPositionTick(position, manager.state.duration),
+      );
     }
+    try {
+      final prefs = GetIt.instance<UserPreferences>();
+      manager?.autoAdvanceEnabled = prefs.get(
+        UserPreferences.autoplayNextEpisode,
+      );
+      _prompts = AppleTvPlaybackPromptController(
+        prefs: prefs,
+        commands: _HostPromptCommands(this),
+        queueSnapshot: _queueSnapshot,
+        segmentService: () => _segmentService,
+      );
+    } catch (_) {}
+    _loadSegmentsForCurrentItem();
     if (GetIt.instance.isRegistered<SyncPlayManager>()) {
       _syncPlay = GetIt.instance<SyncPlayManager>();
       _syncPlay!.addListener(_onSyncPlayChanged);
@@ -100,6 +123,7 @@ class _AppleTvPlayerHostScreenState extends State<AppleTvPlayerHostScreen> {
       _pushMetadata();
       _pushSubtitleStyle();
       _pushThemeConfig();
+      _pushPromptStrings();
     });
   }
 
@@ -133,6 +157,26 @@ class _AppleTvPlayerHostScreenState extends State<AppleTvPlayerHostScreen> {
         rangeProgressARGB: AppColorScheme.rangeProgress.toARGB32(),
         rangeTrackARGB: AppColorScheme.rangeTrack.toARGB32(),
       ),
+    );
+  }
+
+  /// Sends the localized prompt text the native renderer composes itself.
+  /// The endsIn value keeps its {time} placeholder so languages that put the
+  /// time mid sentence still read correctly.
+  void _pushPromptStrings() {
+    final backend = _backend;
+    if (backend == null || !mounted) return;
+    final l10n = AppLocalizations.of(context);
+    unawaited(
+      backend.setPromptStrings({
+        'endsIn': l10n.endsIn('{time}'),
+        'upNext': l10n.upNext,
+        'playNext': l10n.playNext,
+        'stillWatchingTitle': l10n.stillWatching,
+        'stillWatchingBody': l10n.stillWatchingContent,
+        'stillWatchingContinue': l10n.stillWatchingContinue,
+        'stillWatchingStop': l10n.stillWatchingStop,
+      }),
     );
   }
 
@@ -397,9 +441,14 @@ class _AppleTvPlayerHostScreenState extends State<AppleTvPlayerHostScreen> {
       ),
       if (res != null && res.transcodingReasons.isNotEmpty)
         rowEntry('Transcode Reasons', res.transcodingReasons.join(', ')),
-      rowEntry('Player', 'MPVKit (libmpv)'),
+      rowEntry('Player', 'AetherEngine'),
       rowEntry('Container', container),
-      rowEntry('Bitrate', _formatBitrate(mediaSource?['Bitrate'] as int?)),
+      rowEntry(
+        'Bitrate',
+        _formatBitrate(
+          res?.deliveredBitrate ?? mediaSource?['Bitrate'] as int?,
+        ),
+      ),
       rowEntry(
         'Max Bitrate',
         overrideMbps != null ? '$overrideMbps Mbps' : 'Auto',
@@ -883,80 +932,116 @@ class _AppleTvPlayerHostScreenState extends State<AppleTvPlayerHostScreen> {
     }();
   }
 
-  List<Map<String, dynamic>> _mediaSegments(dynamic item) {
+  /// Recreates the per-item segment service the prompt controller reads, the
+  /// same way the Flutter player reloads segments on every episode change.
+  void _loadSegmentsForCurrentItem() {
+    final manager = _manager;
+    if (manager == null) return;
+    final item = manager.queueService.currentItem;
     final id = _itemIdForQueueItem(item);
-    if (id != null && _segmentCache.containsKey(id)) {
-      return _segmentCache[id]!;
-    }
-    return const [];
-  }
-
-  String _segmentLabel(MediaSegmentType type) {
-    return switch (type) {
-      MediaSegmentType.intro => 'Skip Intro',
-      MediaSegmentType.outro => 'Skip Credits',
-      MediaSegmentType.recap => 'Skip Recap',
-      MediaSegmentType.preview => 'Skip Preview',
-      _ => 'Skip',
-    };
-  }
-
-  void _resolveSegmentsAsync(dynamic item) {
-    final id = _itemIdForQueueItem(item);
-    if (id == null || id.isEmpty) return;
-    if (_segmentCache.containsKey(id) || _segmentResolving == id) return;
+    if (id == null || id.isEmpty || id == _segmentsLoadedForItemId) return;
     final client = _clientForQueueItem(item);
     if (client == null) return;
-    _segmentResolving = id;
-    () async {
-      try {
-        final prefs = GetIt.instance<UserPreferences>();
-        final service = MediaSegmentService(
-          client,
-          FeatureDetector(serverType: client.serverType, serverVersion: ''),
-          prefs,
-        );
-        await service.loadSegments(id);
-        final actionMap = service.actionMap;
-        final result = <Map<String, dynamic>>[];
-        for (final segment in service.segments) {
-          final action = actionMap[segment.type] ?? MediaSegmentAction.nothing;
-          if (action == MediaSegmentAction.nothing) continue;
-          final spanMs =
-              segment.end.inMilliseconds - segment.start.inMilliseconds;
-          final minMs = action == MediaSegmentAction.skip ? 1000 : 3000;
-          if (spanMs < minMs) continue;
-          result.add({
-            'startMs': segment.start.inMilliseconds,
-            'endMs': segment.end.inMilliseconds,
-            'action': action == MediaSegmentAction.skip ? 'skip' : 'ask',
-            'label': _segmentLabel(segment.type),
-          });
-        }
-        _segmentCache[id] = result;
-      } catch (_) {
-        _segmentCache[id] = const [];
-      } finally {
-        _segmentResolving = null;
-        if (mounted) _pushMetadata();
-      }
-    }();
+    try {
+      final prefs = GetIt.instance<UserPreferences>();
+      final service = MediaSegmentService(
+        client,
+        FeatureDetector(serverType: client.serverType, serverVersion: ''),
+        prefs,
+      );
+      _segmentService = service;
+      _segmentsLoadedForItemId = id;
+      unawaited(
+        service.loadSegments(id).then((_) {
+          if (!GetIt.instance.isRegistered<LogService>()) return;
+          GetIt.instance<LogService>().media(
+            'Loaded ${service.segments.length} media segments for $id on '
+            '${client.serverType.name}, supported ${service.isSupported}',
+            level: LogLevel.info,
+          );
+        }),
+      );
+    } catch (_) {}
   }
 
-  Map<String, dynamic>? _nextUpPayload(PlaybackManager manager) {
-    final next = manager.queueService.peekNext;
-    if (next == null) return null;
-    String title = '';
-    if (next is AggregatedItem) {
-      final episodeInfo = next.indexNumber != null
-          ? 'S${next.parentIndexNumber ?? '?'}:E${next.indexNumber}'
-          : null;
-      title = [?episodeInfo, next.name].where((s) => s.isNotEmpty).join(' - ');
-    } else if (next is Map) {
-      title = (next['Name'] as String?) ?? '';
+  AppleTvQueueSnapshot _queueSnapshot() {
+    final manager = _manager;
+    if (manager == null) {
+      return const AppleTvQueueSnapshot(
+        currentIndex: -1,
+        length: 0,
+        hasNext: false,
+      );
     }
-    if (title.isEmpty) return null;
-    return {'title': title, 'imageUrl': _artworkUrlForItem(next)};
+    final queue = manager.queueService;
+    final current = queue.currentItem;
+    final next = queue.peekNext;
+
+    bool nextEligible = true;
+    if (next is AggregatedItem) {
+      nextEligible = isEligibleNextEpisodeCandidate(next);
+    } else if (next is Map) {
+      nextEligible = isEligibleNextEpisodeCandidateRaw(
+        next.cast<String, dynamic>(),
+      );
+    }
+
+    String nextTitle = '';
+    String nextEpisodeInfo = '';
+    String nextImageUrl = '';
+    if (next is AggregatedItem) {
+      nextTitle = next.name;
+      nextEpisodeInfo = next.indexNumber != null
+          ? 'S${next.parentIndexNumber ?? '?'}:E${next.indexNumber}'
+          : '';
+      if (next.primaryImageTag != null) {
+        nextImageUrl =
+            _clientForQueueItem(next)?.imageApi.getPrimaryImageUrl(
+              next.id,
+              maxWidth: 400,
+              tag: next.primaryImageTag,
+            ) ??
+            '';
+      }
+    } else if (next is Map) {
+      nextTitle = (next['Name'] as String?) ?? '';
+    }
+
+    final currentRaw = _rawDataForQueueItem(current);
+    return AppleTvQueueSnapshot(
+      currentIndex: queue.currentIndex,
+      length: queue.length,
+      hasNext: queue.hasNext,
+      currentId: _itemIdForQueueItem(current),
+      nextId: _itemIdForQueueItem(next),
+      nextExists: next != null,
+      nextEligible: nextEligible,
+      currentIsPreroll: currentRaw?['__moonfinIsPreroll'] == true,
+      nextTitle: nextTitle,
+      nextEpisodeInfo: nextEpisodeInfo,
+      nextImageUrl: nextImageUrl,
+    );
+  }
+
+  void _markPlayed(String itemId) {
+    final item = _manager?.queueService.currentItem;
+    try {
+      final client = _clientForQueueItem(item);
+      if (client == null) return;
+      final mutations = ItemMutationRepository(client);
+      unawaited(mutations.setPlayed(itemId, isPlayed: true).catchError((_) {}));
+      final raw = _rawDataForQueueItem(item);
+      if (raw != null) {
+        final existingUserData = raw['UserData'];
+        final userData = existingUserData is Map<String, dynamic>
+            ? existingUserData
+            : (existingUserData is Map
+                  ? existingUserData.cast<String, dynamic>()
+                  : <String, dynamic>{});
+        userData['Played'] = true;
+        raw['UserData'] = userData;
+      }
+    } catch (_) {}
   }
 
   Map<String, dynamic>? _pauseMetaPayload(dynamic item) {
@@ -1147,21 +1232,16 @@ class _AppleTvPlayerHostScreenState extends State<AppleTvPlayerHostScreen> {
       trickplay: _trickplayPayload(item, manager),
       hasCast: _hasCastCrew(item),
       castPeople: _castPeople(item),
-      nextUp: _nextUpPayload(manager),
-      nextUpThresholdMs: _nextUpThresholdMs(),
       pauseMeta: _pauseMetaPayload(item),
       selectedBitrateMbps: manager.maxBitrateOverrideMbps ?? -1,
-      mediaSegments: _mediaSegments(item),
       canFavorite: _canFavorite(item),
       isFavorite: _queueItemIsFavorite(item),
-      showStillWatching: _pendingStillWatching,
       canDownloadSubtitles: _canDownloadSubtitles(item),
       syncPlay: _syncPlayPayload(),
+      osdButtons: _osdButtons(),
     );
-    _pendingStillWatching = false;
 
     _resolveCastAsync(item);
-    _resolveSegmentsAsync(item);
   }
 
   String _maxResolutionLabel() {
@@ -1175,23 +1255,21 @@ class _AppleTvPlayerHostScreenState extends State<AppleTvPlayerHostScreen> {
     }
   }
 
-  int _nextUpThresholdMs() {
-    try {
-      final behavior = GetIt.instance<UserPreferences>().get(
-        UserPreferences.nextUpBehavior,
-      );
-      if (behavior == NextUpBehavior.disabled) return 0;
-      return 30000;
-    } catch (_) {
-      return 30000;
-    }
-  }
-
   int _prefInt(Preference<int> pref, {required int defaultValue}) {
     try {
       return GetIt.instance<UserPreferences>().get(pref);
     } catch (_) {
       return defaultValue;
+    }
+  }
+
+  /// Null when the preferences can't be read, which leaves the row as it is
+  /// rather than reading an empty list as every button switched off.
+  List<String>? _osdButtons() {
+    try {
+      return visibleOsdButtonIds(GetIt.instance<UserPreferences>());
+    } catch (_) {
+      return null;
     }
   }
 
@@ -1210,25 +1288,8 @@ class _AppleTvPlayerHostScreenState extends State<AppleTvPlayerHostScreen> {
   }
 
   void _onQueueChanged() {
-    final manager = _manager;
-    if (manager == null) return;
-    final id = _itemIdForQueueItem(manager.queueService.currentItem);
-    if (id != null &&
-        id.isNotEmpty &&
-        _stillWatchingLastItemId != null &&
-        id != _stillWatchingLastItemId) {
-      _consecutiveEpisodes++;
-      final behavior = GetIt.instance<UserPreferences>().get(
-        UserPreferences.stillWatchingBehavior,
-      );
-      if (behavior != StillWatchingBehavior.disabled &&
-          _consecutiveEpisodes >= behavior.episodes) {
-        _pendingStillWatching = true;
-      }
-    }
-    if (id != null && id.isNotEmpty) {
-      _stillWatchingLastItemId = id;
-    }
+    _prompts?.onQueueChanged();
+    _loadSegmentsForCurrentItem();
     _pushMetadata();
   }
 
@@ -1244,7 +1305,18 @@ class _AppleTvPlayerHostScreenState extends State<AppleTvPlayerHostScreen> {
         final positionMs = (action['positionMs'] as num?)?.toInt();
         if (positionMs != null) {
           unawaited(manager.seekTo(Duration(milliseconds: positionMs)));
+          _prompts?.onUserSeeked();
         }
+      case 'userSeeked':
+        _prompts?.onUserSeeked();
+      case 'nextUpPlay':
+        unawaited(_prompts?.handleNextUpPlay() ?? Future<void>.value());
+      case 'nextUpCancel':
+        _prompts?.handleNextUpCancel();
+      case 'nextUpDismiss':
+        _prompts?.handleNextUpDismiss();
+      case 'skipSegment':
+        _prompts?.handleSkipSegment();
       case 'next':
         unawaited(manager.next());
       case 'previous':
@@ -1288,9 +1360,9 @@ class _AppleTvPlayerHostScreenState extends State<AppleTvPlayerHostScreen> {
       case 'toggleFavorite':
         _toggleFavorite(manager.queueService.currentItem);
       case 'stillWatchingContinue':
-        _consecutiveEpisodes = 0;
+        _prompts?.resolveStillWatching(shouldContinue: true);
       case 'stillWatchingStop':
-        _handleExit();
+        _prompts?.resolveStillWatching(shouldContinue: false);
       case 'searchSubtitles':
         _searchRemoteSubtitles();
       case 'downloadSubtitle':
@@ -1324,6 +1396,8 @@ class _AppleTvPlayerHostScreenState extends State<AppleTvPlayerHostScreen> {
     _bringupSub?.cancel();
     _actionSub?.cancel();
     _screensaverPlayingSub?.cancel();
+    _positionSub?.cancel();
+    _prompts?.dispose();
     _screensaverController?.setPlaybackActive(false);
     _syncPlay?.removeListener(_onSyncPlayChanged);
     _themeController?.removeListener(_onThemeChanged);
@@ -1341,4 +1415,99 @@ class _AppleTvPlayerHostScreenState extends State<AppleTvPlayerHostScreen> {
       body: SizedBox.expand(),
     );
   }
+}
+
+/// Bridges the prompt controller's requested effects onto the native channel,
+/// the playback manager, and the host's exit flow.
+class _HostPromptCommands implements AppleTvPromptCommands {
+  _HostPromptCommands(this._host);
+
+  final _AppleTvPlayerHostScreenState _host;
+
+  @override
+  Future<void> showNextUp({
+    required String title,
+    required String episodeInfo,
+    required String imageUrl,
+    required bool isMinimal,
+    required String countdownStyle,
+    required int timeoutMs,
+  }) {
+    return _host._backend?.showNextUp(
+          title: title,
+          episodeInfo: episodeInfo,
+          imageUrl: imageUrl,
+          isMinimal: isMinimal,
+          countdownStyle: countdownStyle,
+          timeoutMs: timeoutMs,
+        ) ??
+        Future<void>.value();
+  }
+
+  @override
+  Future<void> hideNextUp() =>
+      _host._backend?.hideNextUp() ?? Future<void>.value();
+
+  @override
+  Future<bool> showStillWatching() async {
+    final presented = await (_host._backend?.showStillWatching() ??
+        Future<bool>.value(false));
+    if (!presented && GetIt.instance.isRegistered<LogService>()) {
+      GetIt.instance<LogService>().media(
+        "Still Watching prompt couldn't present, continuing playback",
+        level: LogLevel.warning,
+      );
+    }
+    return presented;
+  }
+
+  @override
+  Future<void> showSkipSegment(
+    String segmentDisplayName, {
+    required String countdownStyle,
+    required int segmentStartMs,
+    required int segmentEndMs,
+  }) {
+    var label = 'Skip $segmentDisplayName';
+    if (_host.mounted) {
+      label = AppLocalizations.of(_host.context).skipSegment(
+        segmentDisplayName,
+      );
+    }
+    return _host._backend?.showSkipSegment(
+          label,
+          countdownStyle: countdownStyle,
+          segmentStartMs: segmentStartMs,
+          segmentEndMs: segmentEndMs,
+        ) ??
+        Future<void>.value();
+  }
+
+  @override
+  Future<void> hideSkipSegment() =>
+      _host._backend?.hideSkipSegment() ?? Future<void>.value();
+
+  @override
+  Future<void> seekTo(Duration position) =>
+      _host._manager?.seekTo(position) ?? Future<void>.value();
+
+  @override
+  void pause() => unawaited(_host._manager?.pause() ?? Future<void>.value());
+
+  @override
+  void resume() => unawaited(_host._manager?.resume() ?? Future<void>.value());
+
+  @override
+  Future<void> advanceNext() => _host._manager?.next() ?? Future<void>.value();
+
+  @override
+  Future<void> exitPlayback() async => _host._handleExit();
+
+  @override
+  void setSuppressAutoNext(bool value) {
+    _host._manager?.suppressAutoNext = value;
+  }
+
+  @override
+  void markPlayed(String itemId) => _host._markPlayed(itemId);
 }

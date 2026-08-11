@@ -6,6 +6,9 @@
 
 #include <memory>
 
+#include <flutter/plugin_registrar_windows.h>
+
+#include "native_game.h"
 #include "win32_window.h"
 
 // A window that does nothing but host a Flutter view.
@@ -28,6 +31,10 @@ class FlutterWindow : public Win32Window {
 
   // The Flutter instance hosted by this window.
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
+
+  // Native retro-game playback.
+  std::unique_ptr<flutter::PluginRegistrarWindows> native_game_registrar_;
+  std::unique_ptr<NativeGame> native_game_;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

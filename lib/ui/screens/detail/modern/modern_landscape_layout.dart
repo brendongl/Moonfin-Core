@@ -32,16 +32,25 @@ class ModernLandscapeLayout extends StatelessWidget {
     this.isBoxSet = false,
   });
 
+  /// The width of the left hero column. The action row measures itself
+  /// against this to work out how many buttons fit on one line, so it lives
+  /// next to the layout that hands the width out.
+  static double heroWidthFor(
+    Size size, {
+    required bool hasUpNext,
+    required bool isBoxSet,
+  }) => hasUpNext
+      ? (isBoxSet
+            ? (size.width * 0.70).clamp(450.0, 950.0)
+            : (size.width * 0.50).clamp(360.0, 680.0))
+      : (size.width * 0.85).clamp(450.0, 1100.0);
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     final hasUpNext = upNext != null;
     final scale = GetIt.instance<UserPreferences>().get(UserPreferences.desktopUiScale).scaleFactor;
-    final heroWidth = hasUpNext
-        ? (isBoxSet
-            ? (size.width * 0.70).clamp(450.0, 950.0)
-            : (size.width * 0.50).clamp(360.0, 680.0))
-        : (size.width * 0.85).clamp(450.0, 1100.0);
+    final heroWidth = heroWidthFor(size, hasUpNext: hasUpNext, isBoxSet: isBoxSet);
 
     final hasLeftSidebar = GetIt.instance<UserPreferences>().get(UserPreferences.navbarPosition) == NavbarPosition.left;
     final leftPadding = hasLeftSidebar ? 120.0 : 40.0;

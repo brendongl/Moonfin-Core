@@ -68,10 +68,7 @@ class WebSubtitleOverlay {
 
   static bool _isAssCodec(String? codec) {
     final c = codec?.toLowerCase() ?? '';
-    return c.contains('ass') ||
-        c.contains('ssa') ||
-        c.contains('subrip') ||
-        c == 'srt';
+    return c.contains('ass') || c.contains('ssa');
   }
 
   static bool _isPgsCodec(String? codec) {
@@ -102,7 +99,7 @@ class WebSubtitleOverlay {
         '$_jassubBase/jassub-worker-modern.wasm'.toJS,
       )
       ..setProperty('fonts'.toJS, _fontUrls.jsify()!)
-      ..setProperty('defaultFont'.toJS, 'Noto Sans'.toJS)
+      ..setProperty('fallbackFont'.toJS, 'Noto Sans'.toJS)
       ..setProperty('availableFonts'.toJS, _cjkAvailableFonts());
     try {
       _assRenderer = _Jassub(options);

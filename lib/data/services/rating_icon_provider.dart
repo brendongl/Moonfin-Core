@@ -28,7 +28,6 @@ class RatingIconProvider {
       'letterboxd' => 'letterboxd.png',
       'rogerebert' => 'rogerebert.png',
       'myanimelist' => 'mal.png',
-      'anilist' => 'anilist.png',
       _ => null,
     };
   }
@@ -36,9 +35,10 @@ class RatingIconProvider {
   static String formatRating(String source, double value) {
     return switch (source) {
       'tomatoes' || 'popcorn' || 'tomatoes_audience' ||
-      'tmdb' || 'metacritic' || 'metacriticuser' || 'trakt' || 'anilist' =>
+      'tmdb' || 'metacritic' || 'metacriticuser' || 'trakt' =>
         '${value.toInt()}%',
       'letterboxd' => '${value.toStringAsFixed(1)}/5',
+      'rogerebert' => '${value.toStringAsFixed(1)}/4',
       _ => value.toStringAsFixed(1),
     };
   }
@@ -56,7 +56,6 @@ class RatingIconProvider {
       'letterboxd' => 'Letterboxd',
       'rogerebert' => 'Roger Ebert',
       'myanimelist' => 'MyAnimeList',
-      'anilist' => 'AniList',
       'stars' => l10n.communityRating,
       _ => source,
     };

@@ -6,14 +6,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:get_it/get_it.dart';
+import 'package:go_router/go_router.dart';
 import 'package:server_core/server_core.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../widgets/adaptive/adaptive_glass.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../util/game_cores.dart';
 import '../../../util/platform_detection.dart';
+import '../../../util/focus/gamepad/gamepad_suppressor.dart';
+import '../../../util/focus/gamepad/android_gamepad_channel.dart';
 import '../../../util/insecure_certificates.dart';
 import '../../../util/webview_environment.dart';
+import 'game_audio_owner.dart';
 
 /// Full-screen EmulatorJS host. Loads the Moonbase plugin's player shell in a WebView, streams
 /// the ROM from the user's server, and syncs the save state on exit. Includes a native,
@@ -44,7 +49,8 @@ class GameEmulatorScreen extends StatefulWidget {
   State<GameEmulatorScreen> createState() => _GameEmulatorScreenState();
 }
 
-class _GameEmulatorScreenState extends State<GameEmulatorScreen> {
+class _GameEmulatorScreenState extends State<GameEmulatorScreen>
+    with GameAudioOwner {
   final MediaServerClient _client = GetIt.instance<MediaServerClient>();
   InAppWebViewController? _controller;
 
@@ -76,6 +82,13 @@ class _GameEmulatorScreenState extends State<GameEmulatorScreen> {
   final ScrollController _overlayScroll = ScrollController();
   static const double _rowExtent = 48;
 
+  // Value picker for a single setting, shown over the settings list so its
+  // choices can be seen and picked rather than cycled blind.
+  int? _pickerOption;
+  int _pickerSelected = 0;
+  final ScrollController _pickerScroll = ScrollController();
+  bool get _pickerOpen => _pickerOption != null;
+
   // Open-overlay gesture: hold Start+Select for 5 seconds.
   bool _startHeld = false;
   bool _selectHeld = false;
@@ -83,20 +96,25 @@ class _GameEmulatorScreenState extends State<GameEmulatorScreen> {
 
   // Android delivers hardware-gamepad events to the focused WebView (hybrid composition), not
   // to Flutter, and the System WebView does not expose the browser Gamepad API, so the native
-  // Activity forwards buttons over this channel while the screen is active. iOS/desktop WebViews
-  // DO expose the Gamepad API, so player.html forwards those buttons via the moonfinPlayer
-  // handler instead. Both feed `_handleGamepad`.
-  static const MethodChannel _gamepadChannel =
-      MethodChannel('org.moonfin.androidtv/gamepad');
+  // Activity forwards buttons over the gamepad channel while the screen is active. iOS/desktop
+  // WebViews DO expose the Gamepad API, so player.html forwards those buttons via the
+  // moonfinPlayer handler instead. Both feed `_handleGamepad`.
 
   @override
   void initState() {
     super.initState();
     _enterImmersive();
     WakelockPlus.enable();
+    // Outside the Android guard on purpose, because the pad belongs to the
+    // game on every platform. Either way UI navigation shouldn't also react.
+    GamepadSuppressor.push();
+    claimGameAudio();
     if (PlatformDetection.isAndroid) {
-      _gamepadChannel.setMethodCallHandler(_onNativeGamepad);
-      _gamepadChannel.invokeMethod('setActive', {'active': true});
+      // Routed rather than taking the channel outright, since stick navigation
+      // listens on the same channel and only one handler is allowed.
+      AndroidGamepadChannel.ensureInstalled();
+      AndroidGamepadChannel.setButtonHandler(_onNativeGamepad);
+      AndroidGamepadChannel.setGameActive(true);
     }
     _prepare();
   }
@@ -131,7 +149,7 @@ class _GameEmulatorScreenState extends State<GameEmulatorScreen> {
 
     var hasSave = false;
     try {
-      final existing = await games.getSave(widget.gameId);
+      final existing = await games.getSave(gameStateKey(widget.gameId, widget.core));
       hasSave = existing != null && existing.isNotEmpty;
     } catch (_) {}
     _hasSave = hasSave;
@@ -203,6 +221,27 @@ class _GameEmulatorScreenState extends State<GameEmulatorScreen> {
       if (mounted) setState(() {});
     }
 
+    if (_pickerOpen) {
+      if (!pressed) return;
+      switch (sem) {
+        case _Gp.up:
+          _pickerMove(-1);
+          break;
+        case _Gp.down:
+          _pickerMove(1);
+          break;
+        case _Gp.confirm:
+          _applyPicker();
+          break;
+        case _Gp.cancel:
+          setState(() => _pickerOption = null);
+          break;
+        default:
+          break;
+      }
+      return;
+    }
+
     if (_settingsOpen) {
       if (!pressed) return;
       switch (sem) {
@@ -216,8 +255,10 @@ class _GameEmulatorScreenState extends State<GameEmulatorScreen> {
           _changeOption(-1);
           break;
         case _Gp.right:
-        case _Gp.confirm:
           _changeOption(1);
+          break;
+        case _Gp.confirm:
+          _openPicker(_settingsSelected);
           break;
         case _Gp.cancel:
           _closeSettings();
@@ -261,7 +302,7 @@ class _GameEmulatorScreenState extends State<GameEmulatorScreen> {
     }
   }
 
-  bool get _menuOpen => _overlayOpen || _settingsOpen;
+  bool get _menuOpen => _overlayOpen || _settingsOpen || _pickerOpen;
 
   void _updateCombo() {
     if (_startHeld && _selectHeld && !_menuOpen) {
@@ -391,12 +432,46 @@ class _GameEmulatorScreenState extends State<GameEmulatorScreen> {
     if (option.choices.isEmpty) return;
     final next = (option.currentIndex + dir).clamp(0, option.choices.length - 1);
     if (next == option.currentIndex) return;
-    setState(() => option.currentIndex = next);
-    final choice = option.choices[next];
+    _applyChoice(option, next);
+  }
+
+  void _applyChoice(_GameOption option, int choiceIndex) {
+    setState(() => option.currentIndex = choiceIndex);
+    final choice = option.choices[choiceIndex];
     _controller?.evaluateJavascript(
       source: "window.moonfinSetOption && window.moonfinSetOption("
           "${jsonEncode(option.id)}, ${jsonEncode(choice.value)});",
     );
+  }
+
+  void _openPicker(int index) {
+    if (index < 0 || index >= _options.length) return;
+    final option = _options[index];
+    if (option.choices.length < 2) return;
+    setState(() {
+      _pickerOption = index;
+      _pickerSelected = option.currentIndex;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _pickerOpen) {
+        _ensureVisible(_pickerScroll, _pickerSelected);
+      }
+    });
+  }
+
+  void _pickerMove(int dir) {
+    final index = _pickerOption;
+    if (index == null) return;
+    final n = _options[index].choices.length;
+    setState(() => _pickerSelected = (_pickerSelected + dir + n) % n);
+    _ensureVisible(_pickerScroll, _pickerSelected);
+  }
+
+  void _applyPicker() {
+    final index = _pickerOption;
+    if (index == null) return;
+    _applyChoice(_options[index], _pickerSelected);
+    setState(() => _pickerOption = null);
   }
 
   List<_GameOption> _parseOptions(String json) {
@@ -437,7 +512,7 @@ class _GameEmulatorScreenState extends State<GameEmulatorScreen> {
     final games = _client.gamesApi;
     if (games != null) {
       try {
-        final bytes = await games.getSave(widget.gameId);
+        final bytes = await games.getSave(gameStateKey(widget.gameId, widget.core));
         if (bytes != null && bytes.isNotEmpty) {
           final b64 = base64.encode(bytes);
           await _controller?.evaluateJavascript(
@@ -475,7 +550,7 @@ class _GameEmulatorScreenState extends State<GameEmulatorScreen> {
       final value = result?.value;
       if (value is String && value.isNotEmpty) {
         final bytes = base64.decode(value);
-        await games.putSave(widget.gameId, bytes);
+        await games.putSave(gameStateKey(widget.gameId, widget.core), bytes);
       }
     } catch (_) {}
   }
@@ -499,24 +574,43 @@ class _GameEmulatorScreenState extends State<GameEmulatorScreen> {
   Future<void> _exit() async {
     if (_saving) return;
     _saving = true;
-    await _saveState();
-    await _saveSettings();
+    // The save reads state back out of the WebView, and on Windows and web that
+    // round-trip can stall on a large PSP state. Give it a few seconds and leave
+    // anyway, otherwise the WebView stays on screen and swallows every input.
+    try {
+      await _persistOnExit().timeout(const Duration(seconds: 3));
+    } catch (_) {
+    } finally {
+      _saving = false;
+    }
     await _restoreSystemUi();
     await WakelockPlus.disable();
-    if (mounted && Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
-    }
+    if (mounted) context.pop();
+  }
+
+  Future<void> _persistOnExit() async {
+    await _saveState();
+    await _saveSettings();
+  }
+
+  @override
+  Future<void> pauseForAudioClaim() async {
+    await _controller?.evaluateJavascript(
+        source: 'window.moonfinPause && window.moonfinPause(true);');
   }
 
   @override
   void dispose() {
+    releaseGameAudio();
     _comboTimer?.cancel();
     _settingsScroll.dispose();
     _overlayScroll.dispose();
+    _pickerScroll.dispose();
     if (PlatformDetection.isAndroid) {
-      _gamepadChannel.invokeMethod('setActive', {'active': false});
-      _gamepadChannel.setMethodCallHandler(null);
+      AndroidGamepadChannel.setGameActive(false);
+      AndroidGamepadChannel.setButtonHandler(null);
     }
+    GamepadSuppressor.pop();
     // Best-effort restore if disposed without going through _exit (e.g. system pop).
     _restoreSystemUi();
     WakelockPlus.disable();
@@ -555,33 +649,43 @@ class _GameEmulatorScreenState extends State<GameEmulatorScreen> {
             else if (_playerUrl == null)
               const Center(child: CircularProgressIndicator())
             else
-              InAppWebView(
-                key: const ValueKey('game-emulator-webview'),
-                webViewEnvironment: gWebViewEnvironment,
-                initialUrlRequest: URLRequest(url: WebUri(_playerUrl!)),
-                initialUserScripts: _userScripts.isEmpty
-                    ? null
-                    : UnmodifiableListView(_userScripts),
-                initialSettings: InAppWebViewSettings(
-                  javaScriptEnabled: true,
-                  domStorageEnabled: true,
-                  mediaPlaybackRequiresUserGesture: false,
-                  allowsInlineMediaPlayback: true,
-                  transparentBackground: true,
-                  supportZoom: false,
+              // Inset the game surface from the side notches so EmulatorJS's
+              // on-screen controls are not eaten by the cutout in landscape.
+              Positioned.fill(
+                child: SafeArea(
+                  left: true,
+                  right: true,
+                  top: false,
+                  bottom: false,
+                  child: InAppWebView(
+                    key: const ValueKey('game-emulator-webview'),
+                    webViewEnvironment: gWebViewEnvironment,
+                    initialUrlRequest: URLRequest(url: WebUri(_playerUrl!)),
+                    initialUserScripts: _userScripts.isEmpty
+                        ? null
+                        : UnmodifiableListView(_userScripts),
+                    initialSettings: InAppWebViewSettings(
+                      javaScriptEnabled: true,
+                      domStorageEnabled: true,
+                      mediaPlaybackRequiresUserGesture: false,
+                      allowsInlineMediaPlayback: true,
+                      transparentBackground: true,
+                      supportZoom: false,
+                    ),
+                    onWebViewCreated: (controller) {
+                      _controller = controller;
+                      controller.addJavaScriptHandler(
+                        handlerName: 'moonfinPlayer',
+                        callback: _onPlayerMessage,
+                      );
+                    },
+                    onReceivedServerTrustAuthRequest: gAllowSelfSignedCertificates
+                        ? (controller, challenge) async => ServerTrustAuthResponse(
+                              action: ServerTrustAuthResponseAction.PROCEED,
+                            )
+                        : null,
+                  ),
                 ),
-                onWebViewCreated: (controller) {
-                  _controller = controller;
-                  controller.addJavaScriptHandler(
-                    handlerName: 'moonfinPlayer',
-                    callback: _onPlayerMessage,
-                  );
-                },
-                onReceivedServerTrustAuthRequest: gAllowSelfSignedCertificates
-                    ? (controller, challenge) async => ServerTrustAuthResponse(
-                          action: ServerTrustAuthResponseAction.PROCEED,
-                        )
-                    : null,
               ),
             if (_comboActive) _buildHoldIndicator(),
             // Menu button for touch/mouse users (opens the same overlay).
@@ -601,7 +705,8 @@ class _GameEmulatorScreenState extends State<GameEmulatorScreen> {
               ),
             ),
             if (_overlayOpen) _buildOverlay(),
-            if (_settingsOpen) _buildSettings(),
+            if (_settingsOpen && !_pickerOpen) _buildSettings(),
+            if (_pickerOpen) _buildPicker(),
           ],
         ),
       ),
@@ -708,12 +813,106 @@ class _GameEmulatorScreenState extends State<GameEmulatorScreen> {
     );
   }
 
+  Widget _buildPicker() {
+    final index = _pickerOption;
+    if (index == null) return const SizedBox.shrink();
+    final option = _options[index];
+    return _modalScrim(
+      maxWidth: 420,
+      maxHeight: 460,
+      onDismiss: () => setState(() => _pickerOption = null),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 8, 20, 8),
+            child: Row(
+              children: [
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => setState(() => _pickerOption = null),
+                  child: const SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: Center(
+                      child: Icon(Icons.arrow_back, color: Colors.white, size: 22),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    option.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: Colors.white12),
+          Flexible(
+            child: ListView.builder(
+              controller: _pickerScroll,
+              shrinkWrap: true,
+              itemExtent: _rowExtent,
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              itemCount: option.choices.length,
+              itemBuilder: (context, i) => _pickerRow(option, i),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _pickerRow(_GameOption option, int index) {
+    final selected = index == _pickerSelected;
+    final current = index == option.currentIndex;
+    return GestureDetector(
+      onTap: () {
+        setState(() => _pickerSelected = index);
+        _applyPicker();
+      },
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0x333F8CFF) : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: selected ? const Color(0xFF3F8CFF) : Colors.transparent,
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                option.choices[index].label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+              ),
+            ),
+            if (current)
+              const Icon(Icons.check, size: 18, color: Color(0xFF3F8CFF)),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _settingsRow(_GameOption option, bool selected, int index) {
     final choice = option.choices[option.currentIndex];
     return GestureDetector(
       onTap: () {
         setState(() => _settingsSelected = index);
-        _changeOption(1);
+        _openPicker(index);
       },
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),

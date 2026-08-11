@@ -21,6 +21,8 @@ final class AirPlayController {
     private var pendingTitle: String = ""
     private var pendingPositionSeconds: Double = 0
     private var remoteCommandTargets: [(MPRemoteCommand, Any)] = []
+    private var routePickerView: AVRoutePickerView?
+    private var pendingRoutePickerRequest = false
 
     init() {
         NotificationCenter.default.addObserver(
@@ -100,9 +102,41 @@ final class AirPlayController {
             }
         }
 
-        presenter.present(pvc, animated: true) { [weak player] in
+        presenter.present(pvc, animated: true) { [weak self, weak player] in
             player?.play()
+            guard let self, self.pendingRoutePickerRequest else { return }
+            self.pendingRoutePickerRequest = false
+            self.openRoutePicker(in: pvc)
         }
+    }
+
+    /// Opens the system AirPlay device sheet so the user picks the TV right
+    /// away instead of hunting for the AirPlay glyph in the player's transport
+    /// bar. The request can arrive while the player is still animating in, so
+    /// it waits for the presentation to finish in that case.
+    func presentRoutePicker() {
+        guard let pvc = playerViewController else { return }
+        guard pvc.viewIfLoaded?.window != nil else {
+            pendingRoutePickerRequest = true
+            return
+        }
+        openRoutePicker(in: pvc)
+    }
+
+    /// There is no API to open the picker directly, so host an
+    /// `AVRoutePickerView` and tap its button. It has to be in the hierarchy
+    /// and visible to work, hence the near transparent single point frame.
+    private func openRoutePicker(in host: UIViewController) {
+        let picker = routePickerView ?? AVRoutePickerView(
+            frame: CGRect(x: 0, y: 0, width: 1, height: 1))
+        picker.alpha = 0.02
+        if picker.superview !== host.view {
+            picker.removeFromSuperview()
+            host.view.addSubview(picker)
+        }
+        routePickerView = picker
+        picker.subviews.compactMap { $0 as? UIButton }.first?
+            .sendActions(for: .touchUpInside)
     }
 
     private func onVideoAirPlayActivated() {
@@ -150,6 +184,9 @@ final class AirPlayController {
             }
             playerViewController = nil
         }
+        routePickerView?.removeFromSuperview()
+        routePickerView = nil
+        pendingRoutePickerRequest = false
         currentStreamURL = nil
         hasRetriedCurrentStream = false
         streamStartPositionSeconds = 0

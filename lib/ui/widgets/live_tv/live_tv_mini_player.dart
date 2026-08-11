@@ -12,6 +12,7 @@ import 'package:playback_core/playback_core.dart';
 
 import '../../../playback/media_kit_player_backend.dart';
 import '../../../playback/media3_player_backend.dart';
+import '../aether_video_view.dart';
 import '../../../preference/preference_constants.dart';
 import '../../../preference/user_preferences.dart';
 import '../../../util/platform_detection.dart';
@@ -53,10 +54,12 @@ class LiveTvMiniPlayer extends StatefulWidget {
 
 class _LiveTvMiniPlayerState extends State<LiveTvMiniPlayer> {
   final _manager = GetIt.instance<PlaybackManager>();
+  // media_kit isn't registered on platforms that run a different backend, so
+  // ask the container rather than listing them.
   final MediaKitPlayerBackend? _fallbackMediaKitBackend =
-      (PlatformDetection.isTizen || PlatformDetection.isAppleTV)
-      ? null
-      : GetIt.instance<MediaKitPlayerBackend>();
+      GetIt.instance.isRegistered<MediaKitPlayerBackend>()
+      ? GetIt.instance<MediaKitPlayerBackend>()
+      : null;
   final _prefs = GetIt.instance<UserPreferences>();
 
   late FocusNode _effectiveFocusNode;
@@ -271,6 +274,10 @@ class _LiveTvMiniPlayerState extends State<LiveTvMiniPlayer> {
           );
         },
       );
+    }
+
+    if (PlatformDetection.isIOS || PlatformDetection.isMacOS) {
+      return const AetherVideoView();
     }
 
     final prefersMedia3 =

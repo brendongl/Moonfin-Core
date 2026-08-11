@@ -19,9 +19,12 @@ class StillWatchingDialog extends StatelessWidget {
     return showFocusRestoringDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => StillWatchingDialog(
-        onContinue: () => Navigator.of(context).pop(true),
-        onStop: () => Navigator.of(context).pop(false),
+      // Popped through the dialog's own context. The caller's would target
+      // whichever navigator the caller sits in, taking that route down instead
+      // and leaving the answer unresolved.
+      builder: (dialogContext) => StillWatchingDialog(
+        onContinue: () => Navigator.pop(dialogContext, true),
+        onStop: () => Navigator.pop(dialogContext, false),
       ),
     );
   }

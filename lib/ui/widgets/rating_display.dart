@@ -12,6 +12,12 @@ String _normalizeRatingSource(String source) {
   return source == 'popcorn' ? 'tomatoes_audience' : source;
 }
 
+/// An episode's TMDB rating keeps its own key because it's scored out of 10
+/// rather than 100, but the picker only offers TMDB, so it follows that choice.
+String _selectionSource(String source) {
+  return source == 'tmdb_episode' ? 'tmdb' : source;
+}
+
 class RatingsRow extends StatelessWidget {
   final Map<String, double> ratings;
   final double? communityRating;
@@ -27,7 +33,7 @@ class RatingsRow extends StatelessWidget {
     this.communityRating,
     this.criticRating,
     this.enableAdditionalRatings = false,
-    this.enabledRatings = 'tomatoes,stars',
+    this.enabledRatings = 'stars,imdb,tmdb,tomatoes,metacritic',
     this.showLabels = true,
     this.showBadges = true,
   });
@@ -49,7 +55,9 @@ class RatingsRow extends StatelessWidget {
 
     for (final entry in ratings.entries) {
       final source = _normalizeRatingSource(entry.key);
+      // The server's own rating wins over a fetched one for the same slot.
       if (source == 'tomatoes' && criticRating != null) continue;
+      if (source == 'stars' && communityRating != null) continue;
       allRatings[source] = entry.value;
     }
 
@@ -60,11 +68,11 @@ class RatingsRow extends StatelessWidget {
     if (allRatings.isEmpty) return const SizedBox.shrink();
 
     final filtered = allRatings.entries.where((e) {
-      if (!enabled.contains(e.key)) return false;
-      if (!enableAdditionalRatings && !_coreRatingSources.contains(e.key)) {
-        return false;
-      }
-      return true;
+      final source = _selectionSource(e.key);
+      // The picker belongs to the extra ratings, so with those off it stops
+      // applying and the server's own ratings still show.
+      if (!enableAdditionalRatings) return _coreRatingSources.contains(source);
+      return enabled.contains(source);
     }).toList();
 
     final enabledList = enabledRatings
@@ -77,8 +85,8 @@ class RatingsRow extends StatelessWidget {
       for (var i = 0; i < enabledList.length; i++) enabledList[i]: i,
     };
     filtered.sort((a, b) {
-      final ai = enabledOrder[a.key] ?? 999;
-      final bi = enabledOrder[b.key] ?? 999;
+      final ai = enabledOrder[_selectionSource(a.key)] ?? 999;
+      final bi = enabledOrder[_selectionSource(b.key)] ?? 999;
       return ai.compareTo(bi);
     });
 

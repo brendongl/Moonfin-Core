@@ -1,11 +1,11 @@
 name: moonfin
 description: "Moonfin - Jellyfin & Emby media client for mobile, tablet, and desktop"
 publish_to: 'none'
-version: 2.3.0+30000142
+version: 2.4.0+30000146
 
 moonfin:
-  android_tv_version: 2.3.0
-  android_tv_build_number: 2000009
+  android_tv_version: 2.4.0
+  android_tv_build_number: 2000013
 
 environment:
   sdk: ^3.11.0
@@ -29,6 +29,7 @@ dependencies:
   # Networking
   dio: ^5.9.2
   dio_cookie_manager: ^3.4.0
+  background_downloader: ^9.5.6
   cookie_jar: ^4.0.9
   web_socket_channel: ^3.0.3
 
@@ -45,13 +46,17 @@ dependencies:
   # lib/data/database/database_connection_impl_io.dart).
   sqlite3: ^2.7.0
 
-  # Media Playback
+  # Media Playback (Android, desktop and web. Apple runs on AetherEngine)
   media_kit: 1.2.6
-  # Pinned exactly: the iOS PiP frame bridge is monkey-patched into this package's
-  # TextureHW.swift / TextureSW.swift at pod-install (ios/Podfile). A minor bump can
-  # move the patch anchor and silently disable PiP, so upgrades must be deliberate.
   media_kit_video: 2.0.1
-  media_kit_libs_video: 1.0.7
+  # media_kit_libs_video would pull in the Apple libs packages, and
+  # media_kit_video's podspecs link -framework Mpv whenever they find one in
+  # pubspec.lock. Two FFmpeg builds in one binary let the engine bind a call
+  # to the wrong one, which aborts playback, so Apple keeps libmpv out
+  # entirely. The platforms that need it are listed individually instead.
+  media_kit_libs_android_video: 1.3.8
+  media_kit_libs_windows_video: 1.0.11
+  media_kit_libs_linux: 1.2.1
   # Tizen playback backend (TizenPlayerBackend) — media_kit/libmpv and Media3
   # are unavailable on Tizen, so video plays through video_player, whose Tizen
   # implementation (video_player_tizen) wraps the native AVPlay player.
@@ -68,6 +73,16 @@ dependencies:
 
   # Connectivity
   connectivity_plus: ^7.1.1
+
+  # Gamepad UI navigation on desktop and iOS. Android is left out on purpose,
+  # because this plugin's setup wants to override the same Activity methods
+  # MainActivity already uses for the emulator, and pads there already arrive
+  # as key events anyway.
+  #
+  # Raw input stream only. The companion flutter_gamepads widget layer isn't
+  # used, since it drops input when nothing has focus and can't repeat a held
+  # direction. See GamepadNavigationScope.
+  gamepads: ^0.1.10
 
   # Notifications
   flutter_local_notifications: ^21.0.0
@@ -153,7 +168,9 @@ dependencies:
   wakelock_plus_tizen: any
   sqflite_tizen: any
 
-  flutter_tvos: ^1.0.4
+  # 1.1.1 fixed a startup race where the configure call could be silently
+  # lost, leaving the engine's aggressive default remote tuning active.
+  flutter_tvos: ^1.1.2
   path_provider_tvos: any
   shared_preferences_tvos: any
   flutter_secure_storage_tvos: any
@@ -173,6 +190,9 @@ dev_dependencies:
   drift_dev: ^2.28.0
   mocktail: ^1.0.5
   msix: ^3.16.12
+  # Lets a test stand in for the Android side of path_provider.
+  path_provider_platform_interface: ^2.1.2
+  plugin_platform_interface: ^2.1.8
 
 dependency_overrides:
   media_kit_libs_android_video:
@@ -186,6 +206,13 @@ dependency_overrides:
   # re-vendor the matching version and re-apply that patch.
   flutter_inappwebview_windows:
     path: packages/flutter_inappwebview_windows
+  # Vendored 0.1.2 that degrades instead of throwing from its detached input
+  # thread, which aborted the app at startup when /dev/input was missing or
+  # could not be watched. The delta is recorded in
+  # patches/gamepads_linux-0.1.2-no-abort-on-input-errors.patch. On upgrade,
+  # re-vendor the matching version and re-apply that patch.
+  gamepads_linux:
+    path: packages/gamepads_linux
   synchronized: 3.3.1
   wakelock_plus: 1.3.3
   screen_brightness_android: 2.1.3
@@ -205,6 +232,7 @@ flutter:
     - assets/icons/
     - assets/icons/ratings/
     - assets/fonts/
+    - assets/subtitle_fonts/
     - assets/licenses/cores/
 
   fonts:
@@ -229,7 +257,7 @@ msix_config:
   display_name: Moonfin
   publisher_display_name: Moonfin
   identity_name: com.moonfin.app
-  msix_version: 2.2.0.0
+  msix_version: 2.4.0.0
   logo_path: assets/icons/app_icon.png
   capabilities: internetClient, internetClientServer
   languages: en-us

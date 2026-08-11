@@ -17,8 +17,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../data/services/plugin_sync_service.dart';
 import '../../../data/services/custom_external_lists_service.dart';
-import '../../../data/services/macos_download_dir.dart';
-import '../../../data/services/storage_path_service.dart';
 import '../../../data/repositories/seerr_repository.dart';
 import '../../../di/providers.dart';
 import '../../../util/idiom/app_ui_idiom.dart';
@@ -28,7 +26,9 @@ import '../../../util/focus/dpad_keys.dart';
 import '../../../util/language_codes.dart';
 import '../../../util/locale_names.dart';
 import '../../../util/overlay_color_palette.dart';
+import '../../../util/game_cores.dart';
 import '../../../util/platform_detection.dart';
+import '../../../util/playback_time_label.dart';
 import '../../../util/tv_image_cache_stub.dart'
     if (dart.library.io) '../../../util/tv_image_cache_io.dart';
 import '../../../util/app_distribution.dart';
@@ -50,8 +50,10 @@ import '../../navigation/destinations.dart';
 import '../../widgets/adaptive/adaptive_dialog.dart';
 import '../../widgets/adaptive/adaptive_list_section.dart';
 import '../../widgets/overlay_sheet.dart';
+import '../../widgets/playback/playback_time_row.dart';
 import '../../widgets/settings/preference_binding.dart';
 import '../../widgets/settings/clean_settings_typography.dart';
+import '../../widgets/settings/button_layout_list.dart';
 import '../../widgets/settings/preference_tiles.dart';
 import '../../widgets/settings/settings_panel.dart';
 import '../../widgets/settings/settings_section_header.dart';
@@ -61,11 +63,14 @@ import '../../widgets/focus/request_initial_focus.dart';
 import '../home/home_view_model.dart';
 import 'appearance_theme_screen.dart';
 import 'diagnostics_settings_screen.dart';
+import 'download_settings_screen.dart';
 import 'saved_themes_screen.dart';
 import 'theme_store_screen.dart';
 import 'home_sections_screen.dart';
 import 'home_row_toggles_screen.dart';
 import 'home_rows_image_type_screen.dart';
+import 'emulator_cores_screen.dart';
+import 'downloaded_games_screen.dart';
 import 'library_settings_screen.dart';
 import 'media_bar_settings_screen.dart';
 import 'screensaver_settings_screen.dart';
@@ -76,10 +81,15 @@ import 'plugin_settings_screen.dart';
 import 'ratings_config_screen.dart';
 import 'seerr_config_screen.dart';
 import 'settings_app_bar.dart';
+import 'subtitle_customization_screen.dart';
 import 'subtitle_settings_screen.dart';
+import '../detail/detail_buttons.dart';
+import '../playback/osd_buttons.dart';
 import '../syncplay/syncplay_screen.dart';
 
 part 'panel/settings_panel_infra.dart';
+part 'panel/settings_search_field.dart';
+part 'panel/settings_search_index.dart';
 part 'panel/authentication_category_screen.dart';
 part 'panel/customization_category_screen.dart';
 part 'panel/general_style_screen.dart';
@@ -93,11 +103,13 @@ part 'panel/integrations_screen.dart';
 part 'panel/external_lists_screen.dart';
 part 'panel/plugin_screen.dart';
 part 'panel/metadata_ratings_screen.dart';
-part 'panel/offline_downloads_screen.dart';
 part 'panel/about_category_screen.dart';
 part 'panel/licenses_screen.dart';
 part 'panel/playback_category_screen.dart';
 part 'panel/video_playback_screen.dart';
+part 'panel/playback_time_layout_screen.dart';
+part 'panel/osd_buttons_screen.dart';
+part 'panel/detail_buttons_screen.dart';
 part 'panel/audio_preferences_screen.dart';
 part 'panel/automation_queue_screen.dart';
 part 'panel/advanced_options_screen.dart';
@@ -113,6 +125,10 @@ class SettingsSidePanel extends ConsumerStatefulWidget {
 
 class _SettingsSidePanelState extends ConsumerState<SettingsSidePanel> {
   final _firstFocusNode = FocusNode(debugLabel: 'TvSettingsPanelFirstItem');
+  final _searchController = TextEditingController();
+  final _searchFieldFocus = FocusNode(debugLabel: 'SettingsSearchField');
+  final _searchTvFieldKey = GlobalKey<CustomTVTextFieldState>();
+  String _query = '';
 
   bool get _showThemeEditorEntry =>
       PlatformDetection.isWeb && webRuntimeConfig.pluginMode;
@@ -180,12 +196,51 @@ class _SettingsSidePanelState extends ConsumerState<SettingsSidePanel> {
     if (!PlatformDetection.useMobileUi) {
       _requestInitialFocus();
     }
+    _searchController.addListener(_onSearchChanged);
+    if (PlatformDetection.useDesktopUi) {
+      // Attached to the node so it runs before the text field consumes the
+      // key. Down leaves the field for the list, left and right stay caret
+      // moves.
+      _searchFieldFocus.onKeyEvent = _onDesktopSearchKey;
+    }
   }
 
   @override
   void dispose() {
     _firstFocusNode.dispose();
+    _searchController.dispose();
+    _searchFieldFocus.dispose();
     super.dispose();
+  }
+
+  void _onSearchChanged() {
+    final query = _searchController.text.trim();
+    if (query == _query) return;
+    setState(() => _query = query);
+    if (PlatformDetection.useMobileUi) return;
+    // If the focused result just filtered away, fall back to the field so the
+    // d-pad is never stranded on a dead node. Skipped while the TV keyboard
+    // is up so it cannot pull key events away from the keyboard grid.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (CustomTVTextField.isKeyboardVisibleNotifier.value) return;
+      final primary = FocusManager.instance.primaryFocus;
+      if (primary == null || primary.context == null) {
+        _searchFieldFocus.requestFocus();
+      }
+    });
+  }
+
+  KeyEventResult _onDesktopSearchKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey.isDownKey) {
+      return node.focusInDirection(TraversalDirection.down)
+          ? KeyEventResult.handled
+          : KeyEventResult.ignored;
+    }
+    return KeyEventResult.ignored;
   }
 
   @override
@@ -261,15 +316,84 @@ class _SettingsSidePanelState extends ConsumerState<SettingsSidePanel> {
         automaticallyImplyLeading: false,
         title: Text(l10n.settings),
       ),
-      body: ListView(
+      body: Column(
         children: [
-          adaptiveListSection(
-            children: [
-              for (final entry in entries) _PanelEntryTile(entry: entry),
-            ],
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: _SettingsSearchField(
+              controller: _searchController,
+              focusNode: _searchFieldFocus,
+              tvFieldKey: _searchTvFieldKey,
+              hint: l10n.settingsSearchHint,
+              onClear: _searchController.clear,
+            ),
+          ),
+          Expanded(
+            child: _query.isEmpty
+                ? ListView(
+                    children: [
+                      adaptiveListSection(
+                        children: [
+                          for (final entry in entries)
+                            _PanelEntryTile(entry: entry),
+                        ],
+                      ),
+                    ],
+                  )
+                : _buildSearchResults(context, l10n, showAdmin),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildSearchResults(
+    BuildContext context,
+    AppLocalizations l10n,
+    bool showAdmin,
+  ) {
+    final index = _buildSettingsSearchIndex(
+      l10n: l10n,
+      showAdmin: showAdmin,
+      showThemeEditor: _showThemeEditorEntry,
+      push: (screen) => context.pushSettingsScreen(screen),
+      openAdmin: () {
+        _closeSettingsPanel();
+        context.navigateTopLevel(Destinations.admin);
+      },
+      openThemeEditor: () => unawaited(_openThemeEditor()),
+    );
+    final results = _filterSettingsIndex(index, _query);
+    if (results.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(l10n.noResultsForQuery(_query)),
+        ),
+      );
+    }
+    return ListView(
+      children: [
+        adaptiveListSection(
+          children: [
+            for (final result in results)
+              _TvSettingsListTile(
+                key: ValueKey(result.id),
+                leading: Icon(result.icon),
+                title: Text(result.title),
+                subtitle: result.subtitle.isEmpty
+                    ? null
+                    : Text(result.subtitle),
+                onTap: () {
+                  if (PlatformDetection.useMobileUi) {
+                    _searchFieldFocus.unfocus();
+                  }
+                  result.onOpen();
+                },
+              ),
+          ],
+        ),
+      ],
     );
   }
 }

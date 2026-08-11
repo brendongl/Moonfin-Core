@@ -104,6 +104,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.2.3"
+  background_downloader:
+    dependency: "direct main"
+    description:
+      name: background_downloader
+      sha256: d27fcaf94f738032f1e6db098230799bf31ae7bf184f173fc9a752fcdae75c0e
+      url: "https://pub.dev"
+    source: hosted
+    version: "9.5.6"
   boolean_selector:
     dependency: transitive
     description:
@@ -447,6 +455,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.28.0"
+  equatable:
+    dependency: transitive
+    description:
+      name: equatable
+      sha256: "3bce007a596ff8b3119c45d68aaef631272537c03d30e5d4534dd24bf4c5eaa2"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.1.0"
   fake_async:
     dependency: transitive
     description:
@@ -736,6 +752,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.1.0"
+  flutter_shaders:
+    dependency: transitive
+    description:
+      name: flutter_shaders
+      sha256: "34794acadd8275d971e02df03afee3dee0f98dbfb8c4837082ad0034f612a3e2"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.3"
   flutter_svg:
     dependency: "direct main"
     description:
@@ -753,10 +777,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_tvos
-      sha256: e4dba70f4d6c847ff3dd49ef48cc2a52ee5001edb0ee2847f44f88689d151190
+      sha256: "1070c1f34af7aac69f907127da4ea4ab2a333bf9fa35050742a8a0a4a2920be8"
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.5"
+    version: "1.1.2"
   flutter_web_plugins:
     dependency: transitive
     description: flutter
@@ -802,6 +826,69 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.2.1"
+  gamepads:
+    dependency: "direct main"
+    description:
+      name: gamepads
+      sha256: bc2b4368f7f01e0390187f63c063f1fa26f420224e159fed1aaa2c449f5a1125
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.10+5"
+  gamepads_android:
+    dependency: transitive
+    description:
+      name: gamepads_android
+      sha256: "8d8430deab5c35bafee3124bec0db19d3df605bb8f42da9ba188e826fda551e2"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.8+2"
+  gamepads_darwin:
+    dependency: transitive
+    description:
+      name: gamepads_darwin
+      sha256: a7668dc17f2e4b95c29c54e961c3ef6e34e3997718383e96dd0bdf5a5c3b03c8
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.2+4"
+  gamepads_ios:
+    dependency: transitive
+    description:
+      name: gamepads_ios
+      sha256: "514a37d4b1b17bf47fe911ee1b750eca6be2b8abbdb71f200b9ad3186014d413"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.3+3"
+  gamepads_linux:
+    dependency: "direct overridden"
+    description:
+      path: "packages/gamepads_linux"
+      relative: true
+    source: path
+    version: "0.1.2"
+  gamepads_platform_interface:
+    dependency: transitive
+    description:
+      name: gamepads_platform_interface
+      sha256: "9ddb3b61c780284a17739d759929d2e32b912d12d9145ee493ffe2b43fc6256a"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.3"
+  gamepads_web:
+    dependency: transitive
+    description:
+      name: gamepads_web
+      sha256: "860eb4f11fdb6dfcf18f793a491282747007909075d161373df7f067dfddb9a4"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.1+1"
+  gamepads_windows:
+    dependency: transitive
+    description:
+      name: gamepads_windows
+      sha256: "650b68a4bc5d729abf12f0d2d3a53c05e4070a288c7e5575edfd485774550d8c"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.3.0+1"
   get_it:
     dependency: "direct main"
     description:
@@ -1000,6 +1087,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.1.0"
+  liquid_glass_widgets:
+    dependency: transitive
+    description:
+      name: liquid_glass_widgets
+      sha256: "62f498b0a4a5c4c09b6798f4c12267baadfc81eb71933158e27dfde5e94c355a"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.22.1"
   logger:
     dependency: "direct main"
     description:
@@ -1041,46 +1136,22 @@ packages:
     source: hosted
     version: "1.2.6"
   media_kit_libs_android_video:
-    dependency: "direct overridden"
+    dependency: "direct main"
     description:
       path: "packages/media_kit_libs_android_video_full"
       relative: true
     source: path
     version: "1.3.8"
-  media_kit_libs_ios_video:
-    dependency: transitive
-    description:
-      name: media_kit_libs_ios_video
-      sha256: b5382994eb37a4564c368386c154ad70ba0cc78dacdd3fb0cd9f30db6d837991
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.1.4"
   media_kit_libs_linux:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: media_kit_libs_linux
       sha256: "2b473399a49ec94452c4d4ae51cfc0f6585074398d74216092bf3d54aac37ecf"
       url: "https://pub.dev"
     source: hosted
     version: "1.2.1"
-  media_kit_libs_macos_video:
-    dependency: transitive
-    description:
-      name: media_kit_libs_macos_video
-      sha256: f26aa1452b665df288e360393758f84b911f70ffb3878032e1aabba23aa1032d
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.1.4"
-  media_kit_libs_video:
-    dependency: "direct main"
-    description:
-      name: media_kit_libs_video
-      sha256: "2b235b5dac79c6020e01eef5022c6cc85fedc0df1738aadc6ea489daa12a92a9"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.0.7"
   media_kit_libs_windows_video:
-    dependency: "direct overridden"
+    dependency: "direct main"
     description:
       path: "packages/media_kit_libs_windows_video"
       relative: true
@@ -1253,7 +1324,7 @@ packages:
     source: hosted
     version: "2.2.1"
   path_provider_platform_interface:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: path_provider_platform_interface
       sha256: "88f5779f72ba699763fa3a3b06aa4bf6de76c8e5de842cf6f29e2e06476c2334"
@@ -1410,7 +1481,7 @@ packages:
     source: path
     version: "0.1.0"
   plugin_platform_interface:
-    dependency: "direct overridden"
+    dependency: "direct dev"
     description:
       name: plugin_platform_interface
       sha256: "4820fbfdb9478b1ebae27888254d445073732dae3d6ea81f0b7e06d5dedc3f02"

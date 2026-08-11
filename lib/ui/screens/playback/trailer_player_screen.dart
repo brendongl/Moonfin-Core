@@ -94,7 +94,7 @@ class _TrailerPlayerScreenState extends State<TrailerPlayerScreen> {
   }
 
   void _startStreamPlaybackPath() {
-    if (PlatformDetection.isAppleTV) {
+    if (PlatformDetection.useApplePreviewPlayer) {
       unawaited(_openTrailerAppleTv());
       return;
     }
@@ -117,6 +117,14 @@ class _TrailerPlayerScreenState extends State<TrailerPlayerScreen> {
 
   void _fallBackToStreamPlayback() {
     if (_embedFallbackTriggered || !_useEmbeddedYouTube) {
+      return;
+    }
+    // AVFoundation cannot decode what the resolver pulls out of YouTube, so
+    // on Apple the embed is the only thing that can play this. Leave it up for
+    // the viewer to start rather than falling back to a stream path with
+    // nothing behind it.
+    if (PlatformDetection.useApplePreviewPlayer) {
+      if (_loading) setState(() => _loading = false);
       return;
     }
     _embedFallbackTriggered = true;
@@ -204,7 +212,6 @@ class _TrailerPlayerScreenState extends State<TrailerPlayerScreen> {
                 ? YouTubeStreamResolver.youtubeHeaders
                 : null,
             volume: 100,
-            backend: 'mpv',
           )
           .timeout(_openTimeout);
       if (!mounted) {
@@ -370,7 +377,7 @@ class _TrailerPlayerScreenState extends State<TrailerPlayerScreen> {
                         ),
                       ),
                     )
-                  : PlatformDetection.isAppleTV
+                  : PlatformDetection.useApplePreviewPlayer
                   ? (_appleTvPlayer?.textureId != null
                         ? FittedBox(
                             fit: BoxFit.contain,

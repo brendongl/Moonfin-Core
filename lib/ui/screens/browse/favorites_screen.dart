@@ -24,6 +24,7 @@ import '../../widgets/fullscreen_backdrop_switcher.dart';
 import '../../widgets/media_card.dart';
 import '../../widgets/navigation_layout.dart';
 import '../../widgets/overlay_sheet.dart';
+import '../../widgets/quick_return_wrapper.dart';
 import '../../widgets/rating_display.dart';
 import '../../widgets/sliding_pill_tabs.dart';
 import '../../../l10n/app_localizations.dart';
@@ -33,8 +34,9 @@ const _horizontalPadding = 60.0;
 const _kCompactBreakpoint = 600.0;
 
 bool _isCompact(BuildContext context) =>
-    PlatformDetection.useMobileUi ||
-    MediaQuery.sizeOf(context).width < _kCompactBreakpoint;
+    !PlatformDetection.isTV &&
+    (PlatformDetection.useMobileUi ||
+        MediaQuery.sizeOf(context).width < _kCompactBreakpoint);
 
 double _desktopUiScaleFactor() {
   return GetIt.instance<UserPreferences>()
@@ -102,10 +104,14 @@ class _FavoritesScreenState extends State<FavoritesScreen> with GridFocusNodeMix
     return _vm.rowItems[types[_selectedTab]] ?? const [];
   }
 
+  /// The list the grid focus nodes are keyed on.
+  List<AggregatedItem> get _focusTrackedItems =>
+      _vm.viewStyle == FavoritesViewStyle.library
+      ? _vm.gridItems
+      : _currentTabItems();
+
   void _maybeBumpGridVersion() {
-    final current = _vm.viewStyle == FavoritesViewStyle.library
-        ? _vm.gridItems
-        : _currentTabItems();
+    final current = _focusTrackedItems;
     final length = current.length;
     final firstId = length == 0 ? null : current.first.id;
     if (length != _lastGridItemsLength || firstId != _lastGridFirstItemId) {
@@ -155,7 +161,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> with GridFocusNodeMix
     final posterSize = _vm.posterSize;
     final baseWidth = switch (_vm.imageType) {
       ImageType.thumb => posterSize.landscapeHeight * (16 / 9),
-      ImageType.banner => posterSize.landscapeHeight * (16 / 9),
+      ImageType.banner => kBannerCardHeight * kBannerAspectRatio,
       ImageType.poster => posterSize.portraitHeight * (2 / 3),
     };
     return baseWidth * desktopScale;
@@ -164,7 +170,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> with GridFocusNodeMix
   double _gridBaseAspectRatio() {
     return switch (_vm.imageType) {
       ImageType.thumb => 16 / 9,
-      ImageType.banner => 16 / 9,
+      ImageType.banner => kBannerAspectRatio,
       ImageType.poster => 2 / 3,
     };
   }
@@ -179,7 +185,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> with GridFocusNodeMix
         'Person' => 1.0,
         _ => 16 / 9,
       },
-      ImageType.banner => 16 / 9,
+      ImageType.banner => kBannerAspectRatio,
       ImageType.poster => MediaCard.aspectRatioForType(item.type),
     };
   }
@@ -310,6 +316,29 @@ class _FavoritesScreenState extends State<FavoritesScreen> with GridFocusNodeMix
     int? maxHeight,
   }) {
     final api = _vm.imageApi;
+    if (_vm.imageType == ImageType.banner) {
+      // Same order library browse uses. The portrait primary comes last
+      // because a banner card crops it down to a sliver.
+      final bannerTag = item.bannerImageTag;
+      if (bannerTag != null) {
+        return api.getBannerImageUrl(
+          item.id,
+          maxWidth: maxWidth,
+          tag: bannerTag,
+        );
+      }
+      if (item.backdropImageTags.isNotEmpty) {
+        return api.getBackdropImageUrl(
+          item.id,
+          maxWidth: maxWidth,
+          tag: item.backdropImageTags.first,
+        );
+      }
+      final thumbTag = item.thumbImageTag;
+      if (thumbTag != null) {
+        return api.getThumbImageUrl(item.id, maxWidth: maxWidth, tag: thumbTag);
+      }
+    }
     if (_vm.imageType == ImageType.thumb && item.backdropImageTags.isNotEmpty) {
       return api.getBackdropImageUrl(item.id, maxWidth: maxWidth);
     }
@@ -326,7 +355,15 @@ class _FavoritesScreenState extends State<FavoritesScreen> with GridFocusNodeMix
   Widget build(BuildContext context) => RequestInitialFocus(
     targetNode:
         _vm.viewStyle == FavoritesViewStyle.home ? _tabsFocusNode : null,
-    child: _buildContent(context),
+    child: QuickReturnWrapper(
+      scrollController: _scrollController,
+      // cleanupGridFocusNodes disposes node 0 once the list empties, and the
+      // wrapper would keep holding it, so pass nothing instead.
+      topFocusNode: _focusTrackedItems.isNotEmpty
+          ? getGridItemFocusNode(0)
+          : null,
+      child: _buildContent(context),
+    ),
   );
 
   Widget _buildContent(BuildContext context) {
@@ -480,9 +517,12 @@ class _FavoritesScreenState extends State<FavoritesScreen> with GridFocusNodeMix
       builder: (context, constraints) {
         const spacing = 12.0;
         final available = constraints.maxWidth - horizontalPadding * 2;
+        final minClamp = _vm.imageType == ImageType.banner
+            ? (constraints.maxWidth < 600 ? 1 : 2)
+            : 2;
         final columns = ((available + spacing) / (cardWidth + spacing))
             .floor()
-            .clamp(2, 20);
+            .clamp(minClamp, 20);
         final cellWidth = (available - (columns - 1) * spacing) / columns;
         final ar = _gridBaseAspectRatio();
         final hasSubtitles = items.any(
@@ -548,6 +588,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> with GridFocusNodeMix
       ),
       width: double.infinity,
       aspectRatio: itemAspectRatio,
+      isBanner: _vm.imageType == ImageType.banner,
       focusColor: focusColor,
       focusNode: _usesDpad ? getGridItemFocusNode(index) : null,
       cardFocusExpansion: focusExpansion,
@@ -605,11 +646,14 @@ class _FavoritesScreenState extends State<FavoritesScreen> with GridFocusNodeMix
       builder: (context, constraints) {
         final isMobile = _isCompact(context);
         final gridPadding = isMobile ? 16.0 : _horizontalPadding;
+        final minClamp = _vm.imageType == ImageType.banner
+            ? (constraints.maxWidth < 600 ? 1 : 2)
+            : 2;
         final crossAxisCount =
             ((constraints.maxWidth - gridPadding * 2 + spacing) /
                     (cardWidth + spacing))
                 .floor()
-                .clamp(2, 20);
+                .clamp(minClamp, 20);
 
         final cellWidth =
             (constraints.maxWidth -
@@ -655,6 +699,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> with GridFocusNodeMix
                     ),
                     width: double.infinity,
                     aspectRatio: itemAspectRatio,
+                    isBanner: _vm.imageType == ImageType.banner,
                     focusColor: focusColor,
                     focusNode: getGridItemFocusNode(index),
                     cardFocusExpansion: focusExpansion,
@@ -1154,7 +1199,7 @@ class _SortDialogState extends State<_SortDialog> {
             ),
             Divider(color: dividerColor),
             _sectionHeader(AppLocalizations.of(context).sortBy),
-            for (final option in LibrarySortBy.values)
+            for (final option in LibrarySortBy.itemsApiValues)
               _radioTile(
                 label: option.displayName,
                 selected: vm.sortBy == option,
@@ -1283,10 +1328,12 @@ class _DisplaySettingsDialogState extends State<_DisplaySettingsDialog> {
             Divider(color: dividerColor),
             _sectionHeader(AppLocalizations.of(context).imageType),
             for (final type in ImageType.values) _imageTypeRadioTile(vm, type),
-            Divider(color: dividerColor),
-            _sectionHeader(AppLocalizations.of(context).posterSize),
-            for (final size in PosterSize.values)
-              _posterSizeRadioTile(vm, size),
+            if (vm.imageType != ImageType.banner) ...[
+              Divider(color: dividerColor),
+              _sectionHeader(AppLocalizations.of(context).posterSize),
+              for (final size in PosterSize.values)
+                _posterSizeRadioTile(vm, size),
+            ],
           ],
         ),
       ),

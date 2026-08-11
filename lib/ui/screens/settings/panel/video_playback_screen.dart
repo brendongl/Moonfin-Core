@@ -33,6 +33,14 @@ class _VideoPlaybackScreen extends StatelessWidget {
                   ZoomMode.stretch => l10n.stretch,
                 },
               ),
+              _TvSettingsListTile(
+                leading: const Icon(Icons.timer_outlined),
+                title: Text(l10n.playbackTimeDisplay),
+                subtitle: Text(l10n.settingsPlaybackTimeDisplayDescription),
+                onTap: () => context.pushSettingsScreen(
+                  const _PlaybackTimeLayoutScreen(),
+                ),
+              ),
               SwitchPreferenceTile(
                 preference: UserPreferences.trickPlayEnabled,
                 title: l10n.trickPlay,
@@ -117,6 +125,13 @@ class _VideoPlaybackScreen extends StatelessWidget {
                   subtitle: l10n.osdLockButtonDescription,
                   icon: Icons.lock,
                 ),
+              _TvSettingsListTile(
+                leading: const Icon(Icons.tune),
+                title: Text(l10n.osdButtons),
+                subtitle: Text(l10n.osdButtonsDescription),
+                onTap: () =>
+                    context.pushSettingsScreen(const _OsdButtonsScreen()),
+              ),
             ],
           ),
 
@@ -174,12 +189,15 @@ class _VideoPlaybackScreen extends StatelessWidget {
                     DolbyVisionProfile7DirectPlayBehavior.auto =>
                       l10n.settingsAutoAftkrtEnabled,
                     DolbyVisionProfile7DirectPlayBehavior.enabled =>
-                      l10n.supportedOnThisDevice,
+                      l10n.settingsEnabledOnThisDevice,
                     DolbyVisionProfile7DirectPlayBehavior.disabled =>
                       l10n.settingsDisabledPreferTranscode,
                   },
                 ),
-              if (!PlatformDetection.isWeb)
+              // Hidden on Apple TV: AetherEngine always uses VideoToolbox for
+              // hardware-capable codecs and software decode otherwise, so there
+              // is no user-facing toggle to honor.
+              if (!PlatformDetection.isWeb && !PlatformDetection.isAppleTV)
                 SwitchPreferenceTile(
                   preference: UserPreferences.hardwareDecoding,
                   title: l10n.hardwareDecoding,

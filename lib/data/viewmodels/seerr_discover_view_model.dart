@@ -6,6 +6,7 @@ import '../../preference/preference_constants.dart';
 import '../../preference/seerr_preferences.dart';
 import '../repositories/seerr_repository.dart';
 import '../services/seerr/seerr_api_models.dart';
+import '../utils/bounded_concurrency.dart';
 
 class SeerrDiscoverRow {
   final SeerrRowType type;
@@ -133,10 +134,12 @@ class SeerrDiscoverViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await _repo.ensureInitialized();
+      await _repo.ensureInitialized(force: true);
       if (!_repo.isAvailable) {
         _isLoading = false;
-        _error = 'Seerr is not configured or unavailable';
+        _error = _repo.serverReportsEnabled
+            ? 'Sign in to Seerr to see recommendations'
+            : 'Seerr is not configured or unavailable';
         notifyListeners();
         return;
       }
@@ -219,10 +222,15 @@ class SeerrDiscoverViewModel extends ChangeNotifier {
     try {
       final page = await _loadPage(row.type, row.page + 1);
       if (page != null) {
-        final filtered = _filterItems(page.results);
+        List<SeerrDiscoverItem> newItems;
+        if (row.type == SeerrRowType.yourWatchlist) {
+          newItems = await Future.wait(page.results.map(_enrichRequestItem));
+        } else {
+          newItems = _filterItems(page.results);
+        }
         _rows = List.of(_rows);
         _rows[rowIndex] = row.copyWith(
-          items: [...row.items, ...filtered],
+          items: [...row.items, ...newItems],
           page: page.page,
           totalPages: page.totalPages,
           isLoading: false,
@@ -240,11 +248,8 @@ class SeerrDiscoverViewModel extends ChangeNotifier {
   }
 
   Future<void> _loadAllRows() async {
-    final futures = <Future<void>>[];
-    for (var i = 0; i < _rows.length; i++) {
-      futures.add(_loadRow(i));
-    }
-    await Future.wait(futures);
+    final indices = List.generate(_rows.length, (i) => i);
+    await mapBounded<int, void>(indices, 2, (index) => _loadRow(index));
   }
 
   Future<void> _loadRow(int index) async {
@@ -253,6 +258,8 @@ class SeerrDiscoverViewModel extends ChangeNotifier {
       switch (row.type) {
         case SeerrRowType.recentRequests:
           await _loadRecentRequests(index);
+        case SeerrRowType.yourWatchlist:
+          await _loadWatchlist(index);
         case SeerrRowType.recentlyAdded:
           await _loadRecentlyAdded(index);
         case SeerrRowType.movieGenres:
@@ -285,6 +292,22 @@ class SeerrDiscoverViewModel extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('[SeerrDiscover] Failed to load row ${row.type}: $e');
+      _updateRow(index, row.copyWith(isLoading: false));
+    }
+  }
+
+  Future<void> _loadWatchlist(int index) async {
+    final row = _rows[index];
+    try {
+      final page = await _repo.getWatchlist(page: 1);
+      final items = await Future.wait(page.results.map(_enrichRequestItem));
+      _updateRow(index, row.copyWith(
+        items: items,
+        page: page.page,
+        totalPages: page.totalPages,
+        isLoading: false,
+      ));
+    } catch (_) {
       _updateRow(index, row.copyWith(isLoading: false));
     }
   }
@@ -373,8 +396,8 @@ class SeerrDiscoverViewModel extends ChangeNotifier {
         return SeerrDiscoverItem(
           id: item.id,
           mediaType: item.mediaType,
-          title: item.title ?? details.title,
-          name: item.name ?? details.name,
+          title: item.title?.isNotEmpty == true ? item.title : details.title,
+          name: item.name?.isNotEmpty == true ? item.name : details.name,
           originalTitle: item.originalTitle,
           originalName: item.originalName,
           posterPath: details.posterPath ?? item.posterPath,
@@ -399,7 +422,7 @@ class SeerrDiscoverViewModel extends ChangeNotifier {
       return SeerrDiscoverItem(
         id: item.id,
         mediaType: item.mediaType,
-        title: item.title ?? details.title,
+        title: item.title?.isNotEmpty == true ? item.title : details.title,
         name: item.name,
         originalTitle: item.originalTitle,
         originalName: item.originalName,
@@ -448,9 +471,11 @@ class SeerrDiscoverViewModel extends ChangeNotifier {
       case SeerrRowType.popularSeries:
         return _repo.getTrendingTv(limit: limit, offset: offset);
       case SeerrRowType.upcomingMovies:
-        return _repo.getUpcomingMovies();
+        return _repo.getUpcomingMovies(page: page);
       case SeerrRowType.upcomingSeries:
-        return _repo.getUpcomingTv();
+        return _repo.getUpcomingTv(page: page);
+      case SeerrRowType.yourWatchlist:
+        return _repo.getWatchlist(page: page);
       default:
         return null;
     }
@@ -479,6 +504,7 @@ class SeerrDiscoverViewModel extends ChangeNotifier {
 
   static String _titleForRowType(SeerrRowType type) => switch (type) {
     SeerrRowType.recentRequests => 'Recent Requests',
+    SeerrRowType.yourWatchlist => 'Your Watchlist',
     SeerrRowType.recentlyAdded => 'Recently Added',
     SeerrRowType.trending => 'Trending',
     SeerrRowType.popularMovies => 'Popular Movies',

@@ -4,7 +4,6 @@ import 'package:playback_emby/playback_emby.dart';
 import 'package:playback_jellyfin/playback_jellyfin.dart';
 import 'package:server_core/server_core.dart';
 
-import '../../../playback/device_profile_builder.dart';
 import '../../../l10n/current_app_localizations.dart';
 import '../../../util/platform_detection.dart';
 import '../../models/aggregated_item.dart';
@@ -14,6 +13,7 @@ import 'cast_target.dart';
 import 'cast_transport_controls.dart';
 import 'native_airplay_channel.dart';
 import 'native_cast_channel.dart';
+import 'receiver_device_profiles.dart';
 
 class AirPlayProvider implements CastProvider, CastTransportControls {
   final NativeCastChannel _native;
@@ -74,17 +74,19 @@ class AirPlayProvider implements CastProvider, CastTransportControls {
 
     final client =
         _clientFactory.getClientIfExists(item.serverId) ?? GetIt.instance<MediaServerClient>();
+    // An explicit track pick forces a transcode so the server applies it,
+    // since AVPlayer is never told which embedded track to use.
+    final hasExplicitIndices =
+        audioStreamIndex != null || subtitleStreamIndex != null;
     final resolution = await _resolverForClient(client).resolve(
       item,
-      deviceProfile: DeviceProfileBuilder.build(
-        maxBitrateMbps: 15,
-      ),
+      deviceProfile: airPlayDeviceProfile(),
       audioStreamIndex: audioStreamIndex,
       subtitleStreamIndex: subtitleStreamIndex,
       startTimeTicks: null,
       mediaSourceId: mediaSourceId,
-      enableDirectPlay: false,
-      enableDirectStream: false,
+      enableDirectPlay: !hasExplicitIndices,
+      enableDirectStream: !hasExplicitIndices,
     );
 
     var streamUrl = resolution.streamUrl;
@@ -100,10 +102,12 @@ class AirPlayProvider implements CastProvider, CastTransportControls {
 
     streamUrl = streamUrl.replaceFirst('?&', '?');
 
+    // The native side seeks once the item is ready, so the resolve above
+    // stays at zero and the whole stream remains seekable.
     await _nativeAirPlay.loadAirPlay(
       url: streamUrl,
       title: item.name,
-      positionTicks: 0,
+      positionTicks: startPositionTicks ?? 0,
     );
 
     await _native.showAirPlayRoutePicker();

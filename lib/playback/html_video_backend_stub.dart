@@ -146,6 +146,9 @@ class HtmlVideoBackend extends PlayerBackend {
   @override
   bool get canRenderBitmapSubtitles => false;
 
+  @override
+  bool get demuxesEmbeddedSubtitles => false;
+
   Widget buildView({BoxFit fit = BoxFit.contain}) {
     return const SizedBox.shrink();
   }

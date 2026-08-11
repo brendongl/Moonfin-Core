@@ -50,6 +50,10 @@ add_subdirectory(${FLUTTER_MANAGED_DIR})
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GTK REQUIRED IMPORTED_TARGET gtk+-3.0)
 
+# Shared libretro host and its desktop audio sink, linked into the runner.
+set(LIBRETRO_HOST_AUDIO ON CACHE BOOL "" FORCE)
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../native/libretro_host" libretro_host)
+
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
 

@@ -20,7 +20,13 @@ abstract class LiveTvApi {
     String? userId,
   });
 
-  Future<Map<String, dynamic>> getRecommendedPrograms({int? limit});
+  /// [isAiring] has to be true for the server to recommend anything. Without
+  /// it the endpoint falls back to a plain guide listing sorted by start date,
+  /// which is neither filtered to what is on right now nor ranked.
+  Future<Map<String, dynamic>> getRecommendedPrograms({
+    int? limit,
+    bool? isAiring,
+  });
 
   Future<Map<String, dynamic>> getRecordings({
     int? limit,

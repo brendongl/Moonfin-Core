@@ -185,6 +185,13 @@ bool FlutterWindow::OnCreate() {
   }
   RegisterPlugins(flutter_controller_->engine());
 
+  native_game_registrar_ = std::make_unique<flutter::PluginRegistrarWindows>(
+      flutter_controller_->engine()->GetRegistrarForPlugin("NativeGame"));
+
+  native_game_ = std::make_unique<NativeGame>(
+      flutter_controller_->engine()->messenger(),
+      native_game_registrar_->texture_registrar());
+
   if (!g_hdr_display_channel) {
     g_hdr_display_channel =
         std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(

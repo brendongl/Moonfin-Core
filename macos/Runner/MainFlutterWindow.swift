@@ -1,9 +1,14 @@
 import Cocoa
 import FlutterMacOS
+import moonfin_game_host
 
 class MainFlutterWindow: NSWindow {
   private var sfSymbolChannel: FlutterMethodChannel?
   private var downloadDirChannel: FlutterMethodChannel?
+  private var gameChannel: NativeGameChannel?
+  private var aetherVideoChannel: AetherVideoChannel?
+  private var themeMusicChannel: AppleTvThemeMusicChannel?
+  private var previewChannel: AppleTvPreviewChannel?
   // Retained so the security-scoped access stays open for the session.
   private var accessedDownloadURL: URL?
 
@@ -164,6 +169,31 @@ class MainFlutterWindow: NSWindow {
         result(FlutterMethodNotImplemented)
       }
     }
+
+    let gameRegistrar = flutterViewController.registrar(forPlugin: "moonfin_game_host")
+    self.gameChannel = NativeGameChannel(registrar: gameRegistrar)
+
+    // AetherEngine playback: control/event channels plus the AppKitView video
+    // surface factory. Same channel names as iOS, so the Dart backend is
+    // shared unchanged.
+    let messenger = flutterViewController.engine.binaryMessenger
+    let aetherChannel = AetherVideoChannel(messenger: messenger)
+    self.aetherVideoChannel = aetherChannel
+    let aetherRegistrar = flutterViewController.registrar(forPlugin: "moonfin_aether_video")
+    aetherRegistrar.register(
+      MacosAetherVideoViewFactory(
+        messenger: messenger,
+        wrapperProvider: { [weak aetherChannel] in
+          aetherChannel?.player ?? AetherPlayerWrapper()
+        }),
+      withId: MacosAetherVideoViewFactory.viewType)
+
+    // Trailers, row previews and theme music, on the same channels the other
+    // Apple platforms use.
+    self.themeMusicChannel = AppleTvThemeMusicChannel(messenger: messenger)
+    let previewRegistrar = flutterViewController.registrar(forPlugin: "moonfin_appletv_preview")
+    self.previewChannel = AppleTvPreviewChannel(
+      messenger: messenger, textures: previewRegistrar.textures)
 
     super.awakeFromNib()
   }

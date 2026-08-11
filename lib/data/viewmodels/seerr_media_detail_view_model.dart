@@ -8,6 +8,170 @@ import '../services/seerr/seerr_api_models.dart';
 import '../services/seerr/seerr_download_progress.dart';
 import '../services/seerr/seerr_error.dart';
 
+/// Reads one flag out of Seerr's public settings.
+///
+/// A server too old to know about a flag leaves it out of the payload rather
+/// than sending false, so absence means no opinion and [fallback] stands. That
+/// matters for the 4K flags: reading silence as switched off hid the 4K
+/// request control from everyone on those builds.
+@visibleForTesting
+bool seerrPublicFlag(
+  Map<String, dynamic> settings,
+  String key, {
+  required bool fallback,
+}) => settings.containsKey(key) ? settings[key] == true : fallback;
+
+/// One quality track (HD or 4K) of a title: its media status, the requests
+/// for that track, and the flags the UI reads. Seerr stores the two
+/// qualities independently, as status vs status4k and SeerrRequest.is4k, so
+/// each track carries its own request slot.
+class SeerrQualityStatus {
+  final bool is4k;
+  final int status;
+  final List<SeerrRequest> requests;
+  final List<SeerrRequest> activeRequests;
+  final SeerrDownloadSummary? download;
+  final bool canManageRequests;
+  final int? currentUserId;
+
+  /// What Seerr reports per season, when it reports anything. Older servers and
+  /// movie payloads leave this empty, which is why [seasonStatus] can fall back
+  /// to the request list.
+  final List<SeerrSeasonAvailability> seasonAvailability;
+
+  const SeerrQualityStatus({
+    required this.is4k,
+    required this.status,
+    required this.requests,
+    required this.activeRequests,
+    required this.download,
+    required this.canManageRequests,
+    required this.currentUserId,
+    this.seasonAvailability = const [],
+  });
+
+  factory SeerrQualityStatus.of({
+    required bool is4k,
+    required SeerrMediaInfo? mediaInfo,
+    required bool canManageRequests,
+    required int? currentUserId,
+  }) {
+    final status = (is4k ? mediaInfo?.status4k : mediaInfo?.status) ?? 0;
+    final requests = (mediaInfo?.requests ?? const <SeerrRequest>[])
+        .where((r) => r.is4k == is4k)
+        .toList();
+    return SeerrQualityStatus(
+      is4k: is4k,
+      status: status,
+      requests: requests,
+      activeRequests: requests
+          .where((r) =>
+              r.status == SeerrRequest.statusPending ||
+              r.status == SeerrRequest.statusApproved)
+          .toList(),
+      download: SeerrDownloadSummary.forMedia(
+        status: status,
+        items: is4k ? mediaInfo?.downloadStatus4k : mediaInfo?.downloadStatus,
+      ),
+      canManageRequests: canManageRequests,
+      currentUserId: currentUserId,
+      seasonAvailability:
+          mediaInfo?.seasons ?? const <SeerrSeasonAvailability>[],
+    );
+  }
+
+  bool get isFullyAvailable => status == 5;
+  bool get isPartiallyAvailable => status == 4;
+  bool get isAvailable => isFullyAvailable || isPartiallyAvailable;
+  bool get isProcessing => status == 3;
+  bool get isPending => status == 2;
+  bool get isBlacklisted => status == 6;
+  bool get isDeleted => status == 7;
+
+  /// Whether Seerr reports anything at all for this track. A server with no
+  /// 4K backend leaves status4k at unknown (1), so this stays false there.
+  bool get hasAnyState => status > 1 || requests.isNotEmpty;
+
+  bool get hasExistingRequest => activeRequests.isNotEmpty;
+
+  /// Seerr's delete rule: a request manager may remove any open request, and
+  /// everyone else only their own while it is still pending. Offering more
+  /// than that gets a 401 back from the server instead of a cancel.
+  List<SeerrRequest> get cancelableRequests {
+    if (canManageRequests) return activeRequests;
+    final userId = currentUserId;
+    // Without a known user every request would match on a null owner id.
+    if (userId == null) return const [];
+    return activeRequests
+        .where((r) =>
+            r.status == SeerrRequest.statusPending &&
+            r.requestedBy?.id == userId)
+        .toList();
+  }
+
+  Set<int> get requestedSeasons {
+    final seasons = <int>{};
+    for (final r in requests) {
+      if (r.status == SeerrRequest.statusDeclined ||
+          r.status == SeerrRequest.statusFailed) {
+        continue;
+      }
+      if (r.seasons != null) {
+        for (final s in r.seasons!) {
+          seasons.add(s.seasonNumber);
+        }
+      }
+    }
+    return seasons;
+  }
+
+  /// Seasons the library already holds for this track, fully or partially.
+  Set<int> get availableSeasons => {
+        for (final s in seasonAvailability)
+          if (((is4k ? s.status4k : s.status) ?? 0) >= 4) s.seasonNumber,
+      };
+
+  /// Seasons the request sheet may not offer: already in the library or
+  /// already spoken for by an open request.
+  Set<int> get unavailableOrRequestedSeasons =>
+      {...requestedSeasons, ...availableSeasons};
+
+  /// Season number to media status (2 pending, 3 processing, 4 partial,
+  /// 5 available) for this quality track, so a series can show where it stands
+  /// season by season rather than only as a whole.
+  ///
+  /// Deliberately separate from [unavailableOrRequestedSeasons], which answers
+  /// the narrower "may this season still be requested" question the request
+  /// sheet asks.
+  Map<int, int> get seasonStatus {
+    final byNumber = <int, int>{};
+
+    // What the server says, wherever it says anything.
+    for (final s in seasonAvailability) {
+      final status = (is4k ? s.status4k : s.status) ?? 0;
+      if (status > 1) byNumber[s.seasonNumber] = status;
+    }
+
+    // Anything the server didn't cover falls back to the request it came from.
+    for (final r in requests) {
+      if (r.status == SeerrRequest.statusDeclined ||
+          r.status == SeerrRequest.statusFailed) {
+        continue;
+      }
+      final derived = switch (r.status) {
+        SeerrRequest.statusCompleted => 5,
+        SeerrRequest.statusApproved => 3,
+        _ => 2,
+      };
+      for (final s in r.seasons ?? const <SeerrSeasonRequest>[]) {
+        byNumber.putIfAbsent(s.seasonNumber, () => derived);
+      }
+    }
+
+    return byNumber;
+  }
+}
+
 class SeerrMediaDetailState {
   final bool isLoading;
   final String? error;
@@ -21,6 +185,9 @@ class SeerrMediaDetailState {
   final SeerrRequestErrorKind? requestErrorKind;
   final String? requestSuccess;
   final SeerrQuota? quota;
+  final bool isTogglingWatchlist;
+  final bool onUserWatchlist;
+  final String? watchlistError;
 
   const SeerrMediaDetailState({
     this.isLoading = false,
@@ -35,6 +202,9 @@ class SeerrMediaDetailState {
     this.requestErrorKind,
     this.requestSuccess,
     this.quota,
+    this.isTogglingWatchlist = false,
+    this.onUserWatchlist = false,
+    this.watchlistError,
   });
 
   bool get isMovie => movie != null;
@@ -98,32 +268,27 @@ class SeerrMediaDetailState {
     return youtubeTrailer ?? anyTrailer ?? anyYoutube ?? videos.first;
   }
 
-  int get mediaStatus => mediaInfo?.status ?? 0;
-  bool get isFullyAvailable => mediaStatus == 5;
-  bool get isPartiallyAvailable => mediaStatus == 4;
-  bool get isProcessing => mediaStatus == 3;
-  bool get isPending => mediaStatus == 2;
-  bool get isBlacklisted => mediaStatus == 6;
-  bool get isDeleted => mediaStatus == 7;
-
-  SeerrDownloadSummary? get hdDownload => SeerrDownloadSummary.forMedia(
-        status: mediaInfo?.status,
-        items: mediaInfo?.downloadStatus,
-      );
-  SeerrDownloadSummary? get download4k => SeerrDownloadSummary.forMedia(
-        status: mediaInfo?.status4k,
-        items: mediaInfo?.downloadStatus4k,
+  SeerrQualityStatus quality({required bool is4k}) => SeerrQualityStatus.of(
+        is4k: is4k,
+        mediaInfo: mediaInfo,
+        canManageRequests: canManageRequests,
+        currentUserId: currentUser?.id,
       );
 
-  List<SeerrRequest> get pendingRequests {
-    final requests = mediaInfo?.requests;
-    if (requests == null) return [];
-    return requests
-        .where((r) => r.status == SeerrRequest.statusPending)
-        .toList();
-  }
+  SeerrQualityStatus get hd => quality(is4k: false);
+  SeerrQualityStatus get uhd => quality(is4k: true);
 
-  List<SeerrRequest> get activeRequests {
+  bool get isAvailableAnyQuality => hd.isAvailable || uhd.isAvailable;
+
+  SeerrDownloadSummary? get hdDownload => hd.download;
+  SeerrDownloadSummary? get download4k => uhd.download;
+
+  bool get canManageRequests =>
+      currentUser?.hasPermission(SeerrPermission.manageRequests) ?? false;
+
+  /// Pending or approved requests across both qualities, for the requester
+  /// rows and for checking whether anything is still open on the title.
+  List<SeerrRequest> get allActiveRequests {
     final requests = mediaInfo?.requests;
     if (requests == null) return [];
     return requests
@@ -131,32 +296,6 @@ class SeerrMediaDetailState {
             r.status == SeerrRequest.statusPending ||
             r.status == SeerrRequest.statusApproved)
         .toList();
-  }
-
-  bool get hasExistingRequest {
-    final requests = mediaInfo?.requests;
-    if (requests == null || requests.isEmpty) return false;
-    return requests.any((r) =>
-        r.status == SeerrRequest.statusPending ||
-        r.status == SeerrRequest.statusApproved);
-  }
-
-  Set<int> get requestedSeasons {
-    final requests = mediaInfo?.requests;
-    if (requests == null) return {};
-    final seasons = <int>{};
-    for (final r in requests) {
-      if (r.status == SeerrRequest.statusDeclined ||
-          r.status == SeerrRequest.statusFailed) {
-        continue;
-      }
-      if (r.seasons != null) {
-        for (final s in r.seasons!) {
-          seasons.add(s.seasonNumber);
-        }
-      }
-    }
-    return seasons;
   }
 
   SeerrMediaDetailState copyWith({
@@ -172,6 +311,9 @@ class SeerrMediaDetailState {
     SeerrRequestErrorKind? requestErrorKind,
     String? requestSuccess,
     SeerrQuota? quota,
+    bool? isTogglingWatchlist,
+    bool? onUserWatchlist,
+    String? watchlistError,
   }) =>
       SeerrMediaDetailState(
         isLoading: isLoading ?? this.isLoading,
@@ -186,6 +328,9 @@ class SeerrMediaDetailState {
         requestErrorKind: requestErrorKind,
         requestSuccess: requestSuccess,
         quota: quota ?? this.quota,
+        isTogglingWatchlist: isTogglingWatchlist ?? this.isTogglingWatchlist,
+        onUserWatchlist: onUserWatchlist ?? this.onUserWatchlist,
+        watchlistError: watchlistError,
       );
 }
 
@@ -195,6 +340,12 @@ class SeerrMediaDetailViewModel extends ChangeNotifier {
 
   SeerrMediaDetailState _state = const SeerrMediaDetailState();
   SeerrMediaDetailState get state => _state;
+
+  // Whether the server has a default 4K Radarr or Sonarr. These start true so
+  // that until the fetch lands, or if it fails, 4K stays gated on permission
+  // alone rather than disappearing.
+  bool _movie4kEnabled = true;
+  bool _series4kEnabled = true;
 
   Timer? _downloadPollTimer;
 
@@ -243,7 +394,47 @@ class SeerrMediaDetailViewModel extends ChangeNotifier {
   }
 
   void clearFeedback() {
-    _state = _state.copyWith(requestSuccess: null, requestError: null);
+    _state = _state.copyWith(
+      requestSuccess: null,
+      requestError: null,
+      watchlistError: null,
+    );
+  }
+
+  /// Seerr only offers 4K requests when the server has a default 4K backend,
+  /// which it reports as movie4kEnabled and series4kEnabled.
+  Future<void> _loadPublicSettings() async {
+    try {
+      final settings = await _repo.getPublicSettings();
+      _movie4kEnabled = seerrPublicFlag(
+        settings,
+        'movie4kEnabled',
+        fallback: _movie4kEnabled,
+      );
+      _series4kEnabled = seerrPublicFlag(
+        settings,
+        'series4kEnabled',
+        fallback: _series4kEnabled,
+      );
+      notifyListeners();
+    } catch (_) {
+      // Keep the permissive defaults.
+    }
+  }
+
+  /// The search hit of the kind that was asked for.
+  ///
+  /// Seerr ranks a search by popularity across every kind of media, so the
+  /// first hit for a film can easily be a series of the same name.
+  @visibleForTesting
+  static SeerrDiscoverItem bestSearchMatch(
+    List<SeerrDiscoverItem> results,
+    String mediaType,
+  ) {
+    for (final result in results) {
+      if (result.mediaType == mediaType) return result;
+    }
+    return results.first;
   }
 
   Future<void> load(String itemId, String mediaType, {String? title}) async {
@@ -252,6 +443,7 @@ class SeerrMediaDetailViewModel extends ChangeNotifier {
 
     try {
       await _repo.ensureInitialized();
+      unawaited(_loadPublicSettings());
 
       SeerrUser? user;
       try {
@@ -262,8 +454,17 @@ class SeerrMediaDetailViewModel extends ChangeNotifier {
       String resolvedMediaType = mediaType;
 
       if (itemId.startsWith('tt')) {
+        // The IMDb id names exactly one title, so it is asked first. A title
+        // search is a guess and only stands in when the id turns up nothing.
         SeerrDiscoverPage? searchPage;
-        if (title != null && title.isNotEmpty) {
+        try {
+          searchPage = await _repo.search(itemId);
+        } catch (e) {
+          debugPrint('[SeerrDetail] Search by IMDb ID failed: $e');
+        }
+        if ((searchPage == null || searchPage.results.isEmpty) &&
+            title != null &&
+            title.isNotEmpty) {
           try {
             searchPage = await _repo.search(title);
           } catch (e) {
@@ -271,18 +472,11 @@ class SeerrMediaDetailViewModel extends ChangeNotifier {
           }
         }
         if (searchPage == null || searchPage.results.isEmpty) {
-          try {
-            searchPage = await _repo.search(itemId);
-          } catch (e) {
-            debugPrint('[SeerrDetail] Search by IMDb ID failed: $e');
-          }
-        }
-        if (searchPage == null || searchPage.results.isEmpty) {
           throw Exception('Media not found on Seerr');
         }
-        final firstResult = searchPage.results.first;
-        tmdbId = firstResult.id;
-        resolvedMediaType = firstResult.mediaType ?? mediaType;
+        final match = bestSearchMatch(searchPage.results, mediaType);
+        tmdbId = match.id;
+        resolvedMediaType = match.mediaType ?? mediaType;
       } else {
         final parsed = int.tryParse(itemId);
         if (parsed == null) {
@@ -293,8 +487,12 @@ class SeerrMediaDetailViewModel extends ChangeNotifier {
 
       if (resolvedMediaType == 'tv') {
         try {
-          final details = await _repo.getTvDetails(tmdbId);
-          _state = SeerrMediaDetailState(tv: details, currentUser: user);
+          final (details, onWatchlist) = await _repo.getTvDetailsWithWatchlist(tmdbId);
+          _state = SeerrMediaDetailState(
+            tv: details,
+            currentUser: user,
+            onUserWatchlist: onWatchlist,
+          );
           notifyListeners();
           _loadRelated(tmdbId, 'tv');
         } catch (e) {
@@ -309,8 +507,12 @@ class SeerrMediaDetailViewModel extends ChangeNotifier {
         }
       } else {
         try {
-          final details = await _repo.getMovieDetails(tmdbId);
-          _state = SeerrMediaDetailState(movie: details, currentUser: user);
+          final (details, onWatchlist) = await _repo.getMovieDetailsWithWatchlist(tmdbId);
+          _state = SeerrMediaDetailState(
+            movie: details,
+            currentUser: user,
+            onUserWatchlist: onWatchlist,
+          );
           notifyListeners();
           _loadRelated(tmdbId, 'movie');
         } catch (e) {
@@ -380,17 +582,8 @@ class SeerrMediaDetailViewModel extends ChangeNotifier {
       );
 
       await _reloadDetails('Request submitted');
-    } on SeerrRequestException catch (e) {
-      _state = _state.copyWith(
-        isRequesting: false,
-        requestError: e.serverMessage ?? e.kind.name,
-        requestErrorKind: e.kind,
-      );
     } catch (e) {
-      _state = _state.copyWith(
-        isRequesting: false,
-        requestError: e.toString(),
-      );
+      _setRequestFailure(e);
     }
     notifyListeners();
   }
@@ -459,10 +652,7 @@ class SeerrMediaDetailViewModel extends ChangeNotifier {
       }
       await _reloadDetails('Request cancelled');
     } catch (e) {
-      _state = _state.copyWith(
-        isRequesting: false,
-        requestError: e.toString(),
-      );
+      _setRequestFailure(e);
     }
     notifyListeners();
   }
@@ -496,10 +686,22 @@ class SeerrMediaDetailViewModel extends ChangeNotifier {
       await mutation();
       await _reloadDetails(successMessage);
     } catch (e) {
-      _state = _state.copyWith(isRequesting: false, requestError: e.toString());
+      _setRequestFailure(e);
     }
 
     notifyListeners();
+  }
+
+  /// Keeps the typed kind when Seerr refused the mutation so the UI can show a
+  /// translated reason instead of a raw exception.
+  void _setRequestFailure(Object error) {
+    _state = error is SeerrRequestException
+        ? _state.copyWith(
+            isRequesting: false,
+            requestError: error.serverMessage ?? error.kind.name,
+            requestErrorKind: error.kind,
+          )
+        : _state.copyWith(isRequesting: false, requestError: error.toString());
   }
 
   Future<void> _reloadDetails(String successMessage) async {
@@ -528,11 +730,42 @@ class SeerrMediaDetailViewModel extends ChangeNotifier {
     _syncDownloadPolling();
   }
 
-  bool get canManageRequests {
-    final user = _state.currentUser;
-    if (user == null) return false;
-    return user.hasPermission(SeerrPermission.manageRequests);
+  Future<void> toggleWatchlist() async {
+    final s = _state;
+    if (s.isTogglingWatchlist) return;
+    final tmdbId = s.tmdbId;
+    if (tmdbId == 0) return;
+    final mediaType = s.isMovie ? 'movie' : 'tv';
+    final wasOnWatchlist = s.onUserWatchlist;
+
+    _state = _state.copyWith(
+      isTogglingWatchlist: true,
+      onUserWatchlist: !wasOnWatchlist,
+    );
+    notifyListeners();
+
+    var onWatchlist = !wasOnWatchlist;
+    String? error;
+    try {
+      if (wasOnWatchlist) {
+        await _repo.removeFromWatchlist(tmdbId: tmdbId, mediaType: mediaType);
+      } else {
+        await _repo.addToWatchlist(tmdbId: tmdbId, mediaType: mediaType);
+      }
+    } catch (e) {
+      onWatchlist = wasOnWatchlist;
+      error = e.toString();
+    }
+
+    _state = _state.copyWith(
+      isTogglingWatchlist: false,
+      onUserWatchlist: onWatchlist,
+      watchlistError: error,
+    );
+    notifyListeners();
   }
+
+  bool get canManageRequests => _state.canManageRequests;
 
   bool get canRequest {
     final user = _state.currentUser;
@@ -545,7 +778,12 @@ class SeerrMediaDetailViewModel extends ChangeNotifier {
   bool get canRequest4k {
     final user = _state.currentUser;
     if (user == null) return false;
-    return user.canRequest4k;
+    // Seerr checks the permission per media type, and only exposes 4K when a
+    // default 4K backend exists for that type.
+    if (_state.isTv) {
+      return user.canRequest4kTv && _series4kEnabled;
+    }
+    return user.canRequest4kMovies && _movie4kEnabled;
   }
 
   bool get canRequestAdvanced {
@@ -559,7 +797,7 @@ class SeerrMediaDetailViewModel extends ChangeNotifier {
     if (user == null || !user.canCreateIssues) return false;
     // Issues need the seerr media id, so the media has to exist on the server.
     if (_state.mediaInfo?.id == null) return false;
-    return _state.isFullyAvailable || _state.isPartiallyAvailable;
+    return _state.isAvailableAnyQuality;
   }
 
   String? get savedProfileId {

@@ -5,6 +5,8 @@ import 'package:server_core/server_core.dart';
 
 import '../../../data/services/plugin_sync_service.dart';
 import '../../../preference/user_preferences.dart';
+import '../../widgets/adaptive/adaptive_dialog.dart';
+import '../../widgets/overlay_sheet.dart';
 import '../../widgets/settings/clean_settings_typography.dart';
 import '../../widgets/settings/preference_tiles.dart';
 import '../../../l10n/app_localizations.dart';
@@ -50,7 +52,7 @@ class _PluginSettingsSectionState extends State<PluginSettingsSection> {
   void _pushSync() {
     if (_syncService.pluginAvailable) {
       final client = GetIt.instance<MediaServerClient>();
-      _syncService.pushSettings(client);
+      _syncService.pushSettings(client, force: true);
     }
   }
 
@@ -102,7 +104,11 @@ class _PluginSettingsSectionState extends State<PluginSettingsSection> {
     setState(() => _profileSyncBusy = true);
     final client = GetIt.instance<MediaServerClient>();
     final profile = _syncService.selectedCustomizationProfile;
-    await _syncService.pushSettingsForProfile(client, profile: profile);
+    await _syncService.pushSettingsForProfile(
+      client,
+      profile: profile,
+      force: true,
+    );
 
     if (!mounted) return;
     setState(() => _profileSyncBusy = false);
@@ -111,6 +117,61 @@ class _PluginSettingsSectionState extends State<PluginSettingsSection> {
       SnackBar(
         content: Text(
           l10n.syncedSettingsToProfile(_profileLabel(profile, l10n)),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _resetSelectedProfile() async {
+    if (_profileSyncBusy || !_syncService.pluginAvailable) return;
+    if (!GetIt.instance.isRegistered<MediaServerClient>()) return;
+
+    final l10n = AppLocalizations.of(context);
+    final profile = _syncService.selectedCustomizationProfile;
+    final label = _profileLabel(profile, l10n);
+
+    final confirmed = await showFocusRestoringDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog.adaptive(
+        title: Text(l10n.resetProfileTitle(label)),
+        content: Text(
+          profile == 'global'
+              ? l10n.resetGlobalProfileDescription
+              : l10n.resetProfileDescription(label),
+        ),
+        actions: [
+          // Focused on open, so a remote lands on the harmless action rather
+          // than on the dialog scope, where the first press would go on waking
+          // focus up instead of moving between the two.
+          adaptiveDialogAction(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            autofocus: true,
+            focusRingColor: AppColorScheme.accent,
+            child: Text(l10n.cancel),
+          ),
+          adaptiveDialogAction(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            isDestructive: true,
+            focusRingColor: AppColorScheme.accent,
+            child: Text(l10n.reset),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _profileSyncBusy = true);
+    final ok = await _syncService.resetProfileToDefaults(
+      GetIt.instance<MediaServerClient>(),
+      profile: profile,
+    );
+
+    if (!mounted) return;
+    setState(() => _profileSyncBusy = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok ? l10n.profileReset(label) : l10n.failedToResetProfile(label),
         ),
       ),
     );
@@ -337,6 +398,7 @@ class _PluginSettingsSectionState extends State<PluginSettingsSection> {
                           busy: _profileSyncBusy,
                           onLoad: _pullSelectedProfile,
                           onSave: _pushSelectedProfile,
+                          onReset: _resetSelectedProfile,
                         ),
                     ],
                   ),
@@ -357,6 +419,7 @@ class _ProfileSyncSection extends StatelessWidget {
     required this.busy,
     required this.onLoad,
     required this.onSave,
+    required this.onReset,
   });
 
   final PluginSyncService syncService;
@@ -364,6 +427,7 @@ class _ProfileSyncSection extends StatelessWidget {
   final bool busy;
   final VoidCallback onLoad;
   final VoidCallback onSave;
+  final VoidCallback onReset;
 
   @override
   Widget build(BuildContext context) {
@@ -432,6 +496,22 @@ class _ProfileSyncSection extends StatelessWidget {
                   onPressed: busy ? null : onSave,
                   icon: const Icon(Icons.cloud_upload),
                   label: Text(l10n.syncToProfile),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(42),
+                    foregroundColor: colorScheme.error,
+                    side: BorderSide(
+                      color: colorScheme.error.withValues(alpha: 0.45),
+                    ),
+                  ),
+                  onPressed: busy ? null : onReset,
+                  icon: const Icon(Icons.restart_alt),
+                  label: Text(l10n.resetProfile),
                 ),
               ),
             ],

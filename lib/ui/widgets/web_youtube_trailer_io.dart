@@ -15,6 +15,7 @@ class WebYouTubeTrailer extends StatefulWidget {
   final String videoId;
   final bool muted;
   final bool showControls;
+  final bool showCaptions;
   final bool loop;
   final bool ignorePointer;
 
@@ -33,6 +34,7 @@ class WebYouTubeTrailer extends StatefulWidget {
     required this.videoId,
     this.muted = true,
     this.showControls = false,
+    this.showCaptions = false,
     this.loop = true,
     this.ignorePointer = false,
     this.suspended = false,
@@ -127,9 +129,14 @@ class _WebYouTubeTrailerState extends State<WebYouTubeTrailer> {
     final videoChanged = oldWidget.videoId != widget.videoId;
     final mutedChanged = oldWidget.muted != widget.muted;
     final controlsChanged = oldWidget.showControls != widget.showControls;
+    final captionsChanged = oldWidget.showCaptions != widget.showCaptions;
     final loopChanged = oldWidget.loop != widget.loop;
 
-    if (!videoChanged && !mutedChanged && !controlsChanged && !loopChanged) {
+    if (!videoChanged &&
+        !mutedChanged &&
+        !controlsChanged &&
+        !captionsChanged &&
+        !loopChanged) {
       return;
     }
 
@@ -141,7 +148,7 @@ class _WebYouTubeTrailerState extends State<WebYouTubeTrailer> {
       return;
     }
 
-    if (controlsChanged || loopChanged) {
+    if (controlsChanged || captionsChanged || loopChanged) {
       unawaited(_loadHtml(controller));
       return;
     }
@@ -436,14 +443,19 @@ class _WebYouTubeTrailerState extends State<WebYouTubeTrailer> {
 
     _embeddedUnavailableReported = true;
     _autoplayTimer?.cancel();
-    widget.onEmbeddedUnavailable?.call();
+    // This can be decided while the widget is still being built, and the
+    // listener rebuilds its parent, so hand it back after the frame rather
+    // than during one.
+    final report = widget.onEmbeddedUnavailable;
+    if (report == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) => report());
   }
 
   String get _playerHtml {
     final pointerEvents = widget.ignorePointer ? 'none' : 'auto';
     final playerVars = <String, dynamic>{
       'autoplay': 1,
-      'cc_load_policy': 0,
+      'cc_load_policy': widget.showCaptions ? 1 : 0,
       'controls': widget.showControls ? 1 : 0,
       'disablekb': 1,
       'enablejsapi': 1,
@@ -541,6 +553,8 @@ class _WebYouTubeTrailerState extends State<WebYouTubeTrailer> {
     }
   };
 
+  const captionsOn = playerVars.cc_load_policy === 1;
+
   const applyMute = () => {
     if (!player) {
       return;
@@ -553,6 +567,24 @@ class _WebYouTubeTrailerState extends State<WebYouTubeTrailer> {
     }
   };
 
+  // cc_load_policy only decides whether captions are forced on. It cannot turn
+  // them off when the viewer's YouTube default is on, so unload the caption
+  // module directly when captions are disabled.
+  const applyCaptions = () => {
+    if (!player) {
+      return;
+    }
+    try {
+      if (captionsOn) {
+        player.loadModule('captions');
+        player.loadModule('cc');
+      } else {
+        player.unloadModule('captions');
+        player.unloadModule('cc');
+      }
+    } catch (_) {}
+  };
+
   const loadCurrentVideo = () => {
     if (!player || !currentVideoId) {
       return;
@@ -560,6 +592,7 @@ class _WebYouTubeTrailerState extends State<WebYouTubeTrailer> {
 
     player.loadVideoById({ videoId: currentVideoId });
     applyMute();
+    applyCaptions();
   };
 
   // Cover the box with the fixed-size stage (16:9), centered.
@@ -643,9 +676,17 @@ class _WebYouTubeTrailerState extends State<WebYouTubeTrailer> {
             applyMute();
           }
         },
+        onApiChange: function() {
+          // The captions module reports itself here once it loads, which is the
+          // only reliable moment to unload it before captions render.
+          applyCaptions();
+        },
         onStateChange: function(event) {
           postMessage('StateChange', event.data);
 
+          if (event.data === 1) {
+            applyCaptions();
+          }
           if (event.data === 0 && playerVars.loop === 1) {
             loadCurrentVideo();
           }

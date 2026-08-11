@@ -20,6 +20,17 @@ object MediaCodecCapabilities {
         return MediaCodecList(codecListKind).codecInfos
     }
 
+    // REGULAR_CODECS still lists the software decoders, so a capability that
+    // has to mean hardware needs its own filter.
+    private fun isSoftwareDecoder(info: MediaCodecInfo): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            return info.isSoftwareOnly
+        }
+        val name = info.name
+        return name.startsWith("OMX.google.", ignoreCase = true) ||
+            name.startsWith("c2.android.", ignoreCase = true)
+    }
+
     private object DolbyVisionProfiles {
         val profile5: Int by lazy {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -124,9 +135,17 @@ object MediaCodecCapabilities {
         CodecProfileLevel.HEVCMainTierLevel62 to 186,
     )
 
+    // Keep in step with KnownDefects.modelsWithDoViHdr10PlusBug on the Dart
+    // side, which matches the same models by name as a second net.
     private val modelsWithDoViHdr10PlusBug = setOf(
-        "AFTKA",
-        "AFTKM",
+        "AFTKA", // Amazon Fire TV 4K Max (1st Gen)
+        "AFTKM", // Amazon Fire TV 4K (2nd Gen)
+        "AFTKRT", // Amazon Fire TV 4K Max (2nd Gen)
+        "AFTMM", // Amazon Fire TV 4K (1st Gen)
+        // MediaTek Sony BRAVIA models hard crash on Dolby Vision profile 8
+        // streams that carry HDR10+ dynamic metadata, so they transcode
+        // that range type like the MediaTek Fire TV models above.
+        "BRAVIA 4K VH22",
     )
 
     private fun readBuildStringField(name: String): String? {
@@ -143,14 +162,23 @@ object MediaCodecCapabilities {
         val supportsDvP8 = supportsDolbyVisionProfile(DolbyVisionProfiles.profile8, codecInfos)
 
         val supportsAvc = hasCodecForMime(MediaFormat.MIMETYPE_VIDEO_AVC, codecInfos)
+        // Google's software decoder advertises AVC High 10 on every device, so
+        // counting it here would have a box claim 10-bit H264 that only its
+        // CPU can decode, and the server would direct play media that stutters.
+        // A query that excluded software decoders has to exclude them here too.
+        val avcHigh10Infos = if (includeSoftwareDecoders) {
+            codecInfos
+        } else {
+            codecInfos.filterNot(::isSoftwareDecoder).toTypedArray()
+        }
         val supportsAvcHigh10 = hasDecoder(
             MediaFormat.MIMETYPE_VIDEO_AVC,
             CodecProfileLevel.AVCProfileHigh10,
             CodecProfileLevel.AVCLevel4,
-            codecInfos,
+            avcHigh10Infos,
         )
         val avcMainLevel = getAvcLevel(CodecProfileLevel.AVCProfileMain, codecInfos)
-        val avcHigh10Level = getAvcLevel(CodecProfileLevel.AVCProfileHigh10, codecInfos)
+        val avcHigh10Level = getAvcLevel(CodecProfileLevel.AVCProfileHigh10, avcHigh10Infos)
 
         val supportsHevc = hasCodecForMime(MediaFormat.MIMETYPE_VIDEO_HEVC, codecInfos)
         val supportsHevcMain10 = hasDecoder(
@@ -220,6 +248,7 @@ object MediaCodecCapabilities {
         )
 
         val supportsVc1 = hasCodecForMime(MIME_VIDEO_VC1, codecInfos)
+        val supportsMpeg4 = hasCodecForMime(MediaFormat.MIMETYPE_VIDEO_MPEG4, codecInfos)
 
         val maxResolutionAvc = getMaxResolution(MediaFormat.MIMETYPE_VIDEO_AVC, codecInfos)
         val maxResolutionHevc = getMaxResolution(MediaFormat.MIMETYPE_VIDEO_HEVC, codecInfos)
@@ -248,6 +277,7 @@ object MediaCodecCapabilities {
             "supportsAv1Hdr10" to supportsAv1Hdr10,
             "supportsAv1Hdr10Plus" to supportsAv1Hdr10Plus,
             "supportsVc1" to supportsVc1,
+            "supportsMpeg4" to supportsMpeg4,
             "maxResolutionAvc" to mapOf(
                 "width" to maxResolutionAvc.width,
                 "height" to maxResolutionAvc.height,

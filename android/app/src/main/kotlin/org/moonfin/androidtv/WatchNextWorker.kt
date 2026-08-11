@@ -35,7 +35,11 @@ class WatchNextWorker(
         if (!isTelevision(applicationContext)) return Result.success()
 
         val done = CompletableDeferred<Boolean>()
+        // Set when Dart reports a failure that retrying can't fix, so the
+        // worker doesn't boot a Flutter engine on every backoff.
+        var permanentFailure = false
         val publisher = WatchNextPublisher(applicationContext)
+        val channelPublisher = PreviewChannelPublisher(applicationContext)
         val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         var engine: FlutterEngine? = null
 
@@ -72,8 +76,25 @@ class WatchNextWorker(
                                 withContext(Dispatchers.Main) { result.success(null) }
                             }
                         }
+                        "publishChannels" -> {
+                            @Suppress("UNCHECKED_CAST")
+                            val channels = call.argument<List<Map<String, Any?>>>("channels")
+                                ?: emptyList()
+                            ioScope.launch {
+                                channelPublisher.publishChannelsNow(channels)
+                                withContext(Dispatchers.Main) { result.success(null) }
+                            }
+                        }
+                        "clearChannels" -> {
+                            ioScope.launch {
+                                channelPublisher.clearChannelsNow()
+                                withContext(Dispatchers.Main) { result.success(null) }
+                            }
+                        }
                         "backgroundComplete" -> {
                             val ok = call.argument<Boolean>("ok") ?: false
+                            permanentFailure =
+                                call.argument<Boolean>("permanent") ?: false
                             result.success(null)
                             done.complete(ok)
                         }
@@ -90,9 +111,15 @@ class WatchNextWorker(
             }
 
             val ok = withTimeoutOrNull(TIMEOUT_MS) { done.await() }
-            return if (ok == true) Result.success() else Result.retry()
+            return when {
+                ok == true -> Result.success()
+                // Nothing to publish, and waiting won't change that, so let
+                // the next scheduled run try again instead of retrying now.
+                permanentFailure -> Result.success()
+                else -> retryOrFail()
+            }
         } catch (e: Exception) {
-            return Result.retry()
+            return retryOrFail()
         } finally {
             withContext(Dispatchers.Main) {
                 runCatching { engine?.destroy() }
@@ -101,10 +128,15 @@ class WatchNextWorker(
         }
     }
 
+    // Gives up after a few attempts so a failing refresh can't retry forever.
+    private fun retryOrFail(): Result =
+        if (runAttemptCount >= MAX_RETRY_ATTEMPTS) Result.failure() else Result.retry()
+
     companion object {
         const val CHANNEL = "org.moonfin.androidtv/watch_next"
         private const val UNIQUE_NAME = "watch_next_refresh"
         private const val TIMEOUT_MS = 90_000L
+        private const val MAX_RETRY_ATTEMPTS = 3
 
         fun schedule(context: Context) {
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(

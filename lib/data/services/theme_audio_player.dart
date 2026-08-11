@@ -11,7 +11,7 @@ abstract class ThemeAudioPlayer {
   Future<void> dispose();
   double get currentVolume;
 
-  factory ThemeAudioPlayer.create() => PlatformDetection.isAppleTV
+  factory ThemeAudioPlayer.create() => PlatformDetection.useApplePreviewPlayer
       ? AppleTvThemeAudioPlayer()
       : MediaKitThemeAudioPlayer();
 }

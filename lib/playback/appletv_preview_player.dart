@@ -42,7 +42,6 @@ class AppleTvPreviewPlayer {
     String url, {
     Map<String, String>? headers,
     double volume = 0,
-    String? backend,
     bool live = false,
   }) async {
     if (_disposed) return;
@@ -51,7 +50,6 @@ class AppleTvPreviewPlayer {
       'url': url,
       if (headers != null && headers.isNotEmpty) 'headers': headers,
       'volume': volume,
-      'backend': ?backend,
       if (live) 'live': true,
     });
     textureId = (result?['textureId'] as num?)?.toInt();

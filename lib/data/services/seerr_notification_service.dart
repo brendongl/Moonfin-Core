@@ -8,10 +8,6 @@ import '../../util/platform_detection.dart';
 import 'local_notification_bootstrap.dart';
 
 class SeerrNotificationService {
-  static const _channelId = 'seerr_notifications';
-  static const _channelName = 'Requests';
-  static const _channelDesc = 'Seerr request, library, and issue notifications';
-
   Future<void> initialize() async {
     await LocalNotificationBootstrap.instance.initialize();
     LocalNotificationBootstrap.instance.attachMainIsolateActionHandler();
@@ -75,13 +71,13 @@ class SeerrNotificationService {
     try {
       await LocalNotificationBootstrap.instance.plugin.show(
         id: id,
-        title: title.isNotEmpty ? title : _channelName,
+        title: title.isNotEmpty ? title : seerrNotificationChannelName,
         body: body,
         notificationDetails: NotificationDetails(
           android: AndroidNotificationDetails(
-            _channelId,
-            _channelName,
-            channelDescription: _channelDesc,
+            seerrNotificationChannelId,
+            seerrNotificationChannelName,
+            channelDescription: seerrNotificationChannelDesc,
             importance: Importance.defaultImportance,
             priority: Priority.defaultPriority,
             autoCancel: true,

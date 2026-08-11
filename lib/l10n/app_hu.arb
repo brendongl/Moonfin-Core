@@ -293,7 +293,7 @@
     "@noItemsFound": {
         "description": "Empty state when no items match the current view"
     },
-    "home": "Kezdőképernyő",
+    "home": "Kezdőlap",
     "@home": {
         "description": "Home navigation tooltip"
     },
@@ -1275,7 +1275,7 @@
     "@subtitleTrack": {
         "description": "Dialog title for subtitle track selection"
     },
-    "none": "Egyik sem",
+    "none": "Nincs",
     "@none": {
         "description": "Option label for no subtitle selected"
     },
@@ -3569,7 +3569,7 @@
     "@mediaBarModeMakd": {
         "description": "Media bar style option: MakD"
     },
-    "mediaBarModeOff": "Kikapcsolva",
+    "mediaBarModeOff": "Ki",
     "@mediaBarModeOff": {
         "description": "Media bar style option: Off"
     },
@@ -4426,7 +4426,7 @@
     "@showMore": {
         "description": "Button to expand truncated content"
     },
-    "appearances": "Megjelenések",
+    "appearances": "Szereplések",
     "@appearances": {
         "description": "Section title for cast appearances"
     },
@@ -4670,7 +4670,7 @@
     "adminSetVolume": "Hangerő beállítása",
     "sessionPrev": "Előző",
     "sessionRewind": "Visszatekerés",
-    "sessionForward": "Előre",
+    "sessionForward": "Előretekerés",
     "sessionNext": "Következő",
     "sessionVolumeDown": "Hangerő –",
     "sessionVolumeUp": "Hangerő +",
@@ -6092,7 +6092,7 @@
             }
         }
     },
-    "adminActivityDateShort": "{month}/{day}",
+    "adminActivityDateShort": "{month}. {day}.",
     "@adminActivityDateShort": {
         "placeholders": {
             "month": {
@@ -7438,10 +7438,6 @@
     "@settingsAudioFallbackCodecEac3": {
         "description": "Fallback codec option: EAC3"
     },
-    "settingsAudioFallbackCodecTrueHd": "TrueHD\n(Veszteségmentes)",
-    "@settingsAudioFallbackCodecTrueHd": {
-        "description": "Fallback codec option: TrueHD"
-    },
     "settingsAudioFallbackCodecOpus": "Opus\n(Hatékony)",
     "@settingsAudioFallbackCodecOpus": {
         "description": "Fallback codec option: Opus"
@@ -8155,7 +8151,6 @@
     "audiobookNotes": "Jegyzetek",
     "audiobookQueue": "Sor",
     "audiobookTimelineEmpty": "Az idővonal üres",
-    "audiobookWholeBook": "Teljes könyv",
     "audiobookFocusedTimeline": "Fókuszált idővonal",
     "audiobookExportNotes": "Jegyzetek exportálása",
     "audiobookExportAll": "Összes exportálása",

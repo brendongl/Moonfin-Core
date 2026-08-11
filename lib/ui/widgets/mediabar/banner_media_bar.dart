@@ -6,12 +6,15 @@ import 'package:flutter/services.dart';
 import 'package:moonfin_design/moonfin_design.dart';
 
 import '../../../data/models/media_bar_slide_item.dart';
+import 'media_bar_title.dart';
+import '../../../data/models/media_bar_state.dart';
 import '../../../data/viewmodels/media_bar_view_model.dart';
 import '../../../preference/preference_constants.dart';
 import '../../../preference/user_preferences.dart';
 import '../../../util/platform_detection.dart';
 import '../bounded_network_image.dart';
 import '../rating_display.dart';
+import 'media_bar_status_focus.dart';
 
 class BannerMediaBar extends StatefulWidget {
   final MediaBarViewModel viewModel;
@@ -155,10 +158,81 @@ class _BannerMediaBarState extends State<BannerMediaBar> {
     return KeyEventResult.ignored;
   }
 
+  Widget _wrapStatusFocus(Widget child, {VoidCallback? onSelect}) {
+    return MediaBarStatusFocus(
+      focusNode: widget.focusNode,
+      onNavigateUp: widget.onNavigateUp,
+      onNavigateDown: widget.onNavigateDown,
+      onNavigateLeft: widget.onNavigateLeft,
+      onSelect: onSelect,
+      child: child,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final items = widget.viewModel.items;
-    if (items.isEmpty) return const SizedBox.shrink();
+    if (items.isEmpty) {
+      final state = widget.viewModel.state;
+      if (state is! MediaBarLoading && state is! MediaBarError) {
+        return const SizedBox.shrink();
+      }
+      final navbarAtTop =
+          widget.prefs.get(UserPreferences.navbarPosition) ==
+          NavbarPosition.top;
+      final topInset = PlatformDetection.useMobileUi
+          ? MediaQuery.paddingOf(context).top + (navbarAtTop ? 60.0 : 0.0)
+          : 0.0;
+      if (state is MediaBarLoading) {
+        final loadingHeight = (widget.height - topInset - 12.0).clamp(
+          0.0,
+          double.infinity,
+        );
+        return Padding(
+          padding: EdgeInsets.fromLTRB(16, topInset, 16, 8),
+          child: _wrapStatusFocus(
+            SizedBox(
+              height: loadingHeight,
+              width: double.infinity,
+              child: const Center(child: CircularProgressIndicator()),
+            ),
+          ),
+        );
+      }
+      final message = (state as MediaBarError).message;
+      return Padding(
+        padding: EdgeInsets.fromLTRB(16, topInset, 16, 8),
+        child: _wrapStatusFocus(
+          SizedBox(
+            height: 72,
+            width: double.infinity,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.slideshow, color: AppColorScheme.accent),
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Text(
+                    message,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColorScheme.onSurface,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () =>
+                      widget.viewModel.load(context: context, force: true),
+                  child: const Icon(Icons.refresh),
+                ),
+              ],
+            ),
+          ),
+          onSelect: () => widget.viewModel.load(context: context, force: true),
+        ),
+      );
+    }
     final index = _index.clamp(0, items.length - 1);
     final item = items[index];
 
@@ -294,12 +368,13 @@ class _BannerMediaBarState extends State<BannerMediaBar> {
                 fit: BoxFit.contain,
                 alignment: Alignment.centerLeft,
                 fadeInDuration: Duration.zero,
-                errorWidget: (_, _, _) => _title(theme, item, shadows),
+                errorWidget: (_, _, _) =>
+                    MediaBarTitle(title: item.title, shadows: shadows),
               ),
             ),
           )
         else
-          _title(theme, item, shadows),
+          MediaBarTitle(title: item.title, shadows: shadows),
         if (meta.isNotEmpty) ...[
           const SizedBox(height: 6),
           Text(
@@ -331,26 +406,6 @@ class _BannerMediaBarState extends State<BannerMediaBar> {
     );
   }
 
-  Widget _title(
-    ThemeData theme,
-    MediaBarSlideItem item,
-    List<Shadow> shadows,
-  ) {
-    final isMobile = PlatformDetection.useMobileUi;
-    return Text(
-      item.title,
-      maxLines: 2,
-      overflow: TextOverflow.ellipsis,
-      style:
-          (isMobile ? theme.textTheme.titleLarge : theme.textTheme.headlineMedium)
-              ?.copyWith(
-                color: AppColorScheme.onSurface,
-                fontWeight: FontWeight.w800,
-                height: 1.05,
-                shadows: shadows,
-              ),
-    );
-  }
 
   String _formatRuntime(Duration d) {
     final h = d.inHours;

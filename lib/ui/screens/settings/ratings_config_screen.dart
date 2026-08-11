@@ -3,19 +3,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:get_it/get_it.dart';
+import 'package:jellyfin_preference/jellyfin_preference.dart';
 import 'package:server_core/server_core.dart';
 import 'package:moonfin_design/moonfin_design.dart';
 
 import '../../../data/services/plugin_sync_service.dart';
+import '../../../data/services/rating_icon_provider.dart';
 import '../../../preference/user_preferences.dart';
 import '../../../util/extensions.dart';
 import '../../../util/platform_detection.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../widgets/adaptive/adaptive_dialog.dart';
+import '../../widgets/overlay_sheet.dart';
 import '../../widgets/settings/clean_settings_typography.dart';
 import 'settings_app_bar.dart';
 import '../../widgets/focus/request_initial_focus.dart';
 import '../../../util/focus/scroll_utils.dart';
 
+// The rating sources MDBList actually returns, plus the Jellyfin community
+// rating ('stars'). Stored selections with unknown sources are ignored.
 const _allSources = [
   'tomatoes',
   'tomatoes_audience',
@@ -26,7 +32,7 @@ const _allSources = [
   'trakt',
   'letterboxd',
   'myanimelist',
-  'anilist',
+  'rogerebert',
   'stars',
 ];
 
@@ -55,9 +61,8 @@ class _RatingsConfigScreenState extends State<RatingsConfigScreen> {
     'trakt' => l10n.trakt,
     'letterboxd' => l10n.letterboxd,
     'myanimelist' => l10n.myAnimeList,
-    'anilist' => l10n.aniList,
     'stars' => l10n.communityRating,
-    _ => key,
+    _ => RatingIconProvider.sourceDisplayName(key),
   };
 
   final _prefs = GetIt.instance<UserPreferences>();
@@ -137,6 +142,70 @@ class _RatingsConfigScreenState extends State<RatingsConfigScreen> {
     }
   }
 
+  /// Every ratings setting, including the ones the parent screen shows, so the
+  /// reset covers the whole integration rather than just the source list.
+  static final _ratingsPreferences = <Preference<dynamic>>[
+    UserPreferences.enabledRatings,
+    UserPreferences.enableAdditionalRatings,
+    UserPreferences.enableEpisodeRatings,
+    UserPreferences.showRatingLabels,
+    UserPreferences.showRatingBadges,
+  ];
+
+  Future<void> _resetToDefaults() async {
+    final l10n = AppLocalizations.of(context);
+    final confirmed = await showFocusRestoringDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog.adaptive(
+        title: Text(l10n.resetRatingsTitle),
+        content: Text(l10n.resetRatingsDescription),
+        actions: [
+          // Focused on open, so a remote lands on the harmless action rather
+          // than on the dialog scope, where the first press would go on waking
+          // focus up instead of moving between the two.
+          adaptiveDialogAction(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            autofocus: true,
+            focusRingColor: AppColorScheme.accent,
+            child: Text(l10n.cancel),
+          ),
+          adaptiveDialogAction(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            isDestructive: true,
+            focusRingColor: AppColorScheme.accent,
+            child: Text(l10n.reset),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    await _prefs.batchNotifications(() async {
+      for (final pref in _ratingsPreferences) {
+        await _prefs.removePreference(pref);
+      }
+    });
+
+    if (!mounted) return;
+    setState(_loadFromPrefs);
+
+    // Forced, because a reset has to overwrite whatever the server holds. A
+    // plain push is skipped when the payload matches what this device sent
+    // last, which is exactly the case when the settings were already default.
+    final syncService = GetIt.instance<PluginSyncService>();
+    if (syncService.pluginAvailable) {
+      await syncService.pushSettings(
+        GetIt.instance<MediaServerClient>(),
+        force: true,
+      );
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(l10n.ratingsReset)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -158,16 +227,7 @@ class _RatingsConfigScreenState extends State<RatingsConfigScreen> {
                 ),
                 icon: const Icon(Icons.restore),
                 tooltip: l10n.resetToDefaults,
-                onPressed: () {
-                  setState(() {
-                    _prefs.set(
-                      UserPreferences.enabledRatings,
-                      UserPreferences.enabledRatings.defaultValue,
-                    );
-                    _loadFromPrefs();
-                  });
-                  _save();
-                },
+                onPressed: _resetToDefaults,
               ),
             ],
           ),

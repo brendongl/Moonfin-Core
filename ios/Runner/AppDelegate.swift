@@ -3,6 +3,7 @@ import UIKit
 import AVKit
 import GoogleCast
 import UserNotifications
+import moonfin_game_host
 
 private final class NativeCastEventStreamHandler: NSObject, FlutterStreamHandler {
   weak var appDelegate: AppDelegate?
@@ -65,6 +66,7 @@ private final class NativeAirPlayEventStreamHandler: NSObject, FlutterStreamHand
   private var hasConfiguredGoogleCast = false
   private var isCastDiscoveryActive = false
   private var pendingCastRequest: PendingCastRequest?
+  private var castErrorReported = false
   private var pendingCastTimeoutWorkItem: DispatchWorkItem?
   private let castEventStreamHandler = NativeCastEventStreamHandler()
   private let dlnaEventStreamHandler = NativeDlnaEventStreamHandler()
@@ -73,13 +75,16 @@ private final class NativeAirPlayEventStreamHandler: NSObject, FlutterStreamHand
   fileprivate let airPlayController = AirPlayController()
   fileprivate var castEventSink: FlutterEventSink?
 
-  private var pipChannel: FlutterMethodChannel?
-  private var pipController: NSObject?
+  private var aetherVideoChannel: AetherVideoChannel?
+  private var pipController: IosPiPController?
+  private var themeMusicChannel: AppleTvThemeMusicChannel?
+  private var previewChannel: AppleTvPreviewChannel?
   private var sfSymbolChannel: FlutterMethodChannel?
 
   private struct PendingCastRequest {
     let targetId: String
     let streamUrl: URL
+    let contentType: String?
     let title: String
     let subtitle: String?
     let posterUrl: URL?
@@ -142,12 +147,16 @@ private final class NativeAirPlayEventStreamHandler: NSObject, FlutterStreamHand
   // so a storyboard-created implicit engine would never exist).
   let sharedEngine = FlutterEngine(name: "moonfin")
   private var engineStarted = false
+  private var gameChannel: NativeGameChannel?
 
   func startEngineIfNeeded() {
     guard !engineStarted else { return }
     engineStarted = true
     sharedEngine.run()
     GeneratedPluginRegistrant.register(with: sharedEngine)
+    if let registrar = sharedEngine.registrar(forPlugin: "moonfin_game_host") {
+      gameChannel = NativeGameChannel(registrar: registrar)
+    }
     setUpPlatformChannels(messenger: sharedEngine.binaryMessenger)
   }
 
@@ -212,111 +221,32 @@ private final class NativeAirPlayEventStreamHandler: NSObject, FlutterStreamHand
       result(FlutterStandardTypedData(bytes: data))
     }
 
-      let pipChannel = FlutterMethodChannel(
-        name: "org.moonfin.ios/pip",
-        binaryMessenger: messenger
-      )
-      self.pipChannel = pipChannel
-
-      if #available(iOS 15.0, *) {
-        let pip = PiPController()
-        self.pipController = pip
-        pip.onPiPStatusChanged = { [weak pipChannel] isInPiP in
-          DispatchQueue.main.async {
-            pipChannel?.invokeMethod("onPiPChanged", arguments: isInPiP)
-          }
-        }
-        pip.onPiPAction = { [weak pipChannel] action in
-          DispatchQueue.main.async {
-            pipChannel?.invokeMethod("onPiPAction", arguments: action)
-          }
-        }
+      // Theme music + inline previews: AVFoundation channels shared with tvOS
+      // (same channel names, so the Dart callers work unchanged on iOS).
+      self.themeMusicChannel = AppleTvThemeMusicChannel(messenger: messenger)
+      // FlutterEngine isn't a FlutterTextureRegistry on iOS, so the registry
+      // has to come off a plugin registrar.
+      if let previewRegistrar = sharedEngine.registrar(forPlugin: "moonfin_appletv_preview") {
+        self.previewChannel = AppleTvPreviewChannel(
+          messenger: messenger, textures: previewRegistrar.textures())
       }
 
-      pipChannel.setMethodCallHandler { [weak self] (call, result) in
-        guard let self else { result(FlutterMethodNotImplemented); return }
-
-        if #available(iOS 15.0, *), let pip = self.pipController as? PiPController {
-          switch call.method {
-          case "configureSharedContextBridge":
-            guard let args = call.arguments as? [String: Any] else {
-              result(FlutterError(code: "BAD_ARGS", message: "Missing bridge arguments", details: nil))
-              return
-            }
-            let configured = pip.configureSharedContextBridge(arguments: args)
-            if configured {
-              result(nil)
-            } else {
-              result(
-                FlutterError(
-                  code: "PIP_SHARED_BRIDGE_CONFIG_FAILED",
-                  message: pip.lastErrorMessage ?? "Failed to configure shared-context PiP bridge",
-                  details: nil
-                )
-              )
-            }
-          case "initialize":
-            guard let args = call.arguments as? [String: Any],
-                  let handle = (args["handle"] as? NSNumber)?.int64Value else {
-              result(FlutterError(code: "BAD_ARGS", message: "Missing handle", details: nil))
-              return
-            }
-            let initialized = pip.initialize(mpvHandleAddress: handle, viewController: self.flutterViewController)
-            if initialized {
-              result(nil)
-            } else {
-              result(
-                FlutterError(
-                  code: "PIP_INIT_FAILED",
-                  message: pip.lastErrorMessage ?? "Failed to initialize iOS PiP",
-                  details: nil
-                )
-              )
-            }
-          case "startPiP":
-            guard let vc = self.flutterViewController else {
-              result(FlutterError(code: "NO_VIEW_CONTROLLER", message: "Missing root view controller", details: nil))
-              return
-            }
-            let started = pip.startPiP(on: vc)
-            if started {
-              result(nil)
-            } else {
-              result(
-                FlutterError(
-                  code: "PIP_START_FAILED",
-                  message: pip.lastErrorMessage ?? "Failed to start iOS PiP",
-                  details: nil
-                )
-              )
-            }
-          case "stopPiP":
-            pip.stopPiP()
-            result(nil)
-          case "dismissPiP":
-            pip.dismissPiP()
-            result(nil)
-          case "updatePlaybackState":
-            let isPlaying = (call.arguments as? [String: Any])?["isPlaying"] as? Bool ?? true
-            pip.updatePlaybackState(isPlaying: isPlaying)
-            result(nil)
-          case "updateTimeline":
-            let args = call.arguments as? [String: Any]
-            let positionMs = (args?["positionMs"] as? NSNumber)?.doubleValue ?? 0
-            let durationMs = (args?["durationMs"] as? NSNumber)?.doubleValue ?? 0
-            let isPlaying = args?["isPlaying"] as? Bool ?? true
-            pip.updateTimeline(
-              positionSeconds: positionMs / 1000.0,
-              durationSeconds: durationMs / 1000.0,
-              isPlaying: isPlaying
-            )
-            result(nil)
-          default:
-            result(FlutterMethodNotImplemented)
-          }
-        } else {
-          result(FlutterError(code: "UNAVAILABLE", message: "PiP requires iOS 15+", details: nil))
-        }
+      // AetherEngine playback: control/event channels, the UiKitView video
+      // surface factory, and PiP (which owns the org.moonfin.ios/pip channel).
+      let aetherChannel = AetherVideoChannel(messenger: messenger)
+      self.aetherVideoChannel = aetherChannel
+      self.pipController = IosPiPController(
+        messenger: messenger,
+        wrapper: aetherChannel.player,
+        engine: AetherPlayerWrapper.sharedEngine())
+      if let registrar = sharedEngine.registrar(forPlugin: "moonfin_aether_video") {
+        registrar.register(
+          AetherVideoViewFactory(
+            messenger: messenger,
+            wrapperProvider: { [weak aetherChannel] in
+              aetherChannel?.player ?? AetherPlayerWrapper()
+            }),
+          withId: AetherVideoViewFactory.viewType)
       }
 
     let castChannel = FlutterMethodChannel(
@@ -562,6 +492,7 @@ private final class NativeAirPlayEventStreamHandler: NSObject, FlutterStreamHand
           return
         }
 
+        let contentType = args["contentType"] as? String
         let subtitle = args["subtitle"] as? String
         let posterUrlRaw = args["posterUrl"] as? String
         let posterUrl = posterUrlRaw.flatMap(URL.init(string:))
@@ -571,6 +502,7 @@ private final class NativeAirPlayEventStreamHandler: NSObject, FlutterStreamHand
         self.startGoogleCastSession(
           targetId: targetId,
           streamUrl: streamUrl,
+          contentType: contentType,
           title: title,
           subtitle: subtitle,
           posterUrl: posterUrl,
@@ -601,7 +533,10 @@ private final class NativeAirPlayEventStreamHandler: NSObject, FlutterStreamHand
           return
         }
 
-        // The native AVPlayerViewController is already presented by loadAirPlay.
+        // loadAirPlay presented the native player. Open the device sheet on
+        // top of it so the user picks the TV without hunting for the AirPlay
+        // glyph in the transport bar.
+        self.airPlayController.presentRoutePicker()
         result(nil)
       case "isAirPlayRoutePickerAvailable":
         result(!Self.isSimulator)
@@ -856,6 +791,7 @@ private final class NativeAirPlayEventStreamHandler: NSObject, FlutterStreamHand
   private func startGoogleCastSession(
     targetId: String,
     streamUrl: URL,
+    contentType: String?,
     title: String,
     subtitle: String?,
     posterUrl: URL?,
@@ -872,6 +808,7 @@ private final class NativeAirPlayEventStreamHandler: NSObject, FlutterStreamHand
         self.loadOnCastSession(
           activeSession,
           streamUrl: streamUrl,
+          contentType: contentType,
           title: title,
           subtitle: subtitle,
           posterUrl: posterUrl,
@@ -912,6 +849,7 @@ private final class NativeAirPlayEventStreamHandler: NSObject, FlutterStreamHand
       self.pendingCastRequest = PendingCastRequest(
         targetId: targetId,
         streamUrl: streamUrl,
+        contentType: contentType,
         title: title,
         subtitle: subtitle,
         posterUrl: posterUrl,
@@ -952,6 +890,7 @@ private final class NativeAirPlayEventStreamHandler: NSObject, FlutterStreamHand
   private func loadOnCastSession(
     _ session: GCKCastSession,
     streamUrl: URL,
+    contentType: String?,
     title: String,
     subtitle: String?,
     posterUrl: URL?,
@@ -970,6 +909,7 @@ private final class NativeAirPlayEventStreamHandler: NSObject, FlutterStreamHand
       return
     }
 
+    castErrorReported = false
     let startSeconds =
       (startPositionTicks != nil && startPositionTicks! > 0)
       ? Double(startPositionTicks!) / 10_000_000.0
@@ -977,6 +917,7 @@ private final class NativeAirPlayEventStreamHandler: NSObject, FlutterStreamHand
     let effectiveQueueItems = queueItems.isEmpty
       ? [[
         "streamUrl": streamUrl.absoluteString,
+        "contentType": contentType ?? "",
         "title": title,
         "subtitle": subtitle ?? "",
         "posterUrl": posterUrl?.absoluteString ?? "",
@@ -1048,9 +989,12 @@ private final class NativeAirPlayEventStreamHandler: NSObject, FlutterStreamHand
       metadata.addImage(GCKImage(url: posterUrl, width: 0, height: 0))
     }
 
+    let contentType =
+      (item["contentType"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "video/mp4"
+
     let mediaInfoBuilder = GCKMediaInformationBuilder(contentURL: streamUrl)
     mediaInfoBuilder.streamType = .buffered
-    mediaInfoBuilder.contentType = "application/octet-stream"
+    mediaInfoBuilder.contentType = contentType
     mediaInfoBuilder.metadata = metadata
     return mediaInfoBuilder.build()
   }
@@ -1160,6 +1104,7 @@ private final class NativeAirPlayEventStreamHandler: NSObject, FlutterStreamHand
     loadOnCastSession(
       castSession,
       streamUrl: request.streamUrl,
+      contentType: request.contentType,
       title: request.title,
       subtitle: request.subtitle,
       posterUrl: request.posterUrl,
@@ -1203,6 +1148,14 @@ private final class NativeAirPlayEventStreamHandler: NSObject, FlutterStreamHand
     castEventSink?(event)
   }
 
+  // A failed receiver keeps repeating the same status, so only the first
+  // report is worth showing until the next load.
+  fileprivate func emitCastPlaybackError(_ message: String) {
+    if castErrorReported { return }
+    castErrorReported = true
+    emitGoogleCastEvent(state: "error", message: message)
+  }
+
   fileprivate func emitCurrentGoogleCastStatus(from client: GCKRemoteMediaClient? = nil) {
     let remoteClient: GCKRemoteMediaClient?
     if let client {
@@ -1213,6 +1166,12 @@ private final class NativeAirPlayEventStreamHandler: NSObject, FlutterStreamHand
     guard let remoteClient,
           let status = remoteClient.mediaStatus else {
       return
+    }
+
+    // Without the reason an errored idle looks like an ordinary one and the
+    // failure never reaches the app.
+    if status.playerState == .idle, status.idleReason == .error {
+      emitCastPlaybackError("Receiver failed to play the media")
     }
 
     let state: String

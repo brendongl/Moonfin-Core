@@ -10,13 +10,14 @@ import 'package:server_core/server_core.dart';
 
 import '../../../data/models/aggregated_item.dart';
 import '../../../data/viewmodels/live_tv_guide_view_model.dart';
-import '../../../playback/appletv_mpv_backend.dart';
+import '../../../playback/appletv_backend.dart';
 import '../../../playback/appletv_preview_player.dart';
 import '../../../preference/user_preferences.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../util/play_method_label.dart';
 import '../livetv/live_tv_guide_screen.dart';
 import '../../theme/app_theme_controller.dart';
+import 'osd_buttons.dart';
 
 class AppleTvLiveTvPlayerHostScreen extends StatefulWidget {
   final List<GuideChannel> channels;
@@ -50,15 +51,24 @@ class _AppleTvLiveTvPlayerHostScreenState
   AppleTvPreviewPlayer? _pipPlayer;
   Timer? _programRefreshTimer;
 
+  // Captions the player found inside the video, which the server never lists
+  // as subtitle streams. The native subtitle menu round-trips a plain index
+  // int, so caption rows ride above _ccMenuIndexBase to stay clear of every
+  // real server stream index.
+  static const _ccMenuIndexBase = 100000;
+  int? _captionTrackId;
+  bool _captionTrackApplied = false;
+  StreamSubscription<void>? _tracksChangedSub;
+
   GuideProgram? _currentProgram;
   final Map<String, String> _nowPlayingByChannel = {};
   List<Map<String, dynamic>>? _channelListCache;
   bool _sweepInFlight = false;
   AppThemeController? _themeController;
 
-  AppleTvMpvBackend? get _backend {
+  AppleTvBackend? get _backend {
     try {
-      return GetIt.instance<AppleTvMpvBackend>();
+      return GetIt.instance<AppleTvBackend>();
     } catch (_) {
       return null;
     }
@@ -72,6 +82,9 @@ class _AppleTvLiveTvPlayerHostScreenState
     _currentIndex = widget.startIndex;
     _exitSub = _backend?.userExitStream.listen((_) => _handleExit());
     _actionSub = _backend?.uiActionStream.listen(_handleUiAction);
+    _tracksChangedSub = _backend?.tracksChangedStream.listen(
+      (_) => _onPlayerTracksChanged(),
+    );
     _bringupSub = _manager.bringupStateStream.listen((_) => _pushMetadata());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _pushSubtitleStyle();
@@ -120,6 +133,7 @@ class _AppleTvLiveTvPlayerHostScreenState
     _exitSub?.cancel();
     _actionSub?.cancel();
     _bringupSub?.cancel();
+    _tracksChangedSub?.cancel();
     _programRefreshTimer?.cancel();
     _themeController?.removeListener(_onThemeChanged);
     unawaited(_pipPlayer?.dispose());
@@ -146,6 +160,9 @@ class _AppleTvLiveTvPlayerHostScreenState
   }
 
   Future<void> _playCurrentChannel() async {
+    // A channel change starts a new stream, so whatever caption choice is
+    // remembered has to be put back once this one reports its own captions.
+    _captionTrackApplied = false;
     final channel = _currentChannel;
     final item = AggregatedItem(
       id: channel.id,
@@ -197,7 +214,14 @@ class _AppleTvLiveTvPlayerHostScreenState
     if (_inGuide || _switching || _exiting) return;
     _inGuide = true;
 
-    final streamUrl = _manager.currentResolution?.streamUrl;
+    // The guide PiP is an AVPlayer texture, which can only ingest HLS. A raw
+    // TS/upstream direct-play URL would fail to open, so skip the PiP for
+    // those and let the guide show the channel image instead.
+    final resolvedUrl = _manager.currentResolution?.streamUrl;
+    final streamUrl =
+        (resolvedUrl != null && resolvedUrl.toLowerCase().contains('.m3u8'))
+        ? resolvedUrl
+        : null;
 
     final pip = AppleTvPreviewPlayer();
     _pipPlayer = pip;
@@ -210,7 +234,7 @@ class _AppleTvLiveTvPlayerHostScreenState
     if (streamUrl != null && streamUrl.isNotEmpty) {
       unawaited(() async {
         try {
-          await pip.open(streamUrl, backend: 'mpv', live: true, volume: 100);
+          await pip.open(streamUrl, live: true, volume: 100);
           await pip.resume();
         } catch (_) {}
       }());
@@ -531,7 +555,7 @@ class _AppleTvLiveTvPlayerHostScreenState
       row('Play Method', playMethod),
       if (resolution != null && resolution.transcodingReasons.isNotEmpty)
         row('Transcode Reasons', resolution.transcodingReasons.join(', ')),
-      row('Player', 'MPVKit (libmpv)'),
+      row('Player', 'AetherEngine'),
       row('Container', container),
     ]);
 
@@ -602,16 +626,22 @@ class _AppleTvLiveTvPlayerHostScreenState
       skipForwardMs: 0,
       skipBackMs: 0,
       audioTracks: _trackOptions(audioStreams, _manager.audioStreamIndex),
-      subtitleTracks: _trackOptions(
-        subtitleStreams,
-        _manager.subtitleStreamIndex,
-      ),
+      subtitleTracks: [
+        ..._trackOptions(
+          subtitleStreams,
+          // A caption choice turns the server-stream selection off, so its
+          // row must not stay marked as the active one.
+          _captionTrackId == null ? _manager.subtitleStreamIndex : null,
+        ),
+        ..._captionTrackOptions(),
+      ],
       streamInfoSections: _liveStreamInfoSections(),
       isLive: true,
       liveProgram: _liveProgramPayload(),
       liveChannelNumber: channel.number ?? '',
       channelList: _channelListPayload(),
       streamStats: _streamStatsPayload(),
+      osdButtons: visibleOsdButtonIds(_prefs),
     );
   }
 
@@ -638,6 +668,42 @@ class _AppleTvLiveTvPlayerHostScreenState
     return options;
   }
 
+  /// Caption rows follow the server streams in the native menu, carrying a
+  /// sentinel index the selection handler maps back to the backend's own
+  /// caption id.
+  List<Map<String, dynamic>> _captionTrackOptions() {
+    final l10n = AppLocalizations.of(context);
+    return [
+      for (final track in _backend?.embeddedCaptionTracks ??
+          const <EmbeddedCaptionTrack>[])
+        {
+          'index': _ccMenuIndexBase + track.id,
+          'label': track.label,
+          'subtitle': track.language ?? l10n.embedded,
+          'selected': track.id == _captionTrackId,
+        },
+    ];
+  }
+
+  /// Refreshes the native menu once the player reports what it found, and
+  /// puts a caption choice back after a channel change, which starts a new
+  /// stream and drops every track selection with it.
+  void _onPlayerTracksChanged() {
+    if (!mounted) return;
+    final tracks = _backend?.embeddedCaptionTracks ?? const [];
+    if (tracks.isEmpty) {
+      _captionTrackApplied = false;
+    } else if (!_captionTrackApplied &&
+        tracks.any((track) => track.id == _captionTrackId)) {
+      _captionTrackApplied = true;
+      unawaited(
+        _backend?.setEmbeddedCaptionTrack(_captionTrackId!) ??
+            Future<void>.value(),
+      );
+    }
+    _pushMetadata();
+  }
+
   void _handleUiAction(Map<String, dynamic> action) {
     switch (action['event']?.toString()) {
       case 'play':
@@ -660,7 +726,16 @@ class _AppleTvLiveTvPlayerHostScreenState
       case 'selectSubtitle':
         final index = (action['index'] as num?)?.toInt();
         if (index == null) break;
-        if (index < 0) {
+        _captionTrackId = null;
+        _captionTrackApplied = false;
+        if (index >= _ccMenuIndexBase) {
+          _captionTrackId = index - _ccMenuIndexBase;
+          _captionTrackApplied = true;
+          unawaited(
+            _backend?.setEmbeddedCaptionTrack(index - _ccMenuIndexBase) ??
+                Future<void>.value(),
+          );
+        } else if (index < 0) {
           unawaited(_manager.disableSubtitles());
         } else {
           unawaited(_manager.changeSubtitleTrack(index));

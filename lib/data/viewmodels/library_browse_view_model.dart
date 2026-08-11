@@ -1,11 +1,15 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:server_core/server_core.dart' hide ImageType;
 
 import '../../preference/preference_constants.dart';
 import '../../preference/user_preferences.dart';
+import '../../util/parental_rating_severity.dart';
 import '../models/aggregated_item.dart';
 import '../repositories/mdblist_repository.dart';
+import '../utils/alphabet_bucket.dart';
+import '../utils/bounded_concurrency.dart';
 import '../utils/playlist_utils.dart';
 
 enum LibraryBrowseState { loading, ready, error }
@@ -33,21 +37,54 @@ class LibraryBrowseViewModel extends ChangeNotifier {
   static const _libraryMetaFields = '';
 
   static const _browseFields =
-      'PrimaryImageAspectRatio,SortName,Type,IsFolder,UserData,CommunityRating,OfficialRating,RunTimeTicks,ProductionYear,ProviderIds,ImageTags,BackdropImageTags,ParentBackdropItemId,ParentBackdropImageTags,ParentThumbItemId,ParentThumbImageTag,SeriesId,SeriesPrimaryImageTag';
+      'PrimaryImageAspectRatio,SortName,Type,IsFolder,UserData,CommunityRating,OfficialRating,RunTimeTicks,ProductionYear,ProviderIds,ImageTags,BackdropImageTags,ParentBackdropItemId,ParentBackdropImageTags,ParentThumbItemId,ParentThumbImageTag,SeriesId,SeriesPrimaryImageTag,Album,AlbumId,AlbumArtist,Artists,Genres,Studios';
   // Cap image tags to one per type (server returns all by default)
-  static const _imageTypes = 'Primary,Backdrop,Thumb';
+  static const _imageTypes = 'Primary,Backdrop,Thumb,Banner';
   static const _imageTypeLimit = 1;
 
   LibraryBrowseState _state = LibraryBrowseState.loading;
   LibraryBrowseState get state => _state;
 
   List<AggregatedItem> _items = const [];
-  List<AggregatedItem> get items => _items;
+
+  // The grid reads this from its item builders, so a search would otherwise
+  // rescan and reallocate the whole library several times a frame.
+  List<AggregatedItem>? _searchResults;
+  List<AggregatedItem>? _searchResultsSource;
+  String _searchResultsQuery = '';
+
+  List<AggregatedItem> get items {
+    final query = _searchQuery.trim().toLowerCase();
+    if (query.isEmpty) return _items;
+    if (_searchResults != null &&
+        _searchResultsQuery == query &&
+        identical(_searchResultsSource, _items)) {
+      return _searchResults!;
+    }
+    final matches = [
+      for (final item in _items)
+        if ((item.sortName ?? item.name).toLowerCase().contains(query)) item,
+    ];
+    _searchResults = matches;
+    _searchResultsSource = _items;
+    _searchResultsQuery = query;
+    return matches;
+  }
 
   int _totalCount = 0;
   int get totalCount => _totalCount;
 
   int _filteredOutCount = 0;
+
+  /// Rows the server has handed back so far, which is where the next page
+  /// starts. The rendered count drifts below this whenever a row is dropped,
+  /// and paging from the rendered count would ask for a window already read.
+  int _fetchedCount = 0;
+
+  /// Ids already on screen. A random sort reshuffles server side on every
+  /// request, so consecutive pages are windows into different orderings and
+  /// the same item comes back on several of them.
+  final Set<String> _renderedItemIds = <String>{};
 
   bool _totalCountKnown = true;
   bool _hasMoreFromPageSize = false;
@@ -84,6 +121,27 @@ class LibraryBrowseViewModel extends ChangeNotifier {
   late String _letterFilter;
   String get letterFilter => _letterFilter;
 
+  String _searchQuery = '';
+  String get searchQuery => _searchQuery;
+
+  Timer? _searchDebounceTimer;
+  static const _searchLoadDelay = Duration(milliseconds: 300);
+
+  /// Matching happens against the items already loaded, so a query that reaches
+  /// past the first page needs the rest pulled in. Typing a word would abandon
+  /// and restart that walk on every letter, so it waits for a pause first.
+  void setSearchQuery(String query) {
+    if (_searchQuery == query) return;
+    _searchQuery = query;
+    notifyListeners();
+    _searchDebounceTimer?.cancel();
+    if (_searchQuery.trim().isEmpty || !hasMore) return;
+    _searchDebounceTimer = Timer(_searchLoadDelay, () {
+      if (_disposed) return;
+      unawaited(ensureAllItemsLoaded());
+    });
+  }
+
   String? _libraryFilter;
   String? get libraryFilter => _libraryFilter;
 
@@ -100,6 +158,26 @@ class LibraryBrowseViewModel extends ChangeNotifier {
   late PosterSize _posterSize;
   PosterSize get posterSize => _posterSize;
 
+  late LibraryScrollDirection _scrollDirection;
+  LibraryScrollDirection get scrollDirection => _scrollDirection;
+
+  late LibraryGroupBy _groupBy;
+  LibraryGroupBy get groupBy => _groupBy;
+
+  String? _selectedCategoryTab;
+  String? get selectedCategoryTab => _selectedCategoryTab;
+
+  int _pageWalkGeneration = 0;
+  bool _disposed = false;
+
+  // Grouping walks every item and sorts the keys, and the grid asks for it
+  // more than once per build.
+  Map<String, List<AggregatedItem>>? _groupedCategoriesCache;
+  List<AggregatedItem>? _groupedCategoriesSource;
+  LibraryGroupBy? _groupedCategoriesGroupBy;
+
+  static const _catchAllCategories = {'Other', 'Unknown', 'Unrated'};
+
   String? _errorMessage;
   String? get errorMessage => _errorMessage;
 
@@ -111,21 +189,109 @@ class LibraryBrowseViewModel extends ChangeNotifier {
   Map<String, double> _focusedRatings = const {};
   Map<String, double> get focusedRatings => _focusedRatings;
 
-  final Map<String, String?> _tmdbIdByItemId = {};
-
   ImageApi get imageApi => _client.imageApi;
+
+  late bool _groupByType;
+  bool get groupByType => _groupByType;
+
+  final Set<String> _playlistTypeFilters = {
+    'Video',
+    'Audio',
+    'AudioBook',
+    'Book',
+    'Photo',
+    'Mixed',
+  };
+  Set<String> get playlistTypeFilters => _playlistTypeFilters;
+
+  static const _playlistCategoryConcurrency = 6;
+
+  final Map<String, String> _playlistCategoryMap = {};
+
+  String categoryForPlaylist(AggregatedItem item) {
+    return _playlistCategoryMap[item.id] ?? 'Mixed';
+  }
+
+  /// The loaded playlists the type checkboxes let through. Filtering here rather
+  /// than while paging keeps ticking a box a repaint instead of a fresh load.
+  List<AggregatedItem> get visiblePlaylists {
+    if (!isPlaylistBrowse) return items;
+    return items
+        .where(
+          (item) =>
+              item.type != 'Playlist' ||
+              _playlistTypeFilters.contains(categoryForPlaylist(item)),
+        )
+        .toList();
+  }
+
+  Map<String, List<AggregatedItem>> get groupedPlaylists {
+    final Map<String, List<AggregatedItem>> groups = {
+      'Video': [],
+      'Audio': [],
+      'AudioBook': [],
+      'Book': [],
+      'Photo': [],
+      'Mixed': [],
+    };
+    for (final item in visiblePlaylists) {
+      groups.putIfAbsent(categoryForPlaylist(item), () => []).add(item);
+    }
+    groups.removeWhere((key, value) => value.isEmpty);
+    return groups;
+  }
+
+  Future<void> setGroupByType(bool value) async {
+    if (_groupByType == value) return;
+    _groupByType = value;
+    await _prefs.set(UserPreferences.playlistsGroupByType, value);
+    notifyListeners();
+  }
+
+  void togglePlaylistTypeFilter(String type) {
+    if (_playlistTypeFilters.contains(type)) {
+      // Clearing the last one would leave the page blank with no way back.
+      if (_playlistTypeFilters.length == 1) return;
+      _playlistTypeFilters.remove(type);
+    } else {
+      _playlistTypeFilters.add(type);
+    }
+    notifyListeners();
+  }
 
   Future<List<AggregatedItem>> _filterLibraryItems(
     List<AggregatedItem> items,
   ) async {
     if (!isPlaylistBrowse) return items;
 
-    return filterBrowsablePlaylists(
-      _client,
+    // A playlist the summary can't settle costs a request of its own, so keep a
+    // lid on how many are in flight at once.
+    final categories = await mapBounded<AggregatedItem, String>(
       items,
-      mediaType: isMusicBrowse ? 'Audio' : null,
-      assumeNonEmptyWhenUnknown: !isMusicBrowse,
+      _playlistCategoryConcurrency,
+      (item) => item.type != 'Playlist'
+          ? Future.value(null)
+          : resolvePlaylistCategory(
+              _client,
+              item,
+              assumeNonEmptyWhenUnknown: !isMusicBrowse,
+            ),
     );
+
+    final kept = <AggregatedItem>[];
+    for (var i = 0; i < items.length; i++) {
+      final item = items[i];
+      final category = categories[i];
+      if (category != null) {
+        _playlistCategoryMap[item.id] = category;
+        // A music library's playlist tab only ever listed audio.
+        if (isMusicBrowse && category != 'Audio' && category != 'AudioBook') {
+          continue;
+        }
+      }
+      kept.add(item);
+    }
+    return kept;
   }
 
   void setFocusedItem(AggregatedItem? item) {
@@ -137,28 +303,9 @@ class LibraryBrowseViewModel extends ChangeNotifier {
 
   Future<void> _loadFocusedRatings(AggregatedItem item) async {
     if (!_prefs.get(UserPreferences.enableAdditionalRatings)) return;
-    var tmdbId = item.tmdbId;
-    if (tmdbId == null) {
-      if (_tmdbIdByItemId.containsKey(item.id)) {
-        tmdbId = _tmdbIdByItemId[item.id];
-      } else {
-        try {
-          final details =
-              await _client.itemsApi.getItem(item.id, fields: 'ProviderIds');
-          tmdbId = (details['ProviderIds'] as Map?)?['Tmdb'] as String?;
-        } catch (_) {
-          tmdbId = null;
-        }
-        _tmdbIdByItemId[item.id] = tmdbId;
-      }
-    }
-
-    if (tmdbId == null) return;
-    final mediaType = item.type;
-    if (mediaType == null) return;
-    final ratings = await _mdbListRepository.getRatings(
-      tmdbId: tmdbId,
-      mediaType: mediaType,
+    final ratings = await _mdbListRepository.getRatingsForItem(
+      item,
+      episodeRatingsEnabled: _prefs.canFetchEpisodeRatings,
     );
     if (ratings != null && ratings.isNotEmpty && _focusedItem?.id == item.id) {
       _focusedRatings = ratings;
@@ -187,9 +334,16 @@ class LibraryBrowseViewModel extends ChangeNotifier {
         favoritesOnly ||
         _prefs.get(UserPreferences.libraryFavoriteFilter(_prefKey));
     _letterFilter = '';
+    _groupByType = _prefs.get(UserPreferences.playlistsGroupByType);
     _imageType = _prefs.get(UserPreferences.libraryImageType(_imagePrefKey));
     _posterSize = _readScopedPosterSize();
     _lastGroupCollectionsValue = _prefs.get(UserPreferences.groupItemsIntoCollections);
+    _scrollDirection = _prefs.get(
+      UserPreferences.libraryScrollDirection(_imagePrefKey),
+    );
+    _groupBy = _prefs.get(
+      UserPreferences.libraryGroupBy(_imagePrefKey),
+    );
     _prefs.addListener(_onPrefsChanged);
   }
 
@@ -201,7 +355,13 @@ class LibraryBrowseViewModel extends ChangeNotifier {
     }
   }
 
-  String get _prefKey => genreId ?? studioName ?? libraryId;
+  String get _prefKey {
+    final baseKey = genreId ?? studioName ?? libraryId;
+    if (includeItemTypes != null && includeItemTypes!.isNotEmpty) {
+      return '${baseKey}_${includeItemTypes!.join("_")}';
+    }
+    return baseKey;
+  }
 
   String get _imagePrefKey {
     if (genreId != null && libraryId.isNotEmpty) {
@@ -219,13 +379,17 @@ class LibraryBrowseViewModel extends ChangeNotifier {
   }
 
   Future<void> load() async {
+    // Any page walk still running belongs to the list we are about to drop.
+    _pageWalkGeneration++;
     _state = LibraryBrowseState.loading;
     _items = const [];
     _totalCount = 0;
     _filteredOutCount = 0;
+    _fetchedCount = 0;
+    _renderedItemIds.clear();
+    _playlistCategoryMap.clear();
     _totalCountKnown = true;
     _hasMoreFromPageSize = false;
-    _tmdbIdByItemId.clear();
     notifyListeners();
 
     try {
@@ -250,13 +414,30 @@ class LibraryBrowseViewModel extends ChangeNotifier {
                 ?.toLowerCase();
           } catch (_) {}
         }
-      } else if (!_libraryMetaResolved) {
-        final parentData = await _client.itemsApi
-            .getItem(libraryId, fields: _libraryMetaFields);
-        _libraryName = parentData['Name'] as String? ?? '';
-        _collectionType = (parentData['CollectionType'] as String?)
-            ?.toLowerCase();
-        _libraryMetaResolved = true;
+      }
+      if (!isFilterBrowse && !_libraryMetaResolved && libraryId.isNotEmpty) {
+        try {
+          final parentData = await _client.itemsApi
+              .getItem(libraryId, fields: _libraryMetaFields);
+          _libraryName = parentData['Name'] as String? ?? '';
+          _collectionType = (parentData['CollectionType'] as String?)
+              ?.toLowerCase();
+          _libraryMetaResolved = true;
+        } catch (_) {}
+      }
+
+      if (_collectionType == null || _collectionType!.isEmpty) {
+        if (includeItemTypes != null && includeItemTypes!.isNotEmpty) {
+          if (includeItemTypes!.contains('Series')) {
+            _collectionType = 'tvshows';
+          } else if (includeItemTypes!.contains('Movie')) {
+            _collectionType = 'movies';
+          } else if (includeItemTypes!.contains('MusicVideo')) {
+            _collectionType = 'musicvideos';
+          } else if (includeItemTypes!.contains('Book')) {
+            _collectionType = 'books';
+          }
+        }
       }
 
       if (isHomeVideosLibrary || isMixedContentLibrary) {
@@ -281,28 +462,82 @@ class LibraryBrowseViewModel extends ChangeNotifier {
       _state = LibraryBrowseState.error;
     }
     notifyListeners();
+    if (isGrouping || _prefs.get(UserPreferences.showAlphabeticalFilters)) {
+      unawaited(ensureAllItemsLoaded());
+    }
   }
 
-  Future<void> loadMore() async {
+  Future<void> ensureAllItemsLoaded() async {
+    final generation = ++_pageWalkGeneration;
+    bool stillWanted() =>
+        !_disposed && _pageWalkGeneration == generation;
+
+    if (!stillWanted()) return;
+    while (hasMore) {
+      final beforeCount = _items.length;
+      await loadMore(pageSizeOverride: 300);
+      if (!stillWanted()) return;
+      if (_items.length == beforeCount) break;
+    }
+  }
+
+  /// Pages until an item starting with [letter] is loaded, and reports whether
+  /// one ever turned up.
+  Future<bool> ensureItemsLoadedForPrefix(String letter) async {
+    if (letter.isEmpty || letter == 'ALL') return true;
+    bool hasPrefix() =>
+        _items.any((item) => matchesAlphabetBucket(item, letter));
+
+    if (hasPrefix()) return true;
+
+    // Take over the page walk so a background ensureAllItemsLoaded stops
+    // competing for loadMore while the jump is filling in.
+    final generation = ++_pageWalkGeneration;
+    bool stillWanted() => !_disposed && _pageWalkGeneration == generation;
+
+    try {
+      while (!hasPrefix() && hasMore) {
+        if (!stillWanted()) return false;
+        // A scroll triggered page may be in flight, and calling loadMore now
+        // would return without loading and end the walk early.
+        while (_loadingMore) {
+          await Future.delayed(const Duration(milliseconds: 30));
+          if (!stillWanted()) return false;
+        }
+        final beforeCount = _items.length;
+        await loadMore(pageSizeOverride: 300, notify: false);
+        if (_items.length == beforeCount) break;
+      }
+    } finally {
+      // The walk suppressed per page notifications, so send the one that
+      // shows everything it loaded.
+      if (!_disposed) notifyListeners();
+    }
+    return hasPrefix();
+  }
+
+  Future<void> loadMore({int? pageSizeOverride, bool notify = true}) async {
     if (_loadingMore || !hasMore) return;
     _loadingMore = true;
-    notifyListeners();
+    if (notify) notifyListeners();
 
-    final prevLength = _items.length;
+    final previouslyFetched = _fetchedCount;
     try {
-      await _fetchPage(_items.length);
-      if (_items.length <= prevLength) {
+      await _fetchPage(_fetchedCount, pageSizeOverride: pageSizeOverride);
+      // Stop on a page the server had nothing left for, not on one that only
+      // repeated what is already shown, which a random sort does by chance.
+      if (_fetchedCount <= previouslyFetched) {
         _totalCount = _items.length;
         _hasMoreFromPageSize = false;
       }
     } catch (_) {}
 
     _loadingMore = false;
-    notifyListeners();
+    if (notify) notifyListeners();
   }
 
-  Future<void> _fetchPage(int startIndex) async {
-    final pageSize = startIndex == 0 ? _firstPageSize : _pageSize;
+  Future<void> _fetchPage(int startIndex, {int? pageSizeOverride}) async {
+    final pageSize = pageSizeOverride ?? (startIndex == 0 ? _firstPageSize : _pageSize);
     final filters = <String>[];
     if (_playedFilter == PlayedStatusFilter.watched) {
       filters.add('IsPlayed');
@@ -337,12 +572,15 @@ class LibraryBrowseViewModel extends ChangeNotifier {
           (includeTypes.contains('Movie') ||
               includeTypes.contains('Series'))) {
         collapseBoxSets = true;
+        if (!includeTypes.contains('BoxSet')) {
+          includeTypes.add('BoxSet');
+        }
       }
     } else {
       switch (_collectionType) {
         case 'movies':
           if (groupCollections) {
-            includeTypes = ['Movie'];
+            includeTypes = ['Movie', 'BoxSet'];
             excludeTypes = null;
             collapseBoxSets = true;
           } else {
@@ -353,7 +591,7 @@ class LibraryBrowseViewModel extends ChangeNotifier {
           break;
         case 'tvshows':
           if (groupCollections) {
-            includeTypes = ['Series'];
+            includeTypes = ['Series', 'BoxSet'];
             collapseBoxSets = true;
           } else {
             includeTypes = ['Series'];
@@ -403,11 +641,6 @@ class LibraryBrowseViewModel extends ChangeNotifier {
       sortBy = 'SortName';
     }
 
-    final selectedLetter = _letterFilter.isEmpty ? null : _letterFilter;
-    final isNumericBucket = selectedLetter == '#';
-    final nameStartsWith = isNumericBucket ? null : selectedLetter;
-    final nameLessThan = isNumericBucket ? 'A' : null;
-
     final Map<String, dynamic> response;
     if (isAlbumArtistBrowse) {
       response = await _client.itemsApi.getAlbumArtists(
@@ -421,8 +654,6 @@ class LibraryBrowseViewModel extends ChangeNotifier {
         limit: pageSize,
         recursive: recursive,
         fields: 'PrimaryImageAspectRatio,SortName',
-        nameStartsWith: nameStartsWith,
-        nameLessThan: nameLessThan,
         isFavorite: _favoriteFilter ? true : null,
       );
     } else if (isArtistBrowse) {
@@ -437,8 +668,6 @@ class LibraryBrowseViewModel extends ChangeNotifier {
         limit: pageSize,
         recursive: recursive,
         fields: 'PrimaryImageAspectRatio,SortName',
-        nameStartsWith: nameStartsWith,
-        nameLessThan: nameLessThan,
         isFavorite: _favoriteFilter ? true : null,
       );
     } else {
@@ -459,14 +688,12 @@ class LibraryBrowseViewModel extends ChangeNotifier {
         fields: _browseFields,
         filters: filters.isEmpty ? null : filters,
         seriesStatus: seriesStatus.isEmpty ? null : seriesStatus,
-        nameStartsWith: nameStartsWith,
-        nameLessThan: nameLessThan,
         isFavorite: _favoriteFilter ? true : null,
       );
     }
 
     final rawItems = (response['Items'] as List?) ?? [];
-    final mapped = rawItems
+    var mapped = rawItems
         .whereType<Map>()
         .map((raw) => raw.cast<String, dynamic>())
         .map((raw) {
@@ -481,12 +708,25 @@ class LibraryBrowseViewModel extends ChangeNotifier {
         .whereType<AggregatedItem>()
         .toList();
 
-    final filtered = await _filterLibraryItems(mapped);
+    var filtered = await _filterLibraryItems(mapped);
 
     if (isPlaylistBrowse) {
       final filteredOutInBatch = mapped.length - filtered.length;
       _filteredOutCount += filteredOutInBatch;
     }
+
+    // A playlist is free to list the same item more than once, so only the
+    // library browses drop repeats. A repeat means the server reshuffled
+    // rather than the library holding fewer items, so the total stays as
+    // reported and the dropped rows turn up on a later window.
+    if (!isPlaylistBrowse) {
+      filtered = filtered
+          .where((item) => !_renderedItemIds.contains(item.id))
+          .toList();
+      _renderedItemIds.addAll(filtered.map((item) => item.id));
+    }
+
+    _fetchedCount = startIndex + rawItems.length;
 
     final totalFromServer = response['TotalRecordCount'] as int?;
     _totalCountKnown = totalFromServer != null;
@@ -495,7 +735,7 @@ class LibraryBrowseViewModel extends ChangeNotifier {
       _hasMoreFromPageSize = _items.length + filtered.length < _totalCount;
     } else {
       _hasMoreFromPageSize = rawItems.length == pageSize;
-      final loadedCount = startIndex + filtered.length;
+      final loadedCount = _items.length + filtered.length;
       _totalCount = loadedCount + (_hasMoreFromPageSize ? 1 : 0);
     }
 
@@ -521,8 +761,6 @@ class LibraryBrowseViewModel extends ChangeNotifier {
     required String fields,
     List<String>? filters,
     List<String>? seriesStatus,
-    String? nameStartsWith,
-    String? nameLessThan,
     bool? isFavorite,
   }) async {
     try {
@@ -543,8 +781,6 @@ class LibraryBrowseViewModel extends ChangeNotifier {
         imageTypeLimit: _imageTypeLimit,
         filters: filters,
         seriesStatus: seriesStatus,
-        nameStartsWith: nameStartsWith,
-        nameLessThan: nameLessThan,
         isFavorite: isFavorite,
       );
     } on DioException catch (e) {
@@ -575,8 +811,6 @@ class LibraryBrowseViewModel extends ChangeNotifier {
         imageTypeLimit: _imageTypeLimit,
         filters: filters,
         seriesStatus: seriesStatus,
-        nameStartsWith: nameStartsWith,
-        nameLessThan: nameLessThan,
         isFavorite: isFavorite,
         enableTotalRecordCount: false,
       );
@@ -656,10 +890,10 @@ class LibraryBrowseViewModel extends ChangeNotifier {
     await load();
   }
 
-  Future<void> setLetterFilter(String value) async {
+  void setLetterFilter(String value) {
     if (_letterFilter == value) return;
     _letterFilter = value;
-    await load();
+    notifyListeners();
   }
 
   Future<void> setImageType(ImageType value) async {
@@ -724,6 +958,133 @@ class LibraryBrowseViewModel extends ChangeNotifier {
       await _prefs.set(UserPreferences.libraryPosterSize, value);
     }
     notifyListeners();
+  }
+
+  Future<void> setScrollDirection(LibraryScrollDirection value) async {
+    if (_scrollDirection == value) return;
+    _scrollDirection = value;
+    await _prefs.set(
+      UserPreferences.libraryScrollDirection(_imagePrefKey),
+      value,
+    );
+    notifyListeners();
+  }
+
+  Future<void> setGroupBy(LibraryGroupBy value) async {
+    if (_groupBy == value) return;
+    _groupBy = value;
+    _selectedCategoryTab = null;
+    await _prefs.set(
+      UserPreferences.libraryGroupBy(_imagePrefKey),
+      value,
+    );
+    notifyListeners();
+    if (isGrouping) unawaited(ensureAllItemsLoaded());
+  }
+
+  void setSelectedCategoryTab(String category) {
+    if (_selectedCategoryTab == category) return;
+    _selectedCategoryTab = category;
+    notifyListeners();
+  }
+
+  bool get isMovieOrSeriesLibrary =>
+      _collectionType == 'movies' ||
+      _collectionType == 'tvshows' ||
+      (includeItemTypes != null &&
+          includeItemTypes!.any((t) => t == 'Movie' || t == 'Series'));
+
+  /// Only movies and series carry the metadata the groupings read.
+  bool get isGrouping =>
+      _groupBy != LibraryGroupBy.none && isMovieOrSeriesLibrary;
+
+  Map<String, List<AggregatedItem>> get groupedCategories {
+    if (!isGrouping) return const {};
+
+    // _items is replaced wholesale on every fetch, so identity is enough to
+    // tell a fresh list from the one the cache was built against.
+    final cached = _groupedCategoriesCache;
+    if (cached != null &&
+        _groupedCategoriesGroupBy == _groupBy &&
+        identical(_groupedCategoriesSource, _items)) {
+      return cached;
+    }
+
+    final map = <String, List<AggregatedItem>>{};
+    for (final item in _items) {
+      switch (_groupBy) {
+        case LibraryGroupBy.genres:
+          // An item lands in every genre it carries, so the counts add up to
+          // more than the library holds.
+          final genres = item.genres;
+          if (genres.isEmpty) {
+            (map['Other'] ??= []).add(item);
+          } else {
+            for (final genre in genres) {
+              (map[genre] ??= []).add(item);
+            }
+          }
+        case LibraryGroupBy.parentalRatings:
+          final rating = item.officialRating?.trim() ?? '';
+          (map[rating.isEmpty ? 'Unrated' : rating] ??= []).add(item);
+        case LibraryGroupBy.decade:
+          final year = item.productionYear;
+          final decade = year != null ? '${(year ~/ 10) * 10}s' : 'Unknown';
+          (map[decade] ??= []).add(item);
+        case LibraryGroupBy.studio:
+          final studios = item.studios;
+          if (studios.isEmpty) {
+            (map['Unknown'] ??= []).add(item);
+          } else {
+            for (final studio in studios) {
+              final name = studio['Name'] as String?;
+              if (name != null && name.isNotEmpty) {
+                (map[name] ??= []).add(item);
+              }
+            }
+          }
+        case LibraryGroupBy.none:
+          break;
+      }
+    }
+
+    final severities = _groupBy == LibraryGroupBy.parentalRatings
+        ? {for (final key in map.keys) key: parentalRatingSeverity(key)}
+        : const <String, int>{};
+
+    final sortedKeys = map.keys.toList();
+    sortedKeys.sort((a, b) {
+      final aIsCatchAll = _catchAllCategories.contains(a);
+      final bIsCatchAll = _catchAllCategories.contains(b);
+      if (aIsCatchAll != bIsCatchAll) return aIsCatchAll ? 1 : -1;
+      return switch (_groupBy) {
+        // Newest decade first.
+        LibraryGroupBy.decade => b.compareTo(a),
+        LibraryGroupBy.parentalRatings when severities[a] != severities[b] =>
+          severities[a]!.compareTo(severities[b]!),
+        _ => a.compareTo(b),
+      };
+    });
+
+    final sortedMap = <String, List<AggregatedItem>>{};
+    for (final key in sortedKeys) {
+      sortedMap[key] = map[key]!;
+    }
+
+    _groupedCategoriesCache = sortedMap;
+    _groupedCategoriesSource = _items;
+    _groupedCategoriesGroupBy = _groupBy;
+    return sortedMap;
+  }
+
+  List<AggregatedItem> get currentCategoryItems {
+    if (!isGrouping) return _items;
+    final categories = groupedCategories;
+    if (categories.isEmpty) return _items;
+    // A filter can retire the selected category. Falling back to every item
+    // would mix in the other categories, so fall back to the first instead.
+    final selected = _selectedCategoryTab ?? categories.keys.first;
+    return categories[selected] ?? categories.values.first;
   }
 
   bool get isSeriesLibrary =>
@@ -799,8 +1160,20 @@ class LibraryBrowseViewModel extends ChangeNotifier {
 
   String get counterText => '${_items.length} | $_totalCount';
 
+  // Fetches keep landing after the screen is popped, and notifying then throws.
+  // Dropping it here saves every async path from carrying its own guard.
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
+  }
+
   @override
   void dispose() {
+    // Also stops an in-flight page walk from fetching what nobody will see.
+    _disposed = true;
+    _searchDebounceTimer?.cancel();
+    _pageWalkGeneration++;
     _prefs.removeListener(_onPrefsChanged);
     super.dispose();
   }

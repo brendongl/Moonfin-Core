@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleState, WidgetsBinding;
 import 'package:get_it/get_it.dart';
+import 'package:playback_core/playback_core.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../util/platform_detection.dart';
@@ -31,6 +33,9 @@ class ConnectivityService extends ChangeNotifier {
   /// Stream events are ignored until this is true to prevent
   /// a false "offline" flash at boot.
   bool _initialCheckDone = false;
+
+  /// Set when a sync was skipped because the app was backgrounded.
+  bool _pendingSync = false;
 
   ConnectivityService() {
     configureServerDio(_pingDio);
@@ -99,7 +104,23 @@ class ConnectivityService extends ChangeNotifier {
     });
   }
 
+  /// Called when the app returns to the foreground. Runs a sync that was
+  /// deferred while the app was backgrounded.
+  void onAppResumed() {
+    if (!_pendingSync) return;
+    _pendingSync = false;
+    _triggerSync();
+  }
+
   void _triggerSync() {
+    // Every network flip lands here, and the full progress and metadata sync
+    // keeps the radio and CPU busy on a device nobody is looking at. Defer it
+    // until the app is visible again, unless playback is active and progress
+    // sync still matters.
+    if (!_isForegroundOrPlaying()) {
+      _pendingSync = true;
+      return;
+    }
     final getIt = GetIt.instance;
     if (!getIt.isRegistered<SyncService>() ||
         !getIt.isRegistered<MediaServerClient>()) {
@@ -110,6 +131,22 @@ class ConnectivityService extends ChangeNotifier {
     syncService.syncPlaybackProgress(client).then((_) {
       syncService.refreshMetadata(client);
     });
+  }
+
+  bool _isForegroundOrPlaying() {
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    // A null state means no lifecycle event has arrived yet. On desktop that
+    // can last the whole run so it counts as foreground, while on Android it
+    // marks a headless engine and counts as background.
+    final backgrounded = lifecycle == AppLifecycleState.paused ||
+        lifecycle == AppLifecycleState.hidden ||
+        lifecycle == AppLifecycleState.detached ||
+        (lifecycle == null && PlatformDetection.isAndroid);
+    if (!backgrounded) return true;
+
+    final getIt = GetIt.instance;
+    return getIt.isRegistered<PlaybackManager>() &&
+        getIt<PlaybackManager>().state.isPlaying;
   }
 
   Future<void> _checkServerReachability() async {

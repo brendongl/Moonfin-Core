@@ -71,8 +71,10 @@ jobs:
           elif [ "$VERSION" != "$current_version" ] || [ "$VERSION" != "$current_srcinfo_version" ]; then
             echo "Update needed: PKGBUILD=$current_version, SRCINFO=$current_srcinfo_version, upstream=$VERSION"
             echo "needed=true" >> "$GITHUB_OUTPUT"
-          elif ! grep -q 'Moonfin-Client/Moonfin-Core' PKGBUILD || ! grep -q "'mpv'" PKGBUILD; then
-            echo "PKGBUILD is stale (repo URL or missing mpv dependency), re-syncing"
+          elif ! grep -q 'Moonfin-Client/Moonfin-Core' PKGBUILD \
+            || ! grep -q "'mpv'" PKGBUILD \
+            || ! grep -q 'org.moonfin.linux.desktop' PKGBUILD; then
+            echo "PKGBUILD is stale (repo URL, mpv dependency, or desktop entry), re-syncing"
             echo "needed=true" >> "$GITHUB_OUTPUT"
           else
             echo "No update needed (version: $current_version)"
@@ -110,18 +112,70 @@ jobs:
           git config user.name "${{ vars.GIT_USER_NAME }}"
           git config user.email "${{ vars.GIT_USER_EMAIL }}"
 
-          # Update PKGBUILD
-          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" PKGBUILD
-          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
-          sed -i "s/^sha256sums=.*/sha256sums=('${SHA256}')/" PKGBUILD
-          sed -i "s|^url=.*|url=\"https://github.com/Moonfin-Client/Moonfin-Core\"|" PKGBUILD
-          sed -i "s|^source=.*|source=(\"\${pkgname}-\${pkgver}.tar.gz::https://github.com/Moonfin-Client/Moonfin-Core/releases/download/\${pkgver}/Moonfin_Linux_v\${pkgver}.tar.gz\")|" PKGBUILD
+          # Both files are written whole from the same values so they cannot
+          # drift apart, and so package() stays in step with what the release
+          # tarball actually carries.
+          cat > PKGBUILD << PKGBUILD_EOF
+          # Maintainer: RadicalMuffinMan <support@moonfin.app>
+          # Written by the Moonfin release workflow. Edits here are overwritten.
+          pkgname=moonfin-bin
+          pkgver=${VERSION}
+          pkgrel=1
+          pkgdesc='Jellyfin & Emby media client for Linux (binary release)'
+          arch=('x86_64')
+          url='https://github.com/Moonfin-Client/Moonfin-Core'
+          license=('GPL-3.0-or-later')
+          depends=('gtk3' 'glib2' 'libsecret' 'webkit2gtk-4.1' 'mpv' 'harfbuzz-icu')
+          provides=('moonfin')
+          conflicts=('moonfin')
+          # The binary and the bundled libraries ship stripped already, and
+          # makepkg's pass over a prebuilt Flutter bundle can break it.
+          options=('!strip')
+          source=("\${pkgname}-\${pkgver}.tar.gz::https://github.com/Moonfin-Client/Moonfin-Core/releases/download/\${pkgver}/Moonfin_Linux_v\${pkgver}.tar.gz")
+          sha256sums=('${SHA256}')
 
-          if grep -q '^depends=' PKGBUILD; then
-            sed -i "s/^depends=.*/depends=('gtk3' 'glib2' 'libsecret' 'webkit2gtk-4.1' 'mpv' 'harfbuzz-icu')/" PKGBUILD
-          else
-            sed -i "/^pkgrel=/a depends=('gtk3' 'glib2' 'libsecret' 'webkit2gtk-4.1' 'mpv' 'harfbuzz-icu')" PKGBUILD
-          fi
+          package() {
+            cd "\${srcdir}/moonfin-\${pkgver}"
+
+            # Everything except the shared files is the app itself. Listing what
+            # to skip rather than what to take keeps this working when the
+            # Flutter bundle gains a directory.
+            install -dm755 "\${pkgdir}/usr/lib/moonfin"
+            for entry in *; do
+              case "\${entry}" in
+                share|README.txt) continue ;;
+              esac
+              cp -a "\${entry}" "\${pkgdir}/usr/lib/moonfin/"
+            done
+            chmod 755 "\${pkgdir}/usr/lib/moonfin/moonfin" \\
+              "\${pkgdir}/usr/lib/moonfin/moonfin-bin"
+
+            # These come from the depends list, and the launcher searches the
+            # bundled lib directory first, so leftover copies would shadow the
+            # system ones.
+            for lib in mpv ass secret-1 avcodec avdevice avfilter avformat \\
+              avutil postproc swresample swscale va va-drm va-wayland va-x11 \\
+              vdpau; do
+              rm -f "\${pkgdir}/usr/lib/moonfin/lib/lib\${lib}.so."*
+            done
+
+            # The launcher in the bundle reads its own directory to find the
+            # libraries, so it is called by its real path rather than linked to.
+            install -dm755 "\${pkgdir}/usr/bin"
+            printf '%s\n' '#!/bin/sh' 'exec /usr/lib/moonfin/moonfin "\$@"' \\
+              > "\${pkgdir}/usr/bin/moonfin"
+            chmod 755 "\${pkgdir}/usr/bin/moonfin"
+
+            install -Dm644 share/applications/org.moonfin.linux.desktop \\
+              -t "\${pkgdir}/usr/share/applications"
+            install -Dm644 share/metainfo/org.moonfin.linux.metainfo.xml \\
+              -t "\${pkgdir}/usr/share/metainfo"
+            install -Dm644 share/icons/hicolor/512x512/apps/org.moonfin.linux.png \\
+              -t "\${pkgdir}/usr/share/icons/hicolor/512x512/apps"
+            install -Dm644 share/pixmaps/org.moonfin.linux.png \\
+              -t "\${pkgdir}/usr/share/pixmaps"
+          }
+          PKGBUILD_EOF
 
           printf '%s\n' \
             "pkgbase = moonfin-bin" \
@@ -131,6 +185,7 @@ jobs:
             "    url = https://github.com/Moonfin-Client/Moonfin-Core" \
             "    arch = x86_64" \
             "    license = GPL-3.0-or-later" \
+            "    options = !strip" \
             "    depends = gtk3" \
             "    depends = glib2" \
             "    depends = libsecret" \

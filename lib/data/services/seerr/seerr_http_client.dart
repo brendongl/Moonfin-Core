@@ -79,6 +79,16 @@ class SeerrHttpClient {
     );
   }
 
+  /// Turns the request mutation error codes Seerr uses, such as a 403 for a
+  /// permission or quota refusal, into a typed exception the UI can localize.
+  void _throwIfRequestError(Response response) {
+    final requestError = SeerrRequestException.fromResponse(
+      response.statusCode,
+      response.data,
+    );
+    if (requestError != null) throw requestError;
+  }
+
   void _requireSuccess(Response response, String context) {
     if (response.statusCode == null || response.statusCode! < 200 || response.statusCode! > 299) {
       throw DioException(
@@ -277,9 +287,7 @@ class SeerrHttpClient {
       data: body,
       options: _authJsonOptions(),
     );
-    final requestError =
-        SeerrRequestException.fromResponse(response.statusCode, response.data);
-    if (requestError != null) throw requestError;
+    _throwIfRequestError(response);
     _requireSuccess(response, 'createRequest');
     return response.data as Map<String, dynamic>;
   }
@@ -289,6 +297,7 @@ class SeerrHttpClient {
       _apiUrl('request/$requestId'),
       options: _authOptions(),
     );
+    _throwIfRequestError(response);
     _requireSuccess(response, 'deleteRequest');
   }
 
@@ -326,6 +335,7 @@ class SeerrHttpClient {
       _apiUrl(endpoint),
       options: _authJsonOptions(),
     );
+    _throwIfRequestError(response);
     _requireSuccess(response, opName);
   }
 
@@ -343,7 +353,7 @@ class SeerrHttpClient {
     final page = (offset ~/ limit) + 1;
     final response = await _dio.get(
       _apiUrl('discover/trending'),
-      queryParameters: {'page': page, 'language': 'en'},
+      queryParameters: {'page': page},
       options: _authOptions(),
     );
     _requireSuccess(response, 'getTrending');
@@ -354,7 +364,7 @@ class SeerrHttpClient {
     final page = (offset ~/ limit) + 1;
     final response = await _dio.get(
       _apiUrl('discover/movies'),
-      queryParameters: {'page': page, 'language': 'en'},
+      queryParameters: {'page': page},
       options: _authOptions(),
     );
     _requireSuccess(response, 'getTrendingMovies');
@@ -365,7 +375,7 @@ class SeerrHttpClient {
     final page = (offset ~/ limit) + 1;
     final response = await _dio.get(
       _apiUrl('discover/tv'),
-      queryParameters: {'page': page, 'language': 'en'},
+      queryParameters: {'page': page},
       options: _authOptions(),
     );
     _requireSuccess(response, 'getTrendingTv');
@@ -392,38 +402,79 @@ class SeerrHttpClient {
     return response.data as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> getUpcomingMovies() async {
+  Future<Map<String, dynamic>> getUpcomingMovies({int page = 1}) async {
     final response = await _dio.get(
       _apiUrl('discover/movies/upcoming'),
+      queryParameters: {'page': page},
       options: _authOptions(),
     );
     _requireSuccess(response, 'getUpcomingMovies');
     return response.data as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> getUpcomingTv() async {
+  Future<Map<String, dynamic>> getUpcomingTv({int page = 1}) async {
     final response = await _dio.get(
       _apiUrl('discover/tv/upcoming'),
+      queryParameters: {'page': page},
       options: _authOptions(),
     );
     _requireSuccess(response, 'getUpcomingTv');
     return response.data as Map<String, dynamic>;
   }
 
+  Future<void> addToWatchlist({required int tmdbId, required String mediaType}) async {
+    final response = await _dio.post(
+      _apiUrl('watchlist'),
+      data: {'tmdbId': tmdbId, 'mediaType': mediaType},
+      options: _authJsonOptions(),
+    );
+    _requireSuccess(response, 'addToWatchlist');
+  }
+
+  Future<void> removeFromWatchlist({required int tmdbId, required String mediaType}) async {
+    final response = await _dio.delete(
+      _apiUrl('watchlist/$tmdbId'),
+      queryParameters: {'mediaType': mediaType},
+      options: _authOptions(),
+    );
+    _requireSuccess(response, 'removeFromWatchlist');
+  }
+
+  Future<Map<String, dynamic>> getWatchlist({int page = 1}) async {
+    final response = await _dio.get(
+      _apiUrl('discover/watchlist'),
+      queryParameters: {'page': page},
+      options: _authOptions(),
+    );
+    _requireSuccess(response, 'getWatchlist');
+    final body = Map<String, dynamic>.from(response.data as Map<String, dynamic>);
+    final results = (body['results'] as List? ?? []).map((raw) {
+      final item = Map<String, dynamic>.from(raw as Map<String, dynamic>);
+      if (item['tmdbId'] != null) item['id'] = item['tmdbId'];
+      if (item.containsKey('media') && !item.containsKey('mediaInfo')) {
+        item['mediaInfo'] = item['media'];
+      }
+      return item;
+    }).toList();
+    return {...body, 'results': results};
+  }
+
+  // Seerr hands the language parameter on both discover endpoints to TMDB as
+  // the original language filter, so naming one hides every production made in
+  // any other language. Leaving it off falls back to whatever language the
+  // account is set to.
   Future<Map<String, dynamic>> discoverMovies({
     int page = 1,
     String sortBy = 'popularity.desc',
     int? genre,
     int? studio,
     int? keywords,
-    String language = 'en',
   }) async {
     final response = await _dio.get(
       _apiUrl('discover/movies'),
       queryParameters: {
         'page': page,
         'sortBy': sortBy,
-        'language': language,
         'genre': ?genre,
         'studio': ?studio,
         'keywords': ?keywords,
@@ -440,14 +491,12 @@ class SeerrHttpClient {
     int? genre,
     int? network,
     int? keywords,
-    String language = 'en',
   }) async {
     final response = await _dio.get(
       _apiUrl('discover/tv'),
       queryParameters: {
         'page': page,
         'sortBy': sortBy,
-        'language': language,
         'genre': ?genre,
         'network': ?network,
         'keywords': ?keywords,
@@ -465,11 +514,22 @@ class SeerrHttpClient {
     int offset = 0,
   }) async {
     final page = (offset ~/ limit) + 1;
-    final eq = Uri.encodeComponent(query);
-    var url = '${_apiUrl('search')}?query=$eq&page=$page';
+    // Percent-encode query string explicitly using %20 for spaces and %27 for
+    // apostrophes. Passing query directly to Dio queryParameters uses
+    // x-www-form-urlencoded format (+ for spaces), which causes Seerr/TMDB
+    // to search for literal '+' characters and return 0 results.
+    final encodedQuery = Uri.encodeComponent(query)
+        .replaceAll("'", '%27')
+        .replaceAll('!', '%21')
+        .replaceAll('*', '%2A')
+        .replaceAll('(', '%28')
+        .replaceAll(')', '%29');
+
+    var url = '${_apiUrl('search')}?query=$encodedQuery&page=$page';
     if (mediaType != null) {
       url += '&type=${Uri.encodeComponent(mediaType)}';
     }
+
     final response = await _dio.get(
       url,
       options: _authOptions(),
@@ -590,6 +650,15 @@ class SeerrHttpClient {
     return SeerrStatus.fromJson(response.data as Map<String, dynamic>);
   }
 
+  Future<Map<String, dynamic>> getPublicSettings() async {
+    final response = await _dio.get(
+      _apiUrl('settings/public'),
+      options: _authOptions(),
+    );
+    _requireSuccess(response, 'getPublicSettings');
+    return response.data as Map<String, dynamic>;
+  }
+
   Future<bool> testConnection() async {
     try {
       final response = await _dio.get(
@@ -658,6 +727,32 @@ class SeerrHttpClient {
     return response.data as List<dynamic>;
   }
 
+  Future<List<dynamic>> getRadarrCalendar({String? start, String? end}) async {
+    final response = await _dio.get(
+      _moonfinUrl('Radarr/Calendar'),
+      queryParameters: {
+        'start': ?start,
+        'end': ?end,
+      },
+      options: _authOptions(),
+    );
+    _requireSuccess(response, 'getRadarrCalendar');
+    return response.data as List<dynamic>;
+  }
+
+  Future<List<dynamic>> getSonarrCalendar({String? start, String? end}) async {
+    final response = await _dio.get(
+      _moonfinUrl('Sonarr/Calendar'),
+      queryParameters: {
+        'start': ?start,
+        'end': ?end,
+      },
+      options: _authOptions(),
+    );
+    _requireSuccess(response, 'getSonarrCalendar');
+    return response.data as List<dynamic>;
+  }
+
   Future<MoonfinStatusResponse> getMoonfinStatus() async {
     final response = await _dio.get(
       _moonfinUrl('Status'),
@@ -687,6 +782,31 @@ class SeerrHttpClient {
       throw Exception(result.error ?? 'Moonfin login failed');
     }
     return result;
+  }
+
+  /// Attempts the password-less Quick Connect sign in. Never throws on a non
+  /// success status so the caller can inspect the plugin's errorCode and tell
+  /// an unsupported server apart from a transient failure.
+  Future<MoonfinQuickConnectResult> moonfinQuickConnectLogin({
+    String? username,
+  }) async {
+    final response = await _dio.post(
+      _moonfinUrl('Login'),
+      data: {
+        if (username != null && username.isNotEmpty) 'username': username,
+        'authType': 'quickconnect',
+      },
+      options: _authJsonOptions(),
+    );
+
+    final data = response.data;
+    final map = data is Map<String, dynamic> ? data : const <String, dynamic>{};
+    return MoonfinQuickConnectResult(
+      success: response.statusCode == 200 && map['success'] == true,
+      errorCode: map['errorCode']?.toString(),
+      seerrUserId: (map['seerrUserId'] as num?)?.toInt(),
+      displayName: map['displayName']?.toString(),
+    );
   }
 
   Future<void> moonfinLogout() async {

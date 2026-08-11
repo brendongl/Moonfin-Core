@@ -26,6 +26,13 @@ class _HomeScreenCategoryScreenState extends State<_HomeScreenCategoryScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final rowsStyle = _prefs.get(UserPreferences.homeRowsStyle);
+    final isFullScreenRows =
+        !PlatformDetection.useMobileUi &&
+        _prefs.get(UserPreferences.fullScreenRows);
+    final isInfoOverlayOn =
+        rowsStyle == HomeRowsStyle.v1 &&
+        _prefs.get(UserPreferences.homeRowInfoOverlay);
+    final isPaddingEnabled = !isFullScreenRows && !isInfoOverlayOn;
     return Scaffold(
       appBar: buildSettingsAppBar(context, Text(l10n.homeScreen)),
       body: ListView(
@@ -53,6 +60,24 @@ class _HomeScreenCategoryScreenState extends State<_HomeScreenCategoryScreen> {
                 icon: Icons.merge_type,
                 onChanged: _pushPersonalizationSync,
               ),
+              IntPickerPreferenceTile(
+                preference: UserPreferences.nextUpMaxDays,
+                title: l10n.nextUpMaxDays,
+                description: l10n.nextUpMaxDaysDescription,
+                icon: Icons.event_busy,
+                options: {
+                  0: l10n.noLimit,
+                  30: l10n.daysValue(30),
+                  90: l10n.daysValue(90),
+                  180: l10n.daysValue(180),
+                  365: l10n.daysValue(365),
+                  730: l10n.daysValue(730),
+                },
+                onChanged: () {
+                  _pushPersonalizationSync();
+                  _reloadHomeRows();
+                },
+              ),
               SwitchPreferenceTile(
                 preference: UserPreferences.seriesThumbnailsEnabled,
                 title: l10n.seriesThumbnails,
@@ -66,8 +91,37 @@ class _HomeScreenCategoryScreenState extends State<_HomeScreenCategoryScreen> {
                   title: l10n.fullScreenRows,
                   subtitle: l10n.fullScreenRowsDescription,
                   icon: Icons.image_aspect_ratio,
-                  onChanged: _pushPersonalizationSync,
+                  onChanged: () {
+                    _pushPersonalizationSync();
+                    if (!mounted) return;
+                    setState(() {});
+                  },
                 ),
+              if (rowsStyle == HomeRowsStyle.v1)
+                SwitchPreferenceTile(
+                  preference: UserPreferences.homeRowInfoOverlay,
+                  title: l10n.homeRowInfoOverlay,
+                  subtitle: l10n.showTitleMetadataOnHomeRows,
+                  icon: Icons.info_outline,
+                  onChanged: () {
+                    _pushPersonalizationSync();
+                    if (!mounted) return;
+                    setState(() {});
+                  },
+                ),
+              SliderPreferenceTile(
+                preference: rowsStyle == HomeRowsStyle.v2
+                    ? UserPreferences.modernHomeRowsPadding
+                    : UserPreferences.classicHomeRowsPadding,
+                title: l10n.homeRowsPadding,
+                description: l10n.homeRowsPaddingDescription,
+                icon: Icons.unfold_more,
+                min: rowsStyle == HomeRowsStyle.v2 ? 360 : 10,
+                max: rowsStyle == HomeRowsStyle.v2 ? 560 : 130,
+                divisions: rowsStyle == HomeRowsStyle.v2 ? 10 : 6,
+                enabled: isPaddingEnabled,
+                onChangeEnd: _pushPersonalizationSync,
+              ),
               EnumPreferenceTile<PosterSize>(
                 preference: UserPreferences.posterSize,
                 title: l10n.cardSize,
@@ -80,13 +134,6 @@ class _HomeScreenCategoryScreenState extends State<_HomeScreenCategoryScreen> {
                 },
                 onChanged: _pushPersonalizationSync,
               ),
-              if (rowsStyle == HomeRowsStyle.v1)
-                SwitchPreferenceTile(
-                  preference: UserPreferences.homeRowInfoOverlay,
-                  title: l10n.homeRowInfoOverlay,
-                  subtitle: l10n.showTitleMetadataOnHomeRows,
-                  icon: Icons.info_outline,
-                ),
             ],
           ),
 

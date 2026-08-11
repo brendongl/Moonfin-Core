@@ -58,6 +58,27 @@ class _CastMiniPlayerContentState extends State<_CastMiniPlayerContent> {
   CastService get _castService => widget.castService;
   CastTargetKind get _kind => widget.kind;
 
+  @override
+  void initState() {
+    super.initState();
+    _castService.remoteErrorNotifier.addListener(_onRemoteError);
+  }
+
+  @override
+  void dispose() {
+    _castService.remoteErrorNotifier.removeListener(_onRemoteError);
+    super.dispose();
+  }
+
+  void _onRemoteError() {
+    final message = _castService.remoteErrorNotifier.value;
+    if (message == null || !mounted) return;
+    _castService.remoteErrorNotifier.value = null;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(AppLocalizations.of(context).castingFailed(message))),
+    );
+  }
+
   String _formatDuration(Duration d) {
     final h = d.inHours;
     final m = d.inMinutes.remainder(60);

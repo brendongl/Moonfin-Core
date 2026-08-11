@@ -24,6 +24,7 @@ import '../../util/overlay_color_palette.dart';
 import '../../util/platform_detection.dart';
 import '../navigation/destinations.dart';
 import '../navigation/home_refresh_bus.dart';
+import '../navigation/route_lifecycle_observer.dart';
 import 'expandable_icon_button.dart';
 import 'navigation_layout.dart';
 import 'settings/settings_panel.dart';
@@ -99,7 +100,7 @@ class TopToolbar extends StatefulWidget {
   State<TopToolbar> createState() => _TopToolbarState();
 }
 
-class _TopToolbarState extends State<TopToolbar> {
+class _TopToolbarState extends State<TopToolbar> with RouteAware {
   final _userRepo = GetIt.instance<UserRepository>();
   final _prefs = GetIt.instance<UserPreferences>();
   final _viewsRepo = GetIt.instance<UserViewsRepository>();
@@ -121,8 +122,12 @@ class _TopToolbarState extends State<TopToolbar> {
   VoidCallback? _previousFocusNavbarCallback;
   VoidCallback? _previousFocusAvatarCallback;
   FocusNode? _previousFocus;
+  // Tracked per instance so only the toolbar that actually held focus
+  // clears the shared isFocusedNotifier on dispose.
+  bool _toolbarHadFocus = false;
   List<AggregatedLibrary> _libraries = [];
   Timer? _clockTimer;
+  Timer? _librariesReloadDebounce;
   late final ValueNotifier<String> _currentTime;
   StreamSubscription? _userSub;
   String? _userImageUrl;
@@ -133,8 +138,16 @@ class _TopToolbarState extends State<TopToolbar> {
   void initState() {
     super.initState();
     _currentTime = ValueNotifier<String>('');
-    _focusNavbarCallback = () => _homeFocus.requestFocus();
-    _focusAvatarCallback = () => _avatarFocus.requestFocus();
+    // Guarded so a stale registration from a torn-down toolbar is a safe
+    // no-op instead of focusing a disposed node.
+    _focusNavbarCallback = () {
+      if (!mounted || _homeFocus.context == null) return;
+      _homeFocus.requestFocus();
+    };
+    _focusAvatarCallback = () {
+      if (!mounted || _avatarFocus.context == null) return;
+      _avatarFocus.requestFocus();
+    };
     _previousFocusNavbarCallback = NavigationLayout.focusNavbarNotifier.value;
     _previousFocusAvatarCallback =
       NavigationLayout.focusNavbarAvatarNotifier.value;
@@ -162,8 +175,35 @@ class _TopToolbarState extends State<TopToolbar> {
     });
   }
 
+  ModalRoute<dynamic>? _observedRoute;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route == null || route == _observedRoute) return;
+    if (_observedRoute != null) {
+      routeLifecycleObserver.unsubscribe(this);
+    }
+    _observedRoute = route;
+    routeLifecycleObserver.subscribe(this, route);
+  }
+
+  @override
+  void didPopNext() {
+    // Our route is current again. An out of order route teardown can leave
+    // the focus bridge pointing at a torn-down chrome instance, so re-assert
+    // that it targets this live one.
+    NavigationLayout.focusNavbarNotifier.value = _focusNavbarCallback;
+    NavigationLayout.focusNavbarAvatarNotifier.value = _focusAvatarCallback;
+  }
+
   @override
   void dispose() {
+    if (_observedRoute != null) {
+      routeLifecycleObserver.unsubscribe(this);
+      _observedRoute = null;
+    }
     if (identical(
       NavigationLayout.focusNavbarNotifier.value,
       _focusNavbarCallback,
@@ -178,7 +218,12 @@ class _TopToolbarState extends State<TopToolbar> {
           _previousFocusAvatarCallback;
     }
     _clockTimer?.cancel();
-    TopToolbar.isFocusedNotifier.value = false;
+    _librariesReloadDebounce?.cancel();
+    // Only clear the shared flag if this instance held focus, so a torn-down
+    // route's toolbar can't wipe the state of the one the user is on.
+    if (_toolbarHadFocus) {
+      TopToolbar.isFocusedNotifier.value = false;
+    }
     _avatarFocus.removeListener(_onAvatarFocusChanged);
     FocusManager.instance.removeListener(_trackPreviousFocus);
     _toolbarScopeNode.dispose();
@@ -221,13 +266,22 @@ class _TopToolbarState extends State<TopToolbar> {
   void _onPrefsChanged() {
     if (!mounted) return;
     _updateClock();
-    _loadLibraries();
+    _scheduleLibrariesReload();
     setState(() {});
   }
 
   void _onUserViewsChanged() {
     if (!mounted) return;
-    _loadLibraries();
+    _scheduleLibrariesReload();
+  }
+
+  // Collapses a burst of change notifications, like the settings sync
+  // applying a whole profile, into a single library reload.
+  void _scheduleLibrariesReload() {
+    _librariesReloadDebounce?.cancel();
+    _librariesReloadDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (mounted) _loadLibraries();
+    });
   }
 
   void _onAvatarFocusChanged() {
@@ -370,15 +424,28 @@ class _TopToolbarState extends State<TopToolbar> {
     _moveFocusDown();
   }
 
+  /// A node can only take focus once its box exists and has been laid out.
+  /// Asking earlier throws out of the focus machinery.
+  bool _isReadyForFocus(FocusNode node) {
+    final render = node.context?.findRenderObject();
+    return render is RenderBox && render.attached && render.hasSize;
+  }
+
   void _moveFocusDown({int attempt = 0}) {
     if (!mounted) return;
     final scope = FocusScope.of(context);
-    if (scope.focusInDirection(TraversalDirection.down)) {
-      final primary = FocusManager.instance.primaryFocus;
-      if (_isUsableOutsideToolbar(primary)) return;
-    }
+    // Directional traversal measures every candidate it walks, so one node
+    // still waiting on layout takes the whole call down. The manual paths below
+    // cover the same ground, so a failure here isn't worth surfacing.
+    try {
+      if (scope.focusInDirection(TraversalDirection.down)) {
+        final primary = FocusManager.instance.primaryFocus;
+        if (_isUsableOutsideToolbar(primary)) return;
+      }
+    } catch (_) {}
+
     final firstBelow = _findFirstFocusableBelowToolbar(scope);
-    if (firstBelow != null) {
+    if (firstBelow != null && _isReadyForFocus(firstBelow)) {
       firstBelow.requestFocus();
       return;
     }
@@ -386,7 +453,9 @@ class _TopToolbarState extends State<TopToolbar> {
     if (fallback != null && fallback.context != null) {
       final firstContent = _firstFocusableDescendant(fallback);
       if (firstContent != null) {
-        firstContent.requestFocus();
+        if (_isReadyForFocus(firstContent)) {
+          firstContent.requestFocus();
+        }
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
           final primary = FocusManager.instance.primaryFocus;
@@ -476,6 +545,13 @@ class _TopToolbarState extends State<TopToolbar> {
 
   bool _isActive(String route) => widget.activeRoute == route;
 
+  /// Phones keep the avatar on home only, so other routes leave the back
+  /// arrow on its own.
+  bool get _showAvatar =>
+      !PlatformDetection.useMobileUi || _isActive(Destinations.home);
+
+  bool get _showBackArrow => widget.showBackButton && !PlatformDetection.isTV;
+
   @override
   void didUpdateWidget(covariant TopToolbar oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -505,8 +581,11 @@ class _TopToolbarState extends State<TopToolbar> {
         clockBehavior == ClockBehavior.always ||
         clockBehavior == ClockBehavior.inMenus;
     final hasEndSection = !isMobile && showClock;
-    final startReservedWidth =
-        (widget.showBackButton && !PlatformDetection.isTV) ? 96.0 : 44.0;
+    final startReservedWidth = switch ((_showAvatar, _showBackArrow)) {
+      (true, true) => 96.0,
+      (false, false) => 0.0,
+      _ => 44.0,
+    };
     final endReservedWidth = hasEndSection ? 96.0 : 0.0;
     final centerSidePadding =
         math.max(startReservedWidth, endReservedWidth) + 14.0;
@@ -530,6 +609,7 @@ class _TopToolbarState extends State<TopToolbar> {
           child: Focus(
             focusNode: _toolbarScopeNode,
             onFocusChange: (hasFocus) {
+              _toolbarHadFocus = hasFocus;
               TopToolbar.isFocusedNotifier.value = hasFocus;
             },
             onKeyEvent: (_, event) {
@@ -678,9 +758,9 @@ class _TopToolbarState extends State<TopToolbar> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _buildAvatar(),
-          if (widget.showBackButton && !PlatformDetection.isTV) ...[
-            const SizedBox(width: 8),
+          if (_showAvatar) _buildAvatar(),
+          if (_showBackArrow) ...[
+            if (_showAvatar) const SizedBox(width: 8),
             MouseRegion(
               cursor: SystemMouseCursors.click,
               child: GestureDetector(
@@ -1104,7 +1184,12 @@ class _TopToolbarState extends State<TopToolbar> {
           context.navigateTopLevel(Destinations.liveTvGuide);
         } else {
           context.navigateTopLevel(
-            gameOrLibraryRoute(lib.id, lib.collectionType, lib.name),
+            gameOrLibraryRoute(
+              lib.id,
+              lib.collectionType,
+              lib.name,
+              serverId: lib.serverId,
+            ),
           );
         }
       },
@@ -1137,7 +1222,12 @@ class _TopToolbarState extends State<TopToolbar> {
           context.navigateTopLevel(Destinations.liveTvGuide);
         } else {
           context.navigateTopLevel(
-            gameOrLibraryRoute(lib.id, lib.collectionType, lib.name),
+            gameOrLibraryRoute(
+              lib.id,
+              lib.collectionType,
+              lib.name,
+              serverId: lib.serverId,
+            ),
           );
         }
       },

@@ -8,10 +8,16 @@ import '../util/platform_detection.dart';
 import 'media3_player_backend.dart';
 
 class PlaybackLifecycleHandler with WidgetsBindingObserver {
+  // Detaching the render surface can regress the backend position, but only
+  // right after the app goes to the background. _restoreState runs the same
+  // correction on resume, so ten seconds of ticks is enough.
+  static const int _maxBgCorrectionTicks = 40;
+
   final PlaybackManager _manager;
   Duration? _savedPosition;
   bool? _wasPlaying;
   Timer? _bgCorrectionTimer;
+  int _bgCorrectionTicks = 0;
   bool _bgSeekInFlight = false;
   bool _screenLocked = false;
 
@@ -82,17 +88,32 @@ class PlaybackLifecycleHandler with WidgetsBindingObserver {
     }
 
     _bgCorrectionTimer?.cancel();
+    _bgCorrectionTicks = 0;
     _bgCorrectionTimer = Timer.periodic(
       const Duration(milliseconds: 250),
-      (_) => _bgCorrect(),
+      (_) {
+        if (++_bgCorrectionTicks > _maxBgCorrectionTicks) {
+          _stopBgCorrection();
+          return;
+        }
+        _bgCorrect();
+      },
     );
     unawaited(_bgCorrect());
+  }
+
+  void _stopBgCorrection() {
+    _bgCorrectionTimer?.cancel();
+    _bgCorrectionTimer = null;
   }
 
   Future<void> _bgCorrect() async {
     final saved = _savedPosition;
     if (saved == null) return;
-    if (_manager.queueService.currentItem == null) return;
+    if (_manager.queueService.currentItem == null) {
+      _stopBgCorrection();
+      return;
+    }
     if (_bgSeekInFlight) return;
 
     final currentPos = _manager.backend?.position ?? _manager.state.position;

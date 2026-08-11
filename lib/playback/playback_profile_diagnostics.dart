@@ -5,6 +5,7 @@ import 'package:get_it/get_it.dart';
 import 'package:playback_core/playback_core.dart';
 
 import '../data/services/log_service.dart';
+import '../util/platform_detection.dart';
 import 'audio_capability_profile.dart';
 
 class PlaybackProfileDiagnostics {
@@ -23,6 +24,7 @@ class PlaybackProfileDiagnostics {
     required AudioCapabilityProfile audioCapabilityProfile,
     required Map<String, dynamic> media3Capabilities,
     required List<String> audioSpdifCodecs,
+    Map<String, dynamic> audioPreferenceContext = const <String, dynamic>{},
   }) {
     final resolution = context.resolution;
     final videoStream = _firstStreamOfType(resolution.mediaStreams, 'Video');
@@ -34,6 +36,12 @@ class PlaybackProfileDiagnostics {
 
     final allowedAudioCodecs = _extractAllowedAudioCodecs(context.deviceProfile);
     final hlsAudioTargets = _extractHlsAudioTargets(context.deviceProfile);
+    final advertisedMaxAudioChannels = _extractAdvertisedMaxAudioChannels(
+      context.deviceProfile,
+    );
+    final transcodingMaxAudioChannels = _extractTranscodingMaxAudioChannels(
+      context.deviceProfile,
+    );
 
     final entry = <String, dynamic>{
       'timestamp': DateTime.now().toIso8601String(),
@@ -51,6 +59,17 @@ class PlaybackProfileDiagnostics {
       'videoProfile': _streamString(videoStream, 'Profile'),
       'videoLevel': _streamLevel(videoStream),
       'videoRange': _streamVideoRange(videoStream, resolution),
+      // A "VideoRangeTypeNotSupported" transcode reason must trace back to one
+      // of these values.
+      'videoRangeCapabilities': <String, dynamic>{
+        'hdr10': PlatformDetection.supportsHevcHdr10,
+        'hdr10Plus': PlatformDetection.supportsHevcHdr10Plus,
+        'dolbyVision': PlatformDetection.supportsHevcDolbyVision,
+        'dolbyVisionEl': PlatformDetection.supportsHevcDolbyVisionEl,
+        'dvProfile5': PlatformDetection.supportsDoViProfile5,
+        'dvProfile7': PlatformDetection.supportsDoViProfile7,
+        'dvProfile8': PlatformDetection.supportsDoViProfile8,
+      },
       'audioCodec': _streamCodec(audioStream),
       'audioProfile': _streamString(audioStream, 'Profile'),
       'audioChannels': _streamChannels(audioStream),
@@ -58,6 +77,11 @@ class PlaybackProfileDiagnostics {
       'allowedAudioCodecs': allowedAudioCodecs,
       'hlsMpegTsAudioCodecs': hlsAudioTargets['mpegts'] ?? const <String>[],
       'hlsFmp4AudioCodecs': hlsAudioTargets['fmp4'] ?? const <String>[],
+      // An "AudioChannelsNotSupported" transcode reason must trace back to
+      // one of these two values.
+      'advertisedMaxAudioChannels': advertisedMaxAudioChannels,
+      'transcodingMaxAudioChannels': transcodingMaxAudioChannels,
+      ...audioPreferenceContext,
       'audioSpdifCodecs': _normalizeCodecs(audioSpdifCodecs),
       'audioCapabilities': audioCapabilityProfile.toMap(),
       'activeRouteType': audioCapabilityProfile.activeRouteType.name,
@@ -241,6 +265,43 @@ class PlaybackProfileDiagnostics {
     final sorted = codecs.toList();
     sorted.sort();
     return sorted;
+  }
+
+  /// The `AudioChannels LessThanEqual` value from the general (codec-less)
+  /// `VideoAudio` codec profile, which is the number the server compares a
+  /// source's channel count against when deciding `AudioChannelsNotSupported`.
+  String _extractAdvertisedMaxAudioChannels(Map<String, dynamic> profile) {
+    for (final entry in _readMaps(profile['CodecProfiles'])) {
+      if ((entry['Type'] as String?)?.toLowerCase() != 'videoaudio') {
+        continue;
+      }
+      final codec = entry['Codec']?.toString() ?? '';
+      if (codec.isNotEmpty) {
+        continue;
+      }
+      for (final condition in _readMaps(entry['Conditions'])) {
+        if ((condition['Property'] as String?)?.toLowerCase() ==
+            'audiochannels') {
+          return condition['Value']?.toString() ?? '';
+        }
+      }
+    }
+    return '';
+  }
+
+  /// Every `MaxAudioChannels` value emitted across TranscodingProfiles
+  /// (empty when transcodes are uncapped).
+  List<String> _extractTranscodingMaxAudioChannels(
+    Map<String, dynamic> profile,
+  ) {
+    final values = <String>[];
+    for (final entry in _readMaps(profile['TranscodingProfiles'])) {
+      final value = entry['MaxAudioChannels']?.toString().trim() ?? '';
+      if (value.isNotEmpty) {
+        values.add(value);
+      }
+    }
+    return values;
   }
 
   Map<String, List<String>> _extractHlsAudioTargets(

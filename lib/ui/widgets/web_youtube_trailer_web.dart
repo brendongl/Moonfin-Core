@@ -16,6 +16,8 @@ extension type _YTPlayer._(JSObject _) implements JSObject {
   external void unMute();
   external void playVideo();
   external void pauseVideo();
+  external void loadModule(JSString module);
+  external void unloadModule(JSString module);
   external JSObject getIframe();
 }
 
@@ -23,6 +25,7 @@ class WebYouTubeTrailer extends StatefulWidget {
   final String videoId;
   final bool muted;
   final bool showControls;
+  final bool showCaptions;
   final bool loop;
   final bool ignorePointer;
 
@@ -40,6 +43,7 @@ class WebYouTubeTrailer extends StatefulWidget {
     required this.videoId,
     this.muted = true,
     this.showControls = false,
+    this.showCaptions = false,
     this.loop = true,
     this.ignorePointer = false,
     this.suspended = false,
@@ -80,6 +84,7 @@ class _WebYouTubeTrailerState extends State<WebYouTubeTrailer> {
 
   late final JSFunction _onReadyJs;
   late final JSFunction _onStateChangeJs;
+  late final JSFunction _onApiChangeJs;
   late final JSFunction _onErrorJs;
   late final JSFunction _messageListener;
 
@@ -95,11 +100,12 @@ class _WebYouTubeTrailerState extends State<WebYouTubeTrailer> {
     super.initState();
     final id = ++_instanceCounter;
     _viewType =
-        'moonfin-yt-trailer-${widget.videoId}-${widget.muted ? 'm' : 'u'}-${widget.showControls ? 'c1' : 'c0'}-${widget.ignorePointer ? 'p0' : 'p1'}-$id';
+        'moonfin-yt-trailer-${widget.videoId}-${widget.muted ? 'm' : 'u'}-${widget.showControls ? 'c1' : 'c0'}-${widget.showCaptions ? 'cc1' : 'cc0'}-${widget.ignorePointer ? 'p0' : 'p1'}-$id';
     _owners[_viewType] = this;
 
     _onReadyJs = ((JSObject _) => _onReady()).toJS;
     _onStateChangeJs = ((JSObject event) => _onStateChange(event)).toJS;
+    _onApiChangeJs = ((JSObject _) => _applyCaptions()).toJS;
     _onErrorJs = ((JSObject event) => _onError(event)).toJS;
     _messageListener = ((web.Event event) => _handleWindowMessage(event)).toJS;
     web.window.addEventListener('message', _messageListener);
@@ -257,6 +263,7 @@ class _WebYouTubeTrailerState extends State<WebYouTubeTrailer> {
       'autoplay': 1,
       'mute': widget.muted ? 1 : 0,
       'controls': widget.showControls ? 1 : 0,
+      'cc_load_policy': widget.showCaptions ? 1 : 0,
       'rel': 0,
       'modestbranding': 1,
       'playsinline': 1,
@@ -269,6 +276,7 @@ class _WebYouTubeTrailerState extends State<WebYouTubeTrailer> {
     final events = JSObject();
     events.setProperty('onReady'.toJS, _onReadyJs);
     events.setProperty('onStateChange'.toJS, _onStateChangeJs);
+    events.setProperty('onApiChange'.toJS, _onApiChangeJs);
     events.setProperty('onError'.toJS, _onErrorJs);
 
     final options = JSObject();
@@ -363,10 +371,28 @@ class _WebYouTubeTrailerState extends State<WebYouTubeTrailer> {
 
   void _handleState(int? state) {
     if (state == _statePlaying) {
+      _applyCaptions();
       _reportPlaybackStarted();
     } else if (state == _stateEnded) {
       _reportCompleted();
     }
+  }
+
+  // cc_load_policy only decides whether captions are forced on. It cannot turn
+  // them off when the viewer's YouTube default is on, so unload the caption
+  // module directly when captions are disabled.
+  void _applyCaptions() {
+    final player = _player;
+    if (player == null) return;
+    try {
+      if (widget.showCaptions) {
+        player.loadModule('captions'.toJS);
+        player.loadModule('cc'.toJS);
+      } else {
+        player.unloadModule('captions'.toJS);
+        player.unloadModule('cc'.toJS);
+      }
+    } catch (_) {}
   }
 
   void _handleErrorCode(int? code) {

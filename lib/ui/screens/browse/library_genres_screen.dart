@@ -28,8 +28,9 @@ const _initialArtworkBatch = 12;
 const _backgroundArtworkConcurrency = 4;
 
 bool _isCompact(BuildContext context) =>
-    PlatformDetection.useMobileUi ||
-    MediaQuery.sizeOf(context).width < _kCompactBreakpoint;
+    !PlatformDetection.isTV &&
+    (PlatformDetection.useMobileUi ||
+        MediaQuery.sizeOf(context).width < _kCompactBreakpoint);
 
 class LibraryGenresScreen extends StatefulWidget {
   final String libraryId;
@@ -297,7 +298,7 @@ class _LibraryGenresScreenState extends State<LibraryGenresScreen> {
     final posterSize = _posterSize;
     final baseWidth = switch (_imageType) {
       ImageType.thumb => posterSize.landscapeHeight * (16 / 9),
-      ImageType.banner => posterSize.landscapeHeight * (16 / 9),
+      ImageType.banner => kBannerCardHeight * kBannerAspectRatio,
       ImageType.poster => posterSize.portraitHeight * (2 / 3),
     };
     return baseWidth * desktopScale;
@@ -310,7 +311,7 @@ class _LibraryGenresScreenState extends State<LibraryGenresScreen> {
 
     return switch (_imageType) {
       ImageType.thumb => 16 / 9,
-      ImageType.banner => 16 / 9,
+      ImageType.banner => kBannerAspectRatio,
       ImageType.poster => 2 / 3,
     };
   }
@@ -400,7 +401,9 @@ class _LibraryGenresScreenState extends State<LibraryGenresScreen> {
             ? _mobileHorizontalPadding
             : _horizontalPadding * desktopScale;
         final spacing = 16.0 * desktopScale;
-        final minColumns = isMobile ? 1 : 2;
+        final minColumns = _imageType == ImageType.banner
+            ? (constraints.maxWidth < 600 ? 1 : 2)
+            : (isMobile ? 1 : 2);
         final maxColumns = isMobile ? 4 : 8;
         final crossAxisCount =
             ((constraints.maxWidth - horizontalPadding * 2 + spacing) /

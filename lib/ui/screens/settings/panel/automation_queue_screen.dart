@@ -54,6 +54,12 @@ class _AutomationQueueScreenState extends State<_AutomationQueueScreen> {
                 subtitle: l10n.settingsCinemaModeSubtitle,
                 icon: Icons.movie_filter,
               ),
+              SwitchPreferenceTile(
+                preference: UserPreferences.cinemaModeEpisodesEnabled,
+                title: l10n.settingsCinemaModeEpisodes,
+                subtitle: l10n.settingsCinemaModeEpisodesSubtitle,
+                icon: Icons.live_tv,
+              ),
               StringPickerPreferenceTile(
                 preference: UserPreferences.mediaSegmentActions,
                 title: l10n.settingsSkipIntrosAndOutros,
@@ -76,6 +82,17 @@ class _AutomationQueueScreenState extends State<_AutomationQueueScreen> {
                     MediaSegmentCountdown.timer => l10n.settingsTimer,
                     MediaSegmentCountdown.both => l10n.settingsBoth,
                     MediaSegmentCountdown.none => l10n.settingsNone,
+                  },
+                ),
+              if (mediaSegmentActions == _promptSkipSegments)
+                EnumPreferenceTile<MediaSegmentAutoHide>(
+                  preference: UserPreferences.mediaSegmentAutoHide,
+                  title: l10n.settingsSkipButtonAutoHide,
+                  description: l10n.settingsSkipButtonAutoHideDescription,
+                  icon: Icons.visibility_off_outlined,
+                  labelOf: (v) => switch (v) {
+                    MediaSegmentAutoHide.off => l10n.off,
+                    _ => l10n.secondsValue(v.seconds),
                   },
                 ),
             ],

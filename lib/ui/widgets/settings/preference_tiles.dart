@@ -301,6 +301,16 @@ class SettingsListTypography extends StatelessWidget {
   }
 }
 
+PreferenceBinding<T> _rebindOnPreferenceChange<T>(
+  PreferenceBinding<T> current,
+  Preference<T> next,
+  Preference<T> previous,
+) {
+  if (next == previous) return current;
+  current.dispose();
+  return PreferenceBinding(GetIt.instance<PreferenceStore>(), next);
+}
+
 class SwitchPreferenceTile extends StatefulWidget {
   final Preference<bool> preference;
   final String title;
@@ -333,7 +343,7 @@ class SwitchPreferenceTile extends StatefulWidget {
 }
 
 class _SwitchPreferenceTileState extends State<SwitchPreferenceTile> {
-  late final PreferenceBinding<bool> _binding;
+  late PreferenceBinding<bool> _binding;
 
   @override
   void initState() {
@@ -341,6 +351,16 @@ class _SwitchPreferenceTileState extends State<SwitchPreferenceTile> {
     _binding = PreferenceBinding(
       GetIt.instance<PreferenceStore>(),
       widget.preference,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant SwitchPreferenceTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _binding = _rebindOnPreferenceChange(
+      _binding,
+      widget.preference,
+      oldWidget.preference,
     );
   }
 
@@ -434,7 +454,7 @@ class EnumPreferenceTile<T extends Enum> extends StatefulWidget {
 
 class _EnumPreferenceTileState<T extends Enum>
     extends State<EnumPreferenceTile<T>> {
-  late final PreferenceBinding<T> _binding;
+  late PreferenceBinding<T> _binding;
   bool _pickerOpen = false;
 
   @override
@@ -443,6 +463,16 @@ class _EnumPreferenceTileState<T extends Enum>
     _binding = PreferenceBinding(
       GetIt.instance<PreferenceStore>(),
       widget.preference,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant EnumPreferenceTile<T> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _binding = _rebindOnPreferenceChange(
+      _binding,
+      widget.preference,
+      oldWidget.preference,
     );
   }
 
@@ -573,6 +603,7 @@ class _EnumPreferenceTileState<T extends Enum>
 class SliderPreferenceTile extends StatefulWidget {
   final Preference<int> preference;
   final String title;
+  final String? description;
   final IconData? icon;
   final double min;
   final double max;
@@ -580,11 +611,13 @@ class SliderPreferenceTile extends StatefulWidget {
   final String Function(int value)? labelOf;
   final VoidCallback? onChangeEnd;
   final bool autofocus;
+  final bool enabled;
 
   const SliderPreferenceTile({
     super.key,
     required this.preference,
     required this.title,
+    this.description,
     this.icon,
     required this.min,
     required this.max,
@@ -592,6 +625,7 @@ class SliderPreferenceTile extends StatefulWidget {
     this.labelOf,
     this.onChangeEnd,
     this.autofocus = false,
+    this.enabled = true,
   });
 
   @override
@@ -599,7 +633,7 @@ class SliderPreferenceTile extends StatefulWidget {
 }
 
 class _SliderPreferenceTileState extends State<SliderPreferenceTile> {
-  late final PreferenceBinding<int> _binding;
+  late PreferenceBinding<int> _binding;
   late final FocusNode _outerFocusNode;
   late final FocusNode _sliderInternalNode;
   bool _outerFocused = false;
@@ -628,6 +662,16 @@ class _SliderPreferenceTileState extends State<SliderPreferenceTile> {
   }
 
   @override
+  void didUpdateWidget(covariant SliderPreferenceTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _binding = _rebindOnPreferenceChange(
+      _binding,
+      widget.preference,
+      oldWidget.preference,
+    );
+  }
+
+  @override
   void dispose() {
     _outerFocusNode.dispose();
     _sliderInternalNode.dispose();
@@ -636,6 +680,7 @@ class _SliderPreferenceTileState extends State<SliderPreferenceTile> {
   }
 
   KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    if (!widget.enabled) return KeyEventResult.ignored;
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
@@ -667,10 +712,19 @@ class _SliderPreferenceTileState extends State<SliderPreferenceTile> {
 
   @override
   Widget build(BuildContext context) {
-    final invert = _outerFocused && settingsTileInvertsOnFocus;
+    final invert =
+        widget.enabled && _outerFocused && settingsTileInvertsOnFocus;
+    return Opacity(
+      opacity: widget.enabled ? 1.0 : 0.4,
+      child: _buildTile(context, invert: invert),
+    );
+  }
+
+  Widget _buildTile(BuildContext context, {required bool invert}) {
     return Focus(
       focusNode: _outerFocusNode,
       autofocus: widget.autofocus,
+      canRequestFocus: widget.enabled,
       onKeyEvent: _onKeyEvent,
       onFocusChange: (focused) {
         if (focused) {
@@ -712,6 +766,16 @@ class _SliderPreferenceTileState extends State<SliderPreferenceTile> {
                 subtitle: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (widget.description != null)
+                      Text(
+                        widget.description!,
+                        style: TextStyle(
+                          fontSize: _kSettingsSubtitleTextStyle.fontSize,
+                          color: invert
+                              ? AppColors.black.withValues(alpha: 0.54)
+                              : AppColorScheme.onSurface.withValues(alpha: 0.7),
+                        ),
+                      ),
                     if (widget.labelOf != null)
                       Text(
                         widget.labelOf!(value),
@@ -731,8 +795,12 @@ class _SliderPreferenceTileState extends State<SliderPreferenceTile> {
                             min: widget.min,
                             max: widget.max,
                             divisions: widget.divisions,
-                            onChanged: (v) => _binding.value = v.round(),
-                            onChangeEnd: (_) => widget.onChangeEnd?.call(),
+                            onChanged: widget.enabled
+                                ? (v) => _binding.value = v.round()
+                                : null,
+                            onChangeEnd: widget.enabled
+                                ? (_) => widget.onChangeEnd?.call()
+                                : null,
                           )
                         : Slider(
                             focusNode: _sliderInternalNode,
@@ -745,8 +813,12 @@ class _SliderPreferenceTileState extends State<SliderPreferenceTile> {
                             divisions: widget.divisions,
                             label:
                                 widget.labelOf?.call(value) ?? value.toString(),
-                            onChanged: (v) => _binding.value = v.round(),
-                            onChangeEnd: (_) => widget.onChangeEnd?.call(),
+                            onChanged: widget.enabled
+                                ? (v) => _binding.value = v.round()
+                                : null,
+                            onChangeEnd: widget.enabled
+                                ? (_) => widget.onChangeEnd?.call()
+                                : null,
                           ),
                   ],
                 ),
@@ -784,7 +856,7 @@ class StringPickerPreferenceTile extends StatefulWidget {
 
 class _StringPickerPreferenceTileState
     extends State<StringPickerPreferenceTile> {
-  late final PreferenceBinding<String> _binding;
+  late PreferenceBinding<String> _binding;
   bool _pickerOpen = false;
 
   @override
@@ -793,6 +865,16 @@ class _StringPickerPreferenceTileState
     _binding = PreferenceBinding(
       GetIt.instance<PreferenceStore>(),
       widget.preference,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant StringPickerPreferenceTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _binding = _rebindOnPreferenceChange(
+      _binding,
+      widget.preference,
+      oldWidget.preference,
     );
   }
 
@@ -904,7 +986,7 @@ class IntPickerPreferenceTile extends StatefulWidget {
 }
 
 class _IntPickerPreferenceTileState extends State<IntPickerPreferenceTile> {
-  late final PreferenceBinding<int> _binding;
+  late PreferenceBinding<int> _binding;
   bool _pickerOpen = false;
 
   @override
@@ -913,6 +995,16 @@ class _IntPickerPreferenceTileState extends State<IntPickerPreferenceTile> {
     _binding = PreferenceBinding(
       GetIt.instance<PreferenceStore>(),
       widget.preference,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant IntPickerPreferenceTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _binding = _rebindOnPreferenceChange(
+      _binding,
+      widget.preference,
+      oldWidget.preference,
     );
   }
 

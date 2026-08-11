@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:get_it/get_it.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:moonfin_design/moonfin_design.dart' show LiquidGlassWidgets;
 import 'package:path_provider/path_provider.dart';
 import 'package:playback_core/playback_core.dart';
 import 'package:window_manager/window_manager.dart';
@@ -17,6 +18,7 @@ import 'data/services/carplay_service.dart';
 import 'data/services/cast/airplay_command_bridge.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
+import 'data/services/background_download_coordinator.dart';
 import 'data/services/download_notification_service.dart';
 import 'data/services/push_messaging_service.dart';
 import 'data/services/seerr_notification_service.dart';
@@ -26,7 +28,7 @@ import 'util/webview_environment.dart';
 import 'data/services/theme_store_service.dart';
 import 'di/injection.dart';
 import 'playback/appletv_audio_now_playing_feeder.dart';
-import 'playback/appletv_mpv_backend.dart';
+import 'playback/appletv_backend.dart';
 import 'playback/audio_capability_profile.dart';
 import 'playback/audio_capability_probe.dart';
 import 'playback/audio_handler.dart';
@@ -34,6 +36,7 @@ import 'playback/media_browse_service.dart';
 import 'playback/mpris_service.dart';
 import 'playback/playback_lifecycle_handler.dart';
 import 'platform/web_runtime_config.dart';
+import 'preference/preference_constants.dart';
 import 'preference/user_preferences.dart';
 import 'util/fullscreen_helper.dart';
 import 'util/http_overrides_stub.dart'
@@ -48,8 +51,8 @@ DateTime? _lastIosRouteResync;
 /// iOS-only audio route handling: observe output route changes to (a) pause when
 /// the current output device disappears (AirPods removed, cable unplugged) and
 /// (b) re-sync A/V when the output switches mid-playback (a new device connects,
-/// or AirPlay/HomePod is selected), which otherwise leaves libmpv writing to a
-/// stale clock and drifts audio out of sync.
+/// or AirPlay/HomePod is selected), which otherwise leaves the player writing
+/// to a stale clock and drifts audio out of sync.
 void _attachIosAudioRouteHandling() {
   final session = AVAudioSession();
   session.routeChangeStream.listen((change) async {
@@ -68,8 +71,8 @@ void _attachIosAudioRouteHandling() {
           return;
         }
         _lastIosRouteResync = now;
-        // A same-position seek re-primes libmpv's audio/video clock without an
-        // audible pause, realigning A/V after the output switch.
+        // A same-position seek re-primes the player's audio/video clock without
+        // an audible pause, realigning A/V after the output switch.
         await manager.seekTo(manager.state.position);
         break;
       default:
@@ -131,8 +134,11 @@ Future<void> _restoreWindowGeometry() async {
     await windowManager.show();
     await windowManager.focus();
     if (startFullscreen) {
-      // Via FullscreenHelper so its cached state matches the window.
-      await FullscreenHelper.setFullscreen(true);
+      // Delay slightly to let the window render its first frame before transitioning to fullscreen.
+      // This avoids graphics context race conditions (black screens) and window layout artifacts.
+      unawaited(Future.delayed(const Duration(milliseconds: 150), () async {
+        await FullscreenHelper.setFullscreen(true);
+      }));
     }
   });
 }
@@ -175,21 +181,58 @@ Future<void> _detectAndSetDisplayCapabilities() async {
   } catch (_) {}
 }
 
+/// A cold-start probe can race codec enumeration and return a map with no
+/// usable H264 support. Every Android device that reaches this code plays
+/// H264, so such a result is a transient failure, not a real capability.
+bool _codecCapsLookDegenerate(Map<String, dynamic> caps) {
+  final supportsAvc = caps['supportsAvc'] == true;
+  final avcMainLevel = caps['avcMainLevel'];
+  return !supportsAvc || avcMainLevel is! int || avcMainLevel <= 0;
+}
+
+Future<Map<String, dynamic>?> _queryCodecCaps(MethodChannel channel) async {
+  final raw = await channel.invokeMethod<Map<dynamic, dynamic>>(
+    'mediaCodecCapabilities',
+    <String, dynamic>{
+      'includeSoftwareDecoders': !PlatformDetection.isTV,
+    },
+  );
+  return raw?.map((key, value) => MapEntry(key.toString(), value));
+}
+
+/// Re-probes in the background when the startup result looked degenerate.
+/// The native query enumerates codecs on the platform main thread, so the
+/// retries must never extend the launch path. The device profile is built
+/// per playback, so a corrected result applied here still fixes the next
+/// playback without a restart.
+Future<void> _retryCodecCapsOffLaunchPath(MethodChannel channel) async {
+  for (var i = 0; i < 2; i++) {
+    await Future<void>.delayed(const Duration(seconds: 2));
+    try {
+      final caps = await _queryCodecCaps(channel);
+      if (caps != null && !_codecCapsLookDegenerate(caps)) {
+        PlatformDetection.setMediaCodecCapabilities(caps);
+        return;
+      }
+    } catch (_) {
+      return;
+    }
+  }
+}
+
 Future<void> _detectAndSetCodecCapabilities() async {
   if (!PlatformDetection.isAndroid) return;
   try {
     const channel = MethodChannel('org.moonfin.androidtv/platform');
 
-    final codecCaps = await channel.invokeMethod<Map<dynamic, dynamic>>(
-      'mediaCodecCapabilities',
-      <String, dynamic>{
-        'includeSoftwareDecoders': !PlatformDetection.isTV,
-      },
-    );
+    final codecCaps = await _queryCodecCaps(channel);
     if (codecCaps != null) {
-      PlatformDetection.setMediaCodecCapabilities(
-        codecCaps.map((key, value) => MapEntry(key.toString(), value)),
-      );
+      PlatformDetection.setMediaCodecCapabilities(codecCaps);
+      // A degenerate cold-start result would otherwise poison the device
+      // profile until app restart and force needless transcodes.
+      if (_codecCapsLookDegenerate(codecCaps)) {
+        unawaited(_retryCodecCapsOffLaunchPath(channel));
+      }
       return;
     }
 
@@ -202,6 +245,42 @@ Future<void> _detectAndSetCodecCapabilities() async {
       ),
     );
   } catch (_) {}
+}
+
+Future<void> _detectAndSetAetherCapabilities() async {
+  const channel = MethodChannel('moonfin/ios_aether_control');
+  Map<String, dynamic>? caps;
+  try {
+    final raw = await channel.invokeMethod<Map<dynamic, dynamic>>(
+      'getCapabilities',
+    );
+    if (raw != null) {
+      caps = raw.map((key, value) => MapEntry(key.toString(), value));
+    }
+  } catch (_) {}
+
+  // Fallback mirrors AetherEngine's guaranteed baseline on the hardware the
+  // deployment floors allow (iOS 16, macOS 14).
+  PlatformDetection.setMediaCodecCapabilities(
+    caps ??
+        const {
+          'supportsAvc': true,
+          'avcMainLevel': 52,
+          'supportsAvcHigh10': true,
+          'avcHigh10Level': 52,
+          'supportsHevc': true,
+          'hevcMainLevel': 153,
+          'supportsHevcMain10': true,
+          'hevcMain10Level': 153,
+          'supportsHevcDolbyVision': true,
+          'supportsHevcHdr10': true,
+          'supportsDvP5': true,
+          'supportsDvP7': true,
+          'supportsDvP8': true,
+          'maxResolutionAvc': {'width': 3840, 'height': 2160},
+          'maxResolutionHevc': {'width': 3840, 'height': 2160},
+        },
+  );
 }
 
 Future<void> _detectAndSetAppleTvCapabilities() async {
@@ -245,63 +324,19 @@ Future<void> _detectAndApplyAudioCapabilities(UserPreferences prefs) async {
     final profile = await AudioCapabilityProbe.queryWithRetry();
     AudioCapabilityProbe.apply(profile);
 
-    // Passthrough is no longer seeded into the toggle prefs: the tri-state
-    // resolvers compute it live from the detected capability, which also
-    // auto-adapts to later route changes. Existing installs whose toggles were
-    // auto-seeded by the old one-shot probe are migrated back to "Auto" once.
-    if (profile != null) {
-      await _migrateSeededPassthroughTogglesToAuto(prefs, profile);
+    // Installs migrated into manual mode carry only the toggles they had set
+    // by hand, so fill the rest from the probe and every switch has a real
+    // value.
+    if (profile != null &&
+        prefs.get(UserPreferences.audioPassthroughMode) ==
+            AudioPassthroughMode.manual) {
+      await prefs.seedAbsentPassthroughToggles();
     }
 
     // Re-probe whenever the audio route changes (e.g. the AVR is powered on
     // after launch) so detection self-heals without an app restart.
     AudioCapabilityProbe.listenForRouteChanges();
   } catch (_) {}
-}
-
-/// One-time migration for installs that ran the old startup seeding, which
-/// copied probe results into the 8 passthrough toggle prefs. A stored value
-/// that still matches what the probe would have seeded was almost certainly
-/// auto-seeded (not a deliberate choice), so it is cleared to return the toggle
-/// to tri-state "Auto". A value that differs is treated as a deliberate user
-/// override and preserved.
-Future<void> _migrateSeededPassthroughTogglesToAuto(
-  UserPreferences prefs,
-  AudioCapabilityProfile profile,
-) async {
-  if (prefs.get(UserPreferences.audioPassthroughMigratedToAuto)) return;
-
-  if (prefs.get(UserPreferences.audioPassthroughProbeSeeded)) {
-    final hasReceiverRoute =
-        profile.activeRouteType == AudioRouteType.arc ||
-        profile.activeRouteType == AudioRouteType.earc;
-    final seededValues = {
-      UserPreferences.ac3PassthroughEnabled:
-          hasReceiverRoute && profile.canPassthroughAc3,
-      UserPreferences.eac3PassthroughEnabled:
-          hasReceiverRoute && profile.canPassthroughEac3,
-      UserPreferences.eac3JocPassthroughEnabled:
-          hasReceiverRoute && profile.canPassthroughEac3Joc,
-      UserPreferences.dtsCorePassthroughEnabled:
-          hasReceiverRoute && profile.canPassthroughDts,
-      UserPreferences.dtsHdPassthroughEnabled:
-          hasReceiverRoute && profile.canPassthroughDtsHd,
-      UserPreferences.dtsXPassthroughEnabled:
-          hasReceiverRoute && profile.canPassthroughDtsX,
-      UserPreferences.trueHdPassthroughEnabled:
-          hasReceiverRoute && profile.canPassthroughTrueHd,
-      UserPreferences.trueHdAtmosPassthroughEnabled:
-          hasReceiverRoute && profile.canPassthroughTrueHdJoc,
-    };
-    for (final entry in seededValues.entries) {
-      if (prefs.containsPreference(entry.key) &&
-          prefs.get(entry.key) == entry.value) {
-        await prefs.removePreference(entry.key);
-      }
-    }
-  }
-
-  await prefs.set(UserPreferences.audioPassthroughMigratedToAuto, true);
 }
 
 void _sweepImageCache(UserPreferences prefs, {bool throttle = false}) {
@@ -356,9 +391,13 @@ void main() async {
   configureHttpOverrides();
   WidgetsFlutterBinding.ensureInitialized();
 
-  if (PlatformDetection.isAppleTV) {
-    registerGameCoreLicenses();
-  }
+  // Pre-warms the liquid_glass_widgets shader programs so the first glass
+  // pane doesn't white-flash. Cheap no-op on tiers where the package
+  // renderer is disabled, and the Impeller pipeline warm-up is deferred
+  // past the first frame internally.
+  await LiquidGlassWidgets.initialize();
+
+  registerGameCoreLicenses();
 
   if (!PlatformDetection.isWeb && PlatformDetection.isWindows) {
     try {
@@ -397,7 +436,12 @@ void main() async {
     await windowManager.ensureInitialized();
   }
 
-  if (!PlatformDetection.isTizen && !PlatformDetection.isAppleTV) {
+  // Apple runs entirely on AetherEngine, so media_kit isn't initialized there
+  // and its native libs are out of those builds.
+  if (!PlatformDetection.isTizen &&
+      !PlatformDetection.isAppleTV &&
+      !PlatformDetection.isIOS &&
+      !PlatformDetection.isMacOS) {
     MediaKit.ensureInitialized();
   }
 
@@ -409,6 +453,9 @@ void main() async {
 
   if (PlatformDetection.isAppleTV) {
     await _detectAndSetAppleTvCapabilities();
+  }
+  if (PlatformDetection.isIOS || PlatformDetection.isMacOS) {
+    await _detectAndSetAetherCapabilities();
   }
 
   _configureImageCache();
@@ -493,7 +540,7 @@ void main() async {
       final feeder = AppleTvAudioNowPlayingFeeder(
         manager: GetIt.instance<PlaybackManager>(),
         clientFactory: GetIt.instance<MediaServerClientFactory>(),
-        backend: GetIt.instance<AppleTvMpvBackend>(),
+        backend: GetIt.instance<AppleTvBackend>(),
       )..start();
       GetIt.instance.registerSingleton<AppleTvAudioNowPlayingFeeder>(feeder);
     } catch (_) {}
@@ -542,6 +589,12 @@ Future<void> _initDeferredStartupServices(UserPreferences prefs) async {
 
   try {
     await GetIt.instance<DownloadNotificationService>().initialize();
+  } catch (_) {}
+
+  // Starts the native download engine and re-attaches to any downloads that
+  // ran while the app was suspended or dead. No-op where unsupported.
+  try {
+    await GetIt.instance<BackgroundDownloadCoordinator>().ensureInitialized();
   } catch (_) {}
 
   try {

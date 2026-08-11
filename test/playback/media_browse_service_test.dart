@@ -128,7 +128,10 @@ class _FakeUserViewsApi implements UserViewsApi {
   final List<Map<String, dynamic>> views;
 
   @override
-  Future<Map<String, dynamic>> getUserViews() async => {'Items': views};
+  Future<Map<String, dynamic>> getUserViews({
+    bool includeHidden = false,
+  }) async =>
+      {'Items': views};
 
   @override
   dynamic noSuchMethod(Invocation invocation) =>

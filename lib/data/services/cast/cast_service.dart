@@ -25,6 +25,11 @@ class CastService {
   final ValueNotifier<int> remotePositionNotifier = ValueNotifier(0);
   final ValueNotifier<double?> remoteVolumeNotifier = ValueNotifier(null);
 
+  /// Latest receiver-side failure. A load request reports success as soon as
+  /// it is issued, so a receiver that cant play the stream has no other way to
+  /// say so. The mini player shows the message and clears it.
+  final ValueNotifier<String?> remoteErrorNotifier = ValueNotifier(null);
+
   CastService(
     this._providers, {
     NativeCastChannel? nativeCast,
@@ -88,6 +93,11 @@ class CastService {
       case 'playing' || 'paused' || 'buffering' || 'idle':
         remoteStateNotifier.value = state;
         remotePositionNotifier.value = (event['positionTicks'] as int?) ?? 0;
+      case 'error':
+        if (activeKindNotifier.value == castKind) {
+          remoteErrorNotifier.value =
+              event['message'] as String? ?? 'Playback failed on the receiver';
+        }
       case 'deviceFound':
         _discoverySink?.call(_targetFromEvent(event, castKind));
     }
@@ -199,6 +209,7 @@ class CastService {
     activeKindNotifier.value = target.kind;
     remoteStateNotifier.value = null;
     remotePositionNotifier.value = startPositionTicks ?? 0;
+    remoteErrorNotifier.value = null;
   }
 
   Future<void> play(CastTargetKind kind) async {
@@ -259,5 +270,6 @@ class CastService {
     remoteStateNotifier.dispose();
     remotePositionNotifier.dispose();
     remoteVolumeNotifier.dispose();
+    remoteErrorNotifier.dispose();
   }
 }

@@ -71,9 +71,10 @@ class LocalFirstMediaStreamResolver extends MediaStreamResolver {
         return null;
       }
 
-      // A transcoded download has a different stream layout than the stored
-      // original-file metadata, so don't feed misleading track indices to the
-      // selectors. The player picks its own defaults from the file.
+      // A transcoded download holds one video and one audio track and no
+      // embedded subtitles, so the stored original-file metadata would list
+      // phantom tracks in the selectors. Sidecar subtitles still work through
+      // externalSubtitles below, which does not depend on this list.
       final mediaStreams = local.isTranscoded
           ? const <Map<String, dynamic>>[]
           : local.mediaStreams;

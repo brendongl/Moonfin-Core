@@ -83,8 +83,9 @@ class Destinations {
   // Item details
   static const itemDetail = '/item/:itemId';
 
-  // Games (EmulatorJS)
+  // Games
   static const gameLibrary = '/games/:libraryId';
+  static const gameSystem = '/games/:libraryId/system/:systemId';
   static const gameDetail = '/game/:libraryId/:gameId';
   static const gamePlayer = '/game-player/:libraryId/:gameId';
 
@@ -154,6 +155,7 @@ class Destinations {
     String libraryId, {
     List<String>? includeItemTypes,
     bool favorites = false,
+    String? serverId,
   }) {
     final base = '/library/$libraryId';
     final params = <String>[];
@@ -162,6 +164,9 @@ class Destinations {
       params.add('types=$types');
     }
     if (favorites) params.add('favorites=1');
+    if (serverId != null && serverId.isNotEmpty) {
+      params.add('serverId=${Uri.encodeQueryComponent(serverId)}');
+    }
     if (params.isEmpty) return base;
     return '$base?${params.join('&')}';
   }
@@ -173,20 +178,46 @@ class Destinations {
       '/library/$libraryId/letters';
   static String librarySuggestionsOf(String libraryId) =>
       '/library/$libraryId/suggestions';
-  static String item(String itemId, {String? serverId, bool autoPlay = false}) {
+  /// [seasonContext] names the season the viewer was browsing, which is not
+  /// always the item's own season: a special inlined by
+  /// DisplaySpecialsWithinSeasons is listed under a regular season while still
+  /// living in Specials. Carrying it keeps the episode list and the play queue
+  /// on the season that was on screen.
+  static String item(
+    String itemId, {
+    String? serverId,
+    bool autoPlay = false,
+    String? seasonContext,
+  }) {
     final base = '/item/$itemId';
     final params = <String>[
       if (serverId != null) 'serverId=$serverId',
       if (autoPlay) 'autoPlay=true',
+      if (seasonContext != null && seasonContext.isNotEmpty)
+        'seasonContext=${Uri.encodeQueryComponent(seasonContext)}',
     ];
     return params.isEmpty ? base : '$base?${params.join('&')}';
   }
 
   static String itemListOf(String itemId) => '/item/$itemId/list';
 
-  // Games (EmulatorJS)
+  // Games
   static String gamesLibrary(String libraryId) =>
       '/games/${Uri.encodeComponent(libraryId)}';
+  static String gameSystemOf(
+    String libraryId,
+    String systemId, {
+    String? systemName,
+  }) {
+    final base =
+        '/games/${Uri.encodeComponent(libraryId)}/system/${Uri.encodeComponent(systemId)}';
+    final params = <String>[
+      if (systemName != null && systemName.isNotEmpty)
+        'name=${Uri.encodeQueryComponent(systemName)}',
+    ];
+    return params.isEmpty ? base : '$base?${params.join('&')}';
+  }
+
   static String gameDetailOf(String libraryId, String gameId) =>
       '/game/${Uri.encodeComponent(libraryId)}/${Uri.encodeComponent(gameId)}';
   static String gamePlayerOf(
@@ -287,10 +318,19 @@ class Destinations {
     return Uri(path: search, queryParameters: params).toString();
   }
 
-  static String seerrMedia(String itemId, {String? mediaType}) {
+  /// Everything the screen needs travels in the route, so a restored or shared
+  /// link resolves the same way a fresh tap does.
+  static String seerrMedia(String itemId, {String? mediaType, String? title}) {
     final base = '/seerr/media/$itemId';
-    if (mediaType == null || mediaType.trim().isEmpty) return base;
-    return Uri(path: base, queryParameters: {'mediaType': mediaType}).toString();
+    final params = <String, String>{};
+    if (mediaType != null && mediaType.trim().isNotEmpty) {
+      params['mediaType'] = mediaType;
+    }
+    if (title != null && title.trim().isNotEmpty) {
+      params['title'] = title;
+    }
+    if (params.isEmpty) return base;
+    return Uri(path: base, queryParameters: params).toString();
   }
   static String seerrPerson(String personId) => '/seerr/person/$personId';
   static String seerrCollection(String collectionId) =>

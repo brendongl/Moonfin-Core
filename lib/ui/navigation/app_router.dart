@@ -11,6 +11,7 @@ import '../../playback/external_player_policy.dart';
 import '../../preference/user_preferences.dart';
 import '../../preference/preference_constants.dart';
 import '../../syncplay/syncplay_manager.dart';
+import '../../util/game_cores.dart';
 import '../../util/platform_detection.dart';
 import '../screens/auth/emby_connect_screen.dart';
 import '../screens/auth/login_screen.dart';
@@ -23,15 +24,16 @@ import '../screens/browse/all_genres_screen.dart';
 import '../screens/browse/collection_screen.dart';
 import '../screens/browse/favorites_screen.dart';
 import '../screens/browse/folder_browse_screen.dart';
-import '../screens/browse/folder_view_screen.dart';
 import '../screens/browse/library_browse_screen.dart';
 import '../screens/browse/library_genres_screen.dart';
 import '../screens/browse/library_letters_screen.dart';
 import '../screens/browse/library_suggestions_screen.dart';
 import '../screens/browse/book_browse_screen.dart';
 import '../screens/browse/music_browse_screen.dart';
+import '../../data/models/tmdb_item_ref.dart';
 import '../screens/detail/item_detail_screen.dart';
 import '../screens/games/game_library_screen.dart';
+import '../screens/games/game_system_screen.dart';
 import '../screens/games/game_detail_screen.dart';
 import '../screens/playback/game_emulator_screen.dart';
 import '../screens/playback/native_game_player_screen.dart';
@@ -40,7 +42,6 @@ import '../screens/home/home_screen.dart';
 import '../screens/seerr/seerr_browse_screen.dart';
 import '../screens/seerr/seerr_collection_screen.dart';
 import '../screens/seerr/seerr_discover_screen.dart';
-import '../screens/seerr/seerr_media_detail_screen.dart';
 import '../screens/seerr/seerr_person_screen.dart';
 import '../screens/seerr/seerr_requests_screen.dart';
 import '../screens/livetv/live_tv_channel_player_loader.dart';
@@ -281,6 +282,7 @@ final appRouter = GoRouter(
             .toList();
         return LibraryBrowseScreen(
           libraryId: libraryId,
+          serverId: state.uri.queryParameters['serverId'],
           includeItemTypes: includeItemTypes,
           favoritesOnly: state.uri.queryParameters['favorites'] == '1',
         );
@@ -319,7 +321,7 @@ final appRouter = GoRouter(
     ),
     GoRoute(
       path: Destinations.folderView,
-      builder: (context, state) => const FolderViewScreen(),
+      builder: (context, state) => const FolderBrowseScreen(folderId: 'root'),
     ),
     GoRoute(
       path: Destinations.folderBrowse,
@@ -386,11 +388,15 @@ final appRouter = GoRouter(
         final itemId = state.pathParameters['itemId']!;
         final serverId = state.uri.queryParameters['serverId'];
         final autoPlay = state.uri.queryParameters['autoPlay'] == 'true';
+        final contextSeasonId = state.uri.queryParameters['seasonContext'];
         return ItemDetailScreen(
-          key: ValueKey(itemId),
+          // The browsed season decides which episode list this screen loads, so
+          // a change of context has to remount rather than reuse the view model.
+          key: ValueKey('$itemId|${contextSeasonId ?? ''}'),
           itemId: itemId,
           serverId: serverId,
           autoPlay: autoPlay,
+          contextSeasonId: contextSeasonId,
         );
       },
       routes: [
@@ -404,7 +410,20 @@ final appRouter = GoRouter(
       ],
     ),
 
-    // Games (EmulatorJS)
+    // Games
+    GoRoute(
+      path: Destinations.gameSystem,
+      builder: (context, state) {
+        final libraryId = state.pathParameters['libraryId']!;
+        final systemId = state.pathParameters['systemId']!;
+        return GameSystemScreen(
+          key: ValueKey('game-system-$libraryId-$systemId'),
+          libraryId: libraryId,
+          systemId: systemId,
+          systemName: state.uri.queryParameters['name'],
+        );
+      },
+    ),
     GoRoute(
       path: Destinations.gameLibrary,
       builder: (context, state) {
@@ -437,8 +456,11 @@ final appRouter = GoRouter(
         final startFresh = state.uri.queryParameters['fresh'] == '1';
         return _opaqueFullScreenPage<void>(
           state: state,
-          // tvOS has no WebView; games run on the native libretro bridge there.
-          child: PlatformDetection.isAppleTV
+          // Native libretro or the EmulatorJS WebView: forced where only one
+          // backend works (tvOS and Linux native), the user's choice elsewhere,
+          // and per game where native can't play the system but the WebView can
+          // (a PSP or N64 title on the bundled Apple targets).
+          child: usesNativeGameBackendFor(core)
               ? NativeGamePlayerScreen(
                   libraryId: libraryId,
                   gameId: gameId,
@@ -761,10 +783,15 @@ final appRouter = GoRouter(
     GoRoute(
       path: Destinations.seerrMediaDetail,
       builder: (context, state) {
-        final itemId = state.pathParameters['itemId']!;
-        return SeerrMediaDetailScreen(
-          itemId: itemId,
-          mediaType: state.uri.queryParameters['mediaType'],
+        final tmdbId = state.pathParameters['itemId']!;
+        final kind = state.uri.queryParameters['mediaType'] == 'tv'
+            ? TmdbItemKind.tv
+            : TmdbItemKind.movie;
+        final ref = TmdbItemRef(kind, tmdbId);
+        return ItemDetailScreen(
+          key: ValueKey(ref.itemId),
+          itemId: ref.itemId,
+          seerrTitle: state.uri.queryParameters['title'],
         );
       },
     ),

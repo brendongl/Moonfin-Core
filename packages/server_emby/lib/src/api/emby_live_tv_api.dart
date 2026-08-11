@@ -77,10 +77,13 @@ class EmbyLiveTvApi implements LiveTvApi {
   }
 
   @override
-  Future<Map<String, dynamic>> getRecommendedPrograms({int? limit}) async {
+  Future<Map<String, dynamic>> getRecommendedPrograms({
+    int? limit,
+    bool? isAiring,
+  }) async {
     final response = await _dio.get(
       '/LiveTv/Programs/Recommended',
-      queryParameters: {'Limit': ?limit},
+      queryParameters: {'Limit': ?limit, 'IsAiring': ?isAiring},
     );
     return response.data as Map<String, dynamic>;
   }

@@ -580,6 +580,30 @@ abstract class AppLocalizations {
   /// **'Glass Quality'**
   String get glassQuality;
 
+  /// Label for the setting that deepens blacks and enriches artwork on OLED displays
+  ///
+  /// In en, this message translates to:
+  /// **'OLED Mode'**
+  String get oledMode;
+
+  /// Explanation under the OLED Mode setting
+  ///
+  /// In en, this message translates to:
+  /// **'Deepen blacks and enrich artwork. Best on OLED displays.'**
+  String get oledModeSubtitle;
+
+  /// OLED Mode level that darkens surfaces gently and lightly enriches artwork
+  ///
+  /// In en, this message translates to:
+  /// **'Subtle'**
+  String get oledModeSubtle;
+
+  /// OLED Mode level that uses pure black surfaces and the strongest artwork enrichment
+  ///
+  /// In en, this message translates to:
+  /// **'Vivid'**
+  String get oledModeVivid;
+
   /// Explanation under the glass quality setting
   ///
   /// In en, this message translates to:
@@ -1096,6 +1120,24 @@ abstract class AppLocalizations {
   /// **'Extra Large'**
   String get extraLarge;
 
+  /// Section header for scroll direction selection in library display settings
+  ///
+  /// In en, this message translates to:
+  /// **'Scroll Direction'**
+  String get scrollDirection;
+
+  /// Library scroll direction option: vertical grid (default)
+  ///
+  /// In en, this message translates to:
+  /// **'Vertical'**
+  String get scrollDirectionVertical;
+
+  /// Library scroll direction option: horizontal grid for ultrawide displays
+  ///
+  /// In en, this message translates to:
+  /// **'Horizontal'**
+  String get scrollDirectionHorizontal;
+
   /// Header title showing library name with genres suffix
   ///
   /// In en, this message translates to:
@@ -1257,6 +1299,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Scroll right'**
   String get scrollRight;
+
+  /// Tooltip for the button that returns a scrolled list to the top
+  ///
+  /// In en, this message translates to:
+  /// **'Scroll to top'**
+  String get scrollToTop;
 
   /// Error when a genre row fails to load
   ///
@@ -2086,6 +2134,12 @@ abstract class AppLocalizations {
   /// **'Cast'**
   String get cast;
 
+  /// Section title for the list of actors and performers in movie and TV metadata. Not the casting-to-a-device action
+  ///
+  /// In en, this message translates to:
+  /// **'Cast'**
+  String get castMembers;
+
   /// Action button label for trailer playback
   ///
   /// In en, this message translates to:
@@ -2121,6 +2175,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Downloaded'**
   String get downloaded;
+
+  /// Status label shown while a finished download is being moved to its final location and validated
+  ///
+  /// In en, this message translates to:
+  /// **'Finalizing…'**
+  String get finalizingDownload;
 
   /// Action button label to download all items
   ///
@@ -2199,6 +2259,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Failed to delete item'**
   String get failedToDeleteItem;
+
+  /// Error message when item deletion fails, including the specific error details
+  ///
+  /// In en, this message translates to:
+  /// **'Deletion operation failed with the following error: {error}'**
+  String failedToDeleteItemWithError(String error);
 
   /// Dialog title for renaming a playlist
   ///
@@ -2523,6 +2589,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Shuffle'**
   String get shuffle;
+
+  /// Action button label for shuffling all tracks of an artist
+  ///
+  /// In en, this message translates to:
+  /// **'Shuffle All'**
+  String get shuffleAll;
 
   /// Car browse action that shuffles the whole music library
   ///
@@ -3802,6 +3874,12 @@ abstract class AppLocalizations {
   /// **'Settings'**
   String get settings;
 
+  /// Hint text in the settings search field
+  ///
+  /// In en, this message translates to:
+  /// **'Search settings'**
+  String get settingsSearchHint;
+
   /// Auth settings section title
   ///
   /// In en, this message translates to:
@@ -4162,6 +4240,12 @@ abstract class AppLocalizations {
   /// **'Details Background Blur'**
   String get detailsBackgroundBlur;
 
+  /// Setting for details background opacity on modern screens
+  ///
+  /// In en, this message translates to:
+  /// **'Details Background Opacity'**
+  String get detailsBackgroundOpacity;
+
   /// Pixel value display
   ///
   /// In en, this message translates to:
@@ -4305,6 +4389,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Show a lock button that blocks touch input until long-pressed'**
   String get osdLockButtonDescription;
+
+  /// Settings screen for choosing which buttons the player shows
+  ///
+  /// In en, this message translates to:
+  /// **'Player Buttons'**
+  String get osdButtons;
+
+  /// Subtitle for the player buttons settings tile
+  ///
+  /// In en, this message translates to:
+  /// **'Choose which buttons the player shows'**
+  String get osdButtonsDescription;
+
+  /// Explains that transport controls can't be hidden and that the list is per device kind
+  ///
+  /// In en, this message translates to:
+  /// **'Playback controls are always shown. Everything below is up to you, and each kind of device keeps its own list.'**
+  String get osdButtonsSectionDescription;
+
+  /// Settings screen for choosing which buttons the details screen shows
+  ///
+  /// In en, this message translates to:
+  /// **'Action Buttons'**
+  String get detailButtons;
+
+  /// Subtitle for the details action buttons settings tile
+  ///
+  /// In en, this message translates to:
+  /// **'Choose which buttons the details screen shows'**
+  String get detailButtonsDescription;
+
+  /// Explains that the play buttons can't be hidden and that the list is per device kind
+  ///
+  /// In en, this message translates to:
+  /// **'Play is always first and the locked buttons are always shown. Everything else is up to you, and each kind of device keeps its own list.'**
+  String get detailButtonsSectionDescription;
+
+  /// Moves a button one place earlier in its row
+  ///
+  /// In en, this message translates to:
+  /// **'Move Up'**
+  String get moveUp;
+
+  /// Moves a button one place later in its row
+  ///
+  /// In en, this message translates to:
+  /// **'Move Down'**
+  String get moveDown;
+
+  /// Explains how to reorder the buttons in a row
+  ///
+  /// In en, this message translates to:
+  /// **'Use the arrows to change the order. On a remote, left and right move the highlighted button. Switching one off drops it below the rest.'**
+  String get buttonOrderHint;
+
+  /// Player button that locks the screen orientation
+  ///
+  /// In en, this message translates to:
+  /// **'Orientation Lock'**
+  String get orientationLock;
+
+  /// Player button that toggles fullscreen
+  ///
+  /// In en, this message translates to:
+  /// **'Fullscreen'**
+  String get fullscreen;
 
   /// Setting for audio behavior
   ///
@@ -4522,30 +4672,6 @@ abstract class AppLocalizations {
   /// **'Bitstream DTS audio to AVR only; requires receiver support and DTS source track'**
   String get enableDtsPassthrough;
 
-  /// Description for TrueHD support
-  ///
-  /// In en, this message translates to:
-  /// **'Enable TrueHD audio (may not work on all platforms)'**
-  String get enableTrueHdAudio;
-
-  /// Setting for audio output mode
-  ///
-  /// In en, this message translates to:
-  /// **'Audio Output Mode'**
-  String get settingsAudioOutputMode;
-
-  /// Description for audio output mode setting
-  ///
-  /// In en, this message translates to:
-  /// **'Choose how audio is decoded. AVR Passthrough sends raw Dolby/DTS streams to your receiver; Auto or Downmix decodes locally.'**
-  String get settingsAudioOutputModeDescription;
-
-  /// Audio output mode option for AVR passthrough
-  ///
-  /// In en, this message translates to:
-  /// **'AVR Passthrough'**
-  String get settingsAudioOutputModeAvrPassthrough;
-
   /// Setting for fallback audio codec
   ///
   /// In en, this message translates to:
@@ -4581,12 +4707,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'EAC3\n(Dolby Digital Plus)'**
   String get settingsAudioFallbackCodecEac3;
-
-  /// Fallback codec option: TrueHD
-  ///
-  /// In en, this message translates to:
-  /// **'TrueHD\n(Lossless)'**
-  String get settingsAudioFallbackCodecTrueHd;
 
   /// Fallback codec option: MP3
   ///
@@ -4696,12 +4816,6 @@ abstract class AppLocalizations {
   /// **'EAC3 Passthrough'**
   String get settingsAudioEac3Passthrough;
 
-  /// Setting for EAC3 JOC Atmos passthrough
-  ///
-  /// In en, this message translates to:
-  /// **'EAC3 JOC (Atmos) Passthrough'**
-  String get settingsAudioEac3JocPassthrough;
-
   /// Setting for DTS core passthrough
   ///
   /// In en, this message translates to:
@@ -4714,41 +4828,65 @@ abstract class AppLocalizations {
   /// **'DTS-HD MA Passthrough'**
   String get settingsAudioDtsHdPassthrough;
 
+  /// Title of the audio passthrough mode selector
+  ///
+  /// In en, this message translates to:
+  /// **'Passthrough'**
+  String get settingsAudioPassthroughMode;
+
+  /// No description provided for @settingsAudioPassthroughModeDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'How compressed surround sound reaches your TV or receiver.'**
+  String get settingsAudioPassthroughModeDescription;
+
+  /// No description provided for @settingsAudioPassthroughModeDisabled.
+  ///
+  /// In en, this message translates to:
+  /// **'Disabled (always decode on this device)'**
+  String get settingsAudioPassthroughModeDisabled;
+
+  /// No description provided for @settingsAudioPassthroughModeAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto (match detected device support)'**
+  String get settingsAudioPassthroughModeAuto;
+
+  /// No description provided for @settingsAudioPassthroughModeManual.
+  ///
+  /// In en, this message translates to:
+  /// **'Manual (choose formats below)'**
+  String get settingsAudioPassthroughModeManual;
+
+  /// No description provided for @settingsDownmixToStereoDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Mix all decoded audio down to two channels.'**
+  String get settingsDownmixToStereoDescription;
+
+  /// No description provided for @settingsAudioEac3IncludesAtmos.
+  ///
+  /// In en, this message translates to:
+  /// **'Bitstream E-AC-3, including Dolby Atmos (JOC).'**
+  String get settingsAudioEac3IncludesAtmos;
+
+  /// No description provided for @settingsAudioDtsHdIncludesDtsX.
+  ///
+  /// In en, this message translates to:
+  /// **'Bitstream DTS-HD, including DTS:X.'**
+  String get settingsAudioDtsHdIncludesDtsX;
+
+  /// No description provided for @settingsAudioTrueHdIncludesAtmos.
+  ///
+  /// In en, this message translates to:
+  /// **'Bitstream TrueHD, including Dolby Atmos.'**
+  String get settingsAudioTrueHdIncludesAtmos;
+
   /// Setting for TrueHD passthrough
   ///
   /// In en, this message translates to:
   /// **'TrueHD Passthrough'**
   String get settingsAudioTrueHdPassthrough;
-
-  /// Setting for TrueHD Atmos passthrough
-  ///
-  /// In en, this message translates to:
-  /// **'TrueHD Atmos Passthrough'**
-  String get settingsAudioTrueHdAtmosPassthrough;
-
-  /// Description for EAC3 passthrough
-  ///
-  /// In en, this message translates to:
-  /// **'Bitstream Dolby Digital Plus (EAC3) to external decoder.'**
-  String get settingsAudioBitstreamEac3ToExternalDecoder;
-
-  /// Description for EAC3 JOC passthrough
-  ///
-  /// In en, this message translates to:
-  /// **'Bitstream Dolby Atmos over EAC3 (JOC) to external decoder.'**
-  String get settingsAudioBitstreamEac3JocToExternalDecoder;
-
-  /// Description for DTS-HD MA passthrough
-  ///
-  /// In en, this message translates to:
-  /// **'Bitstream DTS-HD MA (includes DTS core) to external decoder.'**
-  String get settingsAudioBitstreamDtsHdToExternalDecoder;
-
-  /// Description for TrueHD Atmos passthrough
-  ///
-  /// In en, this message translates to:
-  /// **'Bitstream Dolby TrueHD with Atmos metadata to external decoder.'**
-  String get settingsAudioBitstreamTrueHdAtmosToExternalDecoder;
 
   /// Section title for detected runtime audio capabilities
   ///
@@ -5368,6 +5506,60 @@ abstract class AppLocalizations {
   /// **'Sync Profile'**
   String get syncToProfile;
 
+  /// Button to reset a profile to defaults
+  ///
+  /// In en, this message translates to:
+  /// **'Reset Profile'**
+  String get resetProfile;
+
+  /// Title of the dialog confirming a profile reset
+  ///
+  /// In en, this message translates to:
+  /// **'Reset {profile}?'**
+  String resetProfileTitle(String profile);
+
+  /// Body of the dialog confirming a device profile reset
+  ///
+  /// In en, this message translates to:
+  /// **'This deletes the {profile} profile from the server and puts every synced setting on this device back to its default.'**
+  String resetProfileDescription(String profile);
+
+  /// Body of the dialog confirming a global profile reset
+  ///
+  /// In en, this message translates to:
+  /// **'This deletes every saved profile from the server and puts every synced setting on this device back to its default.'**
+  String get resetGlobalProfileDescription;
+
+  /// Message after a profile was reset
+  ///
+  /// In en, this message translates to:
+  /// **'Reset {profile} profile to defaults.'**
+  String profileReset(String profile);
+
+  /// Title of the dialog confirming a ratings reset
+  ///
+  /// In en, this message translates to:
+  /// **'Reset ratings?'**
+  String get resetRatingsTitle;
+
+  /// Body of the dialog confirming a ratings reset
+  ///
+  /// In en, this message translates to:
+  /// **'This puts every ratings setting back to its default, including which sources show and the order they appear in.'**
+  String get resetRatingsDescription;
+
+  /// Message after the ratings settings were reset
+  ///
+  /// In en, this message translates to:
+  /// **'Reset ratings to defaults.'**
+  String get ratingsReset;
+
+  /// Message when a profile reset failed
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to reset {profile} profile.'**
+  String failedToResetProfile(String profile);
+
   /// Title when profile sync is hidden
   ///
   /// In en, this message translates to:
@@ -5458,6 +5650,18 @@ abstract class AppLocalizations {
   /// **'Default'**
   String get defaultLabel;
 
+  /// Download location option for a removable storage volume
+  ///
+  /// In en, this message translates to:
+  /// **'SD card'**
+  String get sdCard;
+
+  /// Note shown when the only download location Android allows is the default one
+  ///
+  /// In en, this message translates to:
+  /// **'Android only lets Moonfin write to the folders it owns, and this device has no removable storage. Turn on Save to Downloads folder above to keep downloads somewhere other apps can reach.'**
+  String get downloadLocationLimitedByAndroid;
+
   /// Setting for saving to downloads folder
   ///
   /// In en, this message translates to:
@@ -5523,6 +5727,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Downloaded media will be saved to Downloads/Moonfin on your device. These files will be visible to other apps such as your gallery or music player.\n\nExisting downloads will remain in their current location.'**
   String get saveToDownloadsFolderDescription;
+
+  /// Notice shown below downloading text when downloading a transcoded stream
+  ///
+  /// In en, this message translates to:
+  /// **'Transcoding: Time Remaining Unavailable'**
+  String get transcodingTimeRemainingUnavailable;
 
   /// Button to enable a feature
   ///
@@ -5721,6 +5931,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Show libraries from all connected servers'**
   String get showLibrariesFromAllServers;
+
+  /// Setting for merging recently added and recently released libraries by media type
+  ///
+  /// In en, this message translates to:
+  /// **'Merge Recent Rows by Type'**
+  String get mergeRecentRowsByType;
+
+  /// Description for merging recent home rows by media type
+  ///
+  /// In en, this message translates to:
+  /// **'Combine separate libraries of the same type for Recently Added and Recently Released home rows.'**
+  String get mergeRecentRowsByTypeDescription;
+
+  /// Section title for library view settings
+  ///
+  /// In en, this message translates to:
+  /// **'Library View'**
+  String get libraryView;
 
   /// Setting for enabling folder view
   ///
@@ -5974,6 +6202,18 @@ abstract class AppLocalizations {
   /// **'Enable audio for trailers in media bar'**
   String get enableTrailerAudio;
 
+  /// Setting for YouTube trailer captions
+  ///
+  /// In en, this message translates to:
+  /// **'Trailer Captions'**
+  String get trailerCaptions;
+
+  /// Description for YouTube trailer captions
+  ///
+  /// In en, this message translates to:
+  /// **'Show captions on YouTube trailers in the media bar'**
+  String get trailerCaptionsDescription;
+
   /// Setting for episode preview
   ///
   /// In en, this message translates to:
@@ -6112,6 +6352,24 @@ abstract class AppLocalizations {
   /// **'Combine both rows into a single home section'**
   String get combineBothRows;
 
+  /// Setting for how far back the Next Up row reaches
+  ///
+  /// In en, this message translates to:
+  /// **'Max days in Next Up'**
+  String get nextUpMaxDays;
+
+  /// Description for the Next Up window setting
+  ///
+  /// In en, this message translates to:
+  /// **'How long a show stays in Next Up after you last watched it'**
+  String get nextUpMaxDaysDescription;
+
+  /// A number of days
+  ///
+  /// In en, this message translates to:
+  /// **'{days} days'**
+  String daysValue(int days);
+
   /// Setting for full screen home rows
   ///
   /// In en, this message translates to:
@@ -6123,6 +6381,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Limit home rows to 1 row per screen'**
   String get fullScreenRowsDescription;
+
+  /// Title for home rows padding setting
+  ///
+  /// In en, this message translates to:
+  /// **'Home Row Padding'**
+  String get homeRowsPadding;
+
+  /// Description for home rows padding setting
+  ///
+  /// In en, this message translates to:
+  /// **'Customize padding between home rows'**
+  String get homeRowsPaddingDescription;
 
   /// Title for per-row image type screen
   ///
@@ -6616,11 +6886,29 @@ abstract class AppLocalizations {
   /// **'Networks'**
   String get networks;
 
+  /// Heading for the keyword tags a title is filed under
+  ///
+  /// In en, this message translates to:
+  /// **'Tags'**
+  String get tags;
+
+  /// Button and dialog title for browsing a title's genres, networks and tags
+  ///
+  /// In en, this message translates to:
+  /// **'Genres and Tags'**
+  String get genresAndTags;
+
   /// Subtitle shown under Seerr discovery home rows
   ///
   /// In en, this message translates to:
   /// **'Seerr Discovery Rows'**
   String get seerrDiscoveryRows;
+
+  /// Seerr row: watchlist
+  ///
+  /// In en, this message translates to:
+  /// **'Your Watchlist'**
+  String get yourWatchlist;
 
   /// Tooltip for reset rows to defaults
   ///
@@ -6699,6 +6987,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'New issues, replies, and resolutions'**
   String get seerrNotifyIssuesSubtitle;
+
+  /// Title for the toggle that notifies about anything newly added to the server library, not just requested media
+  ///
+  /// In en, this message translates to:
+  /// **'New media added'**
+  String get seerrNotifyNewMediaTitle;
+
+  /// Subtitle for the new media notifications toggle
+  ///
+  /// In en, this message translates to:
+  /// **'Anything new added to the server library'**
+  String get seerrNotifyNewMediaSubtitle;
 
   /// Label showing logged in username
   ///
@@ -7012,17 +7312,41 @@ abstract class AppLocalizations {
   /// **'Request More'**
   String get requestMore;
 
+  /// Button to request more seasons in 4K, shown next to the non-4K Request More button
+  ///
+  /// In en, this message translates to:
+  /// **'Request More in 4K'**
+  String get requestMore4k;
+
   /// Button to submit a media request
   ///
   /// In en, this message translates to:
   /// **'Request'**
   String get request;
 
+  /// Button to submit a 4K media request, shown next to the non-4K Request button
+  ///
+  /// In en, this message translates to:
+  /// **'Request 4K'**
+  String get request4k;
+
+  /// Disabled label shown when a 4K request already exists and the user cannot cancel it
+  ///
+  /// In en, this message translates to:
+  /// **'4K Requested'**
+  String get requested4k;
+
   /// Button/dialog title to cancel a media request
   ///
   /// In en, this message translates to:
   /// **'Cancel Request'**
   String get cancelRequest;
+
+  /// Button/dialog title to cancel a 4K media request
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel 4K Request'**
+  String get cancelRequest4k;
 
   /// Button to play available media in Moonfin
   ///
@@ -7035,6 +7359,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Requested by {name}'**
   String requestedByName(String name);
+
+  /// Details screen button opening the pending requests to approve or decline
+  ///
+  /// In en, this message translates to:
+  /// **'Manage Requests'**
+  String get manageRequests;
+
+  /// Details screen button adding the title to the Seerr watchlist
+  ///
+  /// In en, this message translates to:
+  /// **'Watchlist'**
+  String get watchlist;
+
+  /// Details screen button label when the title is already on the Seerr watchlist
+  ///
+  /// In en, this message translates to:
+  /// **'On Watchlist'**
+  String get onWatchlist;
 
   /// Tooltip/button to approve a request
   ///
@@ -7114,6 +7456,12 @@ abstract class AppLocalizations {
   /// **'Request {type}'**
   String requestSeriesOrMovie(String type);
 
+  /// Bottom sheet title for requesting media in 4K
+  ///
+  /// In en, this message translates to:
+  /// **'Request 4K {type}'**
+  String requestSeriesOrMovie4k(String type);
+
   /// Button to finalize a media request
   ///
   /// In en, this message translates to:
@@ -7125,6 +7473,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'All Seasons'**
   String get allSeasons;
+
+  /// Banner in the Seerr request dialog for a continuing series whose aired seasons are all in the library
+  ///
+  /// In en, this message translates to:
+  /// **'Series Continuing · Future Seasons Can Be Requested'**
+  String get seerrSeriesContinuing;
 
   /// Expansion tile for advanced request options
   ///
@@ -14848,6 +15202,102 @@ abstract class AppLocalizations {
   /// **'Offline Downloads'**
   String get settingsOfflineDownloads;
 
+  /// Settings toggle title. When on, retro games run through native libretro emulator cores instead of the EmulatorJS browser-based emulator.
+  ///
+  /// In en, this message translates to:
+  /// **'Native Emulation'**
+  String get useNativeEmulator;
+
+  /// Subtitle under the Native Emulation settings toggle. EmulatorJS is a product name and should not be translated.
+  ///
+  /// In en, this message translates to:
+  /// **'Play games with native cores instead of the EmulatorJS web player'**
+  String get useNativeEmulatorSubtitle;
+
+  /// No description provided for @emulatorCores.
+  ///
+  /// In en, this message translates to:
+  /// **'Emulator Cores'**
+  String get emulatorCores;
+
+  /// No description provided for @emulatorCoresSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Download systems to play games natively'**
+  String get emulatorCoresSubtitle;
+
+  /// No description provided for @emulatorCoresDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose which systems to install. Cores are provided by the libretro project and let games run natively instead of in a browser view.'**
+  String get emulatorCoresDescription;
+
+  /// No description provided for @emulatorCoreDownloading.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloading'**
+  String get emulatorCoreDownloading;
+
+  /// No description provided for @emulatorCoreUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Not available for this device'**
+  String get emulatorCoreUnavailable;
+
+  /// No description provided for @emulatorCoreDownloadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not download the core. Check your connection and try again.'**
+  String get emulatorCoreDownloadFailed;
+
+  /// Settings screen title for managing game files stored on the device
+  ///
+  /// In en, this message translates to:
+  /// **'Downloaded Games'**
+  String get downloadedGames;
+
+  /// Subtitle for the Downloaded Games settings entry
+  ///
+  /// In en, this message translates to:
+  /// **'Free up space used by game files'**
+  String get downloadedGamesSubtitle;
+
+  /// Explanation at the top of the Downloaded Games settings screen
+  ///
+  /// In en, this message translates to:
+  /// **'Games are copied to this device before they play. Remove the ones you have finished to free up space. Saves are kept on the server and are not deleted.'**
+  String get downloadedGamesDescription;
+
+  /// Shown on the Downloaded Games screen when nothing is cached
+  ///
+  /// In en, this message translates to:
+  /// **'No games have been downloaded to this device yet.'**
+  String get downloadedGamesEmpty;
+
+  /// Summary of how many games are stored and how much space they take, where size is a formatted amount such as 1.4 GB
+  ///
+  /// In en, this message translates to:
+  /// **'{count} games, {size}'**
+  String downloadedGamesTotal(int count, String size);
+
+  /// Button that deletes every downloaded game from the device
+  ///
+  /// In en, this message translates to:
+  /// **'Remove All'**
+  String get removeAllDownloadedGames;
+
+  /// Confirmation prompt before deleting a single downloaded game, where title is the game name
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {title} from this device? It will download again the next time you play it.'**
+  String removeDownloadedGameConfirm(String title);
+
+  /// Confirmation prompt before deleting every downloaded game
+  ///
+  /// In en, this message translates to:
+  /// **'Remove all downloaded games from this device? They will download again the next time you play them.'**
+  String get removeAllDownloadedGamesConfirm;
+
   /// No description provided for @settingsHigh.
   ///
   /// In en, this message translates to:
@@ -15082,6 +15532,18 @@ abstract class AppLocalizations {
   /// **'None'**
   String get settingsNone;
 
+  /// Setting label for automatically dismissing the skip intro and outro button after a delay
+  ///
+  /// In en, this message translates to:
+  /// **'Auto Hide Skip Button'**
+  String get settingsSkipButtonAutoHide;
+
+  /// No description provided for @settingsSkipButtonAutoHideDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Automatically dismiss the skip intro and outro button after a few seconds.'**
+  String get settingsSkipButtonAutoHideDescription;
+
   /// No description provided for @settingsPromptUser.
   ///
   /// In en, this message translates to:
@@ -15199,19 +15661,19 @@ abstract class AppLocalizations {
   /// No description provided for @settingsAutoAftkrtEnabled.
   ///
   /// In en, this message translates to:
-  /// **'Auto (AFTKRT enabled)'**
+  /// **'Auto'**
   String get settingsAutoAftkrtEnabled;
 
   /// No description provided for @settingsEnabledOnThisDevice.
   ///
   /// In en, this message translates to:
-  /// **'Enabled on this device'**
+  /// **'Enabled'**
   String get settingsEnabledOnThisDevice;
 
   /// No description provided for @settingsDisabledPreferTranscode.
   ///
   /// In en, this message translates to:
-  /// **'Disabled (prefer transcode)'**
+  /// **'Off'**
   String get settingsDisabledPreferTranscode;
 
   /// No description provided for @settingsResumeRewindDescription.
@@ -15279,6 +15741,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Play trailers/prerolls before a main feature'**
   String get settingsCinemaModeSubtitle;
+
+  /// Settings toggle label. Extends Cinema Mode, which plays pre-roll videos before playback, to TV episodes as well as films. 'Cinema Mode' is the app's feature name.
+  ///
+  /// In en, this message translates to:
+  /// **'Cinema Mode for episodes'**
+  String get settingsCinemaModeEpisodes;
+
+  /// Subtitle for the Cinema Mode for episodes toggle. A 'preroll' is a short video (trailer, bumper) played before the main video starts.
+  ///
+  /// In en, this message translates to:
+  /// **'Also play prerolls before TV episodes'**
+  String get settingsCinemaModeEpisodesSubtitle;
 
   /// No description provided for @settingsNextUpDisplayDescription.
   ///
@@ -15538,16 +16012,16 @@ abstract class AppLocalizations {
   /// **'Advanced. Routes audio and video through a coupled hardware path. Off by default because it causes audio/video dropouts on some devices.'**
   String get enableTunnelingSubtitle;
 
-  /// Setting title: play DV P7 as HDR10 HEVC on non-DV devices
+  /// Setting title: force DV P7 streams to the HDR10 strip path
   ///
   /// In en, this message translates to:
-  /// **'Map Dolby Vision profile 7 to HEVC'**
+  /// **'Always play Dolby Vision profile 7 as HDR10'**
   String get mapDolbyVisionP7Title;
 
-  /// Setting subtitle for DV P7 to HEVC mapping
+  /// Setting subtitle for forcing the DV P7 strip path
   ///
   /// In en, this message translates to:
-  /// **'Play Dolby Vision profile 7 streams as HDR10-compatible HEVC on non-DV devices.'**
+  /// **'Skip the profile 8 conversion and strip Dolby Vision profile 7 streams to HDR10-compatible HEVC. Use this if converted streams look wrong.'**
   String get mapDolbyVisionP7Subtitle;
 
   /// Setting title: apply colours/positioning from the subtitle track
@@ -15856,6 +16330,18 @@ abstract class AppLocalizations {
   /// **'Sort Collections rows by date added, release date, alphabetically, and more.'**
   String get collectionsRowSortingDescription;
 
+  /// No description provided for @collectionsRowShowEpisodes.
+  ///
+  /// In en, this message translates to:
+  /// **'Show Individual Episodes'**
+  String get collectionsRowShowEpisodes;
+
+  /// No description provided for @collectionsRowShowEpisodesSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Expand TV shows to display each episode separately.'**
+  String get collectionsRowShowEpisodesSubtitle;
+
   /// No description provided for @displayGenresRows.
   ///
   /// In en, this message translates to:
@@ -15915,6 +16401,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Sort Playlist rows by date added, release date, alphabetically, and more.'**
   String get playlistsRowSortingDescription;
+
+  /// No description provided for @playlistsRowShowEpisodes.
+  ///
+  /// In en, this message translates to:
+  /// **'Show Individual Episodes'**
+  String get playlistsRowShowEpisodes;
+
+  /// No description provided for @playlistsRowShowEpisodesSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Expand TV shows to display each episode separately.'**
+  String get playlistsRowShowEpisodesSubtitle;
 
   /// No description provided for @displayAudioRows.
   ///
@@ -16047,24 +16545,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Not Supported on this device'**
   String get notSupportedOnThisDevice;
-
-  /// No description provided for @settingsAudioDtsXPassthrough.
-  ///
-  /// In en, this message translates to:
-  /// **'DTS:X (DTS UHD) Passthrough'**
-  String get settingsAudioDtsXPassthrough;
-
-  /// No description provided for @settingsAudioBitstreamDtsXToExternalDecoder.
-  ///
-  /// In en, this message translates to:
-  /// **'Bitstream DTS:X (DTS UHD) to external decoder.'**
-  String get settingsAudioBitstreamDtsXToExternalDecoder;
-
-  /// No description provided for @settingsAudioTrueHdJocPassthrough.
-  ///
-  /// In en, this message translates to:
-  /// **'TrueHD with Atmos (JOC) Passthrough'**
-  String get settingsAudioTrueHdJocPassthrough;
 
   /// No description provided for @mediaPlayerBehavior.
   ///
@@ -17224,12 +17704,6 @@ abstract class AppLocalizations {
   /// **'Timeline is empty'**
   String get audiobookTimelineEmpty;
 
-  /// No description provided for @audiobookWholeBook.
-  ///
-  /// In en, this message translates to:
-  /// **'Whole Book'**
-  String get audiobookWholeBook;
-
   /// No description provided for @audiobookFocusedTimeline.
   ///
   /// In en, this message translates to:
@@ -17847,6 +18321,306 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'IMDb Top Rated English Movies'**
   String get imdbTopEnglishMovies;
+
+  /// Button label to add media to the user's Seerr watchlist
+  ///
+  /// In en, this message translates to:
+  /// **'Add to Watchlist'**
+  String get addToWatchlist;
+
+  /// Button label to remove media from the user's Seerr watchlist
+  ///
+  /// In en, this message translates to:
+  /// **'Remove from Watchlist'**
+  String get removeFromWatchlist;
+
+  /// Snackbar shown when adding/removing a Seerr watchlist item fails
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t update watchlist'**
+  String get watchlistUpdateFailed;
+
+  /// Column header above the editable fields used to search metadata providers in the Identify dialog
+  ///
+  /// In en, this message translates to:
+  /// **'Search Parameters'**
+  String get adminSearchParameters;
+
+  /// Column header above the read-only values currently stored on the item in the Identify dialog
+  ///
+  /// In en, this message translates to:
+  /// **'Current Metadata'**
+  String get adminCurrentMetadata;
+
+  /// Label for the release year field in the Identify dialog
+  ///
+  /// In en, this message translates to:
+  /// **'Year'**
+  String get adminLabelYear;
+
+  /// Label for the IMDb identifier field in the Identify dialog. IMDb is a brand name and is normally left untranslated
+  ///
+  /// In en, this message translates to:
+  /// **'IMDb Id'**
+  String get adminLabelImdbId;
+
+  /// Label for the TheMovieDb movie identifier field in the Identify dialog. TheMovieDb is a brand name and is normally left untranslated
+  ///
+  /// In en, this message translates to:
+  /// **'TheMovieDb Movie Id'**
+  String get adminLabelTmdbMovieId;
+
+  /// Label for the TheMovieDb collection identifier field in the Identify dialog. TheMovieDb is a brand name and is normally left untranslated
+  ///
+  /// In en, this message translates to:
+  /// **'TheMovieDb Box Set Id'**
+  String get adminLabelTmdbBoxSetId;
+
+  /// Label for the TheTVDB collection identifier field in the Identify dialog. TheTVDB is a brand name and is normally left untranslated
+  ///
+  /// In en, this message translates to:
+  /// **'TheTVDB Box Set Id'**
+  String get adminLabelTvdbBoxSetId;
+
+  /// Label for the numeric TheTVDB identifier field in the Identify dialog. TheTVDB is a brand name and is normally left untranslated
+  ///
+  /// In en, this message translates to:
+  /// **'TheTVDB Numerical Id'**
+  String get adminLabelTvdbId;
+
+  /// Label for the TheTVDB slug identifier field in the Identify dialog. TheTVDB is a brand name and is normally left untranslated
+  ///
+  /// In en, this message translates to:
+  /// **'TheTVDB Slug Movie Id'**
+  String get adminLabelTvdbSlug;
+
+  /// Checkbox label in the confirmation dialog shown before applying an identified metadata match
+  ///
+  /// In en, this message translates to:
+  /// **'Replace existing images'**
+  String get adminReplaceImages;
+
+  /// Tooltip on the button that returns from the Identify results list to the search form
+  ///
+  /// In en, this message translates to:
+  /// **'Back to Search Criteria'**
+  String get adminBackToSearch;
+
+  /// Section header in the library display dialog for grouping options
+  ///
+  /// In en, this message translates to:
+  /// **'Grouping'**
+  String get grouping;
+
+  /// Checkbox label to group playlists by their media type category
+  ///
+  /// In en, this message translates to:
+  /// **'Group by Type'**
+  String get groupByType;
+
+  /// Section header in the library display dialog for filtering playlist categories
+  ///
+  /// In en, this message translates to:
+  /// **'Playlist Types'**
+  String get playlistTypes;
+
+  /// Filter checkbox label for video playlists
+  ///
+  /// In en, this message translates to:
+  /// **'Video'**
+  String get playlistTypeVideo;
+
+  /// Filter checkbox label for audio/music playlists
+  ///
+  /// In en, this message translates to:
+  /// **'Audio (Music)'**
+  String get playlistTypeAudio;
+
+  /// Filter checkbox label for audiobook playlists
+  ///
+  /// In en, this message translates to:
+  /// **'Audiobook'**
+  String get playlistTypeAudiobook;
+
+  /// Filter checkbox label for book playlists
+  ///
+  /// In en, this message translates to:
+  /// **'Book'**
+  String get playlistTypeBook;
+
+  /// Filter checkbox label for photo playlists
+  ///
+  /// In en, this message translates to:
+  /// **'Photo'**
+  String get playlistTypePhoto;
+
+  /// Filter checkbox label for mixed media playlists
+  ///
+  /// In en, this message translates to:
+  /// **'Mixed'**
+  String get playlistTypeMixed;
+
+  /// Section header above video playlists when Group by Type is enabled
+  ///
+  /// In en, this message translates to:
+  /// **'Video Playlists'**
+  String get videoPlaylistsSection;
+
+  /// Section header above audio playlists when Group by Type is enabled
+  ///
+  /// In en, this message translates to:
+  /// **'Audio Playlists'**
+  String get audioPlaylistsSection;
+
+  /// Section header above audiobook playlists when Group by Type is enabled
+  ///
+  /// In en, this message translates to:
+  /// **'Audiobook Playlists'**
+  String get audiobookPlaylistsSection;
+
+  /// Section header above book playlists when Group by Type is enabled
+  ///
+  /// In en, this message translates to:
+  /// **'Book Playlists'**
+  String get bookPlaylistsSection;
+
+  /// Section header above photo playlists when Group by Type is enabled
+  ///
+  /// In en, this message translates to:
+  /// **'Photo Playlists'**
+  String get photoPlaylistsSection;
+
+  /// Section header above mixed playlists when Group by Type is enabled
+  ///
+  /// In en, this message translates to:
+  /// **'Mixed Playlists'**
+  String get mixedPlaylistsSection;
+
+  /// Setting title for what is shown next to the playback progress bar
+  ///
+  /// In en, this message translates to:
+  /// **'Progress Bar Time'**
+  String get playbackTimeDisplay;
+
+  /// Setting description for the progress bar time option
+  ///
+  /// In en, this message translates to:
+  /// **'Choose which time labels appear around the playback progress bar.'**
+  String get settingsPlaybackTimeDisplayDescription;
+
+  /// Progress bar time option showing the full runtime
+  ///
+  /// In en, this message translates to:
+  /// **'Total duration'**
+  String get playbackTimeTotal;
+
+  /// Progress bar time option showing how much is left to play
+  ///
+  /// In en, this message translates to:
+  /// **'Time remaining'**
+  String get playbackTimeRemaining;
+
+  /// Progress bar time option showing the clock time playback finishes
+  ///
+  /// In en, this message translates to:
+  /// **'Ends at'**
+  String get playbackTimeEndsAt;
+
+  /// Progress bar time option showing how far into the item playback is
+  ///
+  /// In en, this message translates to:
+  /// **'Time elapsed'**
+  String get playbackTimeElapsed;
+
+  /// Section header above the video progress bar time slots
+  ///
+  /// In en, this message translates to:
+  /// **'Video Player'**
+  String get playbackTimeVideoSection;
+
+  /// Section header above the music progress bar time option
+  ///
+  /// In en, this message translates to:
+  /// **'Music Player'**
+  String get playbackTimeMusicSection;
+
+  /// Setting description for a single progress bar time slot
+  ///
+  /// In en, this message translates to:
+  /// **'Choose what is shown here, or hide it.'**
+  String get playbackTimeSlotDescription;
+
+  /// Progress bar time slot above the bar on the left
+  ///
+  /// In en, this message translates to:
+  /// **'Above bar, left'**
+  String get playbackTimeAboveBarLeft;
+
+  /// Progress bar time slot above the bar in the center
+  ///
+  /// In en, this message translates to:
+  /// **'Above bar, center'**
+  String get playbackTimeAboveBarCenter;
+
+  /// Progress bar time slot above the bar on the right
+  ///
+  /// In en, this message translates to:
+  /// **'Above bar, right'**
+  String get playbackTimeAboveBarRight;
+
+  /// Progress bar time slot below the bar on the left
+  ///
+  /// In en, this message translates to:
+  /// **'Below bar, left'**
+  String get playbackTimeBelowBarLeft;
+
+  /// Progress bar time slot below the bar in the center
+  ///
+  /// In en, this message translates to:
+  /// **'Below bar, center'**
+  String get playbackTimeBelowBarCenter;
+
+  /// Progress bar time slot below the bar on the right
+  ///
+  /// In en, this message translates to:
+  /// **'Below bar, right'**
+  String get playbackTimeBelowBarRight;
+
+  /// Setting description for the music progress bar time option
+  ///
+  /// In en, this message translates to:
+  /// **'Choose what is shown on the right side of the music progress bar.'**
+  String get settingsMusicPlaybackTimeDescription;
+
+  /// Dialog title and button label for library group by options
+  ///
+  /// In en, this message translates to:
+  /// **'Group By'**
+  String get groupByTitle;
+
+  /// Option to group library items by release decade
+  ///
+  /// In en, this message translates to:
+  /// **'Decade (Year)'**
+  String get groupByDecade;
+
+  /// Option to group library items by parental rating
+  ///
+  /// In en, this message translates to:
+  /// **'Parental Rating'**
+  String get groupByParentalRating;
+
+  /// Option to group library items by production studio
+  ///
+  /// In en, this message translates to:
+  /// **'Studio'**
+  String get groupByStudio;
+
+  /// Checkbox label for toggling alphabetical picker visibility in Sort and Filter options
+  ///
+  /// In en, this message translates to:
+  /// **'Show Alphabet'**
+  String get showAlphabeticalFilters;
 }
 
 class _AppLocalizationsDelegate

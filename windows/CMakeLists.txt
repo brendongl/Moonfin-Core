@@ -47,6 +47,10 @@ endfunction()
 set(FLUTTER_MANAGED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/flutter")
 add_subdirectory(${FLUTTER_MANAGED_DIR})
 
+# Shared libretro host and its desktop audio sink, linked into the runner.
+set(LIBRETRO_HOST_AUDIO ON CACHE BOOL "" FORCE)
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../native/libretro_host" libretro_host)
+
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
 

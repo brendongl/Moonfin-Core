@@ -15,10 +15,24 @@ class SeerrRepository {
   bool _initialized = false;
   String? _lastUserId;
 
+  // Serializes init so two callers cant tear down each other's HTTP client at
+  // once. A forced discover reload racing the nav badge used to close the
+  // client mid probe, so the discover screen saw a dropped request and showed
+  // Seerr as logged out.
+  Future<void> _initChain = Future<void>.value();
+
   bool _isAvailable = false;
   bool _isMoonfinMode = false;
+  bool _serverReportsEnabled = false;
+  Map<String, dynamic>? _cachedPublicSettings;
+
+  // Blocks further silent Quick Connect attempts after the server says it
+  // can't support them. Kept in memory only so an upgrade or restart retries
+  // instead of staying blocked forever.
+  bool _quickConnectSsoBlocked = false;
 
   int _lastSessionCheckMs = 0;
+  int _lastInitAttemptMs = 0;
   bool _lastSessionValid = false;
   static const _sessionCacheDurationMs = 5 * 60 * 1000;
 
@@ -30,6 +44,11 @@ class SeerrRepository {
 
   bool get isAvailable => _isAvailable;
   bool get isMoonfinMode => _isMoonfinMode;
+
+  /// Whether the server has Seerr configured and enabled, regardless of whether
+  /// this user has a session yet. Lets callers tell "not set up on the server"
+  /// apart from "set up but not signed in".
+  bool get serverReportsEnabled => _serverReportsEnabled;
 
   SeerrRepository(this._store, this._session, this._client);
 
@@ -44,15 +63,28 @@ class SeerrRepository {
   String get _moonfinDisplayNameKey => _userKey('moonfin_display_name');
   String get _moonfinUserIdKey => _userKey('moonfin_user_id');
   String get _lastConnectionSuccessKey => _userKey('last_connection_success');
-  String get _autoLoginFailedKey => _userKey('moonfin_autologin_failed');
 
   void _invalidateSessionCache() {
     _lastSessionCheckMs = 0;
     _lastSessionValid = false;
   }
 
-  Future<void> ensureInitialized() async {
+  Future<void> ensureInitialized({bool force = false}) {
+    final next = _initChain.then((_) => _ensureInitialized(force: force));
+    _initChain = next.catchError((_) {});
+    return next;
+  }
+
+  Future<void> _ensureInitialized({bool force = false}) async {
     final currentUserId = _session.activeUserId;
+
+    if (force) {
+      _initialized = false;
+      _httpClient?.close();
+      _httpClient = null;
+      _isAvailable = false;
+      _invalidateSessionCache();
+    }
 
     if (_initialized && currentUserId != null && currentUserId != _lastUserId) {
       _initialized = false;
@@ -66,15 +98,26 @@ class SeerrRepository {
       _initialized = false;
     }
 
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (_initialized && !_isAvailable) {
+      if (now - _lastInitAttemptMs > 30000) {
+        _initialized = false;
+        _httpClient?.close();
+        _httpClient = null;
+      }
+    }
+
     if (_initialized) return;
-    if (_httpClient != null) {
+    if (_httpClient != null && _isAvailable) {
       _initialized = true;
       return;
     }
+    _lastInitAttemptMs = now;
 
     try {
       if (currentUserId == null) {
         _isAvailable = false;
+        _serverReportsEnabled = false;
         _initialized = true;
         return;
       }
@@ -106,14 +149,17 @@ class SeerrRepository {
     try {
       final status = await _httpClient!.getMoonfinStatus();
       _isAvailable = status.authenticated;
+      _serverReportsEnabled = status.enabled;
     } catch (_) {
       _isAvailable = false;
+      _serverReportsEnabled = false;
     }
   }
 
   void _initClient(MoonfinProxyConfig proxyConfig) {
     _httpClient?.close();
     _httpClient = SeerrHttpClient(proxyConfig: proxyConfig);
+    _cachedPublicSettings = null;
   }
 
   Future<T> _withClient<T>(
@@ -166,9 +212,14 @@ class SeerrRepository {
 
     final status = await _httpClient!.getMoonfinStatus();
     final effectiveEnabled = status.enabled && status.authenticated;
+    _serverReportsEnabled = status.enabled;
 
     await _store.setBool(_moonfinModeKey, true);
-    await _store.setBool(_enabledKey, effectiveEnabled);
+    if (effectiveEnabled) {
+      await _store.setBool(_enabledKey, true);
+    } else if (!status.enabled) {
+      await _store.setBool(_enabledKey, false);
+    }
     await _store.setString(_authMethodKey, 'moonfin');
     _isMoonfinMode = true;
 
@@ -201,26 +252,67 @@ class SeerrRepository {
       jellyfinToken: jellyfinToken,
     );
 
-    if (status.authenticated) {
-      await _store.setBool(_autoLoginFailedKey, false);
+    if (status.authenticated) return;
+    if (!status.enabled) return;
+
+    final hasPassword = username != null &&
+        username.isNotEmpty &&
+        password != null &&
+        password.isNotEmpty;
+
+    // Quick Connect and restored-token logins never held a password, so they
+    // sign in through the plugin's Quick Connect bridge instead.
+    if (!hasPassword) {
+      await tryQuickConnectSignIn(username: username);
       return;
     }
 
-    if (!status.enabled ||
-        username == null ||
-        username.isEmpty ||
-        password == null ||
-        password.isEmpty) {
-      return;
-    }
-
-    if (_store.getBool(_autoLoginFailedKey) ?? false) return;
-
+    // Try to establish the session on each login. The caller retries this a few
+    // times across a startup window, so a server that is briefly unreachable
+    // recovers on its own instead of staying logged out until the next login.
     try {
       await loginWithMoonbase(username: username, password: password);
-      await _store.setBool(_autoLoginFailedKey, false);
+    } catch (_) {}
+  }
+
+  /// Attempts the password-less Quick Connect sign in through the plugin.
+  /// Returns true when a session was minted. Failures never throw: the server
+  /// saying it can't support the flow blocks further attempts this run, and
+  /// anything else, including an old plugin answering with a generic error, is
+  /// treated as transient so the startup retries can recover from it.
+  Future<bool> tryQuickConnectSignIn({String? username}) async {
+    if (_quickConnectSsoBlocked) return false;
+    final client = _httpClient;
+    if (client == null) return false;
+
+    try {
+      final result = await client.moonfinQuickConnectLogin(username: username);
+      if (result.success) {
+        await _store.setString(
+          _moonfinDisplayNameKey,
+          result.displayName ?? '',
+        );
+        await _store.setString(
+          _moonfinUserIdKey,
+          result.seerrUserId?.toString() ?? '',
+        );
+        await _store.setString(_authMethodKey, 'moonfin');
+        await _store.setBool(_enabledKey, true);
+        await _store.setBool(_lastConnectionSuccessKey, true);
+        _isMoonfinMode = true;
+        _isAvailable = true;
+        _serverReportsEnabled = true;
+        _invalidateSessionCache();
+        return true;
+      }
+
+      if (result.errorCode == 'sso_unsupported' ||
+          result.errorCode == 'quickconnect_disabled') {
+        _quickConnectSsoBlocked = true;
+      }
+      return false;
     } catch (_) {
-      await _store.setBool(_autoLoginFailedKey, true);
+      return false;
     }
   }
 
@@ -257,9 +349,9 @@ class SeerrRepository {
     await _store.setString(_authMethodKey, 'moonfin');
     await _store.setBool(_enabledKey, true);
     await _store.setBool(_lastConnectionSuccessKey, true);
-    await _store.setBool(_autoLoginFailedKey, false);
     _isMoonfinMode = true;
     _isAvailable = true;
+    _serverReportsEnabled = true;
     _invalidateSessionCache();
 
     return response;
@@ -321,13 +413,24 @@ class SeerrRepository {
         ),
       );
 
-  Future<SeerrDiscoverPage> getUpcomingMovies() => _withClient(
-    (c) async => SeerrDiscoverPage.fromJson(await c.getUpcomingMovies()),
+  Future<SeerrDiscoverPage> getUpcomingMovies({int page = 1}) => _withClient(
+    (c) async =>
+        SeerrDiscoverPage.fromJson(await c.getUpcomingMovies(page: page)),
   );
 
-  Future<SeerrDiscoverPage> getUpcomingTv() => _withClient(
-    (c) async => SeerrDiscoverPage.fromJson(await c.getUpcomingTv()),
+  Future<SeerrDiscoverPage> getUpcomingTv({int page = 1}) => _withClient(
+    (c) async => SeerrDiscoverPage.fromJson(await c.getUpcomingTv(page: page)),
   );
+
+  Future<SeerrDiscoverPage> getWatchlist({int page = 1}) => _withClient(
+    (c) async => SeerrDiscoverPage.fromJson(await c.getWatchlist(page: page)),
+  );
+
+  Future<void> addToWatchlist({required int tmdbId, required String mediaType}) =>
+      _withClient((c) => c.addToWatchlist(tmdbId: tmdbId, mediaType: mediaType));
+
+  Future<void> removeFromWatchlist({required int tmdbId, required String mediaType}) =>
+      _withClient((c) => c.removeFromWatchlist(tmdbId: tmdbId, mediaType: mediaType));
 
   Future<SeerrDiscoverPage> discoverMovies({
     int page = 1,
@@ -335,7 +438,6 @@ class SeerrRepository {
     int? genre,
     int? studio,
     int? keywords,
-    String language = 'en',
   }) => _withClient(
     (c) async => SeerrDiscoverPage.fromJson(
       await c.discoverMovies(
@@ -344,7 +446,6 @@ class SeerrRepository {
         genre: genre,
         studio: studio,
         keywords: keywords,
-        language: language,
       ),
     ),
   );
@@ -355,7 +456,6 @@ class SeerrRepository {
     int? genre,
     int? network,
     int? keywords,
-    String language = 'en',
   }) => _withClient(
     (c) async => SeerrDiscoverPage.fromJson(
       await c.discoverTv(
@@ -364,7 +464,6 @@ class SeerrRepository {
         genre: genre,
         network: network,
         keywords: keywords,
-        language: language,
       ),
     ),
   );
@@ -391,6 +490,24 @@ class SeerrRepository {
   Future<SeerrTvDetails> getTvDetailsByTvdb(int tvdbId) => _withClient(
     (c) async => SeerrTvDetails.fromJson(await c.getTvDetailsByTvdb(tvdbId)),
   );
+
+  Future<(SeerrMovieDetails, bool)> getMovieDetailsWithWatchlist(int tmdbId) =>
+      _withClient((c) async {
+        final json = await c.getMovieDetails(tmdbId);
+        return (
+          SeerrMovieDetails.fromJson(json),
+          json['onUserWatchlist'] as bool? ?? false,
+        );
+      });
+
+  Future<(SeerrTvDetails, bool)> getTvDetailsWithWatchlist(int tmdbId) =>
+      _withClient((c) async {
+        final json = await c.getTvDetails(tmdbId);
+        return (
+          SeerrTvDetails.fromJson(json),
+          json['onUserWatchlist'] as bool? ?? false,
+        );
+      });
 
   Future<SeerrDiscoverPage> getSimilarMovies(int tmdbId, {int page = 1}) =>
       _withClient(
@@ -647,6 +764,16 @@ class SeerrRepository {
   Future<void> deleteIssue(int issueId) =>
       _withClient((c) => c.deleteIssue(issueId));
 
+  /// Cached for the session, since these flags only change when an admin
+  /// reconfigures Radarr or Sonarr.
+  Future<Map<String, dynamic>> getPublicSettings() async {
+    final cached = _cachedPublicSettings;
+    if (cached != null) return cached;
+    final settings = await _withClient((c) => c.getPublicSettings());
+    _cachedPublicSettings = settings;
+    return settings;
+  }
+
   Future<List<SeerrServiceServer>> getRadarrServers() => _withClient(
     (c) async => (await c.getRadarrServers())
         .cast<Map<String, dynamic>>()
@@ -688,6 +815,12 @@ class SeerrRepository {
         .map(SeerrSonarrSettings.fromJson)
         .toList(),
   );
+
+  Future<List<dynamic>> getRadarrCalendar({String? start, String? end}) =>
+      _withClient((c) => c.getRadarrCalendar(start: start, end: end));
+
+  Future<List<dynamic>> getSonarrCalendar({String? start, String? end}) =>
+      _withClient((c) => c.getSonarrCalendar(start: start, end: end));
 
   Future<SeerrStatus> getStatus() => _withClient((c) => c.getStatus());
 

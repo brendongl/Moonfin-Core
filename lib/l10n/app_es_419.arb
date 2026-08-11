@@ -21,7 +21,7 @@
     "@username": {
         "description": "Username field label"
     },
-    "quickConnectInstruction": "Ingrese este código en el panel web de su servidor:",
+    "quickConnectInstruction": "Ingrese este código en el panel web de tu servidor:",
     "@quickConnectInstruction": {
         "description": "Instruction text for Quick Connect code entry"
     },
@@ -37,7 +37,7 @@
     "@serverUnavailable": {
         "description": "Error message when server cannot be reached"
     },
-    "loginFailed": "error de inicio de sesion",
+    "loginFailed": "Error de inicio de sesión",
     "@loginFailed": {
         "description": "Generic login failure message"
     },
@@ -102,7 +102,7 @@
     "@removeServer": {
         "description": "Dialog title for removing a saved server"
     },
-    "removeServerConfirmation": "¿Eliminar \"{serverName}\" de sus servidores?",
+    "removeServerConfirmation": "¿Eliminar \"{serverName}\" de tus servidores?",
     "@removeServerConfirmation": {
         "description": "Confirmation message when removing a saved server",
         "placeholders": {
@@ -139,7 +139,7 @@
     "@secureStorageUnavailable": {
         "description": "Dialog title when system keyring is inaccessible"
     },
-    "secureStorageUnavailableMessage": "Moonfin no pudo acceder al conjunto de claves de su sistema. El inicio de sesión puede continuar, pero es posible que el almacenamiento seguro del token no esté disponible hasta que se desbloquee el llavero.",
+    "secureStorageUnavailableMessage": "Moonfin no pudo acceder al llavero del sistema. El inicio de sesión puede continuar, pero el almacenamiento seguro de tokens podría no estar disponible hasta que se desbloquee el llavero.",
     "@secureStorageUnavailableMessage": {
         "description": "Explanation when secure storage is not available"
     },
@@ -175,7 +175,7 @@
     "@emailOrUsername": {
         "description": "Label for the Emby Connect username/email field"
     },
-    "selectAServer": "Seleccione un servidor",
+    "selectAServer": "Selecciona un servidor",
     "@selectAServer": {
         "description": "Heading for the Emby Connect server list"
     },
@@ -244,7 +244,7 @@
     "@noHomeRowsLoaded": {
         "description": "Heading when home screen has no rows to display"
     },
-    "noHomeRowsHint": "Intente actualizar o reducir las secciones de inicio activas.",
+    "noHomeRowsHint": "Intenta actualizar o reducir las secciones de inicio activas.",
     "@noHomeRowsHint": {
         "description": "Hint text below the no-home-rows heading"
     },
@@ -600,7 +600,7 @@
     "@unreadDiscoveries": {
         "description": "Book rail title for unread items"
     },
-    "pickUpAgain": "Recoger de nuevo",
+    "pickUpAgain": "Retomar",
     "@pickUpAgain": {
         "description": "Book rail title for in-progress bookmarked items"
     },
@@ -608,7 +608,7 @@
     "@bookHighlightsDescription": {
         "description": "Subtitle for saved highlights section"
     },
-    "handPickedFromLibrary": "Seleccionado cuidadosamente de su biblioteca.",
+    "handPickedFromLibrary": "Seleccionado cuidadosamente de tu biblioteca.",
     "@handPickedFromLibrary": {
         "description": "Subtitle for primary book rail from library"
     },
@@ -765,11 +765,11 @@
     "@playedStatus": {
         "description": "Section header for played status filter"
     },
-    "readStatus": "Leer",
+    "readStatus": "Leído",
     "@readStatus": {
         "description": "Filter label for read/watched items in book libraries"
     },
-    "watched": "Observó",
+    "watched": "Visto",
     "@watched": {
         "description": "Filter label for watched items"
     },
@@ -914,7 +914,7 @@
     "@delete": {
         "description": "Delete action button label"
     },
-    "save": "Ahorrar",
+    "save": "Guardar",
     "@save": {
         "description": "Save action button label"
     },
@@ -1033,7 +1033,7 @@
     "@view": {
         "description": "Action button label for viewing a photo"
     },
-    "resumeReading": "Reanudar la lectura",
+    "resumeReading": "Continuar leyendo",
     "@resumeReading": {
         "description": "Action button label to resume reading a book"
     },
@@ -1050,7 +1050,7 @@
             }
         }
     },
-    "play": "Jugar",
+    "play": "Reproducir",
     "@play": {
         "description": "Action button label to play media"
     },
@@ -1082,7 +1082,7 @@
     "@version": {
         "description": "Action button label for version/media source selection"
     },
-    "cast": "Elenco",
+    "cast": "Transmitir",
     "@cast": {
         "description": "Action button label for casting to a device"
     },
@@ -1501,7 +1501,7 @@
             }
         }
     },
-    "mono": "Mononucleosis infecciosa",
+    "mono": "Mono",
     "@mono": {
         "description": "Audio channel layout label for mono"
     },
@@ -1577,7 +1577,7 @@
     "@stillWatching": {
         "description": "Title for the still watching screen"
     },
-    "unableToLoadTrailerStream": "No se puede cargar la secuencia del tráiler.",
+    "unableToLoadTrailerStream": "No se pudo cargar la transmisión del tráiler.",
     "@unableToLoadTrailerStream": {
         "description": "Error when trailer stream cannot be loaded"
     },
@@ -1781,7 +1781,7 @@
     "@playMethod": {
         "description": "Stream info label for play method"
     },
-    "directPlay": "Juego directo",
+    "directPlay": "Reproducción directa",
     "@directPlay": {
         "description": "Play method label"
     },
@@ -1797,7 +1797,7 @@
     "@transcodeReasons": {
         "description": "Stream info label for transcode reasons"
     },
-    "player": "Jugador",
+    "player": "Reproductor",
     "@player": {
         "description": "Stream info label for player engine"
     },
@@ -2134,7 +2134,7 @@
     "@noChannelsFound": {
         "description": "Empty state when no TV channels match the filter"
     },
-    "liveBadge": "VIVIR",
+    "liveBadge": "EN VIVO",
     "@liveBadge": {
         "description": "Badge label shown on currently airing programs"
     },
@@ -2154,7 +2154,7 @@
     "@failedToUpdateFavoriteChannel": {
         "description": "Error when toggling channel favorite fails"
     },
-    "unfavoriteChannel": "Canal no favorito",
+    "unfavoriteChannel": "Quitar canal de favoritos",
     "@unfavoriteChannel": {
         "description": "Button label to remove a channel from favorites"
     },
@@ -2166,7 +2166,7 @@
     "@watch": {
         "description": "Button label to start watching a channel"
     },
-    "close": "Cerca",
+    "close": "Cerrar",
     "@close": {
         "description": "Button label to close a dialog"
     },
@@ -2592,7 +2592,7 @@
     "@switchServer": {
         "description": "Button to switch to a different server"
     },
-    "signOut": "Desconectar",
+    "signOut": "Cerrar sesión",
     "@signOut": {
         "description": "Button to sign out"
     },
@@ -2657,7 +2657,7 @@
     "@focusBorderColor": {
         "description": "Setting for focus border color"
     },
-    "watchedIndicators": "Indicadores observados",
+    "watchedIndicators": "Indicadores de visto",
     "@watchedIndicators": {
         "description": "Setting for watched indicator display"
     },
@@ -2665,7 +2665,7 @@
     "@always": {
         "description": "Option: always"
     },
-    "hideUnwatched": "Ocultar no observado",
+    "hideUnwatched": "Ocultar no visto",
     "@hideUnwatched": {
         "description": "Option: hide unwatched indicators"
     },
@@ -2799,7 +2799,7 @@
     "@maxResolution": {
         "description": "Setting for max resolution"
     },
-    "playerZoomMode": "Modo de zoom del jugador",
+    "playerZoomMode": "Modo zoom del Reproductor",
     "@playerZoomMode": {
         "description": "Setting for player zoom mode"
     },
@@ -2831,7 +2831,7 @@
     "@scaleOnDevice": {
         "description": "Refresh rate option: scale on device"
     },
-    "trickPlay": "Juego de trucos",
+    "trickPlay": "Trick Play",
     "@trickPlay": {
         "description": "Setting for trick play thumbnails"
     },
@@ -3148,7 +3148,7 @@
     "@verticalOffset": {
         "description": "Setting for vertical offset"
     },
-    "pgsDirectPlay": "Juego directo de PGS",
+    "pgsDirectPlay": "Reproducción directa de PGS",
     "@pgsDirectPlay": {
         "description": "Setting for PGS direct play"
     },
@@ -3156,7 +3156,7 @@
     "@directPlayPgsSubtitles": {
         "description": "Description for PGS direct play"
     },
-    "assSsaDirectPlay": "Juego directo ASS/SSA",
+    "assSsaDirectPlay": "Reproducción directa de ASS/SSA",
     "@assSsaDirectPlay": {
         "description": "Setting for ASS/SSA direct play"
     },
@@ -4211,7 +4211,7 @@
             }
         }
     },
-    "clear": "Claro",
+    "clear": "Borrar",
     "@clear": {
         "description": "Button to clear"
     },
@@ -4389,7 +4389,7 @@
     "@appearances": {
         "description": "Section title for cast appearances"
     },
-    "crewSection": "Multitud",
+    "crewSection": "Equipo",
     "@crewSection": {
         "description": "Section title for crew credits"
     },
@@ -4524,11 +4524,11 @@
     "upload": "Subir",
     "unmute": "Dejar de silenciar",
     "mute": "Silenciar",
-    "branding": "Herrada",
+    "branding": "Marca",
     "adminDrawerDashboard": "Panel",
     "adminDrawerAnalytics": "Analítica",
     "adminDrawerSettings": "Ajustes",
-    "adminDrawerBranding": "Herrada",
+    "adminDrawerBranding": "Marce",
     "adminDrawerUsers": "Usuarios",
     "adminDrawerLibraries": "Bibliotecas",
     "adminDrawerTranscoding": "Transcodificación",
@@ -5322,7 +5322,7 @@
     "adminFallbackFontPath": "Ruta de fuente alternativa",
     "adminAllowSegmentDeletion": "Permitir la eliminación de segmentos",
     "adminSegmentKeepSeconds": "Mantener segmento (segundos)",
-    "adminThrottleBuffering": "Amortiguación del acelerador",
+    "adminThrottleBuffering": "Limitar el búfer",
     "adminEnableHardwareAcceleration": "Habilitar la aceleración de hardware",
     "adminEnableKeyFrameExtraction": "Habilitar la extracción solo de fotogramas clave",
     "adminKeyFrameSubtitle": "Más rápido pero con menor precisión",
@@ -5337,7 +5337,7 @@
     "adminQualitySubtitle": "Valores más bajos = mejor calidad, archivos más grandes",
     "adminProcessThreads": "Hilos de proceso",
     "adminResumeSaved": "Reanudar la configuración guardada",
-    "adminResumeLoadFailed": "No se pudo cargar la configuración del currículum",
+    "adminResumeLoadFailed": "No se pudo cargar los ajustes de reanudación",
     "adminResumeDescription": "Configure cuándo el contenido debe marcarse como parcialmente reproducido o totalmente reproducido.",
     "adminMinResumePercentage": "Porcentaje mínimo de currículum",
     "adminMinResumeSubtitle": "El contenido debe reproducirse más allá de este porcentaje para guardar el progreso.",
@@ -5824,7 +5824,7 @@
         }
     },
     "adminPluginDetailDetails": "Detalles",
-    "adminPluginDetailDeveloper": "Revelador",
+    "adminPluginDetailDeveloper": "Desarrollador",
     "adminPluginDetailRepository": "Repositorio",
     "adminPluginDetailBundled": "incluido",
     "adminPluginDetailEnablePlugin": "Habilitar complemento",
@@ -5892,7 +5892,7 @@
     "adminNetworkingWhitelist": "Lista blanca",
     "adminNetworkingBlacklist": "Lista negra",
     "adminNetworkingAddEntry": "Agregar entrada",
-    "adminBrandingTitle": "Herrada",
+    "adminBrandingTitle": "Marca",
     "adminBrandingLoginDisclaimer": "Descargo de responsabilidad de inicio de sesión",
     "adminBrandingLoginDisclaimerHint": "HTML mostrado debajo del formulario de inicio de sesión",
     "adminBrandingCustomCss": "CSS personalizado",
@@ -5935,7 +5935,7 @@
     "adminTrickplayProcessing": "Tratamiento",
     "adminTasksEmpty": "No se encontraron tareas programadas",
     "adminTasksNoFilterMatch": "Ninguna tarea coincide con el filtro actual",
-    "adminTaskCancelling": "Cancelado...",
+    "adminTaskCancelling": "Cancelando...",
     "adminTaskRunning": "Correr...",
     "adminTaskNeverRun": "nunca corras",
     "adminTaskStop": "Detener",
@@ -6068,7 +6068,7 @@
     "adminPlaybackTranscodeTempPath": "Transcodificación de ruta temporal",
     "adminPlaybackSegmentDeletion": "Permitir la eliminación de segmentos",
     "adminPlaybackSegmentKeep": "Mantener segmento (segundos)",
-    "adminPlaybackThrottleBuffering": "Amortiguación del acelerador",
+    "adminPlaybackThrottleBuffering": "Limitar el búfer",
     "adminResumeMinPct": "Porcentaje mínimo de currículum",
     "adminResumeMinPctSubtitle": "El contenido debe reproducirse más allá de este porcentaje para guardar el progreso.",
     "adminResumeMaxPct": "Porcentaje máximo de currículum",
@@ -6196,7 +6196,7 @@
     },
     "voiceSearchUnavailable": "La búsqueda por voz no está disponible.",
     "dolbyVisionDirectPlayFailedTitle": "Error en la reproducción directa de Dolby Vision",
-    "dolbyVisionDirectPlayFailedMessage": "La reproducción directa no pudo iniciarse para esta transmisión Dolby Vision. ¿Reintentar usar la transcodificación del servidor?",
+    "dolbyVisionDirectPlayFailedMessage": "La reproducción directa no pudo iniciarse para esta transmisión Dolby Vision. ¿Reintentar usando la transcodificación del servidor?",
     "retryWithTranscode": "Reintentar con transcodificación",
     "dolbyVisionNotSupportedTitle": "Dolby Vision no es compatible",
     "dolbyVisionNotSupportedMessage": "Este dispositivo no puede decodificar contenido Dolby Vision directamente. Utilice el respaldo HDR10 o solicite la transcodificación del servidor.",
@@ -6278,7 +6278,7 @@
     "pinIncorrect": "PIN incorrecto",
     "pinMismatch": "Los PIN no coinciden",
     "pinForgot": "¿Olvidaste tu PIN?",
-    "pinClear": "Claro",
+    "pinClear": "Borrar",
     "pinBackspace": "Retroceso",
     "quickConnectNotSupported": "Quick Connect no es compatible con este servidor.",
     "quickConnectDisabled": "Quick Connect está deshabilitado en este servidor.",
@@ -6422,11 +6422,11 @@
     "@playerTooltipPrevious": {
         "description": "Tooltip label for previous item control in player"
     },
-    "playerTooltipSeekBack": "buscar de regreso",
+    "playerTooltipSeekBack": "Retroceder",
     "@playerTooltipSeekBack": {
         "description": "Tooltip label for seek back control in player"
     },
-    "playerTooltipSeekForward": "buscar adelante",
+    "playerTooltipSeekForward": "Avanzar",
     "@playerTooltipSeekForward": {
         "description": "Tooltip label for seek forward control in player"
     },
@@ -6629,7 +6629,7 @@
     "@desktopUiScale": {
         "description": "Setting for desktop UI scale"
     },
-    "nextUpDisplay": "Pantalla siguiente",
+    "nextUpDisplay": "Pantalla de Siguiente",
     "@nextUpDisplay": {
         "description": "Setting for next up behavior"
     },
@@ -6666,7 +6666,7 @@
     "@musicVideos": {
         "description": "Section header for music videos filmography row"
     },
-    "record": "Registro",
+    "record": "Grabar",
     "@record": {
         "description": "Button label to schedule a live TV recording"
     },
@@ -7061,7 +7061,7 @@
     "openIosRoutePicker": "Abrir el selector de rutas de iOS",
     "airPlayRoutePickerUnavailable": "AirPlay el selector de ruta no está disponible en este dispositivo.",
     "videos": "Vídeos",
-    "trailers": "Remolques",
+    "trailers": "Tráileres",
     "programs": "Programas",
     "songs": "Canciones",
     "photoAlbums": "Álbumes de fotos",
@@ -7219,7 +7219,7 @@
     "@interfaceLanguage": {
         "description": "Label for the app interface language setting"
     },
-    "systemLanguageDefault": "Predeterminado",
+    "systemLanguageDefault": "Predeterminado del sistema",
     "@systemLanguageDefault": {
         "description": "Label for using the system default language in settings"
     },
@@ -7299,10 +7299,6 @@
     "settingsAudioFallbackCodecEac3": "EAC3\n(Dolby Digital Plus)",
     "@settingsAudioFallbackCodecEac3": {
         "description": "Fallback codec option: EAC3"
-    },
-    "settingsAudioFallbackCodecTrueHd": "TrueHD\n(Sin pérdida)",
-    "@settingsAudioFallbackCodecTrueHd": {
-        "description": "Fallback codec option: TrueHD"
     },
     "settingsAudioFallbackCodecMp3": "MP3\n(Sólo Stereo)",
     "@settingsAudioFallbackCodecMp3": {
@@ -7384,17 +7380,15 @@
     "@clockModeBouncing": {
         "description": "Screensaver clock mode: bounces around the screen"
     },
-    "seerrAccountType": "Tipo de cuenta vidente",
-    "@seerrAccountType": {
-        "description": "Header for selecting Seerr authentication account type"
+    "appTitle": "Moonfin",
+    "@appTitle": {
+        "description": "The application title"
     },
-    "metacriticUser": "Metacrítico (Usuario)",
-    "@metacriticUser": {
-        "description": "Rating source: Metacritic User"
+    "quickConnect": "Quick Connect",
+    "@quickConnect": {
+        "description": "Quick Connect toggle button label"
     },
-    "quickConnectNotFound": "No se encontró el código de conexión rápida. Pruebe un nuevo código.",
-    "appearancesSeerr": "Apariciones (Vidente)",
-    "quickConnectUnavailable": "Conexión rápida no disponible: {detail}",
+    "quickConnectUnavailable": "QuickConnect no disponible: {detail}",
     "@quickConnectUnavailable": {
         "description": "Quick Connect generic error message",
         "placeholders": {
@@ -7403,84 +7397,57 @@
             }
         }
     },
-    "adminBaseUrlHint": "p.ej. /gelatina",
-    "quickConnectInvalidOrExpired": "El código de Conexión Rápida no es válido o ha caducado.",
-    "quickConnectAuthorizeFailed": "No se pudo autorizar el código de Conexión rápida.",
-    "metacritic": "metacrítico",
-    "@metacritic": {
-        "description": "Rating source: Metacritic"
+    "detailScreenStyle": "Estilo de la pantalla de detalles",
+    "@detailScreenStyle": {
+        "description": "Label for the media detail screen layout style setting"
     },
-    "appTitle": "aleta lunar",
-    "@appTitle": {
-        "description": "The application title"
+    "detailScreenStyleSubtitle": "Clásico es el diseño centrado original de moonfin. Moderno es un diseño cinematográfico adaptable.",
+    "@detailScreenStyleSubtitle": {
+        "description": "Explanation under the detail screen style setting"
     },
-    "quickConnect": "Conexión rápida",
-    "@quickConnect": {
-        "description": "Quick Connect toggle button label"
+    "detailScreenStyleMoonfin": "Clásico",
+    "@detailScreenStyleMoonfin": {
+        "description": "Detail screen style option: the classic centered layout"
     },
-    "internetArchive": "Archivo de Internet",
-    "@internetArchive": {
-        "description": "Button label for Internet Archive external link"
+    "detailScreenStyleModern": "Moderno",
+    "@detailScreenStyleModern": {
+        "description": "Detail screen style option: the responsive cinematic layout"
     },
-    "rottenTomatoesCritics": "Tomates podridos (críticos)",
-    "@rottenTomatoesCritics": {
-        "description": "Rating source: Rotten Tomatoes Critics"
+    "expandedTabs": "Pestañas expandidas",
+    "@expandedTabs": {
+        "description": "Label for the detail screen expanded tabs setting"
     },
-    "discoverRows": "Descubrir filas",
-    "@discoverRows": {
-        "description": "Section title for discover rows"
+    "expandedTabsSubtitle": "Muestra automáticamente el contenido de las pestañas al navegar por ellas. Desactívalo para abrir y cerrar cada pestaña manualmente.",
+    "@expandedTabsSubtitle": {
+        "description": "Explanation under the expanded tabs setting"
     },
-    "discoverRowsDescriptionPlugin": "Arrastre para reordenar. Activar o desactivar filas. Se ha habilitado la sincronización del orden de filas con el complemento Moonfin.",
-    "@discoverRowsDescriptionPlugin": {
-        "description": "Description for discover rows with plugin"
+    "showTechnicalDetails": "¿Mostrar detalles técnicos?",
+    "@showTechnicalDetails": {
+        "description": "Label for the detail screen setting to show stream/codec technical details"
     },
-    "discoverRowsDescription": "Arrastre para reordenar. Activar o desactivar filas.",
-    "@discoverRowsDescription": {
-        "description": "Description for discover rows without plugin"
+    "showTechnicalDetailsSubtitle": "Mostrar el códec, la resolución y información del stream en el resumen del banner",
+    "@showTechnicalDetailsSubtitle": {
+        "description": "Explanation under the show technical details setting"
     },
-    "seerrSettings": "Configuración de vidente",
-    "@seerrSettings": {
-        "description": "Dialog title for Seerr browse settings"
+    "recommendationSystem": "Sistema de recomendaciones",
+    "@recommendationSystem": {
+        "description": "Label for the Recommendation System setting"
     },
-    "adminTrickplayDescription": "Configure la generación de imágenes de trucos para buscar miniaturas de vista previa.",
-    "adminNetworkingBaseUrlHint": "p.ej. /gelatina",
-    "quickConnectAuthorized": "Solicitud de Conexión Rápida autorizada.",
-    "quickConnectForbidden": "Su cuenta no puede autorizar esta solicitud de Conexión rápida.",
-    "quickConnectFailedWithMessage": "Error de conexión rápida: {message}",
-    "@quickConnectFailedWithMessage": {
-        "placeholders": {
-            "message": {
-                "type": "String"
-            }
-        }
+    "recommendationSystemSubtitle": "Usa el algoritmo local de la biblioteca Moonfin Recommends o las métricas de similitud en línea de TMDb. Nota: las recomendaciones en línea requieren la integración con Seerr.",
+    "@recommendationSystemSubtitle": {
+        "description": "Explanation under the recommendation system setting"
     },
-    "intelQuickSync": "Sincronización rápida Intel",
-    "themeMoonfin": "aleta lunar",
-    "@themeMoonfin": {
-        "description": "Display name for the Moonfin theme"
+    "recommendationSystemMoonfin": "Moonfin Recommends",
+    "@recommendationSystemMoonfin": {
+        "description": "Recommendation system option: Moonfin Recommends"
     },
-    "rottenTomatoesAudience": "Tomates podridos (público)",
-    "@rottenTomatoesAudience": {
-        "description": "Rating source: Rotten Tomatoes Audience"
+    "recommendationSystemTmdb": "Similitud de TMDb",
+    "@recommendationSystemTmdb": {
+        "description": "Recommendation system option: TMDb Similarity"
     },
-    "trakt": "Tracto",
-    "@trakt": {
-        "description": "Rating source: Trakt"
+    "recommendationsApplyParentalRatingCap": "¿Aplicar límite de clasificación parental?",
+    "@recommendationsApplyParentalRatingCap": {
+        "description": "Label for the toggle that controls whether similar suggestions are capped by target media parental rating"
     },
-    "myAnimeList": "Mi lista de animes",
-    "@myAnimeList": {
-        "description": "Rating source: MyAnimeList"
-    },
-    "trickplay": "truco",
-    "adminDrawerTrickplay": "truco",
-    "adminTrickplaySaved": "Configuración de trucos guardada",
-    "adminTrickplayLoadFailed": "No se pudo cargar la configuración de trucos",
-    "mediaBarModeMoonfin": "aleta lunar",
-    "@mediaBarModeMoonfin": {
-        "description": "Media bar style option: Moonfin"
-    },
-    "enableSeerr": "Habilitar vidente",
-    "@enableSeerr": {
-        "description": "Setting for enabling Seerr"
-    }
+    "trickplay": "Trickplay"
 }

@@ -12,6 +12,7 @@ import 'package:server_core/server_core.dart';
 
 import '../../data/repositories/seerr_repository.dart';
 import 'storage_path_service.dart';
+import 'synced_fields.dart';
 import '../../ui/widgets/navigation_layout.dart';
 import '../../preference/home_section_config.dart';
 import '../../preference/preference_constants.dart' as prefs;
@@ -43,6 +44,8 @@ class PluginSyncService extends ChangeNotifier {
   String? get pluginVersion => _pluginVersion;
 
   String? _selectedCustomizationProfile;
+  int _syncRetryCount = 0;
+  Timer? _syncRetryTimer;
 
   String? _seerrUrl;
   String? get seerrUrl => _seerrUrl;
@@ -75,33 +78,43 @@ class PluginSyncService extends ChangeNotifier {
   bool _isSyncingFromServer = false;
   Timer? _pushDebounceTimer;
 
-  PluginSyncService(this._prefs, this._store) : _dio = Dio() {
-    configureServerDio(_dio);
-    _dio.interceptors.add(redirectInterceptor(_dio));
-    _dio.interceptors.add(
-      InterceptorsWrapper(
-        onRequest: (options, handler) {
-          ServerLog.network('→ ${options.method} ${options.uri}');
-          handler.next(options);
-        },
-        onResponse: (response, handler) {
-          ServerLog.network(
-            '← ${response.statusCode} ${response.requestOptions.method} '
-            '${response.requestOptions.uri}',
-          );
-          handler.next(response);
-        },
-        onError: (error, handler) {
-          ServerLog.network(
-            '✗ ${error.requestOptions.method} ${error.requestOptions.uri} '
-            '(${error.response?.statusCode ?? error.type.name})',
-            level: ServerLogLevel.error,
-            error: error.message ?? error.toString(),
-          );
-          handler.next(error);
-        },
-      ),
-    );
+  /// Profile JSON as last pushed to, or applied from, each server and profile.
+  /// A push whose payload matches its entry is skipped, which is what stops an
+  /// applied profile from echoing back up to the server.
+  final Map<String, String> _lastSyncedProfileJson = {};
+
+  PluginSyncService(this._prefs, this._store, {@visibleForTesting Dio? dio})
+    : _dio = dio ?? Dio() {
+    // An injected Dio brings its own adapter, so only the one built here needs
+    // the server interceptors.
+    if (dio == null) {
+      configureServerDio(_dio);
+      _dio.interceptors.add(redirectInterceptor(_dio));
+      _dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            ServerLog.network('→ ${options.method} ${options.uri}');
+            handler.next(options);
+          },
+          onResponse: (response, handler) {
+            ServerLog.network(
+              '← ${response.statusCode} ${response.requestOptions.method} '
+              '${response.requestOptions.uri}',
+            );
+            handler.next(response);
+          },
+          onError: (error, handler) {
+            ServerLog.network(
+              '✗ ${error.requestOptions.method} ${error.requestOptions.uri} '
+              '(${error.response?.statusCode ?? error.type.name})',
+              level: ServerLogLevel.error,
+              error: error.message ?? error.toString(),
+            );
+            handler.next(error);
+          },
+        ),
+      );
+    }
     _prefs.addListener(_onPrefsChanged);
   }
 
@@ -112,6 +125,9 @@ class PluginSyncService extends ChangeNotifier {
     final normalized = client.baseUrl.toLowerCase().trim();
     return normalized.replaceAll(RegExp(r'[^a-z0-9]+'), '_');
   }
+
+  String _snapshotKey(MediaServerClient client, String profile) =>
+      '${_serverSyncKey(client)}/$profile';
 
   Map<String, String>? _authHeaders(MediaServerClient client) {
     final token = client.accessToken;
@@ -152,9 +168,13 @@ class PluginSyncService extends ChangeNotifier {
   }
 
   void resetState({bool notify = true, bool stopStream = true}) {
+    _syncRetryTimer?.cancel();
     if (stopStream) {
       _stopSettingsStream();
     }
+    // A snapshot describes the server state of the session being torn down, so
+    // keeping it could wrongly suppress the next user's first push.
+    _lastSyncedProfileJson.clear();
     _pluginAvailable = false;
     _pluginVersion = null;
     _seerrUrl = null;
@@ -172,6 +192,7 @@ class PluginSyncService extends ChangeNotifier {
   }
 
   void _setLocalSeerrEnabled(bool enabled) {
+    _seerrPrefs.setEnabled(enabled);
     if (_prefs.get(UserPreferences.seerrEnabled) == enabled) {
       return;
     }
@@ -179,7 +200,6 @@ class PluginSyncService extends ChangeNotifier {
       _prefs.getEffectivePreference(UserPreferences.seerrEnabled),
       enabled,
     );
-    _seerrPrefs.setEnabled(enabled);
     _prefs.notifyPreferenceChanged();
   }
 
@@ -192,7 +212,6 @@ class PluginSyncService extends ChangeNotifier {
       final pingResult = await _ping(client);
       if (pingResult == null) {
         _stopSettingsStream();
-        _setLocalSeerrEnabled(false);
         notifyListeners();
         return _PluginAvailabilityStatus.unknown;
       }
@@ -249,7 +268,7 @@ class PluginSyncService extends ChangeNotifier {
       notifyListeners();
       return _PluginAvailabilityStatus.available;
     } catch (_) {
-      resetState();
+      resetState(notify: false);
       return _PluginAvailabilityStatus.unknown;
     }
   }
@@ -286,12 +305,26 @@ class PluginSyncService extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Retries the plugin check a few times after login so a slow cellular link has
+  // time to come up.
+  void _scheduleSyncRetry(MediaServerClient client, {String? serverId}) {
+    if (_syncRetryCount >= 3) return;
+    _syncRetryCount++;
+    _syncRetryTimer?.cancel();
+    _syncRetryTimer = Timer(const Duration(seconds: 5), () {
+      syncOnLogin(client, serverId: serverId);
+    });
+  }
+
   Future<void> syncOnLogin(MediaServerClient client, {String? serverId}) async {
     try {
       _activeThemeCacheServerId = serverId;
       await _hydrateCachedThemes(client, serverId: serverId);
 
       final availability = await _refreshAvailabilityStatus(client);
+      if (availability == _PluginAvailabilityStatus.available) {
+        _syncRetryCount = 0;
+      }
 
       final syncInitializedPref =
           UserPreferences.pluginSyncInitializedForServer(
@@ -304,15 +337,20 @@ class PluginSyncService extends ChangeNotifier {
 
           final resolved = await _fetchResolvedProfile(client, _profileName);
           if (resolved != null) {
-            await _applyServerSettings(resolved);
+            await _applyServerSettings(client, _profileName, resolved);
           }
 
           await _startSettingsStream(client);
+        }
+
+        if (availability == _PluginAvailabilityStatus.unknown) {
+          _scheduleSyncRetry(client, serverId: serverId);
         }
         return;
       }
 
       if (availability == _PluginAvailabilityStatus.unknown) {
+        _scheduleSyncRetry(client, serverId: serverId);
         return;
       }
 
@@ -331,7 +369,7 @@ class PluginSyncService extends ChangeNotifier {
 
       await _prefs.set(UserPreferences.pluginSyncEnabled, true);
 
-      await _applyServerSettings(resolved);
+      await _applyServerSettings(client, _profileName, resolved);
       await _prefs.set(syncInitializedPref, true);
       await _startSettingsStream(client);
     } catch (_) {
@@ -470,7 +508,7 @@ class PluginSyncService extends ChangeNotifier {
       return;
     }
 
-    await _applyServerSettings(resolved);
+    await _applyServerSettings(client, _profileName, resolved);
     notifyListeners();
   }
 
@@ -553,33 +591,74 @@ class PluginSyncService extends ChangeNotifier {
     String? username,
     String? password,
   }) async {
-    if (!_pluginAvailable) return false;
-
     final token = client.accessToken;
     if (token == null || token.isEmpty) return false;
 
-    try {
-      final seerrRepo = await GetIt.instance.getAsync<SeerrRepository>();
-      await seerrRepo.bootstrapMoonfinSso(
-        jellyfinBaseUrl: client.baseUrl,
-        jellyfinToken: token,
-        username: username,
-        password: password,
-      );
-      await _refreshAvailabilityStatus(client);
-      return seerrAvailable;
-    } catch (_) {
-      return false;
+    final seerrRepo = await GetIt.instance.getAsync<SeerrRepository>();
+
+    // A cold start can reach this before the server answers the plugin ping, or
+    // before the plugin's Seerr session comes up after the restored token is
+    // applied. Retry across that window so Seerr recovers on its own instead of
+    // staying unavailable until the user opens its settings screen.
+    const attemptDelays = [
+      Duration.zero,
+      Duration(seconds: 3),
+      Duration(seconds: 6),
+      Duration(seconds: 10),
+    ];
+    for (final delay in attemptDelays) {
+      if (delay > Duration.zero) await Future<void>.delayed(delay);
+
+      if (!_pluginAvailable) {
+        final status = await _refreshAvailabilityStatus(client);
+        if (status == _PluginAvailabilityStatus.unavailable) return false;
+        if (!_pluginAvailable) continue;
+      }
+
+      try {
+        await seerrRepo.bootstrapMoonfinSso(
+          jellyfinBaseUrl: client.baseUrl,
+          jellyfinToken: token,
+          username: username,
+          password: password,
+        );
+        if (seerrRepo.isAvailable &&
+            !_prefs.get(UserPreferences.seerrEnabled)) {
+          _setLocalSeerrEnabled(true);
+          await pushSettingsForProfile(
+            client,
+            profile: selectedCustomizationProfile,
+          );
+        }
+        await _refreshAvailabilityStatus(client);
+      } catch (_) {
+        continue;
+      }
+
+      if (seerrRepo.isAvailable) return true;
     }
+
+    return seerrRepo.isAvailable;
   }
 
-  Future<void> pushSettings(MediaServerClient client) async {
-    await pushSettingsForProfile(client, profile: selectedCustomizationProfile);
+  Future<void> pushSettings(
+    MediaServerClient client, {
+    bool force = false,
+  }) async {
+    await pushSettingsForProfile(
+      client,
+      profile: selectedCustomizationProfile,
+      force: force,
+    );
   }
 
+  /// [force] skips the identity check, since an explicit push means overwrite
+  /// whatever the server holds. The snapshot only proves what this device sent
+  /// last, not what another device has written since.
   Future<void> pushSettingsForProfile(
     MediaServerClient client, {
     required String profile,
+    bool force = false,
   }) async {
     if (!_pluginAvailable) return;
     if (!_prefs.get(UserPreferences.pluginSyncEnabled)) return;
@@ -591,6 +670,15 @@ class PluginSyncService extends ChangeNotifier {
       final headers = _authHeaders(client);
       if (headers == null) return;
 
+      // Pushing a payload the server already has makes the plugin broadcast a
+      // settingsUpdated event straight back at this device, and the resulting
+      // apply and push echo never converges on its own.
+      final snapshotKey = _snapshotKey(client, profile);
+      final payloadJson = jsonEncode(payloadProfile);
+      if (!force && _lastSyncedProfileJson[snapshotKey] == payloadJson) {
+        return;
+      }
+
       await _dio.post(
         '${client.baseUrl}/Moonfin/Settings/Profile/$profile',
         data: {'profile': payloadProfile, 'clientId': 'moonfin-flutter'},
@@ -598,6 +686,8 @@ class PluginSyncService extends ChangeNotifier {
           headers: {...headers, 'Content-Type': 'application/json'},
         ),
       );
+      // Only after the POST lands, so a failed push retries on the next change.
+      _lastSyncedProfileJson[snapshotKey] = payloadJson;
     } catch (_) {}
   }
 
@@ -620,6 +710,7 @@ class PluginSyncService extends ChangeNotifier {
           'notifyOnNewRequests': _seerrPrefs.notifyOnNewRequests,
           'notifyOnLibraryAdded': _seerrPrefs.notifyOnLibraryAdded,
           'notifyOnIssues': _seerrPrefs.notifyOnIssues,
+          'notifyOnNewMedia': _seerrPrefs.notifyOnNewMedia,
         },
         options: Options(
           headers: {...headers, 'Content-Type': 'application/json'},
@@ -628,7 +719,10 @@ class PluginSyncService extends ChangeNotifier {
     } catch (_) {}
   }
 
-  Future<void> registerPushDevice(
+  /// Returns true when the registration POST succeeded and false when it was
+  /// skipped or failed, so the caller can queue a retry instead of assuming
+  /// the device is enrolled.
+  Future<bool> registerPushDevice(
     MediaServerClient client, {
     required String token,
     required String platform,
@@ -636,14 +730,14 @@ class PluginSyncService extends ChangeNotifier {
   }) async {
     if (!_pluginAvailable) {
       debugPrint('PluginSync: skip registerPushDevice, plugin unavailable');
-      return;
+      return false;
     }
 
     try {
       final headers = _authHeaders(client);
       if (headers == null) {
         debugPrint('PluginSync: skip registerPushDevice, no auth headers');
-        return;
+        return false;
       }
 
       await _dio.post(
@@ -657,7 +751,10 @@ class PluginSyncService extends ChangeNotifier {
           headers: {...headers, 'Content-Type': 'application/json'},
         ),
       );
-    } catch (_) {}
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> unregisterPushDevice(
@@ -680,11 +777,15 @@ class PluginSyncService extends ChangeNotifier {
     } catch (_) {}
   }
 
+  /// Pass `requireAvailable: false` from callers that run before the plugin
+  /// ping has resolved, such as the home rows. The request is then attempted
+  /// regardless and a missing plugin simply comes back null.
   Future<List<String>?> fetchCustomCollectionOrder(
     MediaServerClient client,
-    String collectionId,
-  ) async {
-    if (!_pluginAvailable) return null;
+    String collectionId, {
+    bool requireAvailable = true,
+  }) async {
+    if (requireAvailable && !_pluginAvailable) return null;
     final headers = _authHeaders(client);
     if (headers == null) return null;
 
@@ -736,12 +837,109 @@ class PluginSyncService extends ChangeNotifier {
       if (resolved == null) {
         return false;
       }
-      await _applyServerSettings(resolved);
+      await _applyServerSettings(client, profile, resolved);
 
       return true;
     } catch (_) {
       return false;
     }
+  }
+
+  /// Deletes the stored copy of [profile] on the server and puts every synced
+  /// setting on this device back to its default.
+  ///
+  /// Global takes the whole settings file with it, because the plugin has no
+  /// way to clear the base layer while device profiles still sit on top of it.
+  Future<bool> resetProfileToDefaults(
+    MediaServerClient client, {
+    required String profile,
+  }) async {
+    if (!_pluginAvailable) return false;
+    if (!_prefs.get(UserPreferences.pluginSyncEnabled)) return false;
+    if (!supportedProfiles.contains(profile)) return false;
+
+    final headers = _authHeaders(client);
+    if (headers == null) return false;
+
+    // A push queued by an earlier edit would put the old settings back moments
+    // after the delete, so drop it before anything is removed.
+    _pushDebounceTimer?.cancel();
+
+    try {
+      await _dio.delete(
+        profile == 'global'
+            ? '${client.baseUrl}/Moonfin/Settings'
+            : '${client.baseUrl}/Moonfin/Settings/Profile/$profile',
+        options: Options(headers: headers),
+      );
+    } catch (_) {
+      return false;
+    }
+
+    // Nothing this device sent still stands, so a later push must not be
+    // skipped for matching a snapshot the server no longer holds.
+    if (profile == 'global') {
+      _lastSyncedProfileJson.clear();
+    } else {
+      _lastSyncedProfileJson.remove(_snapshotKey(client, profile));
+    }
+
+    await _restoreLocalDefaults();
+
+    // Admin defaults, plus the global profile when this was a device one, are
+    // what the profile resolves to from here on.
+    await pullSettingsForProfile(client, profile: profile);
+
+    return true;
+  }
+
+  /// Drops the stored value of every setting a profile carries so each one
+  /// reads its built-in default again.
+  ///
+  /// Guarded and batched the way the apply path is, because these writes must
+  /// not read back as a local edit and push themselves straight to the server
+  /// that was just cleared.
+  Future<void> _restoreLocalDefaults() async {
+    _isSyncingFromServer = true;
+    try {
+      await _prefs.batchNotifications(_restoreLocalDefaultsUnbatched);
+    } finally {
+      _isSyncingFromServer = false;
+    }
+  }
+
+  Future<void> _restoreLocalDefaultsUnbatched() async {
+    // removePreference rather than a plain store delete, because reads fall
+    // back to the unscoped key when the scoped one is gone, and a value from
+    // before per-server scoping would resurface instead of the default.
+    for (final field in syncedFields) {
+      // The API keys come from the server rather than from anything the user
+      // typed here, so wiping them would stop ratings loading with nothing the
+      // user could do about it.
+      if (field.receiveOnly) continue;
+      await _prefs.removePreference(field.pref);
+    }
+
+    // The settings the field table can't describe, cleared by hand.
+    for (final pref in <Preference<dynamic>>[
+      UserPreferences.sinceYouWatchedNumRows,
+      UserPreferences.mediaBarMode,
+      UserPreferences.mediaBarEnabled,
+      UserPreferences.mediaBarContentType,
+      UserPreferences.enabledRatings,
+      UserPreferences.homeSectionsJson,
+    ]) {
+      await _prefs.removePreference(pref);
+    }
+
+    await _seerrPrefs.setRowsConfig(SeerrRowConfig.defaults());
+
+    // The nav chrome takes its position from this notifier rather than from
+    // the store, so it would sit in the old spot until the next launch.
+    final navbarPos = _prefs.get(UserPreferences.navbarPosition);
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      NavigationLayout.positionNotifier.value = navbarPos;
+    });
   }
 
   Future<Map<String, dynamic>?> _ping(MediaServerClient client) async {
@@ -993,571 +1191,248 @@ class PluginSyncService extends ChangeNotifier {
     _clearMissingCustomThemeSelection();
   }
 
-  Future<void> _applyServerSettings(Map<String, dynamic> resolved) async {
+  void _preserveLocalKeyWhenServerEmpty(
+    Map<String, dynamic> resolved,
+    String serverKey,
+    Preference<String> pref,
+  ) {
+    final serverVal = resolved[serverKey] as String?;
+    if (serverVal == null || serverVal.isEmpty || serverVal == 'null') {
+      final localVal = _store.get(_prefs.getEffectivePreference(pref));
+      if (localVal.isNotEmpty && localVal != 'null') {
+        resolved[serverKey] = localVal;
+      }
+    }
+  }
+
+  Future<void> _applyServerSettings(
+    MediaServerClient client,
+    String profile,
+    Map<String, dynamic> resolved,
+  ) async {
+    // Batched so the dozens of pref writes below collapse into one listener
+    // notification instead of one per key. Every notification makes the nav
+    // chrome reload its libraries from the server.
+    //
+    // The guard has to span the whole batch call, because batchNotifications
+    // flushes its one deferred notification in its own finally. A guard
+    // cleared inside the action would already be down when that flush lands,
+    // and the sync listener would read the apply as a local edit.
     _isSyncingFromServer = true;
     try {
-      final serverId = (_store.getString('pref_last_server_id') ?? '').trim();
-      if (serverId.isNotEmpty) {
-        var tmdbVal = resolved['tmdbApiKey'] as String?;
-        if (tmdbVal == null || tmdbVal.isEmpty || tmdbVal == 'null') {
-          final localTmdbVal = _store.get(_prefs.getEffectivePreference(UserPreferences.tmdbApiKey));
-          if (localTmdbVal.isNotEmpty && localTmdbVal != 'null') {
-            resolved['tmdbApiKey'] = localTmdbVal;
-          }
-        }
-
-        var mdblistVal = resolved['mdblistApiKey'] as String?;
-        if (mdblistVal == null || mdblistVal.isEmpty || mdblistVal == 'null') {
-          final localMdblistVal = _store.get(_prefs.getEffectivePreference(UserPreferences.mdblistApiKey));
-          if (localMdblistVal.isNotEmpty && localMdblistVal != 'null') {
-            resolved['mdblistApiKey'] = localMdblistVal;
-          }
-        }
-      }
-
-      _applyString(
-        resolved,
-        'hiddenContinueWatchingItems',
-        UserPreferences.hiddenContinueWatchingItems,
+      await _prefs.batchNotifications(
+        () => _applyServerSettingsUnbatched(resolved),
       );
-      _applyString(
-        resolved,
-        'hiddenNextUpSeries',
-        UserPreferences.hiddenNextUpSeries,
-      );
-
-      _applyString(
-        resolved,
-        'visualTheme',
-        UserPreferences.visualTheme,
-        enumValues: prefs.VisualThemeId.values,
-      );
-      _applyString(resolved, 'customThemeId', UserPreferences.customThemeId);
-      _applyString(
-        resolved,
-        'navbarPosition',
-        UserPreferences.navbarPosition,
-        enumValues: NavigationLayout.availableNavbarPositions,
-      );
-      _applyString(
-        resolved,
-        'focusColor',
-        UserPreferences.focusColor,
-        enumValues: prefs.AppTheme.values,
-      );
-      _applyString(
-        resolved,
-        'watchedIndicator',
-        UserPreferences.watchedIndicatorBehavior,
-        enumValues: prefs.WatchedIndicatorBehavior.values,
-      );
-      _applyBool(
-        resolved,
-        'cardFocusExpansion',
-        UserPreferences.cardFocusExpansion,
-      );
-      _applyString(
-        resolved,
-        'homeRowsStyle',
-        UserPreferences.homeRowsStyle,
-        enumValues: prefs.HomeRowsStyle.values,
-      );
-      _applyString(
-        resolved,
-        'recommendationSystemSource',
-        UserPreferences.recommendationSystemSource,
-        enumValues: prefs.RecommendationSystemSource.values,
-      );
-      _applyString(
-        resolved,
-        'detailScreenStyle',
-        UserPreferences.detailScreenStyle,
-        enumValues: prefs.DetailScreenStyle.values,
-      );
-      _applyBool(
-        resolved,
-        'detailExpandedTabs',
-        UserPreferences.detailExpandedTabs,
-      );
-      _applyBool(
-        resolved,
-        'detailShowTechnicalDetails',
-        UserPreferences.detailShowTechnicalDetails,
-      );
-      _applyBool(
-        resolved,
-        'fullScreenRows',
-        UserPreferences.fullScreenRows,
-      );
-      _applyString(
-        resolved,
-        'homeImageTypeContinueWatching',
-        UserPreferences.homeRowImageType(prefs.HomeSectionType.resume),
-        enumValues: prefs.ImageType.values,
-      );
-      _applyString(
-        resolved,
-        'posterSize',
-        UserPreferences.posterSize,
-        enumValues: prefs.PosterSize.values,
-      );
-      _applyBool(
-        resolved,
-        'displayFavoritesRows',
-        UserPreferences.displayFavoritesRows,
-      );
-      _applyBool(
-        resolved,
-        'displayCollectionsRows',
-        UserPreferences.displayCollectionsRows,
-      );
-      _applyBool(
-        resolved,
-        'displayGenresRows',
-        UserPreferences.displayGenresRows,
-      );
-      _applyBool(
-        resolved,
-        'displayAudioRows',
-        UserPreferences.displayAudioRows,
-      );
-      _applyBool(
-        resolved,
-        'displaySinceYouWatchedRows',
-        UserPreferences.displaySinceYouWatchedRows,
-      );
-      _applyString(
-        resolved,
-        'sinceYouWatchedSource',
-        UserPreferences.sinceYouWatchedSource,
-        enumValues: prefs.SinceYouWatchedSource.values,
-      );
-      _applySinceYouWatchedNumRows(resolved);
-      _applyString(
-        resolved,
-        'sinceYouWatchedSourceType',
-        UserPreferences.sinceYouWatchedSourceType,
-        enumValues: prefs.SinceYouWatchedSourceType.values,
-      );
-      _applyString(
-        resolved,
-        'sinceYouWatchedSourceItem',
-        UserPreferences.sinceYouWatchedSourceItem,
-        enumValues: prefs.SinceYouWatchedSourceItem.values,
-      );
-      _applyBool(
-        resolved,
-        'sinceYouWatchedIncludeWatched',
-        UserPreferences.sinceYouWatchedIncludeWatched,
-      );
-      _applyBool(
-        resolved,
-        'displayPlaylistsRows',
-        UserPreferences.displayPlaylistsRows,
-      );
-      _applyBool(
-        resolved,
-        'displayRewatchRow',
-        UserPreferences.displayRewatchRow,
-      );
-      _applyString(
-        resolved,
-        'rewatchSortBy',
-        UserPreferences.rewatchSortBy,
-        enumValues: prefs.RewatchSortBy.values,
-      );
-      _applyBool(
-        resolved,
-        'rewatchIncludeMovies',
-        UserPreferences.rewatchIncludeMovies,
-      );
-      _applyBool(
-        resolved,
-        'rewatchIncludeShows',
-        UserPreferences.rewatchIncludeShows,
-      );
-      _applyBool(
-        resolved,
-        'rewatchIncludeCollections',
-        UserPreferences.rewatchIncludeCollections,
-      );
-      _applyBool(
-        resolved,
-        'useDetailedSubHeadings',
-        UserPreferences.useDetailedSubHeadings,
-      );
-      _applyString(
-        resolved,
-        'favoritesRowSortBy',
-        UserPreferences.favoritesRowSortBy,
-        enumValues: prefs.LibrarySortBy.values,
-      );
-      _applyString(
-        resolved,
-        'collectionsRowSortBy',
-        UserPreferences.collectionsRowSortBy,
-        enumValues: prefs.LibrarySortBy.values,
-      );
-      _applyString(
-        resolved,
-        'genresRowSortBy',
-        UserPreferences.genresRowSortBy,
-        enumValues: prefs.LibrarySortBy.values,
-      );
-      _applyString(
-        resolved,
-        'genresRowItemFilter',
-        UserPreferences.genresRowItemFilter,
-        enumValues: prefs.GenresRowItemFilter.values,
-      );
-      _applyBool(
-        resolved,
-        'showShuffleButton',
-        UserPreferences.showShuffleButton,
-      );
-      _applyBool(
-        resolved,
-        'showGenresButton',
-        UserPreferences.showGenresButton,
-      );
-      _applyBool(
-        resolved,
-        'showFavoritesButton',
-        UserPreferences.showFavoritesButton,
-      );
-      _applyBool(
-        resolved,
-        'showSyncPlayButton',
-        UserPreferences.showSyncPlayButton,
-      );
-      _applyBool(
-        resolved,
-        'showLibrariesInToolbar',
-        UserPreferences.showLibrariesInToolbar,
-      );
-      _applyString(
-        resolved,
-        'shuffleContentType',
-        UserPreferences.shuffleContentType,
-      );
-      _applyBool(
-        resolved,
-        'mergeContinueWatchingNextUp',
-        UserPreferences.mergeContinueWatchingNextUp,
-      );
-      _applyBool(
-        resolved,
-        'enableMultiServerLibraries',
-        UserPreferences.enableMultiServerLibraries,
-      );
-      _applyBool(
-        resolved,
-        'enableFolderView',
-        UserPreferences.enableFolderView,
-      );
-      _applyString(
-        resolved,
-        'seasonalSurprise',
-        UserPreferences.seasonalSurprise,
-      );
-
-      _applyMediaBarMode(resolved);
-      _applyString(
-        resolved,
-        'mediaBarSourceType',
-        UserPreferences.mediaBarContentType,
-      );
-      _applyInt(
-        resolved,
-        'mediaBarItemCount',
-        UserPreferences.mediaBarItemCount,
-      );
-      _applyInt(
-        resolved,
-        'mediaBarOpacity',
-        UserPreferences.mediaBarOverlayOpacity,
-      );
-      _applyString(
-        resolved,
-        'mediaBarOverlayColor',
-        UserPreferences.mediaBarOverlayColor,
-      );
-      _applyInt(resolved, 'navbarOpacity', UserPreferences.navbarOpacity);
-      _applyString(resolved, 'navbarColor', UserPreferences.navbarColor);
-      _applyBool(resolved, 'navbarAlwaysExpanded', UserPreferences.navbarAlwaysExpanded);
-      _applyBool(
-        resolved,
-        'mediaBarAutoAdvance',
-        UserPreferences.mediaBarAutoAdvance,
-      );
-      _applyInt(
-        resolved,
-        'mediaBarIntervalMs',
-        UserPreferences.mediaBarIntervalMs,
-      );
-      _applyBool(
-        resolved,
-        'mediaBarTrailerPreview',
-        UserPreferences.mediaBarTrailerPreview,
-      );
-      _applyBool(
-        resolved,
-        'mediaBarTrailerAudio',
-        UserPreferences.mediaBarTrailerAudio,
-      );
-      _applyBool(
-        resolved,
-        'episodePreviewEnabled',
-        UserPreferences.episodePreviewEnabled,
-      );
-      _applyBool(
-        resolved,
-        'previewAudioEnabled',
-        UserPreferences.previewAudioEnabled,
-      );
-
-      _applyStringList(
-        resolved,
-        'mediaBarLibraryIds',
-        UserPreferences.mediaBarLibraryIds,
-      );
-      _applyStringList(
-        resolved,
-        'mediaBarCollectionIds',
-        UserPreferences.mediaBarCollectionIds,
-      );
-      _applyStringList(
-        resolved,
-        'mediaBarExcludedGenres',
-        UserPreferences.mediaBarExcludedGenres,
-      );
-
-      _applyBool(
-        resolved,
-        'themeMusicEnabled',
-        UserPreferences.themeMusicEnabled,
-      );
-      _applyInt(resolved, 'themeMusicVolume', UserPreferences.themeMusicVolume);
-      _applyBool(
-        resolved,
-        'themeMusicOnHomeRows',
-        UserPreferences.themeMusicOnHomeRows,
-      );
-      _applyBool(resolved, 'themeMusicLoop', UserPreferences.themeMusicLoop);
-
-      _applyBool(
-        resolved,
-        'homeRowsImageTypeOverride',
-        UserPreferences.homeRowsUniversalOverride,
-      );
-      _applyString(
-        resolved,
-        'homeRowsImageType',
-        UserPreferences.homeRowsUniversalImageType,
-        enumValues: prefs.ImageType.values,
-      );
-      _applyBool(
-        resolved,
-        'homeImageUseSeriesImage',
-        UserPreferences.seriesThumbnailsEnabled,
-      );
-
-      _applyBool(resolved, 'backdropEnabled', UserPreferences.backdropEnabled);
-      _applyString(
-        resolved,
-        'detailsScreenBlur',
-        UserPreferences.detailsBackgroundBlurAmount,
-        intFromString: true,
-      );
-      _applyString(
-        resolved,
-        'browsingBlur',
-        UserPreferences.browsingBackgroundBlurAmount,
-        intFromString: true,
-      );
-
-      _applyBool(
-        resolved,
-        'mdblistEnabled',
-        UserPreferences.enableAdditionalRatings,
-      );
-      _applyString(resolved, 'mdblistApiKey', UserPreferences.mdblistApiKey);
-      _applyBool(
-        resolved,
-        'mdblistShowRatingNames',
-        UserPreferences.showRatingLabels,
-      );
-      _applyBool(
-        resolved,
-        'mdblistShowRatingBadges',
-        UserPreferences.showRatingBadges,
-      );
-      _applyBool(
-        resolved,
-        'tmdbEpisodeRatingsEnabled',
-        UserPreferences.enableEpisodeRatings,
-      );
-      _applyString(resolved, 'tmdbApiKey', UserPreferences.tmdbApiKey);
-
-      _applyBool(resolved, 'seerrEnabled', UserPreferences.seerrEnabled);
-      _applyBool(
-        resolved,
-        'seerrBlockNsfw',
-        UserPreferences.seerrBlockNsfw,
-      );
-
-      if (resolved['mdblistRatingSources'] is List) {
-        final sources = (resolved['mdblistRatingSources'] as List)
-            .cast<String>()
-            .map((s) => _serverToClientRatingSource[s] ?? s)
-            .join(',');
-        _store.set(
-          _prefs.getEffectivePreference(UserPreferences.enabledRatings),
-          sources,
-        );
-      }
-
-      // Prefer the full homeSections layout when present which unlike homeRowOrder it
-      // carries dynamic and disabled rows. home_sections_config is per-server
-      // scoped, so the payload is applied as-is.
-      final homeSectionsRaw = resolved['homeSections'];
-      var appliedHomeSections = false;
-
-      if (homeSectionsRaw is List) {
-        final parsed = <HomeSectionConfig>[
-          for (final e in homeSectionsRaw)
-            if (e is Map && HomeSectionConfig.isSupportedJson(Map<String, dynamic>.from(e)))
-              HomeSectionConfig.fromJson(Map<String, dynamic>.from(e)),
-        ];
-        if (parsed.isNotEmpty) {
-          parsed.sort((a, b) => a.order.compareTo(b.order));
-          final sections = <HomeSectionConfig>[];
-          var order = 0;
-          for (final c in parsed) {
-            sections.add(c.copyWith(order: order++));
-          }
-          _appendDisabledBuiltinSections(sections, order);
-          await _prefs.setHomeSectionsConfig(sections);
-          appliedHomeSections = true;
-        }
-      }
-
-      if (!appliedHomeSections && resolved['homeRowOrder'] is List) {
-        final serverOrder = (resolved['homeRowOrder'] as List).cast<String>();
-        // Preserve any plugin-discovered dynamic sections so they survive a
-        // server-driven preference sync.
-        final pluginEntries = _prefs.homeSectionsConfig
-            .where((c) => c.isPluginDynamic)
-            .toList(growable: false);
-        if (serverOrder.isEmpty) {
-          await _applyFallbackHomeRows(preserve: pluginEntries);
-        } else {
-          final sections = <HomeSectionConfig>[];
-          var order = 0;
-          for (final name in serverOrder) {
-            final type = prefs.HomeSectionType.fromSerialized(name);
-            if (type == prefs.HomeSectionType.none) continue;
-            sections.add(
-              HomeSectionConfig(type: type, enabled: true, order: order++),
-            );
-          }
-          if (sections.isEmpty) {
-            await _applyFallbackHomeRows(preserve: pluginEntries);
-          } else {
-            final enabledTypes = sections.map((s) => s.type).toSet();
-            for (final type in prefs.HomeSectionType.values) {
-              if (type == prefs.HomeSectionType.none) continue;
-              if (_isTmdbSectionType(type)) {
-                final localEnabled = _prefs.get(_tmdbPrefForType(type));
-                final idx = sections.indexWhere((s) => s.type == type);
-                if (idx >= 0) {
-                  sections[idx] = sections[idx].copyWith(enabled: localEnabled);
-                } else {
-                  sections.add(
-                    HomeSectionConfig(type: type, enabled: localEnabled, order: order++),
-                  );
-                }
-                continue;
-              }
-              if (type == prefs.HomeSectionType.radarrCalendar) {
-                final localEnabled = _prefs.get(UserPreferences.enableRadarrCalendar);
-                final idx = sections.indexWhere((s) => s.type == type);
-                if (idx >= 0) {
-                  sections[idx] = sections[idx].copyWith(enabled: localEnabled);
-                } else {
-                  sections.add(
-                    HomeSectionConfig(type: type, enabled: localEnabled, order: order++),
-                  );
-                }
-                continue;
-              }
-              if (type == prefs.HomeSectionType.sonarrCalendar) {
-                final localEnabled = _prefs.get(UserPreferences.enableSonarrCalendar);
-                final idx = sections.indexWhere((s) => s.type == type);
-                if (idx >= 0) {
-                  sections[idx] = sections[idx].copyWith(enabled: localEnabled);
-                } else {
-                  sections.add(
-                    HomeSectionConfig(type: type, enabled: localEnabled, order: order++),
-                  );
-                }
-                continue;
-              }
-              if (!enabledTypes.contains(type)) {
-                sections.add(
-                  HomeSectionConfig(type: type, enabled: false, order: order++),
-                );
-              }
-            }
-            for (final entry in pluginEntries) {
-              sections.add(entry.copyWith(order: order++));
-            }
-            await _prefs.setHomeSectionsConfig(sections);
-          }
-        }
-      }
-
-      if (resolved['seerrRows'] is Map<String, dynamic>) {
-        final rowsData = resolved['seerrRows'] as Map<String, dynamic>;
-        if (rowsData['rowOrder'] is List) {
-          final serverOrder = (rowsData['rowOrder'] as List).cast<String>();
-          if (serverOrder.isNotEmpty) {
-            final configs = <SeerrRowConfig>[];
-            var order = 0;
-            for (final name in serverOrder) {
-              final type = prefs.SeerrRowType.fromSerialized(name);
-              configs.add(
-                SeerrRowConfig(type: type, enabled: true, order: order++),
-              );
-            }
-            final enabledTypes = configs.map((c) => c.type).toSet();
-            for (final type in prefs.SeerrRowType.values) {
-              if (!enabledTypes.contains(type)) {
-                configs.add(
-                  SeerrRowConfig(type: type, enabled: false, order: order++),
-                );
-              }
-            }
-            await _seerrPrefs.setRowsConfig(configs);
-          }
-        }
-      }
-
-      _prefs.notifyPreferenceChanged();
-
-      final currentNavbarPos = _prefs.get(UserPreferences.navbarPosition);
-      final navbarPos = NavigationLayout.sanitizeNavbarPosition(
-        currentNavbarPos,
-      );
-      if (currentNavbarPos != navbarPos) {
-        await _prefs.set(UserPreferences.navbarPosition, navbarPos);
-      }
-      SchedulerBinding.instance.addPostFrameCallback((_) {
-        NavigationLayout.positionNotifier.value = navbarPos;
-      });
     } finally {
       _isSyncingFromServer = false;
     }
+
+    // Local now matches the server for every synced field, so a later push of
+    // this same payload is the echo of this apply and gets skipped.
+    try {
+      _lastSyncedProfileJson[_snapshotKey(client, profile)] = jsonEncode(
+        _buildProfileFromLocal(),
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _applyServerSettingsUnbatched(
+    Map<String, dynamic> resolved,
+  ) async {
+    final serverId = (_store.getString('pref_last_server_id') ?? '').trim();
+    if (serverId.isNotEmpty) {
+      // When the server profile carries no API key, keep the locally stored
+      // one. Both fallbacks must run before the field table is applied,
+      // otherwise _applySyncedField has already wiped the local value.
+      _preserveLocalKeyWhenServerEmpty(resolved, 'tmdbApiKey', UserPreferences.tmdbApiKey);
+      _preserveLocalKeyWhenServerEmpty(resolved, 'mdblistApiKey', UserPreferences.mdblistApiKey);
+
+      // Everything describable as a key, preference and codec comes from one table, so
+      // the send and receive directions can't drift apart. The settings that need
+      // real logic follow below.
+      for (final field in syncedFields) {
+        _applySyncedField(resolved, field);
+      }
+    }
+
+    _applySinceYouWatchedNumRows(resolved);
+    _applyMediaBarMode(resolved);
+    _applyMediaBarContentType(resolved);
+    if (resolved['mdblistRatingSources'] is List) {
+      final sources = (resolved['mdblistRatingSources'] as List)
+          .cast<String>()
+          .map((s) => _serverToClientRatingSource[s] ?? s)
+          .join(',');
+      _store.set(
+        _prefs.getEffectivePreference(UserPreferences.enabledRatings),
+        sources,
+      );
+    }
+
+    // Prefer the full homeSections layout when present which unlike homeRowOrder it
+    // carries dynamic and disabled rows. home_sections_config is per-server
+    // scoped, so the payload is applied as-is.
+    final homeSectionsRaw = resolved['homeSections'];
+    var appliedHomeSections = false;
+
+    if (homeSectionsRaw is List) {
+      final parsed = <HomeSectionConfig>[
+        for (final e in homeSectionsRaw)
+          if (e is Map && HomeSectionConfig.isSupportedJson(Map<String, dynamic>.from(e)))
+            HomeSectionConfig.fromJson(Map<String, dynamic>.from(e)),
+      ];
+      if (parsed.isNotEmpty) {
+        parsed.sort((a, b) => a.order.compareTo(b.order));
+        final sections = <HomeSectionConfig>[];
+        var order = 0;
+        for (final c in parsed) {
+          sections.add(c.copyWith(order: order++));
+          // External list and calendar rows are also gated by their own toggle, so
+          // flip it to match the layout moonbase pushed or the row stays hidden.
+          // Awaited so its notification lands inside the batch rather than
+          // after the sync guard has dropped.
+          final toggle = _rowEnabledPreference(c.type);
+          if (toggle != null) {
+            await _prefs.set(toggle, c.enabled);
+          }
+        }
+        // Custom rows the profile doesn't mention haven't been pushed from here yet, so
+        // keep them instead of letting the incoming layout drop them. Matching is on
+        // pluginSection because an edit changes stableId and would leave a stale copy.
+        final incomingCustom = sections
+            .where((s) => s.isPluginDynamic && s.pluginSource == HomeSectionPluginSource.custom)
+            .map((s) => s.pluginSection)
+            .toSet();
+        final existingCustom = _prefs.homeSectionsConfig.where(
+          (c) =>
+              c.isPluginDynamic &&
+              c.pluginSource == HomeSectionPluginSource.custom &&
+              !incomingCustom.contains(c.pluginSection),
+        );
+        for (final custom in existingCustom) {
+          sections.add(custom.copyWith(order: order++));
+        }
+        _appendDisabledBuiltinSections(sections, order);
+        await _prefs.setHomeSectionsConfig(sections);
+        await _syncSeerrHomeRowsWithSections(sections);
+        appliedHomeSections = true;
+      }
+    }
+
+    if (!appliedHomeSections && resolved['homeRowOrder'] is List) {
+      final serverOrder = (resolved['homeRowOrder'] as List).cast<String>();
+      // Preserve any plugin-discovered dynamic sections so they survive a
+      // server-driven preference sync.
+      final pluginEntries = _prefs.homeSectionsConfig
+          .where((c) => c.isPluginDynamic)
+          .toList(growable: false);
+      if (serverOrder.isEmpty) {
+        await _applyFallbackHomeRows(preserve: pluginEntries);
+      } else {
+        final sections = <HomeSectionConfig>[];
+        var order = 0;
+        for (final name in serverOrder) {
+          final type = prefs.HomeSectionType.fromSerialized(name);
+          if (type == prefs.HomeSectionType.none) continue;
+          sections.add(
+            HomeSectionConfig(type: type, enabled: true, order: order++),
+          );
+        }
+        if (sections.isEmpty) {
+          await _applyFallbackHomeRows(preserve: pluginEntries);
+        } else {
+          final enabledTypes = sections.map((s) => s.type).toSet();
+          for (final type in prefs.HomeSectionType.values) {
+            if (type == prefs.HomeSectionType.none) continue;
+            if (_isTmdbSectionType(type)) {
+              final localEnabled = _prefs.get(_tmdbPrefForType(type));
+              final idx = sections.indexWhere((s) => s.type == type);
+              if (idx >= 0) {
+                sections[idx] = sections[idx].copyWith(enabled: localEnabled);
+              } else {
+                sections.add(
+                  HomeSectionConfig(type: type, enabled: localEnabled, order: order++),
+                );
+              }
+              continue;
+            }
+            if (type == prefs.HomeSectionType.radarrCalendar) {
+              final localEnabled = _prefs.get(UserPreferences.enableRadarrCalendar);
+              final idx = sections.indexWhere((s) => s.type == type);
+              if (idx >= 0) {
+                sections[idx] = sections[idx].copyWith(enabled: localEnabled);
+              } else {
+                sections.add(
+                  HomeSectionConfig(type: type, enabled: localEnabled, order: order++),
+                );
+              }
+              continue;
+            }
+            if (type == prefs.HomeSectionType.sonarrCalendar) {
+              final localEnabled = _prefs.get(UserPreferences.enableSonarrCalendar);
+              final idx = sections.indexWhere((s) => s.type == type);
+              if (idx >= 0) {
+                sections[idx] = sections[idx].copyWith(enabled: localEnabled);
+              } else {
+                sections.add(
+                  HomeSectionConfig(type: type, enabled: localEnabled, order: order++),
+                );
+              }
+              continue;
+            }
+            if (!enabledTypes.contains(type)) {
+              sections.add(
+                HomeSectionConfig(type: type, enabled: false, order: order++),
+              );
+            }
+          }
+          for (final entry in pluginEntries) {
+            sections.add(entry.copyWith(order: order++));
+          }
+          await _prefs.setHomeSectionsConfig(sections);
+          await _syncSeerrHomeRowsWithSections(sections);
+        }
+      }
+    }
+
+    if (resolved['seerrRows'] is Map<String, dynamic>) {
+      final rowsData = resolved['seerrRows'] as Map<String, dynamic>;
+      if (rowsData['rowOrder'] is List) {
+        final serverOrder = (rowsData['rowOrder'] as List).cast<String>();
+        if (serverOrder.isNotEmpty) {
+          final configs = <SeerrRowConfig>[];
+          var order = 0;
+          for (final name in serverOrder) {
+            final type = prefs.SeerrRowType.fromSerialized(name);
+            configs.add(
+              SeerrRowConfig(type: type, enabled: true, order: order++),
+            );
+          }
+          final enabledTypes = configs.map((c) => c.type).toSet();
+          for (final type in prefs.SeerrRowType.values) {
+            if (!enabledTypes.contains(type)) {
+              configs.add(
+                SeerrRowConfig(type: type, enabled: false, order: order++),
+              );
+            }
+          }
+          await _seerrPrefs.setRowsConfig(configs);
+        }
+      }
+    }
+
+    _prefs.notifyPreferenceChanged();
+
+    final currentNavbarPos = _prefs.get(UserPreferences.navbarPosition);
+    final navbarPos = NavigationLayout.sanitizeNavbarPosition(
+      currentNavbarPos,
+    );
+    if (currentNavbarPos != navbarPos) {
+      await _prefs.set(UserPreferences.navbarPosition, navbarPos);
+    }
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      NavigationLayout.positionNotifier.value = navbarPos;
+    });
   }
 
   Future<void> _applyFallbackHomeRows({
@@ -1614,10 +1489,16 @@ class PluginSyncService extends ChangeNotifier {
     }
 
     await _prefs.setHomeSectionsConfig(sections);
+    await _syncSeerrHomeRowsWithSections(sections);
   }
 
   /// Appends a disabled entry for every built-in HomeSectionType not already in
   /// [sections] so the settings UI shows every toggle. Returns the next order.
+  ///
+  /// A section the profile doesn't mention carries no opinion, so it lands
+  /// disabled rather than being re-derived from a toggle preference that
+  /// defaults to on. The preferences stay untouched because the profile's own
+  /// synced fields already set them, and writing false would push that back.
   int _appendDisabledBuiltinSections(
     List<HomeSectionConfig> sections,
     int order,
@@ -1627,31 +1508,130 @@ class PluginSyncService extends ChangeNotifier {
       if (type == prefs.HomeSectionType.none || present.contains(type)) {
         continue;
       }
-      
-      var isEnabled = false;
-      if (type == prefs.HomeSectionType.rewatch) {
-        isEnabled = _prefs.get(UserPreferences.displayRewatchRow);
-      } else if (type == prefs.HomeSectionType.sinceYouWatched1 ||
-          type == prefs.HomeSectionType.sinceYouWatched2 ||
-          type == prefs.HomeSectionType.sinceYouWatched3 ||
-          type == prefs.HomeSectionType.sinceYouWatched4 ||
-          type == prefs.HomeSectionType.sinceYouWatched5) {
-        final localPref = switch (type) {
-          prefs.HomeSectionType.sinceYouWatched1 => UserPreferences.sinceYouWatched1Enabled,
-          prefs.HomeSectionType.sinceYouWatched2 => UserPreferences.sinceYouWatched2Enabled,
-          prefs.HomeSectionType.sinceYouWatched3 => UserPreferences.sinceYouWatched3Enabled,
-          prefs.HomeSectionType.sinceYouWatched4 => UserPreferences.sinceYouWatched4Enabled,
-          prefs.HomeSectionType.sinceYouWatched5 => UserPreferences.sinceYouWatched5Enabled,
-          _ => throw StateError('Invalid type'),
-        };
-        isEnabled = _prefs.get(localPref);
-      }
-      
       sections.add(
-        HomeSectionConfig(type: type, enabled: isEnabled, order: order++),
+        HomeSectionConfig(type: type, enabled: false, order: order++),
       );
     }
     return order;
+  }
+
+  /// Seerr home rows keep their own copy of the enabled state that the settings
+  /// screens write alongside the section layout, so mirror it here too. Without
+  /// this the home view gates Seerr rows on stale values after a sync.
+  Future<void> _syncSeerrHomeRowsWithSections(
+    List<HomeSectionConfig> sections,
+  ) async {
+    final enabledByType = {
+      for (final section in sections) section.type: section.enabled,
+    };
+    final updated = _seerrPrefs.homeRowsConfig
+        .map(
+          (row) => row.copyWith(
+            enabled: enabledByType[row.type.homeSectionType] ?? false,
+          ),
+        )
+        .toList();
+    await _seerrPrefs.setHomeRowsConfig(updated);
+  }
+
+  /// Applies one table-driven field from an incoming profile.
+  void _applySyncedField(Map<String, dynamic> data, SyncedField field) {
+    switch (field.codec) {
+      case SyncCodec.boolean:
+        _applyBool(data, field.serverKey, field.pref as Preference<bool>);
+      case SyncCodec.integer:
+      case SyncCodec.textAsInt:
+        _applyInt(data, field.serverKey, field.pref);
+      case SyncCodec.text:
+        _applyString(data, field.serverKey, field.pref);
+      case SyncCodec.enumName:
+        _applyString(data, field.serverKey, field.pref,
+            enumValues: field.enumValues);
+      case SyncCodec.intAsText:
+        _applyString(data, field.serverKey, field.pref, intFromString: true);
+      case SyncCodec.decimal:
+        _applyDouble(data, field.serverKey, field.pref as Preference<double>);
+      case SyncCodec.colorAsText:
+        _applyColor(data, field.serverKey, field.pref as Preference<int>);
+      case SyncCodec.csvList:
+        _applyStringList(
+            data, field.serverKey, field.pref as Preference<String>);
+    }
+  }
+
+  /// Serializes one table-driven field for the outgoing profile.
+  dynamic _encodeSyncedField(SyncedField field) {
+    switch (field.codec) {
+      case SyncCodec.boolean:
+      case SyncCodec.integer:
+      case SyncCodec.text:
+      case SyncCodec.decimal:
+        return _prefs.get(field.pref);
+      case SyncCodec.enumName:
+        return (_prefs.get(field.pref) as Enum).name;
+      case SyncCodec.intAsText:
+        return _prefs.get(field.pref).toString();
+      case SyncCodec.textAsInt:
+        return int.tryParse(_prefs.get(field.pref) as String) ??
+            field.fallbackInt ??
+            0;
+      case SyncCodec.colorAsText:
+        return _formatArgb(_prefs.get(field.pref) as int);
+      case SyncCodec.csvList:
+        return _csvToList(field.pref as Preference<String>);
+    }
+  }
+
+  void _applyDouble(
+    Map<String, dynamic> data,
+    String serverKey,
+    Preference<double> pref,
+  ) {
+    // JSON hands back an int when the value has no fractional part.
+    final value = data[serverKey];
+    if (value is num) {
+      _store.set(_prefs.getEffectivePreference(pref), value.toDouble());
+    }
+  }
+
+  void _applyColor(
+    Map<String, dynamic> data,
+    String serverKey,
+    Preference<int> pref,
+  ) {
+    final value = data[serverKey];
+    if (value is! String) return;
+
+    final parsed = _parseArgb(value);
+    if (parsed == null) return;
+    _store.set(_prefs.getEffectivePreference(pref), parsed);
+  }
+
+  /// Reads a #AARRGGBB or #RRGGBB colour, returning null for anything else.
+  static int? _parseArgb(String value) {
+    var hex = value.trim();
+    if (hex.startsWith('#')) hex = hex.substring(1);
+    if (hex.length == 6) hex = 'FF$hex';
+    if (hex.length != 8) return null;
+    return int.tryParse(hex, radix: 16);
+  }
+
+  static String _formatArgb(int value) =>
+      '#${value.toRadixString(16).padLeft(8, '0').toUpperCase()}';
+
+  // Reads the media bar item types, ignoring anything outside the known set.
+  //
+  // This used to arrive under mediaBarSourceType, which the other clients use to say where
+  // the media bar draws from rather than which item types it shows. Their "library" landed
+  // here as an item type and stuck, leaving the picker displaying a value it never offered.
+  void _applyMediaBarContentType(Map<String, dynamic> data) {
+    final value = _readString(data, 'mediaBarContentType');
+    if (value == null) return;
+
+    _store.set(
+      _prefs.getEffectivePreference(UserPreferences.mediaBarContentType),
+      UserPreferences.normalizeMediaBarContentType(value),
+    );
   }
 
   void _applyBool(
@@ -1787,6 +1767,9 @@ class PluginSyncService extends ChangeNotifier {
   static const Map<String, String> _serverToClientRatingSource = {
     'metacriticUser': 'metacriticuser',
     'myAnimeList': 'myanimelist',
+    'rogerEbert': 'rogerebert',
+    // AniList is no longer a selectable source, but old profiles may still
+    // carry it, so keep decoding it so it round-trips harmlessly.
     'aniList': 'anilist',
   };
   static final Map<String, String> _clientToServerRatingSource = {
@@ -1804,127 +1787,16 @@ class PluginSyncService extends ChangeNotifier {
     );
     final mediaBarEnabled = UserPreferences.isMediaBarModeEnabled(mediaBarMode);
     final payload = <String, dynamic>{
-      'visualTheme': _prefs.get(UserPreferences.visualTheme).name,
-      'customThemeId': _prefs.get(UserPreferences.customThemeId),
-      'navbarPosition': _prefs.get(UserPreferences.navbarPosition).name,
-      'focusColor': _prefs.get(UserPreferences.focusColor).name,
-      'watchedIndicator': _prefs
-          .get(UserPreferences.watchedIndicatorBehavior)
-          .name,
-      'cardFocusExpansion': _prefs.get(UserPreferences.cardFocusExpansion),
-      'homeRowsStyle': _prefs.get(UserPreferences.homeRowsStyle).name,
-      'recommendationSystemSource':
-          _prefs.get(UserPreferences.recommendationSystemSource).name,
-      'detailScreenStyle': _prefs.get(UserPreferences.detailScreenStyle).name,
-      'detailExpandedTabs': _prefs.get(UserPreferences.detailExpandedTabs),
-      'detailShowTechnicalDetails': _prefs.get(
-        UserPreferences.detailShowTechnicalDetails,
-      ),
-      'homeImageTypeContinueWatching': _prefs
-          .get(UserPreferences.homeRowImageType(prefs.HomeSectionType.resume))
-          .name,
-      'posterSize': _prefs.get(UserPreferences.posterSize).name,
-      'displayFavoritesRows': _prefs.get(UserPreferences.displayFavoritesRows),
-      'displayCollectionsRows': _prefs.get(
-        UserPreferences.displayCollectionsRows,
-      ),
-      'displayGenresRows': _prefs.get(UserPreferences.displayGenresRows),
-      'displayAudioRows': _prefs.get(UserPreferences.displayAudioRows),
-      'displaySinceYouWatchedRows': _prefs.get(UserPreferences.displaySinceYouWatchedRows),
-      'sinceYouWatchedSource': _prefs.get(UserPreferences.sinceYouWatchedSource).name,
+      // Everything the field table describes. The bespoke entries below cover the
+      // settings that need real logic rather than a straight codec.
+      for (final field in syncedFields)
+        if (!field.receiveOnly) field.serverKey: _encodeSyncedField(field),
       'sinceYouWatchedNumRows': _prefs.get(UserPreferences.sinceYouWatchedNumRows).value,
-      'sinceYouWatchedSourceType': _prefs.get(UserPreferences.sinceYouWatchedSourceType).name,
-      'sinceYouWatchedSourceItem': _prefs.get(UserPreferences.sinceYouWatchedSourceItem).name,
-      'sinceYouWatchedIncludeWatched': _prefs.get(UserPreferences.sinceYouWatchedIncludeWatched),
-      'displayPlaylistsRows': _prefs.get(UserPreferences.displayPlaylistsRows),
-      'displayRewatchRow': _prefs.get(UserPreferences.displayRewatchRow),
-      'rewatchSortBy': _prefs.get(UserPreferences.rewatchSortBy).name,
-      'rewatchIncludeMovies': _prefs.get(UserPreferences.rewatchIncludeMovies),
-      'rewatchIncludeShows': _prefs.get(UserPreferences.rewatchIncludeShows),
-      'rewatchIncludeCollections': _prefs.get(UserPreferences.rewatchIncludeCollections),
-      'fullScreenRows': _prefs.get(UserPreferences.fullScreenRows),
-      'useDetailedSubHeadings': _prefs.get(
-        UserPreferences.useDetailedSubHeadings,
-      ),
-      'favoritesRowSortBy': _prefs.get(UserPreferences.favoritesRowSortBy).name,
-      'collectionsRowSortBy': _prefs
-          .get(UserPreferences.collectionsRowSortBy)
-          .name,
-      'genresRowSortBy': _prefs.get(UserPreferences.genresRowSortBy).name,
-      'genresRowItemFilter': _prefs
-          .get(UserPreferences.genresRowItemFilter)
-          .name,
-      'showShuffleButton': _prefs.get(UserPreferences.showShuffleButton),
-      'showGenresButton': _prefs.get(UserPreferences.showGenresButton),
-      'showFavoritesButton': _prefs.get(UserPreferences.showFavoritesButton),
-      'showSyncPlayButton': _prefs.get(UserPreferences.showSyncPlayButton),
-      'showLibrariesInToolbar': _prefs.get(
-        UserPreferences.showLibrariesInToolbar,
-      ),
-      'shuffleContentType': _prefs.get(UserPreferences.shuffleContentType),
-      'mergeContinueWatchingNextUp': _prefs.get(
-        UserPreferences.mergeContinueWatchingNextUp,
-      ),
-      'enableMultiServerLibraries': _prefs.get(
-        UserPreferences.enableMultiServerLibraries,
-      ),
-      'enableFolderView': _prefs.get(UserPreferences.enableFolderView),
-      'seasonalSurprise': _prefs.get(UserPreferences.seasonalSurprise),
       'mediaBarEnabled': mediaBarEnabled,
       'mediaBarMode': mediaBarMode,
-      'mediaBarSourceType': _prefs.get(UserPreferences.mediaBarContentType),
-      'mediaBarItemCount':
-          int.tryParse(_prefs.get(UserPreferences.mediaBarItemCount)) ?? 10,
-      'mediaBarOpacity': _prefs.get(UserPreferences.mediaBarOverlayOpacity),
-      'mediaBarOverlayColor': _prefs.get(UserPreferences.mediaBarOverlayColor),
-      'navbarOpacity': _prefs.get(UserPreferences.navbarOpacity),
-      'navbarColor': _prefs.get(UserPreferences.navbarColor),
-      'navbarAlwaysExpanded': _prefs.get(UserPreferences.navbarAlwaysExpanded),
-      'mediaBarAutoAdvance': _prefs.get(UserPreferences.mediaBarAutoAdvance),
-      'mediaBarIntervalMs': _prefs.get(UserPreferences.mediaBarIntervalMs),
-      'mediaBarTrailerPreview': _prefs.get(
-        UserPreferences.mediaBarTrailerPreview,
+      'mediaBarContentType': UserPreferences.normalizeMediaBarContentType(
+        _prefs.get(UserPreferences.mediaBarContentType),
       ),
-      'mediaBarTrailerAudio': _prefs.get(UserPreferences.mediaBarTrailerAudio),
-      'episodePreviewEnabled': _prefs.get(
-        UserPreferences.episodePreviewEnabled,
-      ),
-      'previewAudioEnabled': _prefs.get(UserPreferences.previewAudioEnabled),
-      'mediaBarLibraryIds': _csvToList(UserPreferences.mediaBarLibraryIds),
-      'mediaBarCollectionIds': _csvToList(
-        UserPreferences.mediaBarCollectionIds,
-      ),
-      'mediaBarExcludedGenres': _csvToList(
-        UserPreferences.mediaBarExcludedGenres,
-      ),
-      'themeMusicEnabled': _prefs.get(UserPreferences.themeMusicEnabled),
-      'themeMusicVolume': _prefs.get(UserPreferences.themeMusicVolume),
-      'themeMusicOnHomeRows': _prefs.get(UserPreferences.themeMusicOnHomeRows),
-      'themeMusicLoop': _prefs.get(UserPreferences.themeMusicLoop),
-      'homeRowsImageTypeOverride': _prefs.get(
-        UserPreferences.homeRowsUniversalOverride,
-      ),
-      'homeRowsImageType': _prefs
-          .get(UserPreferences.homeRowsUniversalImageType)
-          .name,
-      'homeImageUseSeriesImage': _prefs.get(
-        UserPreferences.seriesThumbnailsEnabled,
-      ),
-      'backdropEnabled': _prefs.get(UserPreferences.backdropEnabled),
-      'detailsScreenBlur': _prefs
-          .get(UserPreferences.detailsBackgroundBlurAmount)
-          .toString(),
-      'browsingBlur': _prefs
-          .get(UserPreferences.browsingBackgroundBlurAmount)
-          .toString(),
-      'mdblistEnabled': _prefs.get(UserPreferences.enableAdditionalRatings),
-      'mdblistShowRatingNames': _prefs.get(UserPreferences.showRatingLabels),
-      'mdblistShowRatingBadges': _prefs.get(UserPreferences.showRatingBadges),
-      'tmdbEpisodeRatingsEnabled': _prefs.get(
-        UserPreferences.enableEpisodeRatings,
-      ),
-      'seerrEnabled': _prefs.get(UserPreferences.seerrEnabled),
-      'seerrBlockNsfw': _prefs.get(UserPreferences.seerrBlockNsfw),
       'mdblistRatingSources': _csvToList(UserPreferences.enabledRatings)
           .map((s) => _clientToServerRatingSource[s] ?? s)
           .toList(),
@@ -1938,16 +1810,19 @@ class PluginSyncService extends ChangeNotifier {
         'rowOrder': _seerrPrefs.activeRows
             .map((t) => t.serializedName)
             .toList(),
-      },
-      'hiddenContinueWatchingItems': _prefs.get(UserPreferences.hiddenContinueWatchingItems),
-      'hiddenNextUpSeries': _prefs.get(UserPreferences.hiddenNextUpSeries),
-    };
+      },};
 
+    // Only include keys when set. Pushing an explicit null would clear the
+    // server-side profile value that other devices rely on.
     final mdblistKey = _prefs.get(UserPreferences.mdblistApiKey);
-    payload['mdblistApiKey'] = (mdblistKey.isNotEmpty && mdblistKey != 'null') ? mdblistKey : null;
+    if (mdblistKey.isNotEmpty && mdblistKey != 'null') {
+      payload['mdblistApiKey'] = mdblistKey;
+    }
 
     final tmdbKey = _prefs.get(UserPreferences.tmdbApiKey);
-    payload['tmdbApiKey'] = (tmdbKey.isNotEmpty && tmdbKey != 'null') ? tmdbKey : null;
+    if (tmdbKey.isNotEmpty && tmdbKey != 'null') {
+      payload['tmdbApiKey'] = tmdbKey;
+    }
 
     return payload;
   }
@@ -2021,10 +1896,45 @@ class PluginSyncService extends ChangeNotifier {
     }
   }
 
+  Preference<bool>? _rowEnabledPreference(prefs.HomeSectionType type) {
+    if (_isTmdbSectionType(type)) return _tmdbPrefForType(type);
+    return switch (type) {
+      prefs.HomeSectionType.imdbTop250Movies =>
+        UserPreferences.imdbTop250MoviesEnabled,
+      prefs.HomeSectionType.imdbTop250TvShows =>
+        UserPreferences.imdbTop250TvShowsEnabled,
+      prefs.HomeSectionType.imdbMostPopularMovies =>
+        UserPreferences.imdbMostPopularMoviesEnabled,
+      prefs.HomeSectionType.imdbMostPopularTvShows =>
+        UserPreferences.imdbMostPopularTvShowsEnabled,
+      prefs.HomeSectionType.imdbLowestRatedMovies =>
+        UserPreferences.imdbLowestRatedMoviesEnabled,
+      prefs.HomeSectionType.imdbTopEnglishMovies =>
+        UserPreferences.imdbTopEnglishMoviesEnabled,
+      prefs.HomeSectionType.radarrCalendar =>
+        UserPreferences.enableRadarrCalendar,
+      prefs.HomeSectionType.sonarrCalendar =>
+        UserPreferences.enableSonarrCalendar,
+      prefs.HomeSectionType.rewatch => UserPreferences.displayRewatchRow,
+      prefs.HomeSectionType.sinceYouWatched1 =>
+        UserPreferences.sinceYouWatched1Enabled,
+      prefs.HomeSectionType.sinceYouWatched2 =>
+        UserPreferences.sinceYouWatched2Enabled,
+      prefs.HomeSectionType.sinceYouWatched3 =>
+        UserPreferences.sinceYouWatched3Enabled,
+      prefs.HomeSectionType.sinceYouWatched4 =>
+        UserPreferences.sinceYouWatched4Enabled,
+      prefs.HomeSectionType.sinceYouWatched5 =>
+        UserPreferences.sinceYouWatched5Enabled,
+      _ => null,
+    };
+  }
+
   @override
   void dispose() {
     _prefs.removeListener(_onPrefsChanged);
     _pushDebounceTimer?.cancel();
+    _syncRetryTimer?.cancel();
     _stopSettingsStream();
     super.dispose();
   }

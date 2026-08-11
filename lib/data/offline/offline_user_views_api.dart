@@ -11,7 +11,9 @@ class OfflineUserViewsApi implements UserViewsApi {
   OfflineUserViewsApi(this._catalog);
 
   @override
-  Future<Map<String, dynamic>> getUserViews() async {
+  Future<Map<String, dynamic>> getUserViews({
+    bool includeHidden = false,
+  }) async {
     final serverId = _catalog.entries.isNotEmpty
         ? _catalog.entries.first.row.serverId
         : '';
