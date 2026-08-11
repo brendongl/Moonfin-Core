@@ -81,7 +81,8 @@ android {
         // official Moonfin (org.moonfin.androidtv) on the same device. The code
         // namespace stays org.moonfin.androidtv (unchanged).
         val baseAppId = "com.sipflix.moonfin"
-        val baseAppName = "Moonfin"
+        // Sipflix fork: launcher label. Flavors append " Beta" to this.
+        val baseAppName = "Sipflix Moonfin"
         val mobileAbis = listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         val tvAbis = listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         create("mobile") {
