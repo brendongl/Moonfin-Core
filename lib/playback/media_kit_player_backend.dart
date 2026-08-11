@@ -481,7 +481,7 @@ class MediaKitPlayerBackend extends PlayerBackend {
   Map<String, dynamic> getDeviceProfile({
     bool useProgressiveTranscode = false,
   }) {
-    final maxBitrate = int.tryParse(_prefs.get(UserPreferences.maxBitrate));
+    final maxBitrate = _prefs.resolveMaxBitrateMbps();
     final maxResolution = _prefs.get(UserPreferences.maxVideoResolution);
     final allowDolbyVisionProfile7DirectPlay =
         KnownDefects.shouldAllowDolbyVisionProfile7ElDirectPlay(

@@ -687,17 +687,48 @@ class PlaybackManager implements AudioOwnable {
       final httpStatus = event['httpStatus'] is int
           ? event['httpStatus'] as int
           : -1;
-      // Sipflix: a 404/410 means the media is gone server-side — most often a
-      // stale Continue-Watching tile whose item was deleted. Surface a clear
-      // "no longer available" instead of the raw ExoPlayer "Source error".
-      final unavailable = httpStatus == 404 ||
+      // Sipflix: the player's own text is useless for support ("Source error"
+      // covers everything from a deleted file to a dead transcoder), so map the
+      // HTTP status onto a cause the viewer — and whoever they message — can act
+      // on. The status is always appended so a screenshot is enough to diagnose.
+      final transcoding = resolution?.playMethod == StreamPlayMethod.transcode;
+      final rawIsUnhelpful = rawMessage == null ||
+          rawMessage.isEmpty ||
+          rawMessage.toLowerCase().contains('source error') ||
+          rawMessage.toLowerCase().startsWith('response code:');
+
+      String? mapped;
+      if (httpStatus == 404 ||
           httpStatus == 410 ||
-          (rawMessage != null && rawMessage.contains('Response code: 40'));
-      final message = unavailable
-          ? 'This content is no longer available'
-          : (rawMessage != null && rawMessage.isNotEmpty
-                ? rawMessage
-                : fallbackMessage);
+          (rawMessage != null && rawMessage.contains('Response code: 40') &&
+              httpStatus < 0)) {
+        // Gone server-side — most often a stale Continue-Watching tile.
+        mapped = 'This content is no longer available';
+      } else if (httpStatus == 401 || httpStatus == 403) {
+        mapped = 'Not allowed to play this title (error $httpStatus). '
+            'Sign out and back in, or contact support.';
+      } else if (httpStatus == 429) {
+        mapped = 'Too many streams running right now (error 429). '
+            'Stop another device and try again.';
+      } else if (httpStatus >= 500) {
+        mapped = transcoding
+            ? 'The server could not convert this video (error $httpStatus). '
+                'It may be missing a video encoder or be overloaded — try again, '
+                'or report this title to support.'
+            : 'The server could not send this video (error $httpStatus). '
+                'Try again, or report this title to support.';
+      } else if (rawIsUnhelpful) {
+        mapped = transcoding
+            ? 'Could not start the converted stream — the server may be busy or '
+                'unreachable. Check your connection and try again.'
+            : 'Could not load this video — the server may be busy or '
+                'unreachable. Check your connection and try again.';
+      }
+
+      final message = mapped ??
+          (rawMessage != null && rawMessage.isNotEmpty
+              ? rawMessage
+              : fallbackMessage);
       _setBringupState(
         PlaybackBringupState(
           phase: PlaybackBringupPhase.failed,

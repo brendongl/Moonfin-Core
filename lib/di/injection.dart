@@ -22,6 +22,7 @@ import '../preference/user_preferences.dart';
 import '../util/platform_detection.dart';
 import 'modules/app_module.dart';
 import 'modules/auth_module.dart';
+import '../sipflix/sipflix_auto_bitrate_service.dart';
 import 'modules/server_module.dart';
 import 'modules/playback_module.dart';
 import 'modules/preference_module.dart';
@@ -441,6 +442,14 @@ Future<void> configureDependencies() async {
       getIt<UserPreferences>(),
       getIt<MediaServerClientFactory>(),
       getIt<DeviceInfo>(),
+    ),
+  );
+
+  // Sipflix: measures the link speed behind the "Auto" quality setting.
+  getIt.registerSingleton<SipflixAutoBitrateService>(
+    SipflixAutoBitrateService(
+      prefs: getIt<UserPreferences>(),
+      clientFactory: getIt<MediaServerClientFactory>(),
     ),
   );
 }

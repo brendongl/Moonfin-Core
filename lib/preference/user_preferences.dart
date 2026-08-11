@@ -641,7 +641,7 @@ class UserPreferences extends ChangeNotifier {
 
   static final homeRowsStyle = EnumPreference(
     key: 'pref_home_rows_style',
-    defaultValue: HomeRowsStyle.v2,
+    defaultValue: HomeRowsStyle.v1,
     values: HomeRowsStyle.values,
   );
 
@@ -861,7 +861,7 @@ class UserPreferences extends ChangeNotifier {
 
   static final interfaceStyle = EnumPreference(
     key: 'pref_interface_style',
-    defaultValue: InterfaceStyle.automatic,
+    defaultValue: InterfaceStyle.apple,
     values: InterfaceStyle.values,
   );
 
@@ -875,7 +875,7 @@ class UserPreferences extends ChangeNotifier {
   /// server/user), so it is deliberately omitted from [_scopedPreferenceKeys].
   static final detailScreenStyle = EnumPreference(
     key: 'pref_detail_screen_style',
-    defaultValue: DetailScreenStyle.modern,
+    defaultValue: DetailScreenStyle.classic,
     values: DetailScreenStyle.values,
   );
 
@@ -885,15 +885,17 @@ class UserPreferences extends ChangeNotifier {
   /// one is opened/closed by pressing it. Global like [detailScreenStyle].
   static final detailExpandedTabs = Preference(
     key: 'pref_detail_expanded_tabs',
-    defaultValue: true,
+    defaultValue: false,
   );
 
   /// When on, the modern detail screen shows codec and stream technical details.
   /// Global like [detailScreenStyle], so it is deliberately omitted from [_scopedPreferenceKeys].
   static final detailShowTechnicalDetails = Preference(
     key: 'pref_detail_show_technical_details',
-    // Sipflix: on by default — puts the file size in the detail metadata row
-    // and the technical badges (4K/HDR/codec) under it.
+    // Sipflix: ON by default — this is what puts the file size in the detail
+    // metadata row (year · rating · SIZE · runtime · ends-at) plus the 4K/HDR/
+    // codec badges. Deliberately kept on even though the SNPU1 snapshot had it
+    // off: the file size is a wanted feature, not a device-local preference.
     defaultValue: true,
   );
 
@@ -933,7 +935,7 @@ class UserPreferences extends ChangeNotifier {
 
   static final use24HourClock = Preference(
     key: 'pref_use_24_hour_clock',
-    defaultValue: false,
+    defaultValue: true,
   );
 
   // Opt-in: trust self-signed / private-CA TLS certificates. Off by default so
@@ -985,7 +987,7 @@ class UserPreferences extends ChangeNotifier {
 
   static final navbarPosition = EnumPreference(
     key: 'pref_navbar_position',
-    defaultValue: NavbarPosition.top,
+    defaultValue: NavbarPosition.left,
     values: NavbarPosition.values,
   );
 
@@ -1034,8 +1036,58 @@ class UserPreferences extends ChangeNotifier {
   );
   static final maxBitrate = Preference(
     key: 'pref_max_bitrate',
-    defaultValue: '120',
+    defaultValue: 'auto',
   );
+
+  /// Sipflix: last measured client↔server throughput in Mbps (0 = never
+  /// measured). Written by the bandwidth probe; only consulted while
+  /// [maxBitrate] is 'auto'. See [autoBitrateCapMbps].
+  static final measuredBandwidthMbps = Preference<double>(
+    key: 'sipflix_measured_bandwidth_mbps',
+    defaultValue: 0,
+  );
+
+  /// Epoch ms of the last successful measurement (0 = never).
+  static final measuredBandwidthAt = Preference<int>(
+    key: 'sipflix_measured_bandwidth_at',
+    defaultValue: 0,
+  );
+
+  /// A measurement older than this is not trusted — links change (WiFi→ethernet,
+  /// ISP congestion, a customer moving the box), so we re-probe rather than cap
+  /// on stale data.
+  static const Duration measuredBandwidthTtl = Duration(hours: 12);
+
+  /// Headroom applied to the measured throughput. A stream needs room for
+  /// protocol overhead and jitter; capping at 100% of a measured link buffers.
+  static const double _bandwidthHeadroom = 0.8;
+
+  /// Links at or above this (after headroom) are treated as effectively
+  /// unlimited — prefer direct play rather than pushing a needless transcode
+  /// onto the server.
+  static const double _unlimitedAboveMbps = 100;
+
+  /// The bitrate ceiling in Mbps that "Auto" should advertise, or null for
+  /// "no ceiling". Returns null when no fresh measurement exists, so Auto keeps
+  /// its previous behaviour (prefer direct play) instead of guessing low.
+  int? autoBitrateCapMbps({DateTime? now}) {
+    final measured = get(measuredBandwidthMbps);
+    final at = get(measuredBandwidthAt);
+    if (measured <= 0 || at <= 0) return null;
+    final age = (now ?? DateTime.now())
+        .difference(DateTime.fromMillisecondsSinceEpoch(at));
+    if (age.isNegative || age > measuredBandwidthTtl) return null;
+    final effective = measured * _bandwidthHeadroom;
+    if (effective >= _unlimitedAboveMbps) return null;
+    // Never cap below a floor that can still carry a watchable transcode.
+    return effective.clamp(3, _unlimitedAboveMbps).round();
+  }
+
+  /// The bitrate ceiling to advertise in the device profile, in Mbps, or null
+  /// for "no ceiling". An explicit user choice always wins; 'auto' resolves to
+  /// the measured link speed (see [autoBitrateCapMbps]).
+  int? resolveMaxBitrateMbps() =>
+      int.tryParse(get(maxBitrate)) ?? autoBitrateCapMbps();
 
   static final maxVideoResolution = EnumPreference(
     key: 'pref_max_video_resolution',
@@ -1089,13 +1141,13 @@ class UserPreferences extends ChangeNotifier {
 
   static final screensaverMode = EnumPreference(
     key: 'pref_screensaver_mode',
-    defaultValue: ScreensaverMode.library,
+    defaultValue: ScreensaverMode.logo,
     values: ScreensaverMode.values,
   );
 
   static final screensaverTimeout = EnumPreference(
     key: 'pref_screensaver_timeout',
-    defaultValue: ScreensaverTimeout.m5,
+    defaultValue: ScreensaverTimeout.m1,
     values: ScreensaverTimeout.values,
   );
 
@@ -1205,7 +1257,7 @@ class UserPreferences extends ChangeNotifier {
   );
   static final audioOutputMode = EnumPreference(
     key: 'audio_output_mode',
-    defaultValue: AudioOutputMode.auto,
+    defaultValue: AudioOutputMode.forceStereo,
     values: AudioOutputMode.values,
   );
 
@@ -1217,7 +1269,7 @@ class UserPreferences extends ChangeNotifier {
 
   static final audioPassthroughPreset = EnumPreference(
     key: 'pref_audio_passthrough_preset',
-    defaultValue: AudioPassthroughPreset.auto,
+    defaultValue: AudioPassthroughPreset.stereo,
     values: AudioPassthroughPreset.values,
   );
 
@@ -1518,7 +1570,7 @@ class UserPreferences extends ChangeNotifier {
 
   static final navbarOpacity = Preference(
     key: 'navbarOpacity',
-    defaultValue: 50,
+    defaultValue: 100,
   );
 
   static final navbarColor = Preference(
@@ -1981,7 +2033,7 @@ class UserPreferences extends ChangeNotifier {
 
   static final liveTvChannelSortBy = EnumPreference(
     key: 'live_tv_channel_sort_by',
-    defaultValue: ChannelSortBy.number,
+    defaultValue: ChannelSortBy.favoritesFirst,
     values: ChannelSortBy.values,
   );
 

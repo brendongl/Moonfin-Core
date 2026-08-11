@@ -1068,14 +1068,28 @@ class Media3VideoView(
     private fun buildSipflixLoadControl(): DefaultLoadControl =
         DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                30_000,   // minBufferMs
-                300_000,  // maxBufferMs (bounded by the byte cap below)
-                2_500,    // bufferForPlaybackMs
-                8_000,    // bufferForPlaybackAfterRebufferMs
+                15_000,   // minBufferMs
+                120_000,  // maxBufferMs — still banks ~2min to ride out dips
+                1_500,    // bufferForPlaybackMs — start fast
+                2_000,    // bufferForPlaybackAfterRebufferMs — RESUME fast after a
+                          // stall (was 8s: on a slow transcode that dragged the
+                          // "loading stream" to 20s+; small = choppier but
+                          // responsive, matching stock behaviour)
             )
-            .setTargetBufferBytes(160 * 1024 * 1024)
+            .setTargetBufferBytes(96 * 1024 * 1024)
             .setPrioritizeTimeOverSizeThresholds(false)
             .build()
+
+    // Sipflix: true if a read/connect timeout is anywhere in the cause chain.
+    private fun isSocketTimeout(t: Throwable?): Boolean {
+        var c = t
+        var depth = 0
+        while (c != null && depth < 8) {
+            if (c is java.net.SocketTimeoutException) return true
+            c = c.cause; depth++
+        }
+        return false
+    }
 
     private fun createPlayer(): ExoPlayer {
         // Fresh selector for every player; see the trackSelector field comment.
@@ -1102,6 +1116,12 @@ class Media3VideoView(
 
         httpDataSourceFactory = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
+            // Sipflix: 30s (was media3's ~8s default). Server transcode-startup
+            // and seek-point HLS segment production for big TrueHD/4K files
+            // routinely exceeds 8s; the short read timeout surfaced as a fatal
+            // "Source error" the moment a user lowered the bitrate (transcode).
+            .setConnectTimeoutMs(30_000)
+            .setReadTimeoutMs(30_000)
         val bootDataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
         val assHandler = AssHandler(AssRenderType.OVERLAY_CANVAS)
         registerAssFonts(assHandler)
@@ -1124,6 +1144,13 @@ class Media3VideoView(
                         (ex.responseCode == 404 || ex.responseCode == 503)
                     ) {
                         return if (info.errorCount <= 20) 600L else C.TIME_UNSET
+                    }
+                    // Sipflix: a read timeout during transcode startup (server
+                    // still producing the first HLS segments after a bitrate
+                    // change / seek) is transient — retry with backoff instead
+                    // of failing with "Source error".
+                    if (isSocketTimeout(ex)) {
+                        return if (info.errorCount <= 15) 1000L else C.TIME_UNSET
                     }
                     return super.getRetryDelayMsFor(info)
                 }

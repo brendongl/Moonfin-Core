@@ -32,6 +32,12 @@ class _WebCodecSets {
 class DeviceProfileBuilder {
   const DeviceProfileBuilder._();
 
+  /// Ceiling advertised when the user picks "Auto" (no bitrate cap). Must be an
+  /// explicit number — see [build]: Emby treats null/absent as 0 and then forces
+  /// a transcode for every file. 1 Gbps is far above any real library file while
+  /// staying well inside a 32-bit int.
+  static const int _unlimitedStreamingBitrateBps = 1000000000;
+
   static const List<String> _downmixSupportedAudioCodecs = <String>[
     'aac',
     'mp2',
@@ -274,8 +280,16 @@ class DeviceProfileBuilder {
             knownHevcDoviHdr10PlusBug) ||
         KnownDefects.hevcDoviHdr10PlusBug;
 
-    final effectiveBitrateBps =
-        bitrateBps ?? webCapabilities?.maxStreamingBitrate;
+    // "Auto" (no user cap) must still be sent as an explicit, very high ceiling.
+    // Emby reads a null/absent MaxStreamingBitrate as **0**, so every file then
+    // "exceeds" the limit: it refuses direct play and forces a transcode of even
+    // a perfectly playable file (verified against AlphaV2 — null and omitted both
+    // return SupportsDirectPlay=false, 120 Mbps returns true). That needless
+    // transcode is also what surfaced as "Source error" whenever the server had
+    // no usable h264 encoder.
+    final effectiveBitrateBps = bitrateBps ??
+        webCapabilities?.maxStreamingBitrate ??
+        _unlimitedStreamingBitrateBps;
 
     final webCodecSets = webCapabilities == null
         ? null

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
@@ -13,6 +15,7 @@ import '../../../auth/store/authentication_store.dart';
 import '../../../auth/store/credential_store.dart';
 import '../../../data/services/connectivity_service.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../sipflix/sipflix_auto_bitrate_service.dart';
 import '../../../sipflix/sipflix_servers.dart';
 import '../../../util/pin_code_util.dart';
 import '../../../preference/preference_constants.dart';
@@ -78,6 +81,14 @@ class _StartupScreenState extends State<StartupScreen>
     }
   }
 
+  /// Sipflix: refresh the link-speed measurement behind the "Auto" quality
+  /// setting. Fire-and-forget — the probe is cheap, self-cancelling, and skips
+  /// itself when a cap is set explicitly or the last reading is still fresh, so
+  /// it must never hold up the splash.
+  void _refreshAutoBitrateInBackground() {
+    unawaited(GetIt.instance<SipflixAutoBitrateService>().refreshIfStale());
+  }
+
   Future<void> _initialize() async {
     final session = GetIt.instance<SessionRepository>();
     final serverRepo = GetIt.instance<ServerRepository>();
@@ -90,14 +101,15 @@ class _StartupScreenState extends State<StartupScreen>
 
     await serverRepo.loadStoredServers();
 
-    // Sipflix: inject the hardcoded Emby servers (Alpha + iDuck) on first launch.
-    if (serverRepo.servers.isEmpty) {
-      await SipflixServers.injectIfEmpty(GetIt.instance<AuthenticationStore>());
-      await serverRepo.loadStoredServers();
-    }
+    // Sipflix: inject the hardcoded Emby server on first launch, or repoint an
+    // existing install to the current default route (CDN). Runs every launch —
+    // injectOrMigrate is a no-op once the saved server already points at the CDN.
+    await SipflixServers.injectOrMigrate(GetIt.instance<AuthenticationStore>());
+    await serverRepo.loadStoredServers();
 
     if (widget.bootstrapActiveSession && session.activeUserId != null) {
       await _waitForNetworkSettle();
+      _refreshAutoBitrateInBackground();
       if (mounted) context.go(Destinations.home);
       return;
     }
@@ -159,6 +171,7 @@ class _StartupScreenState extends State<StartupScreen>
       }
 
       await _waitForNetworkSettle();
+      _refreshAutoBitrateInBackground();
       if (mounted) context.go(Destinations.home);
     } else {
       if (mounted) {

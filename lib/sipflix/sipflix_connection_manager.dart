@@ -4,10 +4,8 @@ import '../data/services/media_server_client_factory.dart';
 import '../util/server_url.dart';
 import 'sipflix_servers.dart';
 
-/// Sipflix: CDN / Direct / VN connection routes for a server.
-enum SipflixRoute { cdn, direct, vn }
-
-/// Sipflix: switches a server between its CDN / Direct / VN proxy routes.
+/// Sipflix: switches the server between its connection routes (CDN 1 / Direct,
+/// and CDN 2 once live — see [SipflixServers.routeChoices]).
 ///
 /// The active route is derived from the server's persisted `address` (which the
 /// AuthenticationStore already saves), so no separate state is needed. Switching
@@ -17,46 +15,39 @@ enum SipflixRoute { cdn, direct, vn }
 class SipflixConnectionManager {
   SipflixConnectionManager._();
 
-  static String label(SipflixRoute route) => switch (route) {
-        SipflixRoute.cdn => 'CDN',
-        SipflixRoute.direct => 'Direct',
-        SipflixRoute.vn => 'VN Proxy',
-      };
+  static String label(SipflixRouteDef route) => route.label;
 
-  static String _url(ServerRoutes r, SipflixRoute route) => switch (route) {
-        SipflixRoute.cdn => r.cdn,
-        SipflixRoute.direct => r.direct,
-        SipflixRoute.vn => r.vn,
-      };
-
-  static SipflixRoute _next(SipflixRoute r) => switch (r) {
-        SipflixRoute.cdn => SipflixRoute.direct,
-        SipflixRoute.direct => SipflixRoute.vn,
-        SipflixRoute.vn => SipflixRoute.cdn,
-      };
-
-  /// Determine the active route by matching the server's current address
-  /// (normalized) against the configured route URLs. Defaults to CDN.
-  static SipflixRoute currentRoute(Server server) {
-    final routes = SipflixServers.routes[server.id];
-    if (routes == null) return SipflixRoute.cdn;
+  /// The route whose URL matches the server's current address (normalized).
+  /// Falls back to the first route (CDN 1) when nothing matches.
+  static SipflixRouteDef currentRoute(Server server) {
     final addr = normalizeServerBaseUrl(server.address);
-    if (addr == normalizeServerBaseUrl(routes.direct)) return SipflixRoute.direct;
-    if (addr == normalizeServerBaseUrl(routes.vn)) return SipflixRoute.vn;
-    return SipflixRoute.cdn;
+    for (final r in SipflixServers.routeChoices) {
+      if (normalizeServerBaseUrl(r.url) == addr) return r;
+    }
+    return SipflixServers.routeChoices.first;
   }
 
-  /// Cycle CDN → Direct → VN → CDN. Persists the new address and invalidates
-  /// the cached client. Returns the new route (or current if not a Sipflix server).
-  static Future<SipflixRoute> toggle(
+  /// The route after [route] in [SipflixServers.routeChoices], wrapping around.
+  static SipflixRouteDef _next(SipflixRouteDef route) {
+    final choices = SipflixServers.routeChoices;
+    final i = choices.indexWhere((r) => r.id == route.id);
+    return choices[(i + 1) % choices.length];
+  }
+
+  /// Cycle to the next route. Persists the new address and invalidates the
+  /// cached client. Returns the new route (or the current one if not a Sipflix
+  /// server, or if there's only a single route to choose from).
+  static Future<SipflixRouteDef> toggle(
     Server server,
     ServerRepository serverRepo,
     MediaServerClientFactory clientFactory,
   ) async {
-    final routes = SipflixServers.routes[server.id];
-    if (routes == null) return currentRoute(server);
+    if (!SipflixServers.isSipflixServer(server.id) ||
+        SipflixServers.routeChoices.length < 2) {
+      return currentRoute(server);
+    }
     final next = _next(currentRoute(server));
-    await serverRepo.updateServer(server.copyWith(address: _url(routes, next)));
+    await serverRepo.updateServer(server.copyWith(address: next.url));
     clientFactory.removeClient(server.id);
     return next;
   }
