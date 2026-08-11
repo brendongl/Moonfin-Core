@@ -303,22 +303,22 @@ class _ServerScreenState extends State<ServerScreen> {
                   label: Text(l10n.addUser),
                   style: _focusableButtonStyle(context),
                 ),
-                const SizedBox(height: 10),
-                OutlinedButton.icon(
-                  onPressed: () => context.go(Destinations.serverSelect),
-                  icon: const Icon(Icons.home, size: 18),
-                  label: Text(l10n.selectServer),
-                  style: _focusableButtonStyle(context),
-                ),
+                if (!_sipflixRouteReplacesServerSelect(server)) ...[
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: () => context.go(Destinations.serverSelect),
+                    icon: const Icon(Icons.home, size: 18),
+                    label: Text(l10n.selectServer),
+                    style: _focusableButtonStyle(context),
+                  ),
+                ],
                 if (SipflixServers.enableRouteToggle &&
                     SipflixServers.isSipflixServer(server.id)) ...[
                   const SizedBox(height: 10),
                   OutlinedButton.icon(
                     onPressed: () => _toggleConnection(server),
                     icon: const Icon(Icons.swap_horiz, size: 18),
-                    label: Text(
-                      'Connection: ${SipflixConnectionManager.label(SipflixConnectionManager.currentRoute(server))}',
-                    ),
+                    label: Text(_sipflixRouteButtonLabel(server)),
                     style: _focusableButtonStyle(context),
                   ),
                 ],
@@ -340,18 +340,20 @@ class _ServerScreenState extends State<ServerScreen> {
                     style: _focusableButtonStyle(context),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => context.go(Destinations.serverSelect),
-                    icon: const Icon(Icons.home, size: 18),
-                    label: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(l10n.selectServer),
+                if (!_sipflixRouteReplacesServerSelect(server)) ...[
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => context.go(Destinations.serverSelect),
+                      icon: const Icon(Icons.home, size: 18),
+                      label: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(l10n.selectServer),
+                      ),
+                      style: _focusableButtonStyle(context),
                     ),
-                    style: _focusableButtonStyle(context),
                   ),
-                ),
+                ],
                 if (SipflixServers.enableRouteToggle &&
                     SipflixServers.isSipflixServer(server.id)) ...[
                   const SizedBox(width: 12),
@@ -361,9 +363,7 @@ class _ServerScreenState extends State<ServerScreen> {
                       icon: const Icon(Icons.swap_horiz, size: 18),
                       label: FittedBox(
                         fit: BoxFit.scaleDown,
-                        child: Text(
-                          'Connection: ${SipflixConnectionManager.label(SipflixConnectionManager.currentRoute(server))}',
-                        ),
+                        child: Text(_sipflixRouteButtonLabel(server)),
                       ),
                       style: _focusableButtonStyle(context),
                     ),
@@ -374,6 +374,24 @@ class _ServerScreenState extends State<ServerScreen> {
         ],
       ),
     );
+  }
+
+  /// Sipflix: the customer build ships one hardcoded server, so "Select Server"
+  /// only leads to a one-item list. Give its slot to the connection route
+  /// instead — that is the control a buffering customer actually needs.
+  bool _sipflixRouteReplacesServerSelect(Server server) =>
+      SipflixServers.hideAddServer &&
+      SipflixServers.enableRouteToggle &&
+      SipflixServers.isSipflixServer(server.id);
+
+  /// Shows where the box is connected AND what pressing does, so the button is
+  /// readable from the sofa without having to try it: "CDN 1 -> Switch to Direct".
+  String _sipflixRouteButtonLabel(Server server) {
+    final current = SipflixConnectionManager.currentRoute(server);
+    final next = SipflixConnectionManager.nextRoute(current);
+    final currentLabel = SipflixConnectionManager.label(current);
+    if (next.id == current.id) return 'Connection: $currentLabel';
+    return '$currentLabel \u2192 Switch to ${SipflixConnectionManager.label(next)}';
   }
 
   ButtonStyle _focusableButtonStyle(BuildContext context) {

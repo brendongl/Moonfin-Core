@@ -28,7 +28,8 @@ class SipflixConnectionManager {
   }
 
   /// The route after [route] in [SipflixServers.routeChoices], wrapping around.
-  static SipflixRouteDef _next(SipflixRouteDef route) {
+  /// Public so the UI can name what a switch would land on.
+  static SipflixRouteDef nextRoute(SipflixRouteDef route) {
     final choices = SipflixServers.routeChoices;
     final i = choices.indexWhere((r) => r.id == route.id);
     return choices[(i + 1) % choices.length];
@@ -46,7 +47,7 @@ class SipflixConnectionManager {
         SipflixServers.routeChoices.length < 2) {
       return currentRoute(server);
     }
-    final next = _next(currentRoute(server));
+    final next = nextRoute(currentRoute(server));
     await serverRepo.updateServer(server.copyWith(address: next.url));
     clientFactory.removeClient(server.id);
     return next;
