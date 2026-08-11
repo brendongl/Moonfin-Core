@@ -5,6 +5,7 @@ import 'package:get_it/get_it.dart';
 import 'package:server_core/server_core.dart';
 import 'package:dio/dio.dart';
 
+import '../utils/media_deduplication_utils.dart';
 import '../../preference/home_section_config.dart';
 import '../../preference/user_preferences.dart';
 import '../../preference/preference_constants.dart';
@@ -36,6 +37,10 @@ class RowDataSource {
   static const _genreArtworkConcurrency = 6;
 
   static const _fields =
+      // Sipflix: ProviderIds is required for dedup — MediaDeduplicationUtils
+      // keys on imdb/tmdb/tvdb and gives an item without one a unique key, so
+      // omitting this field silently turns dedup into a no-op.
+      'ProviderIds,'
       'DateCreated,Type,UserData,Overview,Genres,CommunityRating,CriticRating,'
       'OfficialRating,RunTimeTicks,ProductionYear,SeriesName,'
       'ParentIndexNumber,IndexNumber,Status,ImageTags,BackdropImageTags,'
@@ -127,6 +132,11 @@ class RowDataSource {
       response: response,
       serverId: serverId,
       rowType: HomeRowType.resume,
+      // Sipflix: a title held as several library entries (4K + 1080p, or a
+      // re-import) resumes as one card per entry — four "The Good Dinosaur"
+      // tiles in a row. The multi-server path already dedupes; this is the
+      // single-server path every Sipflix box actually uses.
+      deduplicate: true,
     );
   }
 
@@ -1647,8 +1657,12 @@ class RowDataSource {
     required Map<String, dynamic> response,
     required String serverId,
     required HomeRowType rowType,
+    bool deduplicate = false,
   }) {
-    final items = _parseItems(response, serverId);
+    var items = _parseItems(response, serverId);
+    if (deduplicate) {
+      items = MediaDeduplicationUtils.deduplicateMediaItems(items);
+    }
     final totalCount = response['TotalRecordCount'] as int? ?? items.length;
     return HomeRow(
       id: id,
