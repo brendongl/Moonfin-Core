@@ -199,6 +199,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   StreamSubscription? _bufferingSub;
   // Sipflix: auto-suggest a lower bitrate when playback keeps buffering.
   final _bitrateWatchdog = SipflixBitrateWatchdog();
+  // Sipflix: Auto-mode recovery — how long playback must stay stall-free
+  // before the learned ceiling is relaxed one tier.
+  static const Duration _sipflixRecoveryAfter = Duration(minutes: 10);
+  Timer? _sipflixRecoveryTimer;
   StreamSubscription<bool>? _sipflixBufferingSub;
   // Sipflix: pending qualifies-as-sustained-stall check; cancelled if playback
   // recovers before SipflixBitrateWatchdog.minStallDuration elapses.
@@ -797,7 +801,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       _sipflixStallTimer = null;
       if (!mounted || !_state.isBuffering || _bitrateDialogShowing) return;
       if (_bitrateWatchdog.recordAndShouldOffer()) {
-        unawaited(_showBitrateAdaptationDialog());
+        // Sipflix: on Auto the box adapts itself — customers shouldn't have to
+        // answer a dialog to stop buffering. An explicit cap is the user's own
+        // choice, so that still asks before overriding it.
+        if (_sipflixIsAutoBitrate()) {
+          unawaited(_adaptBitrateAutomatically());
+        } else {
+          unawaited(_showBitrateAdaptationDialog());
+        }
       }
     });
   }
@@ -837,6 +848,50 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
 
   // Sipflix: prompt to lower the bitrate; on accept, apply the override and
   // restart the current stream at its current position.
+  bool _sipflixIsAutoBitrate() =>
+      int.tryParse(_prefs.get(UserPreferences.maxBitrate)) == null;
+
+  /// Sipflix: Auto mode's reaction to sustained buffering — step the ceiling
+  /// down and re-resolve, with no prompt. The new ceiling is remembered (see
+  /// [UserPreferences.noteAutoCeiling]) so the next title starts at a rate the
+  /// link has actually proven it can carry, instead of relearning every time.
+  Future<void> _adaptBitrateAutomatically() async {
+    if (!mounted) return;
+    final current = _sipflixEffectiveStreamMbps();
+    final target = SipflixBitrateWatchdog.suggestLowerBitrate(current);
+    if (target >= current) return;
+    await _prefs.noteAutoCeiling(target);
+    // Re-arm so a link that still can't cope steps down again (8 -> 5 -> 3).
+    _bitrateWatchdog.reset();
+    _sipflixScheduleAutoRecovery();
+    await _manager.changeBitrate(target);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Lowered quality to $target Mbps for smoother playback'),
+      ),
+    );
+  }
+
+  /// Sipflix: a single bad evening shouldn't pin a box low for the rest of the
+  /// ceiling's life. After a stall-free stretch, relax one tier back up; if it
+  /// stalls again the watchdog simply steps it down once more.
+  void _sipflixScheduleAutoRecovery() {
+    _sipflixRecoveryTimer?.cancel();
+    _sipflixRecoveryTimer = Timer(_sipflixRecoveryAfter, () async {
+      if (!mounted || !_sipflixIsAutoBitrate()) return;
+      final ceiling = _prefs.autoCeilingMbps();
+      if (ceiling == null) return;
+      final higher = SipflixBitrateWatchdog.tiers
+          .lastWhere((t) => t > ceiling, orElse: () => ceiling);
+      if (higher <= ceiling) {
+        await _prefs.clearAutoCeiling();
+        return;
+      }
+      await _prefs.noteAutoCeiling(higher);
+    });
+  }
+
   Future<void> _showBitrateAdaptationDialog() async {
     if (_bitrateDialogShowing || !mounted) return;
     final current = _sipflixEffectiveStreamMbps();
@@ -1084,6 +1139,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     _screensaverController.setPlaybackActive(false);
     _prefs.removeListener(_syncMediaQueuingPreference);
     _prefs.removeListener(_syncMaxBitratePreference);
+    _sipflixRecoveryTimer?.cancel();
     _syncPlayManager?.removeListener(_onSyncPlayChanged);
     _manager.autoAdvanceEnabled = true;
     WidgetsBinding.instance.removeObserver(this);

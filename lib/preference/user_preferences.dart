@@ -1318,10 +1318,26 @@ class UserPreferences extends ChangeNotifier {
     defaultValue: 0,
   );
 
+  /// Ceiling learned from real playback stalls while on Auto (0 = none).
+  static final autoLearnedCeilingMbps = Preference<int>(
+    key: 'sipflix_auto_ceiling_mbps',
+    defaultValue: 0,
+  );
+
+  /// Epoch ms the learned ceiling was recorded.
+  static final autoLearnedCeilingAt = Preference<int>(
+    key: 'sipflix_auto_ceiling_at',
+    defaultValue: 0,
+  );
+
+  /// A learned ceiling expires so a box throttled during one congested evening
+  /// isn't pinned low forever.
+  static const Duration autoCeilingTtl = Duration(hours: 6);
+
   /// A measurement older than this is not trusted — links change (WiFi→ethernet,
   /// ISP congestion, a customer moving the box), so we re-probe rather than cap
   /// on stale data.
-  static const Duration measuredBandwidthTtl = Duration(hours: 12);
+  static const Duration measuredBandwidthTtl = Duration(hours: 4);
 
   /// Headroom applied to the measured throughput. A stream needs room for
   /// protocol overhead and jitter; capping at 100% of a measured link buffers.
@@ -1336,11 +1352,23 @@ class UserPreferences extends ChangeNotifier {
   /// "no ceiling". Returns null when no fresh measurement exists, so Auto keeps
   /// its previous behaviour (prefer direct play) instead of guessing low.
   int? autoBitrateCapMbps({DateTime? now}) {
+    final at = now ?? DateTime.now();
+    final probed = _probedAutoCapMbps(at);
+    final learned = autoCeilingMbps(now: at);
+    if (probed == null) return learned;
+    if (learned == null) return probed;
+    // The link is only as good as the worse of "what a probe measured" and
+    // "what playback actually sustained".
+    return probed < learned ? probed : learned;
+  }
+
+  /// The cap implied by the last speed measurement, or null when there is no
+  /// fresh measurement or the link is fast enough to need no ceiling at all.
+  int? _probedAutoCapMbps(DateTime now) {
     final measured = get(measuredBandwidthMbps);
     final at = get(measuredBandwidthAt);
     if (measured <= 0 || at <= 0) return null;
-    final age = (now ?? DateTime.now())
-        .difference(DateTime.fromMillisecondsSinceEpoch(at));
+    final age = now.difference(DateTime.fromMillisecondsSinceEpoch(at));
     if (age.isNegative || age > measuredBandwidthTtl) return null;
     final effective = measured * _bandwidthHeadroom;
     if (effective >= _unlimitedAboveMbps) return null;
@@ -1348,11 +1376,42 @@ class UserPreferences extends ChangeNotifier {
     return effective.clamp(3, _unlimitedAboveMbps).round();
   }
 
+  /// Sipflix: the ceiling *learned from real playback* while on Auto.
+  ///
+  /// A probe says what the link could do a while ago; stalls say what it can do
+  /// right now. Peak-hour congestion is exactly the case where the probe is
+  /// stale and optimistic, so a box that actually buffers records a lower
+  /// ceiling here and uses it until it expires or recovers.
+  int? autoCeilingMbps({DateTime? now}) {
+    final mbps = get(autoLearnedCeilingMbps);
+    final at = get(autoLearnedCeilingAt);
+    if (mbps <= 0 || at <= 0) return null;
+    final age = (now ?? DateTime.now())
+        .difference(DateTime.fromMillisecondsSinceEpoch(at));
+    if (age.isNegative || age > autoCeilingTtl) return null;
+    return mbps;
+  }
+
+  /// Record a ceiling learned from sustained buffering.
+  Future<void> noteAutoCeiling(int mbps) async {
+    await set(autoLearnedCeilingMbps, mbps);
+    await set(
+      autoLearnedCeilingAt,
+      DateTime.now().millisecondsSinceEpoch,
+    );
+  }
+
+  /// Clear the learned ceiling (link recovered, or the user picked a cap).
+  Future<void> clearAutoCeiling() async {
+    await set(autoLearnedCeilingMbps, 0);
+    await set(autoLearnedCeilingAt, 0);
+  }
+
   /// The bitrate ceiling to advertise in the device profile, in Mbps, or null
   /// for "no ceiling". An explicit user choice always wins; 'auto' resolves to
   /// the measured link speed (see [autoBitrateCapMbps]).
-  int? resolveMaxBitrateMbps() =>
-      int.tryParse(get(maxBitrate)) ?? autoBitrateCapMbps();
+  int? resolveMaxBitrateMbps({DateTime? now}) =>
+      int.tryParse(get(maxBitrate)) ?? autoBitrateCapMbps(now: now);
 
   static final maxVideoResolution = EnumPreference(
     key: 'pref_max_video_resolution',
