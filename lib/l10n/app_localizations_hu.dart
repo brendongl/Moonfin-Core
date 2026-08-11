@@ -398,7 +398,7 @@ class AppLocalizationsHu extends AppLocalizations {
   String get noItemsFound => 'Nem találhatók elemek';
 
   @override
-  String get home => 'Kezdőképernyő';
+  String get home => 'Kezdőlap';
 
   @override
   String get browseAll => 'Összes böngészése';
@@ -1227,7 +1227,7 @@ class AppLocalizationsHu extends AppLocalizations {
   String get subtitleTrack => 'Feliratsáv';
 
   @override
-  String get none => 'Egyik sem';
+  String get none => 'Nincs';
 
   @override
   String get downloadSubtitlesLabel => 'Feliratok letöltése...';
@@ -3391,7 +3391,7 @@ class AppLocalizationsHu extends AppLocalizations {
   String get mediaBarModeMakd => 'MakD';
 
   @override
-  String get mediaBarModeOff => 'Kikapcsolva';
+  String get mediaBarModeOff => 'Ki';
 
   @override
   String get enableMediaBar => 'Médiasáv engedélyezése';
@@ -4194,7 +4194,7 @@ class AppLocalizationsHu extends AppLocalizations {
   String get showMore => 'Továbbiak megjelenítése';
 
   @override
-  String get appearances => 'Megjelenések';
+  String get appearances => 'Szereplések';
 
   @override
   String get crewSection => 'Stáb';
@@ -4769,7 +4769,7 @@ class AppLocalizationsHu extends AppLocalizations {
   String get sessionRewind => 'Visszatekerés';
 
   @override
-  String get sessionForward => 'Előre';
+  String get sessionForward => 'Előretekerés';
 
   @override
   String get sessionNext => 'Következő';
@@ -7653,7 +7653,7 @@ class AppLocalizationsHu extends AppLocalizations {
 
   @override
   String adminActivityDateShort(int month, int day) {
-    return '$month/$day';
+    return '$month. $day.';
   }
 
   @override
