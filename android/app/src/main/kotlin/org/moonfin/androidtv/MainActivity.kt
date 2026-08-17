@@ -250,14 +250,20 @@ class MainActivity : AudioServiceActivity(), GamepadsCompatibleActivity {
             "$packageName.otafiles",
             java.io.File(path),
         )
-        startActivity(
-            Intent(Intent.ACTION_VIEW)
-                .setDataAndType(uri, "application/vnd.android.package-archive")
-                .addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                ),
-        )
+        val intent = Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, "application/vnd.android.package-archive")
+            .addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+        // Fleet boxes ship a file manager that also claims APKs, which turns
+        // this into an "Open with" chooser. Pin the system installer instead.
+        val installerPkg = packageManager
+            .queryIntentActivities(intent, 0)
+            .map { it.activityInfo.packageName }
+            .firstOrNull { it.contains("packageinstaller") }
+        if (installerPkg != null) intent.setPackage(installerPkg)
+        startActivity(intent)
         return "ok"
     }
 

@@ -184,6 +184,9 @@ class _SipflixOtaDialogState extends State<_SipflixOtaDialog> {
   bool get _downloading => _progress != null && _error == null;
 
   Future<void> _start() async {
+    // TV remotes double-activate buttons (key action + tap semantics); the
+    // second call must not clobber the live progress with a busy error.
+    if (_downloading) return;
     setState(() {
       _error = null;
       _progress = 0;

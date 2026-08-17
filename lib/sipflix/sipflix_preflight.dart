@@ -53,8 +53,10 @@ class SipflixPreflightController {
   static const double capHeadroom = 0.8;
 
   /// The whole preflight (UI + both probes + apply) is capped here; timeout
-  /// means "play normally", never a stuck loading screen.
-  static const Duration overallTimeout = Duration(seconds: 12);
+  /// means "play normally", never a stuck loading screen. Measured on a real
+  /// box: dialog open + two route probes + verdict hold lands at 11-13s, so
+  /// 12s was routinely cutting the result off right at the finish line.
+  static const Duration overallTimeout = Duration(seconds: 20);
 
   /// Watchdog fires this session (for the enable-offer prompt).
   int watchdogFireCount = 0;

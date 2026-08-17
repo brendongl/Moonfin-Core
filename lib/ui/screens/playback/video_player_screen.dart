@@ -945,6 +945,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     await _manager.changeBitrate(target);
   }
 
+  // Sipflix: the screensaver must never fire while a stream is being brought
+  // up (preflight + resolve + open can exceed the 1-minute ship timeout). Only
+  // a genuinely idle player (paused / failed / idle bring-up) re-arms it.
+  void _sipflixRefreshScreensaverSuppression({bool? playing}) {
+    final phase = _bringupState.phase;
+    final bringingUp = phase != PlaybackBringupPhase.idle &&
+        phase != PlaybackBringupPhase.failed;
+    final isPlaying = playing ?? _state.isPlaying;
+    _screensaverController.setPlaybackActive(isPlaying || bringingUp);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -955,7 +966,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       // Sipflix: the watchdog's grace window starts at real playback start, so
       // the initial buffer fill never counts as a stall.
       if (playing) _bitrateWatchdog.markPlaybackStarted();
-      _screensaverController.setPlaybackActive(playing);
+      _sipflixRefreshScreensaverSuppression(playing: playing);
     });
     if (PlatformDetection.useNativeVideoSurface) {
       _subtitleActive = (_manager.subtitleStreamIndex ?? -1) >= 0;
@@ -972,6 +983,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       setState(() {
         _bringupState = state;
       });
+      _sipflixRefreshScreensaverSuppression();
       _showBringupFailureIfAny(state);
       unawaited(_syncAutoHdrSwitching());
       unawaited(_syncMedia3ZoomMode());
