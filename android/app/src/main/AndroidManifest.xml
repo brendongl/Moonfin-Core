@@ -15,6 +15,8 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <!-- Lets the app write its own home screen channel rows on Android TV. -->
     <uses-permission android:name="com.android.providers.tv.permission.WRITE_EPG_DATA"/>
+    <!-- Sipflix OTA: hand a downloaded APK to the system package installer. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <uses-feature android:name="android.hardware.microphone" android:required="false"/>
     <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
     <uses-feature android:name="android.software.leanback" android:required="false"/>
@@ -116,6 +118,18 @@
             android:authorities="${applicationId}.artwork"
             android:exported="true"
             android:grantUriPermissions="true" />
+
+        <!-- Sipflix OTA: exposes the downloaded update APK (cache dir) to the
+             system installer via a content:// URI. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.otafiles"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/sipflix_ota_paths" />
+        </provider>
 
         <meta-data android:name="com.google.android.gms.car.application"
                    android:resource="@xml/automotive_app_desc"/>

@@ -229,6 +229,38 @@ class MainActivity : AudioServiceActivity(), GamepadsCompatibleActivity {
     }
 
     // Null travels back to Dart as "ask again" rather than as "not a TV".
+    // Sipflix OTA: launch the package installer on an APK the app downloaded
+    // into cacheDir/ota (exposed via the .otafiles FileProvider). On first use
+    // Android requires the user to allow installs from this app, so when the
+    // permission is missing we open that grant screen and report it instead.
+    private fun installApkFromPath(path: String): String {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            !packageManager.canRequestPackageInstalls()
+        ) {
+            startActivity(
+                Intent(
+                    android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    android.net.Uri.parse("package:$packageName"),
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            return "needs-permission"
+        }
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            this,
+            "$packageName.otafiles",
+            java.io.File(path),
+        )
+        startActivity(
+            Intent(Intent.ACTION_VIEW)
+                .setDataAndType(uri, "application/vnd.android.package-archive")
+                .addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                ),
+        )
+        return "ok"
+    }
+
     private fun isTvDevice(): Boolean? = isTelevisionOrNull(this)
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -248,6 +280,17 @@ class MainActivity : AudioServiceActivity(), GamepadsCompatibleActivity {
             when (call.method) {
                 "isTvDevice" -> {
                     result.success(isTvDevice())
+                }
+                // Sipflix OTA: hand a downloaded APK to the system installer.
+                // Returns "ok", or "needs-permission" after opening the
+                // unknown-sources grant screen for this app.
+                "installApk" -> {
+                    val path = call.argument<String>("path")
+                    if (path == null) {
+                        result.error("bad-args", "path required", null)
+                    } else {
+                        result.success(installApkFromPath(path))
+                    }
                 }
                 "displayHdrTypes" -> result.success(getDisplayHdrTypes())
                 "dolbyVisionCodecCapabilities" -> {

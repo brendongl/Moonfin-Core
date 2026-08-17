@@ -34,6 +34,7 @@ import 'ui/navigation/deep_link_navigator.dart';
 import 'ui/navigation/home_refresh_bus.dart';
 import 'ui/theme/app_theme.dart';
 import 'ui/theme/app_theme_controller.dart';
+import 'sipflix/sipflix_ota_updater.dart';
 import 'ui/widgets/app_update_banner.dart';
 import 'ui/widgets/cast_mini_player.dart';
 import 'ui/widgets/offline_banner.dart';
@@ -253,6 +254,14 @@ class _MoonfinAppState extends State<MoonfinApp> {
                                         AppUpdateBanner(),
                                       ],
                                     ),
+                                  ),
+                                  // Sipflix: OTA check + dialog, shell-mounted
+                                  // so it fires on whatever screen boot lands on.
+                                  SipflixOtaGate(
+                                    navigatorContext: () =>
+                                        appRouter.routerDelegate.navigatorKey
+                                            .currentContext ??
+                                        context,
                                   ),
                                 ],
                               ),

@@ -102,6 +102,13 @@ class AppUpdateService {
     required bool respectNotificationPreference,
     required bool suppressIfAlreadyNotified,
   }) async {
+    // Sipflix fork: releases come from the Sipflix OTA manifest
+    // (SipflixOtaUpdater), never from upstream's GitHub releases — an upstream
+    // build would wipe the fork's server config and branding.
+    return const DesktopUpdateCheckResult(
+      status: DesktopUpdateCheckStatus.unsupportedPlatform,
+    );
+    // ignore: dead_code
     if (!AppDistribution.supportsInAppUpdates) {
       return const DesktopUpdateCheckResult(
         status: DesktopUpdateCheckStatus.unsupportedPlatform,

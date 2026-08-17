@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Sipflix OTA: the updater downloads the new APK into cacheDir/ota. -->
+    <cache-path name="sipflix_ota" path="ota/" />
+</paths>

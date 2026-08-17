@@ -1,27 +1,26 @@
 import java.util.Properties
 
-fun loadAndroidTvVersionCode(rootDir: File, fallback: Int): Int {
+fun pubspecValue(rootDir: File, key: String): String? {
     val pubspec = rootDir.resolve("../pubspec.yaml")
-    if (!pubspec.exists()) return fallback
-
+    if (!pubspec.exists()) return null
     val line = pubspec.readLines().firstOrNull {
-        it.trimStart().startsWith("android_tv_build_number:")
-    } ?: return fallback
+        it.trimStart().startsWith("$key:")
+    } ?: return null
+    return line.substringAfter(":", "").trim().ifEmpty { null }
+}
 
-    val rawValue = line.substringAfter(":", "").trim()
-    return rawValue.toIntOrNull() ?: fallback
+// Sipflix fork: sipflix_tv_* is the release identity the OTA updater compares,
+// so it takes precedence over upstream's android_tv_* fields when present.
+fun loadAndroidTvVersionCode(rootDir: File, fallback: Int): Int {
+    return pubspecValue(rootDir, "sipflix_tv_build_number")?.toIntOrNull()
+        ?: pubspecValue(rootDir, "android_tv_build_number")?.toIntOrNull()
+        ?: fallback
 }
 
 fun loadAndroidTvVersionName(rootDir: File, fallback: String): String {
-    val pubspec = rootDir.resolve("../pubspec.yaml")
-    if (!pubspec.exists()) return fallback
-
-    val line = pubspec.readLines().firstOrNull {
-        it.trimStart().startsWith("android_tv_version:")
-    } ?: return fallback
-
-    val rawValue = line.substringAfter(":", "").trim()
-    return rawValue.ifEmpty { fallback }
+    return pubspecValue(rootDir, "sipflix_tv_version")
+        ?: pubspecValue(rootDir, "android_tv_version")
+        ?: fallback
 }
 
 plugins {
