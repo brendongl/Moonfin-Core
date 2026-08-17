@@ -52,16 +52,25 @@ class SipflixPreflightController {
   /// Fraction of sustained throughput a transcode cap may use.
   static const double capHeadroom = 0.8;
 
-  /// The whole preflight (UI + both probes + apply) is capped here; timeout
-  /// means "play normally", never a stuck loading screen. Measured on a real
-  /// box: dialog open + two route probes + verdict hold lands at 11-13s, so
-  /// 12s was routinely cutting the result off right at the finish line.
-  static const Duration overallTimeout = Duration(seconds: 20);
+  /// The whole preflight (UI + both probes + apply) is capped here; timeout is
+  /// pure fail-open insurance ("play normally"), never the normal path. Two
+  /// route probes cap at 10s each, so a single genuinely-slow route can push
+  /// the total toward ~21s + verdict hold — and that slow-route case is exactly
+  /// when applying the transcode cap matters most, so the ceiling must clear it
+  /// rather than time out into uncapped DirectPlay. Fast links still finish in
+  /// ~9-13s; only a struggling route ever approaches this.
+  static const Duration overallTimeout = Duration(seconds: 26);
 
   /// Watchdog fires this session (for the enable-offer prompt).
   int watchdogFireCount = 0;
 
   bool _running = false;
+
+  /// Live handles so the overall timeout can wind the check down immediately
+  /// (cancel the in-flight probe + pull the overlay) instead of leaving it to
+  /// finish and linger over the video that has already started.
+  SipflixPreflightProgress? _activeProgress;
+  _PreflightOverlay? _activePage;
 
   /// The [PlaybackManager.preflightHook] entry point.
   Future<PlaybackPreflightResult?> runForItem(dynamic item) async {
@@ -78,12 +87,16 @@ class SipflixPreflightController {
     try {
       return await _run(item).timeout(overallTimeout, onTimeout: () {
         _logger.w('Sipflix preflight timed out — playing normally');
+        _activeProgress?.abort();
+        _activePage?.close();
         return null;
       });
     } catch (e) {
       _logger.w('Sipflix preflight failed: $e');
       return null;
     } finally {
+      _activeProgress = null;
+      _activePage = null;
       _running = false;
     }
   }
@@ -100,20 +113,24 @@ class SipflixPreflightController {
       requiredMbps: requiredMbps,
       routes: SipflixServers.routeChoices,
     );
+    _activeProgress = progress;
 
+    // Render as an OverlayEntry, NOT a pushed route. showDialog pushes a
+    // pageless route onto go_router's own navigator; popping it makes go_router
+    // rebuild its page list, which disposes the /video-player page underneath
+    // (its dispose() calls manager.stop(), bumping the session token and making
+    // the in-flight resolve stale — playback silently never starts). An overlay
+    // entry floats above every page, is invisible to go_router, and removing it
+    // pops no route and disposes no page.
     final navContext = appRouter.routerDelegate.navigatorKey.currentContext;
-    _PreflightPage? page;
+    _PreflightOverlay? page;
     if (navContext != null && navContext.mounted) {
-      page = _PreflightPage(progress: progress);
-      unawaited(
-        showDialog<void>(
-          context: navContext,
-          barrierDismissible: false,
-          barrierColor: Colors.black,
-          useSafeArea: false,
-          builder: (_) => page!,
-        ),
-      );
+      final overlay = Overlay.maybeOf(navContext, rootOverlay: true);
+      if (overlay != null) {
+        page = _PreflightOverlay(progress: progress);
+        page.insertInto(overlay);
+        _activePage = page;
+      }
     }
 
     try {
@@ -311,34 +328,64 @@ class SipflixPreflightProgress extends ChangeNotifier {
       routes.where((r) => r.id == routeId).firstOrNull?.label ?? routeId;
 }
 
-/// Full-screen preflight page. OK short-press skips this one check; holding OK
-/// for [_holdToDisable] turns the feature off entirely (operator spec); Back
-/// skips. Closes itself when the controller finishes.
-class _PreflightPage extends StatefulWidget {
+/// Owns the full-screen preflight UI as an OverlayEntry (see the note in
+/// [SipflixPreflightController._run] for why this is an overlay and not a
+/// route). [close] removes the entry; it is idempotent so the controller's
+/// finally and a user skip can both call it safely.
+class _PreflightOverlay {
+  _PreflightOverlay({required this.progress});
+
   final SipflixPreflightProgress progress;
+  OverlayEntry? _entry;
 
-  const _PreflightPage({required this.progress});
+  void insertInto(OverlayState overlay) {
+    _entry = OverlayEntry(
+      builder: (_) => _PreflightView(progress: progress, onClose: close),
+    );
+    overlay.insert(_entry!);
+  }
 
-  void close() => _state?._close();
-
-  static _PreflightPageState? _state;
-
-  @override
-  // ignore: no_logic_in_create_state
-  State<_PreflightPage> createState() {
-    return _state = _PreflightPageState();
+  void close() {
+    final entry = _entry;
+    _entry = null;
+    if (entry != null) {
+      entry.remove();
+    }
   }
 }
 
-class _PreflightPageState extends State<_PreflightPage> {
+/// Full-screen preflight view. OK short-press skips this one check; holding OK
+/// for [_holdToDisable] turns the feature off entirely (operator spec); Back
+/// skips. [onClose] removes the owning overlay entry.
+class _PreflightView extends StatefulWidget {
+  final SipflixPreflightProgress progress;
+  final VoidCallback onClose;
+
+  const _PreflightView({required this.progress, required this.onClose});
+
+  @override
+  State<_PreflightView> createState() => _PreflightViewState();
+}
+
+class _PreflightViewState extends State<_PreflightView> {
   static const _holdToDisable = Duration(milliseconds: 1200);
   DateTime? _selectDownAt;
   bool _closed = false;
+  final FocusNode _focusNode = FocusNode(debugLabel: 'sipflixPreflight');
+
+  @override
+  void initState() {
+    super.initState();
+    // Grab DPAD focus off the (still-mounted) player screen underneath.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusNode.requestFocus();
+    });
+  }
 
   void _close() {
-    if (_closed || !mounted) return;
+    if (_closed) return;
     _closed = true;
-    Navigator.of(context).pop();
+    widget.onClose();
   }
 
   void _skip() {
@@ -382,7 +429,7 @@ class _PreflightPageState extends State<_PreflightPage> {
 
   @override
   void dispose() {
-    if (identical(_PreflightPage._state, this)) _PreflightPage._state = null;
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -395,11 +442,15 @@ class _PreflightPageState extends State<_PreflightPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Focus(
-      autofocus: true,
-      onKeyEvent: _onKey,
-      child: Material(
-        color: Colors.black,
+    return Positioned.fill(
+      child: FocusScope(
+        autofocus: true,
+        child: Focus(
+          focusNode: _focusNode,
+          autofocus: true,
+          onKeyEvent: _onKey,
+          child: Material(
+            color: Colors.black,
         child: AnimatedBuilder(
           animation: widget.progress,
           builder: (context, _) {
@@ -509,6 +560,8 @@ class _PreflightPageState extends State<_PreflightPage> {
               ],
             );
           },
+            ),
+          ),
         ),
       ),
     );

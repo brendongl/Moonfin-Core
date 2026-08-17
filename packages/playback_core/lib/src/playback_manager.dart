@@ -1189,7 +1189,7 @@ class PlaybackManager implements AudioOwnable {
             _maxBitrateOverrideMbps = preflight.capMbps;
           }
         } catch (_) {
-          // Preflight must never block playback.
+          // Preflight is best-effort: any failure just plays normally.
         }
       }
     }
@@ -1227,11 +1227,11 @@ class PlaybackManager implements AudioOwnable {
     _externalSubsLoaded = null;
 
     await _resetSubtitleRendererMode();
-    if (sessionToken != _playbackSessionToken) return;
+    if (sessionToken != _playbackSessionToken) { return; }
 
     if (_resolverConfigurator != null) {
       await _resolverConfigurator!(item);
-      if (sessionToken != _playbackSessionToken) return;
+      if (sessionToken != _playbackSessionToken) { return; }
     }
 
     if (_resolver == null) {
