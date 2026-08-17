@@ -166,7 +166,7 @@ class SipflixPreflightController {
       );
 
       // Let the verdict be readable for a beat before playback takes over.
-      await Future<void>.delayed(const Duration(milliseconds: 700));
+      await Future<void>.delayed(const Duration(milliseconds: 1400));
       return PlaybackPreflightResult(capMbps: decision.capMbps);
     } finally {
       page?.close();
@@ -244,31 +244,59 @@ class SipflixPreflightProgress extends ChangeNotifier {
   SipflixPreflightDecision? decision;
   bool aborted = false;
 
+  /// Completed steps, newest last — the page shows these verbatim so the
+  /// customer can follow exactly what the check is doing.
+  final List<String> log = [];
+
+  /// The step running right now (rendered with a spinner), or null.
+  String? activeStep;
+
   SipflixPreflightProgress({
     required this.itemName,
     required this.requiredMbps,
     required this.routes,
-  });
+  }) {
+    log.add('Preflight started');
+    log.add(
+      'This video needs ~${requiredMbps.toStringAsFixed(0)} Mbps '
+      'for full quality',
+    );
+  }
 
   void markTesting(String routeId) {
     testingRouteId = routeId;
+    final label = _labelOf(routeId);
+    activeStep = 'Testing $label…';
     notifyListeners();
   }
 
   void markResult(String routeId, SipflixRouteMeasurement m) {
     results[routeId] = m;
     testingRouteId = null;
+    activeStep = null;
+    log.add(
+      '${_labelOf(routeId)}: ${m.sustainedMbps.toStringAsFixed(1)} Mbps '
+      'sustained, ${m.burstMbps.toStringAsFixed(0)} burst',
+    );
     notifyListeners();
   }
 
   void markFailed(String routeId) {
     results[routeId] = null;
     testingRouteId = null;
+    activeStep = null;
+    log.add('${_labelOf(routeId)}: not reachable');
     notifyListeners();
   }
 
   void markDecision(SipflixPreflightDecision d) {
     decision = d;
+    activeStep = null;
+    log.add(
+      d.direct
+          ? 'Route chosen: ${d.route.label} — full quality'
+          : 'Route chosen: ${d.route.label} — capped at ${d.capMbps} Mbps',
+    );
     notifyListeners();
   }
 
@@ -276,6 +304,9 @@ class SipflixPreflightProgress extends ChangeNotifier {
     aborted = true;
     notifyListeners();
   }
+
+  String _labelOf(String routeId) =>
+      routes.where((r) => r.id == routeId).firstOrNull?.label ?? routeId;
 }
 
 /// Full-screen preflight page. OK short-press skips this one check; holding OK
@@ -353,16 +384,6 @@ class _PreflightPageState extends State<_PreflightPage> {
     super.dispose();
   }
 
-  String _routeLine(SipflixRouteDef route) {
-    final p = widget.progress;
-    if (p.testingRouteId == route.id) return '${route.label}: testing…';
-    if (!p.results.containsKey(route.id)) return '${route.label}: waiting';
-    final m = p.results[route.id];
-    if (m == null) return '${route.label}: unavailable';
-    return '${route.label}: ${m.sustainedMbps.toStringAsFixed(1)} Mbps '
-        '(burst ${m.burstMbps.toStringAsFixed(0)})';
-  }
-
   String? _verdictLine() {
     final d = widget.progress.decision;
     if (d == null) return null;
@@ -391,7 +412,7 @@ class _PreflightPageState extends State<_PreflightPage> {
                         'assets/images/sipflix_badge.png',
                         width: 96,
                         height: 96,
-                        errorBuilder: (_, __, ___) => const Icon(
+                        errorBuilder: (_, _, _) => const Icon(
                           Icons.network_check,
                           size: 72,
                           color: Colors.white70,
@@ -418,15 +439,40 @@ class _PreflightPageState extends State<_PreflightPage> {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 28),
-                      for (final route in widget.progress.routes)
+                      for (final step in widget.progress.log)
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 4),
                           child: Text(
-                            _routeLine(route),
+                            '\u2713  $step',
                             style: const TextStyle(
                               color: Colors.white70,
                               fontSize: 16,
                             ),
+                          ),
+                        ),
+                      if (widget.progress.activeStep != null)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                widget.progress.activeStep!,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       const SizedBox(height: 20),
