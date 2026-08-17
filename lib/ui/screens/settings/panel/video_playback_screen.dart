@@ -230,6 +230,13 @@ class _VideoPlaybackScreen extends StatelessWidget {
                   },
                 ),
               SwitchPreferenceTile(
+                preference: UserPreferences.preflightEnabled,
+                title: 'Stream Preflight',
+                subtitle: 'Test your connection before each video and pick '
+                    'the best route and quality automatically',
+                icon: Icons.speed,
+              ),
+              SwitchPreferenceTile(
                 preference: UserPreferences.liveTvDirectPlayEnabled,
                 title: l10n.settingsLiveTvDirect,
                 subtitle: l10n.settingsLiveTvDirectSubtitle,

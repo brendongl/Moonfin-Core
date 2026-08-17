@@ -66,6 +66,7 @@ import '../../widgets/playback/stream_info_dialog.dart';
 import '../../widgets/syncplay/syncplay_player_button.dart';
 import '../../../syncplay/syncplay_manager.dart';
 import '../../../sipflix/sipflix_bitrate_watchdog.dart';
+import '../../../sipflix/sipflix_preflight.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../playback/media3_player_backend.dart';
 import '../../../playback/tizen_player_backend.dart';
@@ -809,6 +810,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         } else {
           unawaited(_showBitrateAdaptationDialog());
         }
+        // Sipflix: repeated struggling is the cue to offer Stream Preflight
+        // (no-op when enabled already, self-limits to once a day).
+        unawaited(maybeOfferPreflight());
       }
     });
   }

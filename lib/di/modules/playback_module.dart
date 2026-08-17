@@ -15,6 +15,7 @@ import '../../data/services/media_server_client_factory.dart';
 import '../../data/services/offline_playback_tracker.dart';
 import '../../playback/local_aware_player_service.dart';
 import '../../playback/local_first_media_stream_resolver.dart';
+import '../../sipflix/sipflix_preflight.dart';
 
 import '../../playback/hdr_stream_capability.dart';
 import '../../playback/headless_session_bootstrap.dart';
@@ -514,6 +515,9 @@ void registerPlaybackModule() {
     return ExternalPlayerPolicy.isEligibleQueue(items);
   });
   manager.setNextSeasonItemsProvider(_nextSeasonItemsProvider);
+  // Sipflix: Stream Preflight gates every new-item start when enabled.
+  manager.preflightHook =
+      (item) => _getIt<SipflixPreflightController>().runForItem(item);
   manager.setResolverConfigurator(_ensureResolverForItem);
   final audioArbiter = PlaybackArbiter();
   _getIt.registerSingleton<PlaybackArbiter>(audioArbiter);

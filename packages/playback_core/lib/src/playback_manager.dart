@@ -22,6 +22,15 @@ class PlaybackManager implements AudioOwnable {
 
   PlayerBackend? _backend;
   MediaStreamResolver? _resolver;
+
+  /// Sipflix Stream Preflight: when set, new-item starts (play buttons, queue
+  /// next/previous, auto-next) invoke this BEFORE the stream resolves — the
+  /// hook may switch the connection route and returns the bitrate cap for this
+  /// play (null result = no preflight ran, existing override untouched).
+  /// Internal re-resolves (track switch, quality change, recovery) never
+  /// re-trigger it: only the public entry points arm [_preflightArmed].
+  Future<PlaybackPreflightResult?> Function(dynamic item)? preflightHook;
+  bool _preflightArmed = false;
   PlayerService? _service;
   Future<void> Function(dynamic item)? _resolverConfigurator;
   bool Function(List<dynamic> items)? _externalPlaybackDecider;
@@ -969,6 +978,7 @@ class PlaybackManager implements AudioOwnable {
     _resetBackendSelectionLock();
     final hadNext = queueService.next();
     if (hadNext) {
+      _preflightArmed = true;
       await _playCurrentItem();
       return;
     }
@@ -1008,6 +1018,7 @@ class PlaybackManager implements AudioOwnable {
 
     queueService.addItems(nextSeasonItems);
     if (!queueService.next()) return false;
+    _preflightArmed = true;
     await _playCurrentItem();
     return true;
   }
@@ -1056,6 +1067,7 @@ class PlaybackManager implements AudioOwnable {
     bool enableDirectStream = true,
     bool enableTranscoding = true,
   }) async {
+    _preflightArmed = true;
     _clearPendingItemOverrides();
     _lastItemId = null;
     _lastExplicitAudioLanguage = null;
@@ -1165,6 +1177,21 @@ class PlaybackManager implements AudioOwnable {
     if (item == null || _backend == null) {
       _setBringupState(const PlaybackBringupState.idle());
       return;
+    }
+
+    if (_preflightArmed) {
+      _preflightArmed = false;
+      final hook = preflightHook;
+      if (hook != null) {
+        try {
+          final preflight = await hook(item);
+          if (preflight != null) {
+            _maxBitrateOverrideMbps = preflight.capMbps;
+          }
+        } catch (_) {
+          // Preflight must never block playback.
+        }
+      }
     }
 
     final lockedBackend = _sessionLockedBackend;
@@ -1818,6 +1845,7 @@ class PlaybackManager implements AudioOwnable {
       _resetBackendSelectionLock();
       final hadNext = queueService.next();
       if (hadNext) {
+        _preflightArmed = true;
         await _playCurrentItem();
       }
     } finally {
@@ -1836,6 +1864,7 @@ class PlaybackManager implements AudioOwnable {
     _resetBackendSelectionLock();
     final hadPrevious = queueService.previous();
     if (hadPrevious) {
+      _preflightArmed = true;
       await _playCurrentItem();
     }
   }
@@ -1845,6 +1874,7 @@ class PlaybackManager implements AudioOwnable {
     await _stopAndReportCurrent(skipQueueChange: true);
     _resetBackendSelectionLock();
     queueService.jumpTo(index);
+    _preflightArmed = true;
     await _playCurrentItem();
   }
 
@@ -3201,3 +3231,11 @@ const Map<String, String> _kIso6391To6392 = {
   'zh': 'zho',
   'zu': 'zul',
 };
+
+
+/// Outcome of a Sipflix Stream Preflight run, applied to the play that
+/// triggered it: [capMbps] becomes the bitrate override (null = uncapped).
+class PlaybackPreflightResult {
+  final int? capMbps;
+  const PlaybackPreflightResult({required this.capMbps});
+}

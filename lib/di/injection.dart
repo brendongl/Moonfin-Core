@@ -24,6 +24,7 @@ import 'modules/app_module.dart';
 import 'modules/auth_module.dart';
 import '../sipflix/sipflix_auto_bitrate_service.dart';
 import '../sipflix/sipflix_ota_updater.dart';
+import '../sipflix/sipflix_preflight.dart';
 import 'modules/server_module.dart';
 import 'modules/playback_module.dart';
 import 'modules/preference_module.dart';
@@ -455,6 +456,11 @@ Future<void> configureDependencies() async {
 
   // Sipflix: fleet OTA updates from the VN VPS manifest.
   getIt.registerSingleton<SipflixOtaUpdater>(SipflixOtaUpdater());
+
+  // Sipflix: Stream Preflight (per-play route + quality check, opt-in).
+  getIt.registerSingleton<SipflixPreflightController>(
+    SipflixPreflightController(),
+  );
 
   // Sipflix: measures the link speed behind the "Auto" quality setting.
   getIt.registerSingleton<SipflixAutoBitrateService>(

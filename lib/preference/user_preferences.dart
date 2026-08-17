@@ -1318,6 +1318,18 @@ class UserPreferences extends ChangeNotifier {
     defaultValue: 0,
   );
 
+  /// Sipflix Stream Preflight: opt-in per-play route + quality check.
+  static final preflightEnabled = Preference(
+    key: 'sipflix_preflight_enabled',
+    defaultValue: false,
+  );
+
+  /// Epoch ms the enable-offer dialog last showed (never more than once a day).
+  static final preflightLastOfferAt = Preference<int>(
+    key: 'sipflix_preflight_last_offer_at',
+    defaultValue: 0,
+  );
+
   /// Ceiling learned from real playback stalls while on Auto (0 = none).
   static final autoLearnedCeilingMbps = Preference<int>(
     key: 'sipflix_auto_ceiling_mbps',
