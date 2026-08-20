@@ -8460,6 +8460,17 @@ class AppLocalizationsEl extends AppLocalizations {
   String get playerTooltipPlaybackQuality => 'Ρυθμός bit';
 
   @override
+  String get sipflixServerRoute => 'Server Route';
+
+  @override
+  String get sipflixRouteInUse => 'In use now';
+
+  @override
+  String sipflixRouteSwitched(String route) {
+    return 'Switched to $route';
+  }
+
+  @override
   String get playerTooltipEnterFullscreen => 'Μπείτε σε πλήρη οθόνη';
 
   @override

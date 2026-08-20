@@ -8378,6 +8378,17 @@ class AppLocalizationsCy extends AppLocalizations {
   String get playerTooltipPlaybackQuality => 'Cyfradd didau';
 
   @override
+  String get sipflixServerRoute => 'Server Route';
+
+  @override
+  String get sipflixRouteInUse => 'In use now';
+
+  @override
+  String sipflixRouteSwitched(String route) {
+    return 'Switched to $route';
+  }
+
+  @override
   String get playerTooltipEnterFullscreen => 'Rhowch sgrin lawn';
 
   @override

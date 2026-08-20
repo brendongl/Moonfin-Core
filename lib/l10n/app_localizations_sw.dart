@@ -8397,6 +8397,17 @@ class AppLocalizationsSw extends AppLocalizations {
   String get playerTooltipPlaybackQuality => 'Kasi ya biti';
 
   @override
+  String get sipflixServerRoute => 'Server Route';
+
+  @override
+  String get sipflixRouteInUse => 'In use now';
+
+  @override
+  String sipflixRouteSwitched(String route) {
+    return 'Switched to $route';
+  }
+
+  @override
   String get playerTooltipEnterFullscreen => 'Ingiza skrini nzima';
 
   @override

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../preference/button_layout.dart';
 import '../../../preference/user_preferences.dart';
+import '../../../sipflix/sipflix_servers.dart';
 import '../../../util/platform_detection.dart';
 
 /// The buttons around the playback controls, the ones a user can switch off.
@@ -25,6 +26,8 @@ enum OsdButton {
   castControls('castControls'),
   volume('volume'),
   quality('quality'),
+  // Sipflix: pick the CDN/direct path to the server without leaving playback.
+  serverRoute('serverRoute'),
   zoom('zoom'),
   orientation('orientation'),
   info('info'),
@@ -39,6 +42,9 @@ enum OsdButton {
   /// never gets drawn here isn't worth offering a switch for.
   bool get isOffered => switch (this) {
     OsdButton.castControls => false,
+    // Only ever drawn for the hardcoded Sipflix server; the player checks that
+    // per item, this just keeps the button out of the layout editor elsewhere.
+    OsdButton.serverRoute => SipflixServers.enableRouteToggle,
     OsdButton.cast => !PlatformDetection.isTV,
     OsdButton.volume => PlatformDetection.useDesktopUi,
     OsdButton.orientation => PlatformDetection.isMobile,
@@ -60,6 +66,7 @@ enum OsdButton {
     OsdButton.castControls => Icons.cast_connected,
     OsdButton.volume => Icons.volume_up_rounded,
     OsdButton.quality => Icons.video_settings_outlined,
+    OsdButton.serverRoute => Icons.alt_route_rounded,
     OsdButton.zoom => Icons.zoom_out_map,
     OsdButton.orientation => Icons.screen_rotation_outlined,
     OsdButton.info => Icons.info_outline_rounded,
@@ -79,6 +86,7 @@ enum OsdButton {
     OsdButton.castControls => l10n.playerTooltipCastControls,
     OsdButton.volume => l10n.playerTooltipVolume,
     OsdButton.quality => l10n.playerTooltipPlaybackQuality,
+    OsdButton.serverRoute => l10n.sipflixServerRoute,
     OsdButton.zoom => l10n.playerZoomMode,
     OsdButton.orientation => l10n.orientationLock,
     OsdButton.info => l10n.playbackInformation,

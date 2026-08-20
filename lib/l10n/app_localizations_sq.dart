@@ -8407,6 +8407,17 @@ class AppLocalizationsSq extends AppLocalizations {
   String get playerTooltipPlaybackQuality => 'Shpejtësia e biteve';
 
   @override
+  String get sipflixServerRoute => 'Server Route';
+
+  @override
+  String get sipflixRouteInUse => 'In use now';
+
+  @override
+  String sipflixRouteSwitched(String route) {
+    return 'Switched to $route';
+  }
+
+  @override
   String get playerTooltipEnterFullscreen => 'Hyni në ekran të plotë';
 
   @override

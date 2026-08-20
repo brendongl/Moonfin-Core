@@ -8275,6 +8275,17 @@ class AppLocalizationsFa extends AppLocalizations {
   String get playerTooltipPlaybackQuality => 'میزان بیت';
 
   @override
+  String get sipflixServerRoute => 'Server Route';
+
+  @override
+  String get sipflixRouteInUse => 'In use now';
+
+  @override
+  String sipflixRouteSwitched(String route) {
+    return 'Switched to $route';
+  }
+
+  @override
   String get playerTooltipEnterFullscreen => 'تمام صفحه را وارد کنید';
 
   @override

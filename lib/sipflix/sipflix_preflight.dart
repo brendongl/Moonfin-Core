@@ -80,7 +80,7 @@ class SipflixPreflightController {
     if (item is! AggregatedItem) return null;
     if (!_eligibleTypes.contains(item.type)) return null;
     if (item.rawData['__moonfinIsPreroll'] == true) return null;
-    if (!SipflixServers.isSipflixServer(item.serverId)) return null;
+    if (!SipflixServers.isSipflixServerRef(item.serverId)) return null;
     if (!GetIt.instance<ConnectivityService>().isOnline) return null;
 
     _running = true;
@@ -163,16 +163,16 @@ class SipflixPreflightController {
       // client, so the resolve that follows uses the winning route without any
       // client teardown mid-flight.
       final serverRepo = GetIt.instance<ServerRepository>();
-      final server = serverRepo.servers
-          .where((s) => s.id == item.serverId)
-          .firstOrNull;
+      final server = SipflixServers.findServer(serverRepo.servers);
       if (server != null &&
           SipflixConnectionManager.currentRoute(server).id !=
               decision.route.id) {
-        await serverRepo.updateServer(
-          server.copyWith(address: decision.route.url),
+        await SipflixConnectionManager.applyRoute(
+          server,
+          decision.route,
+          serverRepo,
+          factory,
         );
-        client.baseUrl = decision.route.url;
         _logger.i('Sipflix preflight: switched route to ${decision.route.id}');
       }
 

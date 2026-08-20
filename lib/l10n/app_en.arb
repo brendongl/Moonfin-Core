@@ -8026,6 +8026,19 @@
   "@playerTooltipPlaybackQuality": {
     "description": "Tooltip label for playback quality/bitrate control in player"
   },
+  "sipflixServerRoute": "Server Route",
+  "@sipflixServerRoute": {
+    "description": "Sipflix: player button and dialog title for picking the connection route to the server"
+  },
+  "sipflixRouteInUse": "In use now",
+  "@sipflixRouteInUse": {
+    "description": "Sipflix: subtitle on the connection route the app is already streaming over"
+  },
+  "sipflixRouteSwitched": "Switched to {route}",
+  "@sipflixRouteSwitched": {
+    "description": "Sipflix: toast shown after switching the connection route",
+    "placeholders": { "route": { "type": "String" } }
+  },
   "playerTooltipEnterFullscreen": "Enter fullscreen",
   "@playerTooltipEnterFullscreen": {
     "description": "Tooltip label for entering fullscreen in player"

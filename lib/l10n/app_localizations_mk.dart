@@ -8393,6 +8393,17 @@ class AppLocalizationsMk extends AppLocalizations {
   String get playerTooltipPlaybackQuality => 'Брзина на битови';
 
   @override
+  String get sipflixServerRoute => 'Server Route';
+
+  @override
+  String get sipflixRouteInUse => 'In use now';
+
+  @override
+  String sipflixRouteSwitched(String route) {
+    return 'Switched to $route';
+  }
+
+  @override
   String get playerTooltipEnterFullscreen => 'Влезете на цел екран';
 
   @override

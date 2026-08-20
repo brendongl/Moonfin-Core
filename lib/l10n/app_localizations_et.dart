@@ -8336,6 +8336,17 @@ class AppLocalizationsEt extends AppLocalizations {
   String get playerTooltipPlaybackQuality => 'Bitikiirus';
 
   @override
+  String get sipflixServerRoute => 'Server Route';
+
+  @override
+  String get sipflixRouteInUse => 'In use now';
+
+  @override
+  String sipflixRouteSwitched(String route) {
+    return 'Switched to $route';
+  }
+
+  @override
   String get playerTooltipEnterFullscreen => 'Sisenege täisekraanil';
 
   @override

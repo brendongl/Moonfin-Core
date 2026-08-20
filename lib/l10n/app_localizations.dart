@@ -14848,6 +14848,24 @@ abstract class AppLocalizations {
   /// **'Bitrate'**
   String get playerTooltipPlaybackQuality;
 
+  /// Sipflix: player button and dialog title for picking the connection route to the server
+  ///
+  /// In en, this message translates to:
+  /// **'Server Route'**
+  String get sipflixServerRoute;
+
+  /// Sipflix: subtitle on the connection route the app is already streaming over
+  ///
+  /// In en, this message translates to:
+  /// **'In use now'**
+  String get sipflixRouteInUse;
+
+  /// Sipflix: toast shown after switching the connection route
+  ///
+  /// In en, this message translates to:
+  /// **'Switched to {route}'**
+  String sipflixRouteSwitched(String route);
+
   /// Tooltip label for entering fullscreen in player
   ///
   /// In en, this message translates to:

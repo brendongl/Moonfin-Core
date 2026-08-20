@@ -8095,6 +8095,17 @@ class AppLocalizationsKo extends AppLocalizations {
   String get playerTooltipPlaybackQuality => '비트레이트';
 
   @override
+  String get sipflixServerRoute => 'Server Route';
+
+  @override
+  String get sipflixRouteInUse => 'In use now';
+
+  @override
+  String sipflixRouteSwitched(String route) {
+    return 'Switched to $route';
+  }
+
+  @override
   String get playerTooltipEnterFullscreen => '전체 화면으로 전환';
 
   @override

@@ -8376,6 +8376,17 @@ class AppLocalizationsLv extends AppLocalizations {
   String get playerTooltipPlaybackQuality => 'Bitu pārraides ātrums';
 
   @override
+  String get sipflixServerRoute => 'Server Route';
+
+  @override
+  String get sipflixRouteInUse => 'In use now';
+
+  @override
+  String sipflixRouteSwitched(String route) {
+    return 'Switched to $route';
+  }
+
+  @override
   String get playerTooltipEnterFullscreen => 'Ieiet pilnekrāna režīmā';
 
   @override

@@ -65,8 +65,12 @@ import '../../widgets/playback/still_watching_dialog.dart';
 import '../../widgets/playback/stream_info_dialog.dart';
 import '../../widgets/syncplay/syncplay_player_button.dart';
 import '../../../syncplay/syncplay_manager.dart';
+import '../../../auth/models/server.dart';
+import '../../../auth/repositories/server_repository.dart';
 import '../../../sipflix/sipflix_bitrate_watchdog.dart';
+import '../../../sipflix/sipflix_connection_manager.dart';
 import '../../../sipflix/sipflix_preflight.dart';
+import '../../../sipflix/sipflix_servers.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../playback/media3_player_backend.dart';
 import '../../../playback/tizen_player_backend.dart';
@@ -5131,6 +5135,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
               iconSize: secondaryIconSize,
               tooltip: l10n.playerTooltipPlaybackQuality,
             ),
+          // Sipflix: sits beside the bitrate button on purpose — when a stream
+          // struggles these are the two things worth trying, and the route is
+          // the one that used to need a sign-out to reach.
+          if (shows(OsdButton.serverRoute) && _sipflixRouteSwitchAvailable)
+            OsdButton.serverRoute: _buildServerRouteButton(
+              extent: secondaryExtent,
+              iconSize: secondaryIconSize,
+              tooltip: l10n.sipflixServerRoute,
+            ),
           if (shows(OsdButton.zoom))
             OsdButton.zoom: _buildZoomButton(
               size: secondaryIconSize,
@@ -6322,6 +6335,124 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       onRightBoundary: onRightBoundary,
       iconColor: current != null ? AppColorScheme.accent : Colors.white,
     );
+  }
+
+  // ---------------------------------------------------------------------
+  // Sipflix: connection route (CDN 1 / CDN 2 / Direct) from inside playback.
+  // ---------------------------------------------------------------------
+
+  /// The Sipflix server the item playing now belongs to, or null when this is
+  /// not a Sipflix server (so the button never shows on anything else).
+  Server? get _sipflixServer {
+    if (!SipflixServers.enableRouteToggle) return null;
+    if (!GetIt.instance.isRegistered<ServerRepository>()) return null;
+    final item = _queue.currentItem;
+    if (item is! AggregatedItem) return null;
+
+    // Found in the store first, because the item cannot identify it on its own:
+    // `serverId` there is `_serverId ?? client.baseUrl`, so it is sometimes the
+    // stored id, sometimes a route URL, and on a record that predates the
+    // hardcoded injection it is an id we do not recognise at all.
+    final server = SipflixServers.findServer(
+      GetIt.instance<ServerRepository>().servers,
+    );
+    if (server == null) return null;
+
+    final ref = item.serverId;
+    final belongsToSipflix =
+        ref == server.id || SipflixServers.isSipflixServerRef(ref);
+    return belongsToSipflix ? server : null;
+  }
+
+  bool get _sipflixRouteSwitchAvailable =>
+      SipflixServers.routeChoices.length > 1 && _sipflixServer != null;
+
+  Widget _buildServerRouteButton({
+    double extent = 48,
+    double iconSize = 24,
+    String? tooltip,
+    FocusNode? focusNode,
+    VoidCallback? onRightBoundary,
+  }) {
+    final server = _sipflixServer;
+    final onDefault = server == null ||
+        SipflixConnectionManager.currentRoute(server).id ==
+            SipflixServers.routeChoices.first.id;
+    return _controlButton(
+      Icons.alt_route_rounded,
+      onPressed: _showServerRouteSelector,
+      size: iconSize,
+      extent: extent,
+      tooltip: tooltip,
+      focusNode: focusNode,
+      onRightBoundary: onRightBoundary,
+      // Same language as the bitrate button: accent means "not on the default".
+      iconColor: onDefault ? Colors.white : AppColorScheme.accent,
+    );
+  }
+
+  void _showServerRouteSelector() {
+    final l10n = AppLocalizations.of(context);
+    final server = _sipflixServer;
+    if (server == null) return;
+
+    final routes = SipflixServers.routeChoices;
+    final current = SipflixConnectionManager.currentRoute(server);
+    final currentIdx = routes.indexWhere((r) => r.id == current.id);
+
+    final options = [
+      for (final r in routes)
+        TrackOption(
+          label: r.label,
+          subtitle: r.id == current.id ? l10n.sipflixRouteInUse : null,
+          // The route already carrying this stream is shown, ticked and greyed:
+          // picking it would tear the stream down and rebuild it identically.
+          enabled: r.id != current.id,
+        ),
+    ];
+
+    unawaited(() async {
+      final result = await TrackSelectorDialog.show(
+        context,
+        title: l10n.sipflixServerRoute,
+        options: options,
+        selectedIndex: currentIdx >= 0 ? currentIdx : null,
+      );
+      _suppressBackNavigation();
+      if (result == null || !mounted) return;
+      final picked = routes[result];
+      if (picked.id == current.id) return;
+      await _switchServerRoute(server, picked);
+    }());
+    _showControls();
+  }
+
+  /// Move the app — and the stream playing right now — onto [route].
+  ///
+  /// Persisting the address is not enough on its own: the signed-in session
+  /// holds a client built at login, so the route only took effect on the next
+  /// launch. [SipflixConnectionManager.applyRoute] retargets that live client,
+  /// and the re-resolve below rebuilds the current stream URL against it and
+  /// resumes where the viewer was.
+  Future<void> _switchServerRoute(Server server, SipflixRouteDef route) async {
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    await SipflixConnectionManager.applyRoute(
+      server,
+      route,
+      GetIt.instance<ServerRepository>(),
+      GetIt.instance<MediaServerClientFactory>(),
+    );
+    // Re-resolve at the current position on the new route. Passing the override
+    // back in is deliberately a no-op change to the cap — it is the public way
+    // into the manager's restart-in-place path, and an internal re-resolve does
+    // not re-arm Stream Preflight.
+    await _manager.changeBitrate(_manager.maxBitrateOverrideMbps);
+    if (!mounted) return;
+    messenger.showSnackBar(
+      SnackBar(content: Text(l10n.sipflixRouteSwitched(route.label))),
+    );
+    setState(() {});
   }
 
   void _showTrackSelector({required bool audio}) {

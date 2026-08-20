@@ -8320,6 +8320,17 @@ class AppLocalizationsSi extends AppLocalizations {
   String get playerTooltipPlaybackQuality => 'බිට්රේට්';
 
   @override
+  String get sipflixServerRoute => 'Server Route';
+
+  @override
+  String get sipflixRouteInUse => 'In use now';
+
+  @override
+  String sipflixRouteSwitched(String route) {
+    return 'Switched to $route';
+  }
+
+  @override
   String get playerTooltipEnterFullscreen => 'සම්පූර්ණ තිරයට ඇතුළු වන්න';
 
   @override

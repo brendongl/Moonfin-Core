@@ -8028,6 +8028,17 @@ class AppLocalizationsZh extends AppLocalizations {
   String get playerTooltipPlaybackQuality => '码率';
 
   @override
+  String get sipflixServerRoute => 'Server Route';
+
+  @override
+  String get sipflixRouteInUse => 'In use now';
+
+  @override
+  String sipflixRouteSwitched(String route) {
+    return 'Switched to $route';
+  }
+
+  @override
   String get playerTooltipEnterFullscreen => '进入全屏';
 
   @override

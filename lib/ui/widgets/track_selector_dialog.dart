@@ -117,12 +117,18 @@ class TrackOption {
   final bool scrollLabel;
   final bool scrollSubtitle;
 
+  /// A disabled row still shows — it is greyed out and refuses focus-select and
+  /// taps. For an option that is already in effect, that reads better than
+  /// hiding it: the list keeps its shape and the row says why it is inert.
+  final bool enabled;
+
   const TrackOption({
     required this.label,
     this.subtitle,
     this.labelMaxLines = 1,
     this.scrollLabel = false,
     this.scrollSubtitle = false,
+    this.enabled = true,
   });
 }
 
@@ -150,6 +156,7 @@ class TrackSelectorDialog {
           option: options[i],
           isSelected: selectedIndex == i,
           autofocus: selectedIndex == i || (selectedIndex == null && i == 0),
+          dimmed: !options[i].enabled,
           onTap: () => Navigator.pop(dialogCtx, i),
         ),
       ),
@@ -210,13 +217,15 @@ class _TrackRowState extends State<_TrackRow> {
         if (event is KeyDownEvent &&
             (event.logicalKey == LogicalKeyboardKey.select ||
                 event.logicalKey == LogicalKeyboardKey.enter)) {
-          widget.onTap();
+          // Handled either way: a disabled row must not fall through to
+          // whatever sits behind the dialog.
+          if (widget.option.enabled) widget.onTap();
           return KeyEventResult.handled;
         }
         return KeyEventResult.ignored;
       },
       child: GestureDetector(
-        onTap: widget.onTap,
+        onTap: widget.option.enabled ? widget.onTap : null,
         child: Container(
           width: double.infinity,
           color: _isFocused ? focusColor.withValues(alpha: 0.2) : Colors.transparent,

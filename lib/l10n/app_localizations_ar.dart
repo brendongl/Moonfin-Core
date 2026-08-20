@@ -8316,6 +8316,17 @@ class AppLocalizationsAr extends AppLocalizations {
   String get playerTooltipPlaybackQuality => 'معدل البت';
 
   @override
+  String get sipflixServerRoute => 'Server Route';
+
+  @override
+  String get sipflixRouteInUse => 'In use now';
+
+  @override
+  String sipflixRouteSwitched(String route) {
+    return 'Switched to $route';
+  }
+
+  @override
   String get playerTooltipEnterFullscreen => 'أدخل ملء الشاشة';
 
   @override

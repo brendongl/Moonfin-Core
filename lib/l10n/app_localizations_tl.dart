@@ -8421,6 +8421,17 @@ class AppLocalizationsTl extends AppLocalizations {
   String get playerTooltipPlaybackQuality => 'Bitrate';
 
   @override
+  String get sipflixServerRoute => 'Server Route';
+
+  @override
+  String get sipflixRouteInUse => 'In use now';
+
+  @override
+  String sipflixRouteSwitched(String route) {
+    return 'Switched to $route';
+  }
+
+  @override
   String get playerTooltipEnterFullscreen => 'Ipasok ang fullscreen';
 
   @override

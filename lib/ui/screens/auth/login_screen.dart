@@ -800,7 +800,7 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
             if (SipflixServers.enableRouteToggle &&
                 _server != null &&
-                SipflixServers.isSipflixServer(_server!.id))
+                SipflixServers.isSipflixServerRecord(_server!))
               _buildActionButton(
                 label:
                     'Connection: ${SipflixConnectionManager.label(SipflixConnectionManager.currentRoute(_server!))}',

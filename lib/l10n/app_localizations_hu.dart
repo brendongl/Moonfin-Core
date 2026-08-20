@@ -8411,6 +8411,17 @@ class AppLocalizationsHu extends AppLocalizations {
   String get playerTooltipPlaybackQuality => 'Bitráta';
 
   @override
+  String get sipflixServerRoute => 'Server Route';
+
+  @override
+  String get sipflixRouteInUse => 'In use now';
+
+  @override
+  String sipflixRouteSwitched(String route) {
+    return 'Switched to $route';
+  }
+
+  @override
   String get playerTooltipEnterFullscreen => 'Belépés teljes képernyőre';
 
   @override

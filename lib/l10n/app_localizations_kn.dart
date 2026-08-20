@@ -8387,6 +8387,17 @@ class AppLocalizationsKn extends AppLocalizations {
   String get playerTooltipPlaybackQuality => 'ಬಿಟ್ರೇಟ್';
 
   @override
+  String get sipflixServerRoute => 'Server Route';
+
+  @override
+  String get sipflixRouteInUse => 'In use now';
+
+  @override
+  String sipflixRouteSwitched(String route) {
+    return 'Switched to $route';
+  }
+
+  @override
   String get playerTooltipEnterFullscreen => 'ಪೂರ್ಣಪರದೆಯನ್ನು ನಮೂದಿಸಿ';
 
   @override

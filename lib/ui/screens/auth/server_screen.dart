@@ -313,7 +313,7 @@ class _ServerScreenState extends State<ServerScreen> {
                   ),
                 ],
                 if (SipflixServers.enableRouteToggle &&
-                    SipflixServers.isSipflixServer(server.id)) ...[
+                    SipflixServers.isSipflixServerRecord(server)) ...[
                   const SizedBox(height: 10),
                   OutlinedButton.icon(
                     onPressed: () => _toggleConnection(server),
@@ -355,7 +355,7 @@ class _ServerScreenState extends State<ServerScreen> {
                   ),
                 ],
                 if (SipflixServers.enableRouteToggle &&
-                    SipflixServers.isSipflixServer(server.id)) ...[
+                    SipflixServers.isSipflixServerRecord(server)) ...[
                   const SizedBox(width: 12),
                   Expanded(
                     child: OutlinedButton.icon(
@@ -382,7 +382,7 @@ class _ServerScreenState extends State<ServerScreen> {
   bool _sipflixRouteReplacesServerSelect(Server server) =>
       SipflixServers.hideAddServer &&
       SipflixServers.enableRouteToggle &&
-      SipflixServers.isSipflixServer(server.id);
+      SipflixServers.isSipflixServerRecord(server);
 
   /// Shows where the box is connected AND what pressing does, so the button is
   /// readable from the sofa without having to try it: "CDN 1 -> Switch to Direct".

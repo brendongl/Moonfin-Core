@@ -8104,6 +8104,17 @@ class AppLocalizationsJa extends AppLocalizations {
   String get playerTooltipPlaybackQuality => 'ビットレート';
 
   @override
+  String get sipflixServerRoute => 'Server Route';
+
+  @override
+  String get sipflixRouteInUse => 'In use now';
+
+  @override
+  String sipflixRouteSwitched(String route) {
+    return 'Switched to $route';
+  }
+
+  @override
   String get playerTooltipEnterFullscreen => '全画面表示に入る';
 
   @override

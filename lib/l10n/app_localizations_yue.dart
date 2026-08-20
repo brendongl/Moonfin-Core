@@ -8048,6 +8048,17 @@ class AppLocalizationsYue extends AppLocalizations {
   String get playerTooltipPlaybackQuality => '位元率';
 
   @override
+  String get sipflixServerRoute => 'Server Route';
+
+  @override
+  String get sipflixRouteInUse => 'In use now';
+
+  @override
+  String sipflixRouteSwitched(String route) {
+    return 'Switched to $route';
+  }
+
+  @override
   String get playerTooltipEnterFullscreen => '進入全螢幕';
 
   @override
