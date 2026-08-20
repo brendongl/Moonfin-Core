@@ -7,7 +7,13 @@ customizations originally built on the old Kotlin `AndroidTV-FireTV` fork
 - Fork: `brendongl/Moonfin-Core`, branch `sipflix`, upstream remote = `Moonfin-Client/Moonfin-Core`.
 - Flutter pin: **3.44.1** (matches upstream CI). Build flavor for TV boxes: `androidtv` release.
 - **ABI: SamPlay boxes (Allwinner H6/H618) run a 32-bit Android userspace** → `ro.product.cpu.abilist=armeabi-v7a,armeabi`. MUST build with `armeabi-v7a` (`--target-platform android-arm`); an arm64-only APK crashes at launch with `Could not find 'libflutter.so' ... only found: [arm64-v8a]`. Release/fleet build = `android-arm,android-arm64`. Build env: `flutter` at `~/flutter`, `ANDROID_HOME=~/android-sdk`, durable build via `systemd-run --user --unit=sipflix-tvbuild` (survives harness session teardown; `setsid` alone does not).
-- Test device: **Pro17 = 192.168.50.126:5555** (SamPlay A98pro). Stock Emby was installed; old fork app id `com.sipflix.moonfin`.
+- **Upstream base is now 2.4.0**, merged in `81ef6c7e` (2026-08). The "2.2.0" in this doc's title and
+  in the architecture section below is the *original* port baseline — file paths there were re-verified
+  against the current tree on 2026-08-20 and still hold.
+- Test devices: **Pro17 = 192.168.50.126:5555** (SamPlay A98pro, Allwinner, primary port/verify box).
+  **onn 4K Pro = 192.168.50.4:5555** (bedroom, model `onn. Streaming Device 4K pro`, Android 14) — note it
+  also reports a **32-bit** userspace (`ro.product.cpu.abi=armeabi-v7a`, no `abilist64`), so the same
+  `--target-platform android-arm,android-arm64` rule applies. Old fork app id `com.sipflix.moonfin`.
 
 ## Load-bearing config to reproduce (from old Kotlin SipflixConnectionManager/Injector)
 
@@ -23,18 +29,32 @@ Servers injected on first launch (type **EMBY**, version `4.10.0.4`, setupComple
 
 ## Feature checklist (port targets)
 
-- [~] Branding — per operator: KEEP "Moonfin" wording, only swap the icon to the Sipflix badge. Wordmark (`assets/images/logo_and_text.png`) + TV banner (`moonfin_tv_banner.png`) recomposed = Sipflix badge (`ic_sipflix_large.png`) + white "Moonfin" text. App name stays "Moonfin". Originals backed up in scratchpad. TODO (optional): app-icon mipmaps to Sipflix badge.
-- [x] Hardcoded server injection (Alpha + iDuck) + hide "Add Server" — DONE, verified on Pro17 2026-06-29 (`lib/sipflix/sipflix_servers.dart` + startup hook + server_select_screen flag)
-- [x] CDN / Direct / VN route toggle — DONE, verified on Pro17 2026-06-29 (`sipflix_connection_manager.dart`; "Connection: <mode>" button on login_screen + server_screen; rewrites address + drops cached client). TODO later: in-player overlay route switch.
-- [x] QR-code web login — DONE, verified end-to-end on Pro17 2026-06-29 (POSTed creds to box :8765 → authenticated → home). `lib/sipflix/sipflix_login_server.dart` (dart:io HttpServer on :8765 phone login form) + `sipflix_qr_login_screen.dart` (QR of http://<box-ip>:8765, reuses `_authRepo.authenticate` → `switchCurrentSession`); route `Destinations.qrLogin` (MUST be in app_router `_authRoutes` allowlist or the redirect bounces it pre-login); "Sign in with phone" button on login_screen.
-- [~] Bitrate auto-suggest dialog on buffering — IMPLEMENTED + logic unit-tested (5/5) + no device regression 2026-06-29 (`lib/sipflix/sipflix_bitrate_watchdog.dart` + hooks in `video_player_screen.dart`: bufferingStream listener → dialog → `setBitrateOverride` + `startQueuedPlayback`). PENDING: live on-device trigger test (needs Emby login + induced stalls).
-      SPEC (from old Kotlin): sliding window ≥3 buffering events in 60s → offer ONCE per item; tiers Mbps [120,80,60,40,30,20,15,10,8,5,3] suggest first < current (min 3); dialog "Stream is X Mbps. Lower to Y Mbps?" Yes(focused)/No, auto-dismiss; on Yes set maxBitrate pref + restart stream at current position; reset tracking on new item. Secondary: prefer AC3/EAC3 5.1 > AAC > … > TrueHD 7.1.
-- [ ] De-duplicate 4K libraries
-- [ ] Ratings overlay on detail pages (was built+disabled in Kotlin via MDBList)
-- [ ] Homepage collection carousels (check if upstream 2.2.0 already has this)
-- [ ] Direct-Jellyseerr client for Emby (upstream Seerr is Jellyfin-plugin-only — won't work on Emby)
-- [ ] RAM-adaptive defaults for low-end boxes
-- [ ] Hide Jellyseerr/SyncPlay where not applicable on Emby
+Status verified against the source on 2026-08-20 (not from memory — the list had drifted
+badly: several items were done upstream, and four shipped Sipflix features were missing).
+
+**Done**
+
+- [x] Hardcoded server injection (Alpha + iDuck) + hide "Add Server" — verified Pro17 2026-06-29 (`lib/sipflix/sipflix_servers.dart`, startup hook, `server_select_screen.dart:552`).
+- [x] CDN / Direct / VN route toggle — verified Pro17 2026-06-29 (`sipflix_connection_manager.dart`; button on `login_screen.dart:262` + `server_screen.dart:226`; rewrites address, drops cached client). The route switcher now takes the "Select Server" slot (`908e6747`).
+- [x] QR-code web login — verified end-to-end Pro17 2026-06-29. `sipflix_login_server.dart` (HttpServer on :8765) + `sipflix_qr_login_screen.dart`; route `Destinations.qrLogin` MUST stay in `app_router` `_authRoutes` or the pre-login redirect bounces it.
+- [x] Branding — Sipflix badge + wordmark on the launcher icon, TV banner, and player loading overlay (`cc785c76`). Per operator the app is still called "Moonfin" in strings; only the artwork is Sipflix. Nothing outstanding.
+- [x] Ratings on detail pages — **already upstream**, no port work needed. `RatingsRow` (`lib/ui/widgets/rating_display.dart:21`) renders on `item_detail_screen.dart:3945`, `modern_detail_content.dart:3936`, home, browse, favorites and the media bar. MDBList scores need `UserPreferences.mdblistApiKey` set; the repo (`mdblist_repository.dart`) is upstream too.
+- [x] Hide SyncPlay on Emby — **already upstream**. `syncplay_manager.dart:98` gates `syncPlayServerSupported` on `ServerType.jellyfin`, so it never shows on the fleet.
+- [x] Auto bitrate — supersedes the old Kotlin "suggest a lower bitrate" dialog. Adaptive Auto mode measures the link (`sipflix_bandwidth_probe.dart`), learns a ceiling from real playback, steps down on a *sustained* stall and recovers upward when playback stays clean (`video_player_screen.dart:782-940`, `sipflix_auto_bitrate_service.dart`, prefs at `user_preferences.dart:1307/1391`). `sipflix_bitrate_watchdog.dart` (the manual prompt) is still wired for non-Auto mode.
+- [x] Sipflix OTA in-app updater — manifest at `http://103.98.148.133/moonfin/manifest.json`, checked from the app shell (`app.dart:258`, `di/injection.dart:457`). Verified on-device (Pro13).
+- [x] Stream Preflight — per-play route + quality check, opt-in; gates every new-item start (`sipflix_preflight.dart`, `playback_module.dart:518`). Renders as an OverlayEntry, NOT a pushed route (`aab729c8`) — pushing it broke playback start.
+- [x] Fleet playback defaults — 1080p cap, stereo downmix, trailer/preview autoplay stripped, file size shown on detail (`user_preferences.dart:1430/1660/2014/1146`, `media_bar.dart:334`).
+
+**Partly done**
+
+- [~] De-duplicate 4K libraries — `MediaDeduplicationUtils` (`lib/data/utils/media_deduplication_utils.dart`) collapses a title by external provider id and is wired into the home rows incl. Continue Watching (`row_data_source.dart:1664`, the single-server path Sipflix boxes actually use), search, and the multi-server repo. REMAINING: (a) `library_browse_screen.dart` does no dedup at all; (b) once two library entries collapse, the detail screen only offers versions inside the *winning* item — the separate 4K entry is unreachable. The version picker itself exists upstream (`item_detail_screen.dart:6277/9381`) but only lists that item's `mediaSources`.
+
+**Not started**
+
+- [ ] Homepage collection carousels — the feature is fully upstream (`HomeRowType.collections`, `HomeSectionType.collections`), but the section ships **disabled** (`home_section_config.dart:223`). Turning it on for the fleet is a default-value change, not a port.
+- [ ] Direct-Jellyseerr client for Emby — confirmed still proxy-only: `seerr_http_client.dart:59/63` builds every URL as `<jellyfinBaseUrl>/Moonfin/Seerr/...` and authenticates with a Jellyfin token, i.e. it needs the Moonfin *Jellyfin plugin* we don't have on Emby. Seerr is off by default (`seerr_preferences.dart:27`), so nothing is visibly broken today.
+- [ ] RAM-adaptive defaults for low-end boxes — no memory detection anywhere in `lib/` or `android/app/src/`. The fleet defaults above already cover the practical goal; this item is only about doing it *dynamically* per device.
+- [ ] Hide Seerr where not applicable on Emby — currently only soft-hidden by its default-off preference, not hard-gated on `ServerType`. Low priority while Seerr stays off.
 
 ## Architecture mapping in Moonfin-Core 2.2.0 (verified against source)
 
