@@ -1060,10 +1060,26 @@ class DeviceProfileBuilder {
           type: 'Video',
           codec: 'h264',
           conditions: <Map<String, dynamic>>[
+            // A NotEquals condition blocks direct play but Emby serialises
+            // only POSITIVE conditions into the transcode URL, so the veto
+            // evaporates before ffmpeg sees it: the server names the job
+            // "directstream" and copies the 10-bit bitstream to a decoder that
+            // cannot read it (blocky picture on 8-bit-only hardware).
+            // VideoBitDepth LessThanEqual 8 survives into the URL as
+            // `h264-videobitdepth=8`, which is what actually makes the server
+            // convert. Verified against Emby 4.9.5 PlaybackInfo, 2026-08-20.
+            // The NotEquals stays as the belt to this braces: it still blocks
+            // a file whose BitDepth metadata is missing but whose profile
+            // is known. 8-bit files keep direct-playing either way.
             _condition(
               condition: 'NotEquals',
               property: 'VideoProfile',
               value: 'high 10',
+            ),
+            _condition(
+              condition: 'LessThanEqual',
+              property: 'VideoBitDepth',
+              value: '8',
             ),
           ],
         ),
@@ -1185,10 +1201,17 @@ class DeviceProfileBuilder {
           type: 'Video',
           codec: 'hevc',
           conditions: <Map<String, dynamic>>[
+            // Same shape as the h264 High 10 case above: the positive
+            // bit-depth condition is the one that reaches ffmpeg.
             _condition(
               condition: 'NotEquals',
               property: 'VideoProfile',
               value: 'main 10',
+            ),
+            _condition(
+              condition: 'LessThanEqual',
+              property: 'VideoBitDepth',
+              value: '8',
             ),
           ],
         ),
@@ -1227,12 +1250,20 @@ class DeviceProfileBuilder {
               property: 'VideoProfile',
               value: 'none',
             )
-          else if (!supportsAv1Main10)
+          else if (!supportsAv1Main10) ...[
+            // Same shape as the h264 High 10 case above: the positive
+            // bit-depth condition is the one that reaches ffmpeg.
             _condition(
               condition: 'NotEquals',
               property: 'VideoProfile',
               value: 'main 10',
-            )
+            ),
+            _condition(
+              condition: 'LessThanEqual',
+              property: 'VideoBitDepth',
+              value: '8',
+            ),
+          ]
           else
             _condition(
               condition: 'NotEquals',
