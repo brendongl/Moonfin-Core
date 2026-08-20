@@ -84,46 +84,119 @@ class SipflixOtaUpdater {
     }
   }
 
+  /// Whether the OS will let this app install a package right now.
+  Future<bool> canInstall() async {
+    try {
+      return await _channel.invokeMethod<bool>('canInstallApks') ?? false;
+    } catch (_) {
+      // An older shell without the method: assume yes and let installApk
+      // fall back to its own permission handling.
+      return true;
+    }
+  }
+
+  /// Open the per-app "allow installs from this source" screen.
+  Future<void> requestInstallPermission() async {
+    try {
+      await _channel.invokeMethod<void>('requestInstallPermission');
+    } catch (e) {
+      _logger.w('Sipflix OTA: could not open the install-permission screen: $e');
+    }
+  }
+
+  /// An APK already downloaded AND hash-verified this session, keyed by the
+  /// build it belongs to. Granting the install permission bounces the user out
+  /// to Settings and back; without this the return trip re-downloaded the whole
+  /// APK, which on a fleet box is ~100 MB over a Vietnamese link for no reason.
+  String? _verifiedPath;
+  int? _verifiedVersionCode;
+
   /// Download the APK into cacheDir/ota, verify its sha256, and hand it to the
-  /// system installer. Progress (0..1) is reported via [onProgress].
+  /// system installer. [onProgress] reports 0..1 and [onPhase] the step being
+  /// worked on, so the UI never sits on a silent 100%.
   /// Returns a user-displayable error, or null on success (the installer UI is
   /// in front of the app at that point).
   Future<String?> downloadAndInstall(
     SipflixOtaUpdate update, {
     void Function(double progress)? onProgress,
+    void Function(SipflixOtaPhase phase)? onPhase,
   }) async {
     if (_busy) return 'An update is already in progress';
     _busy = true;
     try {
+      // Permission FIRST. Asking after the transfer meant a finished download
+      // was thrown away and repeated once the user came back from Settings.
+      if (!await canInstall()) {
+        onPhase?.call(SipflixOtaPhase.needsPermission);
+        await requestInstallPermission();
+        return null;
+      }
+
       final cacheDir = await getTemporaryDirectory();
       final otaDir = Directory('${cacheDir.path}/ota');
       if (!await otaDir.exists()) await otaDir.create(recursive: true);
       final file = File('${otaDir.path}/moonfin-update.apk');
-      if (await file.exists()) await file.delete();
 
-      await _dio.download(
-        update.url,
-        file.path,
-        options: Options(receiveTimeout: const Duration(minutes: 10)),
-        onReceiveProgress: (received, total) {
-          final denominator = total > 0 ? total : update.size;
-          if (denominator > 0) onProgress?.call(received / denominator);
-        },
-      );
+      final alreadyHave = _verifiedVersionCode == update.versionCode &&
+          _verifiedPath == file.path &&
+          await file.exists() &&
+          await file.length() == update.size;
 
-      // Never hand a mismatched file to the installer: a truncated or tampered
-      // download must fail HERE, with a message, not as a cryptic parse error.
-      final digest = await sha256.bind(file.openRead()).first;
-      if (digest.toString().toLowerCase() != update.sha256) {
-        await file.delete();
-        return 'Download failed verification — please try again';
+      if (!alreadyHave) {
+        onPhase?.call(SipflixOtaPhase.downloading);
+        if (await file.exists()) await file.delete();
+
+        // The hash is computed over the bytes as they arrive, so verification
+        // costs nothing once the transfer ends. Hashing a ~100 MB file in a
+        // second pass took long enough on an Allwinner box to look like a hang
+        // at 100%.
+        final digestSink = _DigestSink();
+        final hasher = sha256.startChunkedConversion(digestSink);
+        final sink = file.openWrite();
+        var received = 0;
+        try {
+          final response = await _dio.get<ResponseBody>(
+            update.url,
+            options: Options(
+              responseType: ResponseType.stream,
+              receiveTimeout: const Duration(minutes: 10),
+            ),
+          );
+          final declared = int.tryParse(
+                response.headers.value(Headers.contentLengthHeader) ?? '',
+              ) ??
+              update.size;
+          await for (final chunk in response.data!.stream) {
+            sink.add(chunk);
+            hasher.add(chunk);
+            received += chunk.length;
+            if (declared > 0) onProgress?.call(received / declared);
+          }
+        } finally {
+          await sink.close();
+        }
+        hasher.close();
+
+        // Never hand a mismatched file to the installer: a truncated or
+        // tampered download must fail HERE, with a message, not as a cryptic
+        // parse error.
+        final digest = digestSink.value;
+        if (digest == null ||
+            digest.toString().toLowerCase() != update.sha256) {
+          await file.delete();
+          return 'Download failed verification — please try again';
+        }
+        _verifiedPath = file.path;
+        _verifiedVersionCode = update.versionCode;
       }
 
+      onPhase?.call(SipflixOtaPhase.installing);
       final outcome =
           await _channel.invokeMethod<String>('installApk', {'path': file.path});
       if (outcome == 'needs-permission') {
-        return 'Allow installs from Sipflix Moonfin in the screen that just '
-            'opened, then try the update again';
+        // Raced with a revoke; the file is kept so the retry is instant.
+        onPhase?.call(SipflixOtaPhase.needsPermission);
+        return null;
       }
       return null;
     } catch (e) {
@@ -133,6 +206,20 @@ class SipflixOtaUpdater {
       _busy = false;
     }
   }
+}
+
+/// What the updater is doing, so the dialog can say so.
+enum SipflixOtaPhase { downloading, installing, needsPermission }
+
+/// Collects the single [Digest] a chunked sha256 conversion emits on close.
+class _DigestSink implements Sink<Digest> {
+  Digest? value;
+
+  @override
+  void add(Digest data) => value = data;
+
+  @override
+  void close() {}
 }
 
 class SipflixOtaUpdate {
@@ -177,33 +264,75 @@ class _SipflixOtaDialog extends StatefulWidget {
   State<_SipflixOtaDialog> createState() => _SipflixOtaDialogState();
 }
 
-class _SipflixOtaDialogState extends State<_SipflixOtaDialog> {
+class _SipflixOtaDialogState extends State<_SipflixOtaDialog>
+    with WidgetsBindingObserver {
   double? _progress;
   String? _error;
+  SipflixOtaPhase? _phase;
+  bool _working = false;
 
-  bool get _downloading => _progress != null && _error == null;
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Coming back from the permission screen carries straight on. The APK is
+  /// already downloaded and verified by then, so this lands on the installer
+  /// instead of starting the transfer over.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    if (_phase != SipflixOtaPhase.needsPermission || _working) return;
+    unawaited(() async {
+      if (await widget.updater.canInstall() && mounted) await _start();
+    }());
+  }
+
+  String get _statusLine => switch (_phase) {
+        SipflixOtaPhase.downloading =>
+          'Downloading… ${((_progress ?? 0) * 100).round()}%',
+        SipflixOtaPhase.installing => 'Starting the installer…',
+        SipflixOtaPhase.needsPermission =>
+          'Allow updates from Moonfin on the screen that opened, then come '
+              'back — the update carries on by itself.',
+        null => '',
+      };
 
   Future<void> _start() async {
     // TV remotes double-activate buttons (key action + tap semantics); the
     // second call must not clobber the live progress with a busy error.
-    if (_downloading) return;
+    if (_working) return;
     setState(() {
       _error = null;
+      _working = true;
       _progress = 0;
+      _phase = SipflixOtaPhase.downloading;
     });
     final error = await widget.updater.downloadAndInstall(
       widget.update,
       onProgress: (p) {
         if (mounted) setState(() => _progress = p);
       },
+      onPhase: (phase) {
+        if (mounted) setState(() => _phase = phase);
+      },
     );
     if (!mounted) return;
+    setState(() => _working = false);
     if (error != null) {
       setState(() {
         _error = error;
+        _phase = null;
         _progress = null;
       });
-    } else {
+    } else if (_phase != SipflixOtaPhase.needsPermission) {
       Navigator.of(context).pop();
     }
   }
@@ -211,6 +340,8 @@ class _SipflixOtaDialogState extends State<_SipflixOtaDialog> {
   @override
   Widget build(BuildContext context) {
     final update = widget.update;
+    final showBar =
+        _working && _phase == SipflixOtaPhase.downloading && _error == null;
     return AlertDialog(
       title: Text('Update available — ${update.versionName}'),
       content: Column(
@@ -218,11 +349,13 @@ class _SipflixOtaDialogState extends State<_SipflixOtaDialog> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (update.notes.isNotEmpty) Text(update.notes),
-          if (_downloading) ...[
+          if (showBar) ...[
             const SizedBox(height: 16),
             LinearProgressIndicator(value: _progress),
+          ],
+          if (_statusLine.isNotEmpty && _error == null) ...[
             const SizedBox(height: 8),
-            Text('Downloading… ${((_progress ?? 0) * 100).round()}%'),
+            Text(_statusLine),
           ],
           if (_error != null) ...[
             const SizedBox(height: 16),
@@ -235,14 +368,17 @@ class _SipflixOtaDialogState extends State<_SipflixOtaDialog> {
       ),
       actions: [
         TextButton(
-          onPressed:
-              _downloading ? null : () => Navigator.of(context).pop(),
+          onPressed: _working ? null : () => Navigator.of(context).pop(),
           child: const Text('Later'),
         ),
-        FilledButton(
+        TextButton(
           autofocus: true,
-          onPressed: _downloading ? null : _start,
-          child: Text(_error != null ? 'Try again' : 'Update now'),
+          onPressed: _working ? null : _start,
+          child: Text(
+            _phase == SipflixOtaPhase.needsPermission
+                ? 'Continue'
+                : (_error != null ? 'Try again' : 'Update now'),
+          ),
         ),
       ],
     );

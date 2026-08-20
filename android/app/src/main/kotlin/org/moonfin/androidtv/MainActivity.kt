@@ -233,16 +233,25 @@ class MainActivity : AudioServiceActivity(), GamepadsCompatibleActivity {
     // into cacheDir/ota (exposed via the .otafiles FileProvider). On first use
     // Android requires the user to allow installs from this app, so when the
     // permission is missing we open that grant screen and report it instead.
+    // Sipflix OTA: whether this app may install packages. Checked BEFORE the
+    // download so the grant screen never interrupts a finished transfer.
+    private fun canInstallApks(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+            packageManager.canRequestPackageInstalls()
+
+    // Sipflix OTA: open the per-app "allow from this source" screen.
+    private fun openInstallPermissionSettings() {
+        startActivity(
+            Intent(
+                android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                android.net.Uri.parse("package:$packageName"),
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }
+
     private fun installApkFromPath(path: String): String {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-            !packageManager.canRequestPackageInstalls()
-        ) {
-            startActivity(
-                Intent(
-                    android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                    android.net.Uri.parse("package:$packageName"),
-                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
+        if (!canInstallApks()) {
+            openInstallPermissionSettings()
             return "needs-permission"
         }
         val uri = androidx.core.content.FileProvider.getUriForFile(
@@ -297,6 +306,12 @@ class MainActivity : AudioServiceActivity(), GamepadsCompatibleActivity {
                     } else {
                         result.success(installApkFromPath(path))
                     }
+                }
+                // Sipflix OTA: permission gate, asked before downloading.
+                "canInstallApks" -> result.success(canInstallApks())
+                "requestInstallPermission" -> {
+                    openInstallPermissionSettings()
+                    result.success(null)
                 }
                 "displayHdrTypes" -> result.success(getDisplayHdrTypes())
                 "dolbyVisionCodecCapabilities" -> {
