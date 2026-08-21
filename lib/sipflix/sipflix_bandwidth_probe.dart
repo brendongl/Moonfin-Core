@@ -1,7 +1,11 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:isolate';
 
 import 'package:dio/dio.dart';
 import 'package:logger/logger.dart';
+
+import 'sipflix_log.dart';
 
 /// Sipflix: measures the real client↔server throughput so the "Auto" quality
 /// setting can pick a bitrate ceiling that matches the connection instead of
@@ -24,13 +28,42 @@ import 'package:logger/logger.dart';
 class SipflixBandwidthProbe {
   SipflixBandwidthProbe({Dio? dio, Logger? logger})
       : _dio = dio ?? Dio(),
-        _logger = logger ?? Logger();
+        _logger = logger ?? sipflixLogger();
 
   final Dio _dio;
   final Logger _logger;
 
   /// For same-library extensions (preflight's measureRoute).
   Dio get dio => _dio;
+
+  /// One line per route probe, with the counters behind the verdict.
+  void _logRoute({
+    required String url,
+    required int totalBytes,
+    required int elapsedUs,
+    required int firstByteUs,
+    required int sampleCount,
+    required int sustainedStartUs,
+    required int sustainedBytes,
+    required double? sustainedMbps,
+    required double burstMbps,
+  }) {
+    final host = Uri.tryParse(url)?.host ?? url;
+    final wall = elapsedUs / 1e6;
+    final naive = wall > 0 ? totalBytes * 8 / wall / 1e6 : 0.0;
+    final line =
+      'Sipflix probe $host: ${(totalBytes / 1e6).toStringAsFixed(1)} MB in '
+      '${wall.toStringAsFixed(2)}s (naive ${naive.toStringAsFixed(1)} Mbps), '
+      'ttfb ${(firstByteUs / 1000).toStringAsFixed(0)}ms, '
+      'chunks $sampleCount, '
+      'sustained window ${(sustainedBytes / 1e6).toStringAsFixed(1)} MB from '
+      '${(sustainedStartUs / 1e6).toStringAsFixed(2)}s '
+      '=> ${sustainedMbps?.toStringAsFixed(1) ?? "null"} Mbps sustained, '
+      '${burstMbps.toStringAsFixed(1)} burst';
+    _logger.i(line);
+    // Also into the in-app log, because the box's owner cannot read logcat.
+    sipflixDiag(line);
+  }
 
   /// Upper bound on what a single probe may download.
   static const int _probeBytes = 16000000;
@@ -153,6 +186,123 @@ class SipflixRouteMeasurement {
   });
 }
 
+/// Pure sampling math, shared by the isolate worker and its tests.
+/// [samples] is (elapsedMicroseconds, cumulativeBytes), oldest first.
+({double burstMbps, double sustainedMbps})? sipflixThroughputFrom({
+  required List<(int, int)> samples,
+  required int warmupBytes,
+  required int burstWindowUs,
+}) {
+  if (samples.length < 2) return null;
+
+  // Sustained: everything after the warm-up mark, so TCP slow-start is not
+  // counted as the link being slow.
+  var startUs = -1;
+  var startBytes = 0;
+  for (final s in samples) {
+    if (s.$2 >= warmupBytes) {
+      startUs = s.$1;
+      startBytes = s.$2;
+      break;
+    }
+  }
+  final last = samples.last;
+  double sustained;
+  if (startUs >= 0 && last.$1 > startUs) {
+    sustained = (last.$2 - startBytes) * 8 / ((last.$1 - startUs) / 1e6) / 1e6;
+  } else if (last.$1 > 0) {
+    // Never reached the warm-up mark: all we can honestly report is the whole
+    // transfer, and the caller should treat that as low confidence.
+    sustained = last.$2 * 8 / (last.$1 / 1e6) / 1e6;
+  } else {
+    return null;
+  }
+
+  // Burst: best throughput across any window of at least burstWindowUs/2.
+  var burst = 0.0;
+  var lo = 0;
+  for (var hi = 1; hi < samples.length; hi++) {
+    while (samples[hi].$1 - samples[lo].$1 > burstWindowUs && lo < hi - 1) {
+      lo++;
+    }
+    final dtUs = samples[hi].$1 - samples[lo].$1;
+    if (dtUs >= burstWindowUs ~/ 2) {
+      final mbps = (samples[hi].$2 - samples[lo].$2) * 8 / (dtUs / 1e6) / 1e6;
+      if (mbps > burst) burst = mbps;
+    }
+  }
+  if (!sustained.isFinite || sustained <= 0) return null;
+  if (burst < sustained) burst = sustained;
+  return (burstMbps: burst, sustainedMbps: sustained);
+}
+
+/// Runs INSIDE a background isolate.
+///
+/// The probe used to stream on the UI isolate, where it had to share the event
+/// loop with rendering. On an Allwinner box that starved the socket reader:
+/// measured 2026-08-21 on Max16, three different routes each delivered only
+/// ~1.8 MB in a full 10 s (~1.5 Mbps, ~65 chunks/s — suspiciously close to the
+/// frame rate) while `wget` on the SAME box at the SAME moment pulled 16 MB in
+/// 6.5 s. TCP backs off when the receiver does not drain, so the app measured
+/// its own event loop rather than the link. A dedicated isolate has nothing
+/// else to do.
+Future<Map<String, double>?> sipflixProbeWorker(List<Object> args) async {
+  final url = args[0] as String;
+  final token = args[1] as String;
+  final probeBytes = args[2] as int;
+  final warmupBytes = args[3] as int;
+  final sustainUs = args[4] as int;
+  final timeoutMs = args[5] as int;
+  final burstWindowUs = args[6] as int;
+
+  final client = HttpClient()
+    ..connectionTimeout = const Duration(seconds: 8)
+    ..autoUncompress = false;
+  try {
+    final request = await client.getUrl(Uri.parse(url));
+    request.headers.set('X-Emby-Token', token);
+    request.headers.set('Authorization', 'MediaBrowser Token="$token"');
+    // Compressed bytes would be counted against wall time and under-report a
+    // payload that is mostly zeroes.
+    request.headers.set('Accept-Encoding', 'identity');
+    final response = await request.close();
+    if (response.statusCode >= 400) return null;
+
+    final clock = Stopwatch()..start();
+    final samples = <(int, int)>[];
+    var total = 0;
+    var sustainedStartUs = -1;
+    final deadline = Duration(milliseconds: timeoutMs);
+
+    await for (final chunk in response) {
+      total += chunk.length;
+      final nowUs = clock.elapsedMicroseconds;
+      samples.add((nowUs, total));
+      if (total >= warmupBytes && sustainedStartUs < 0) sustainedStartUs = nowUs;
+      final haveWindow =
+          sustainedStartUs >= 0 && nowUs - sustainedStartUs >= sustainUs;
+      if (haveWindow || total >= probeBytes || clock.elapsed >= deadline) break;
+    }
+
+    final result = sipflixThroughputFrom(
+      samples: samples,
+      warmupBytes: warmupBytes,
+      burstWindowUs: burstWindowUs,
+    );
+    if (result == null) return null;
+    return {
+      'burst': result.burstMbps,
+      'sustained': result.sustainedMbps,
+      'bytes': total.toDouble(),
+      'elapsedUs': samples.isEmpty ? 0 : samples.last.$1.toDouble(),
+    };
+  } catch (_) {
+    return null;
+  } finally {
+    client.close(force: true);
+  }
+}
+
 extension SipflixRouteProbing on SipflixBandwidthProbe {
   /// Preflight measurement of one route: burst (best 500 ms window, sampled
   /// from the very first byte so slow-start peaks count) AND sustained (the
@@ -166,113 +316,57 @@ extension SipflixRouteProbing on SipflixBandwidthProbe {
     bool Function()? isCancelled,
   }) async {
     if (accessToken == null || accessToken.isEmpty) return null;
-    final root =
-        baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+    if (isCancelled?.call() == true) return null;
+    final root = baseUrl.endsWith('/')
+        ? baseUrl.substring(0, baseUrl.length - 1)
+        : baseUrl;
     const probeBytes = 16000000;
     const warmupBytes = 2000000;
-    const burstWindow = Duration(milliseconds: 500);
-    const sustainWindow = Duration(milliseconds: 2500);
-    const overallTimeout = Duration(seconds: 10);
+    const burstWindowUs = 500000;
+    const sustainUs = 2500000;
+    const timeoutMs = 10000;
     final url = '$root/emby/Playback/BitrateTest?Size=$probeBytes';
-    final cancelToken = CancelToken();
 
     try {
-      final response = await dio
-          .get<ResponseBody>(
-            url,
-            options: Options(
-              responseType: ResponseType.stream,
-              headers: {
-                'X-Emby-Token': accessToken,
-                'Authorization': 'MediaBrowser Token="$accessToken"',
-              },
-              receiveTimeout: overallTimeout,
-            ),
-            cancelToken: cancelToken,
-          )
-          .timeout(overallTimeout);
-      final body = response.data;
-      if (body == null) return null;
-
-      // (timestampUs, cumulativeBytes) samples drive a sliding-window burst
-      // scan; sustained uses only bytes past the warm-up mark.
-      final clock = Stopwatch()..start();
-      final samples = <(int, int)>[];
-      var total = 0;
-      var sustainedStartUs = -1;
-      var sustainedStartBytes = 0;
-      double? sustained;
-      final done = Completer<void>();
-      late final StreamSubscription<List<int>> sub;
-
-      void finish() {
-        if (!done.isCompleted) done.complete();
-        unawaited(sub.cancel());
-        if (!cancelToken.isCancelled) cancelToken.cancel('measured');
-      }
-
-      sub = body.stream.listen(
-        (chunk) {
-          if (isCancelled?.call() == true) {
-            finish();
-            return;
-          }
-          total += chunk.length;
-          final nowUs = clock.elapsedMicroseconds;
-          samples.add((nowUs, total));
-          if (total >= warmupBytes && sustainedStartUs < 0) {
-            sustainedStartUs = nowUs;
-            sustainedStartBytes = total;
-          }
-          if (sustainedStartUs >= 0 &&
-              nowUs - sustainedStartUs >= sustainWindow.inMicroseconds) {
-            final bytes = total - sustainedStartBytes;
-            final secs = (nowUs - sustainedStartUs) / 1e6;
-            sustained = bytes * 8 / secs / 1e6;
-            finish();
-          } else if (total >= probeBytes) {
-            finish();
-          }
-        },
-        onDone: finish,
-        onError: (Object _) => finish(),
-        cancelOnError: true,
+      // Off the UI isolate on purpose — see [sipflixProbeWorker].
+      final raw = await Isolate.run(
+        () => sipflixProbeWorker([
+          url,
+          accessToken,
+          probeBytes,
+          warmupBytes,
+          sustainUs,
+          timeoutMs,
+          burstWindowUs,
+        ]),
+      ).timeout(
+        const Duration(milliseconds: timeoutMs + 5000),
+        onTimeout: () => null,
       );
-      await done.future.timeout(overallTimeout, onTimeout: finish);
+      if (raw == null) return null;
 
-      if (samples.length < 2) return null;
-      // Sustained fallback when the transfer ended before a full window: use
-      // whatever post-warm-up stretch exists, else the whole transfer.
-      if (sustained == null) {
-        final lastUs = samples.last.$1;
-        if (sustainedStartUs >= 0 && lastUs > sustainedStartUs) {
-          final bytes = samples.last.$2 - sustainedStartBytes;
-          sustained = bytes * 8 / ((lastUs - sustainedStartUs) / 1e6) / 1e6;
-        } else {
-          sustained = samples.last.$2 * 8 / (lastUs / 1e6) / 1e6;
-        }
-      }
-
-      // Burst: best throughput across any window of >= burstWindow.
-      var burst = 0.0;
-      var lo = 0;
-      for (var hi = 1; hi < samples.length; hi++) {
-        while (samples[hi].$1 - samples[lo].$1 > burstWindow.inMicroseconds &&
-            lo < hi - 1) {
-          lo++;
-        }
-        final dtUs = samples[hi].$1 - samples[lo].$1;
-        if (dtUs >= burstWindow.inMicroseconds ~/ 2) {
-          final mbps = (samples[hi].$2 - samples[lo].$2) * 8 / (dtUs / 1e6) / 1e6;
-          if (mbps > burst) burst = mbps;
-        }
-      }
-      final s = sustained;
-      if (s == null || !s.isFinite || s <= 0) return null;
-      if (burst < s) burst = s;
-      return SipflixRouteMeasurement(burstMbps: burst, sustainedMbps: s);
-    } catch (_) {
-      if (!cancelToken.isCancelled) cancelToken.cancel('failed');
+      final sustained = raw['sustained'] ?? 0;
+      final burst = raw['burst'] ?? 0;
+      final bytes = (raw['bytes'] ?? 0).toInt();
+      final elapsedUs = (raw['elapsedUs'] ?? 0).toInt();
+      _logRoute(
+        url: root,
+        totalBytes: bytes,
+        elapsedUs: elapsedUs,
+        firstByteUs: 0,
+        sampleCount: 0,
+        sustainedStartUs: bytes >= warmupBytes ? 0 : -1,
+        sustainedBytes: bytes,
+        sustainedMbps: sustained,
+        burstMbps: burst,
+      );
+      if (sustained <= 0 || !sustained.isFinite) return null;
+      return SipflixRouteMeasurement(
+        burstMbps: burst,
+        sustainedMbps: sustained,
+      );
+    } catch (e) {
+      _logger.w('Sipflix route probe failed for $root: $e');
       return null;
     }
   }

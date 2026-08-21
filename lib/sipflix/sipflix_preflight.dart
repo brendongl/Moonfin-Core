@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get_it/get_it.dart';
 import 'package:logger/logger.dart';
+
+import 'sipflix_log.dart';
 import 'package:playback_core/playback_core.dart';
 
 import '../auth/repositories/server_repository.dart';
@@ -32,7 +34,7 @@ import 'sipflix_servers.dart';
 class SipflixPreflightController {
   SipflixPreflightController({SipflixBandwidthProbe? probe, Logger? logger})
       : _probe = probe ?? SipflixBandwidthProbe(),
-        _logger = logger ?? Logger();
+        _logger = logger ?? sipflixLogger();
 
   final SipflixBandwidthProbe _probe;
   final Logger _logger;
@@ -52,14 +54,24 @@ class SipflixPreflightController {
   /// Fraction of sustained throughput a transcode cap may use.
   static const double capHeadroom = 0.8;
 
-  /// The whole preflight (UI + both probes + apply) is capped here; timeout is
-  /// pure fail-open insurance ("play normally"), never the normal path. Two
-  /// route probes cap at 10s each, so a single genuinely-slow route can push
-  /// the total toward ~21s + verdict hold — and that slow-route case is exactly
-  /// when applying the transcode cap matters most, so the ceiling must clear it
-  /// rather than time out into uncapped DirectPlay. Fast links still finish in
-  /// ~9-13s; only a struggling route ever approaches this.
-  static const Duration overallTimeout = Duration(seconds: 26);
+  /// Per-route probe ceiling, mirroring `measureRoute`'s own timeout.
+  static const Duration perRouteCap = Duration(seconds: 10);
+
+  /// Verdict hold + UI, on top of the probes.
+  static const Duration _verdictSlack = Duration(seconds: 6);
+
+  /// The whole preflight (UI + every probe + apply) is capped here; timeout is
+  /// pure fail-open insurance ("play normally"), never the normal path.
+  ///
+  /// DERIVED from the route count, not a constant. It used to be a hardcoded
+  /// 26s sized for two routes; adding CDN 2 made the worst case 3 x 10s + hold
+  /// = ~31s, so a slow first route ate the budget and the LAST route in the
+  /// list — Direct — was never probed before the whole preflight timed out and
+  /// fell open. Probes run sequentially on purpose (parallel ones would share
+  /// the link and each read a fraction of the truth), so this has to grow with
+  /// the list.
+  static Duration get overallTimeout =>
+      perRouteCap * SipflixServers.routeChoices.length + _verdictSlack;
 
   /// Watchdog fires this session (for the enable-offer prompt).
   int watchdogFireCount = 0;

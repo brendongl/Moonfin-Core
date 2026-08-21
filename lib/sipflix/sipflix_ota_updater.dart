@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get_it/get_it.dart';
 import 'package:logger/logger.dart';
+
+import 'sipflix_log.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -25,7 +27,7 @@ import 'package:path_provider/path_provider.dart';
 class SipflixOtaUpdater {
   SipflixOtaUpdater({Dio? dio, Logger? logger})
       : _dio = dio ?? Dio(),
-        _logger = logger ?? Logger();
+        _logger = logger ?? sipflixLogger();
 
   static const String manifestUrl =
       'http://103.98.148.133/moonfin/manifest.json';
