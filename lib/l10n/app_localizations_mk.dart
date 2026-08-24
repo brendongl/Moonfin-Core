@@ -8396,6 +8396,12 @@ class AppLocalizationsMk extends AppLocalizations {
   String get sipflixServerRoute => 'Server Route';
 
   @override
+  String get sipflixStreamCheck => 'Stream Check';
+
+  @override
+  String get sipflixStreamCheckDone => 'Stream check complete';
+
+  @override
   String get sipflixRouteInUse => 'In use now';
 
   @override

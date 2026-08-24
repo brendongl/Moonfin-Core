@@ -8,11 +8,21 @@ class PlayerLoadingOverlay extends StatefulWidget {
     this.label,
     this.logoSize = 180,
     this.labelSpacing = 60,
+    this.steps = const <String>[],
+    this.detail,
   });
 
   final String? label;
   final double logoSize;
   final double labelSpacing;
+
+  /// Steps already finished, oldest first. Drawn dim with a tick above the
+  /// current label so a customer reading the screen down the phone can tell
+  /// support how far it got — the whole point of making these verbose.
+  final List<String> steps;
+
+  /// One line of context under the label (route, play method, elapsed).
+  final String? detail;
 
   @override
   State<PlayerLoadingOverlay> createState() => _PlayerLoadingOverlayState();
@@ -88,6 +98,22 @@ class _PlayerLoadingOverlayState extends State<PlayerLoadingOverlay>
         ),
         if (hasLabel) ...[
           SizedBox(height: widget.labelSpacing),
+          if (widget.steps.isNotEmpty) ...[
+            for (final step in widget.steps)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(
+                  '✓  $step',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    letterSpacing: 0.5,
+                    color: Colors.white.withValues(alpha: 0.45),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 10),
+          ],
           FadeTransition(
             opacity: _labelOpacity,
             child: ScaleTransition(
@@ -109,6 +135,18 @@ class _PlayerLoadingOverlayState extends State<PlayerLoadingOverlay>
               ),
             ),
           ),
+          if (widget.detail != null && widget.detail!.trim().isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              widget.detail!,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                letterSpacing: 0.5,
+                color: Colors.white.withValues(alpha: 0.6),
+              ),
+            ),
+          ],
         ],
       ],
     );

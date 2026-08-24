@@ -80,6 +80,13 @@ class SipflixBandwidthProbe {
 
   /// Measures throughput in Mbps, or null if it could not be measured (offline,
   /// endpoint missing, timeout, too little data). Never throws.
+  ///
+  /// Runs in a background isolate for the same reason the per-route probe does:
+  /// on the UI isolate it shares the event loop with rendering and ends up
+  /// timing its own frame budget rather than the link. This one under-read by
+  /// 2-3x (8.9 and 11.5 Mbps against a 22-30 Mbps link, operator-measured
+  /// 2026-08-22) rather than the 20x the preflight probe managed, because it
+  /// runs at startup when less is being drawn — same fault, gentler conditions.
   Future<double?> measureMbps({
     required String baseUrl,
     required String? accessToken,
@@ -89,83 +96,39 @@ class SipflixBandwidthProbe {
         ? baseUrl.substring(0, baseUrl.length - 1)
         : baseUrl;
     final url = '$root/emby/Playback/BitrateTest?Size=$_probeBytes';
-    final cancelToken = CancelToken();
 
     try {
-      final response = await _dio
-          .get<ResponseBody>(
-            url,
-            options: Options(
-              responseType: ResponseType.stream,
-              headers: {
-                'X-Emby-Token': accessToken,
-                'Authorization': 'MediaBrowser Token="$accessToken"',
-              },
-              // Per-chunk idle timeout; the overall budget is enforced below.
-              receiveTimeout: _overallTimeout,
-            ),
-            cancelToken: cancelToken,
-          )
-          .timeout(_overallTimeout);
-
-      final body = response.data;
-      if (body == null) return null;
-
-      var totalBytes = 0;
-      var measuredBytes = 0;
-      Stopwatch? window;
-      final completer = Completer<double?>();
-      late final StreamSubscription<List<int>> sub;
-
-      void finish(double? result) {
-        if (completer.isCompleted) return;
-        completer.complete(result);
-        // Stop pulling data: the probe only needs its sample, not the payload.
-        unawaited(sub.cancel());
-        if (!cancelToken.isCancelled) cancelToken.cancel('probe complete');
-      }
-
-      double? computeMbps() {
-        final elapsedUs = window?.elapsedMicroseconds ?? 0;
-        if (measuredBytes <= 0 || elapsedUs <= 0) return null;
-        return (measuredBytes * 8) / (elapsedUs / 1000000) / 1000000;
-      }
-
-      sub = body.stream.listen(
-        (chunk) {
-          totalBytes += chunk.length;
-          if (window == null) {
-            // Still warming up; timing starts after the slow-start bytes.
-            if (totalBytes >= _warmupBytes) window = Stopwatch()..start();
-            return;
-          }
-          measuredBytes += chunk.length;
-          if (window!.elapsed >= _measureWindow || totalBytes >= _probeBytes) {
-            finish(computeMbps());
-          }
-        },
-        onDone: () => finish(computeMbps()),
-        onError: (Object e) {
-          _logger.d('Sipflix bandwidth probe stream error: $e');
-          finish(computeMbps());
-        },
-        cancelOnError: true,
+      final raw = await Isolate.run(
+        () => sipflixProbeWorker([
+          url,
+          accessToken,
+          _probeBytes,
+          _warmupBytes,
+          _measureWindow.inMicroseconds,
+          _overallTimeout.inMilliseconds,
+          500000,
+        ]),
+      ).timeout(
+        _overallTimeout + const Duration(seconds: 5),
+        onTimeout: () => null,
       );
-
-      final result = await completer.future.timeout(
-        _overallTimeout,
-        onTimeout: () {
-          finish(null);
-          return computeMbps();
-        },
+      if (raw == null) return null;
+      final sustained = raw['sustained'] ?? 0;
+      if (sustained <= 0 || !sustained.isFinite) return null;
+      _logRoute(
+        url: root,
+        totalBytes: (raw['bytes'] ?? 0).toInt(),
+        elapsedUs: (raw['elapsedUs'] ?? 0).toInt(),
+        firstByteUs: 0,
+        sampleCount: 0,
+        sustainedStartUs: 0,
+        sustainedBytes: (raw['bytes'] ?? 0).toInt(),
+        sustainedMbps: sustained,
+        burstMbps: raw['burst'] ?? sustained,
       );
-      if (result == null || result <= 0 || !result.isFinite) return null;
-      _logger.i('Sipflix bandwidth probe: ${result.toStringAsFixed(1)} Mbps '
-          '(${measuredBytes ~/ 1000} kB sampled)');
-      return result;
+      return sustained;
     } catch (e) {
       _logger.d('Sipflix bandwidth probe failed: $e');
-      if (!cancelToken.isCancelled) cancelToken.cancel('probe failed');
       return null;
     }
   }

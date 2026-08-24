@@ -88,6 +88,16 @@ class SipflixPreflightController {
   Future<PlaybackPreflightResult?> runForItem(dynamic item) async {
     final prefs = GetIt.instance<UserPreferences>();
     if (!prefs.get(UserPreferences.preflightEnabled)) return null;
+    return runFor(item);
+  }
+
+  /// Run the check for [item] regardless of the per-play setting.
+  ///
+  /// This is the on-demand entry point: the player's Stream Check button and
+  /// the "playback is struggling" offer both land here. Gating every play was
+  /// the wrong default — it taxes every start to fix the minority that
+  /// stutter — so the check is now something a struggling stream asks for.
+  Future<PlaybackPreflightResult?> runFor(dynamic item) async {
     if (_running) return null;
     if (item is! AggregatedItem) return null;
     if (!_eligibleTypes.contains(item.type)) return null;
@@ -580,28 +590,35 @@ class _PreflightViewState extends State<_PreflightView> {
   }
 }
 
-/// Once-a-day dialog offering to enable Stream Preflight after playback has
-/// struggled repeatedly. Called from the player's watchdog path.
-Future<void> maybeOfferPreflight() async {
+/// Offer, at most once a day, to run the check on the stream that is
+/// struggling right now.
+///
+/// It used to offer to switch Stream Preflight ON — a permanent gate before
+/// every future play — which is a large commitment to ask for in the middle of
+/// a bad stream, and taxes every good one afterwards. Running it once, here, on
+/// the thing that is actually stuttering, is the smaller and more useful offer.
+/// Returns the result when the customer accepted and the check produced one.
+Future<PlaybackPreflightResult?> maybeOfferPreflight({dynamic item}) async {
   final prefs = GetIt.instance<UserPreferences>();
-  if (prefs.get(UserPreferences.preflightEnabled)) return;
   final controller = GetIt.instance<SipflixPreflightController>();
+  // Already gating every play: nothing to offer.
+  if (prefs.get(UserPreferences.preflightEnabled)) return null;
   controller.watchdogFireCount += 1;
-  if (controller.watchdogFireCount < 2) return;
+  if (controller.watchdogFireCount < 2) return null;
   final lastOffer = prefs.get(UserPreferences.preflightLastOfferAt);
   final now = DateTime.now().millisecondsSinceEpoch;
-  if (now - lastOffer < const Duration(hours: 24).inMilliseconds) return;
+  if (now - lastOffer < const Duration(hours: 24).inMilliseconds) return null;
   await prefs.set(UserPreferences.preflightLastOfferAt, now);
 
   final context = appRouter.routerDelegate.navigatorKey.currentContext;
-  if (context == null || !context.mounted) return;
-  final enable = await showDialog<bool>(
+  if (context == null || !context.mounted) return null;
+  final run = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
-      title: const Text('Streaming keeps struggling'),
+      title: const Text('Playback keeps struggling'),
       content: const Text(
-        'Stream Preflight tests your connection before each video and picks '
-        'the best route and quality automatically. Turn it on?',
+        'Run stream diagnostics? It tests each connection route and picks the '
+        'best one for this video. Takes about ten seconds.',
       ),
       actions: [
         TextButton(
@@ -611,12 +628,11 @@ Future<void> maybeOfferPreflight() async {
         FilledButton(
           autofocus: true,
           onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('Turn on'),
+          child: const Text('Run diagnostics'),
         ),
       ],
     ),
   );
-  if (enable == true) {
-    await prefs.set(UserPreferences.preflightEnabled, true);
-  }
+  if (run != true || item == null) return null;
+  return controller.runFor(item);
 }

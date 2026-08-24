@@ -77,7 +77,7 @@ import '../../widgets/focus/context_menu_sheet.dart';
 import '../../widgets/focus/focusable_button.dart';
 import '../../widgets/focus/request_initial_focus.dart';
 import '../../widgets/overlay_sheet.dart';
-import '../../widgets/playback/player_loading_overlay.dart';
+import '../../widgets/sipflix_detail_loading.dart';
 import '../../../playback/hdr_stream_capability.dart';
 import '../../../playback/known_defects.dart';
 import '../../../syncplay/syncplay_manager.dart';
@@ -562,9 +562,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen>
 
   Widget _buildBody(BuildContext context) {
     return switch (_viewModel.state) {
-      ItemDetailState.loading => const Center(
-        child: PlayerLoadingOverlay(logoSize: 120),
-      ),
+      // Sipflix: names the route and starts a stopwatch once the wait stops
+      // being ordinary — this page is what a customer reads back to support.
+      ItemDetailState.loading => const SipflixDetailLoading(logoSize: 120),
       ItemDetailState.error => Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,

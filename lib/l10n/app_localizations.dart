@@ -14854,6 +14854,18 @@ abstract class AppLocalizations {
   /// **'Server Route'**
   String get sipflixServerRoute;
 
+  /// Sipflix: player button that runs the connection diagnostics on demand
+  ///
+  /// In en, this message translates to:
+  /// **'Stream Check'**
+  String get sipflixStreamCheck;
+
+  /// Sipflix: toast after an on-demand stream check finishes
+  ///
+  /// In en, this message translates to:
+  /// **'Stream check complete'**
+  String get sipflixStreamCheckDone;
+
   /// Sipflix: subtitle on the connection route the app is already streaming over
   ///
   /// In en, this message translates to:

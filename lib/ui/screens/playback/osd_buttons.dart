@@ -28,6 +28,9 @@ enum OsdButton {
   quality('quality'),
   // Sipflix: pick the CDN/direct path to the server without leaving playback.
   serverRoute('serverRoute'),
+  // Sipflix: run the connection check on demand, for a stream that is
+  // struggling right now.
+  streamCheck('streamCheck'),
   zoom('zoom'),
   orientation('orientation'),
   info('info'),
@@ -45,6 +48,7 @@ enum OsdButton {
     // Only ever drawn for the hardcoded Sipflix server; the player checks that
     // per item, this just keeps the button out of the layout editor elsewhere.
     OsdButton.serverRoute => SipflixServers.enableRouteToggle,
+    OsdButton.streamCheck => SipflixServers.enableRouteToggle,
     OsdButton.cast => !PlatformDetection.isTV,
     OsdButton.volume => PlatformDetection.useDesktopUi,
     OsdButton.orientation => PlatformDetection.isMobile,
@@ -67,6 +71,7 @@ enum OsdButton {
     OsdButton.volume => Icons.volume_up_rounded,
     OsdButton.quality => Icons.video_settings_outlined,
     OsdButton.serverRoute => Icons.alt_route_rounded,
+    OsdButton.streamCheck => Icons.network_check_rounded,
     OsdButton.zoom => Icons.zoom_out_map,
     OsdButton.orientation => Icons.screen_rotation_outlined,
     OsdButton.info => Icons.info_outline_rounded,
@@ -87,6 +92,7 @@ enum OsdButton {
     OsdButton.volume => l10n.playerTooltipVolume,
     OsdButton.quality => l10n.playerTooltipPlaybackQuality,
     OsdButton.serverRoute => l10n.sipflixServerRoute,
+    OsdButton.streamCheck => l10n.sipflixStreamCheck,
     OsdButton.zoom => l10n.playerZoomMode,
     OsdButton.orientation => l10n.orientationLock,
     OsdButton.info => l10n.playbackInformation,

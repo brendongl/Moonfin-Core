@@ -814,11 +814,23 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         } else {
           unawaited(_showBitrateAdaptationDialog());
         }
-        // Sipflix: repeated struggling is the cue to offer Stream Preflight
-        // (no-op when enabled already, self-limits to once a day).
-        unawaited(maybeOfferPreflight());
+        // Sipflix: repeated struggling is the cue to offer the check on this
+        // very stream (no-op when the per-play gate is on already, and
+        // self-limits to once a day).
+        unawaited(_offerStreamCheck());
       }
     });
+  }
+
+  /// Offer the connection check for the item that is struggling, and apply the
+  /// verdict if the customer accepts.
+  Future<void> _offerStreamCheck() async {
+    final item = _queue.currentItem;
+    if (item is! AggregatedItem) return;
+    final result = await maybeOfferPreflight(item: item);
+    if (!mounted || result == null) return;
+    await _manager.changeBitrate(result.capMbps);
+    if (mounted) setState(() {});
   }
 
   // Sipflix: the bitrate actually being delivered, in Mbps — the file's real
@@ -3953,19 +3965,69 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         phase == PlaybackBringupPhase.seekingResume;
   }
 
+  /// Sipflix: the bring-up phases the manager already tracks, said out loud.
+  ///
+  /// `resolving`, `opening` and `waitingForReady` all used to print the same
+  /// "Loading Stream...", which is three genuinely different failures wearing
+  /// one label. A customer stuck on this screen reads it out to support, so the
+  /// wording IS the diagnostic.
   String _bringupLabel() {
     switch (_bringupState.phase) {
       case PlaybackBringupPhase.stoppingPrevious:
-        return 'Stopping previous playback...';
+        return 'Closing previous stream...';
       case PlaybackBringupPhase.resolving:
+        return 'Testing connection to server...';
       case PlaybackBringupPhase.opening:
+        return 'Opening stream...';
       case PlaybackBringupPhase.waitingForReady:
-        return _streamLoadingLabel;
+        return 'Filling up the buffer...';
       case PlaybackBringupPhase.seekingResume:
         return 'Restoring position...';
       default:
         return _streamLoadingLabel;
     }
+  }
+
+  /// Steps already finished, so the screen shows how far it got rather than
+  /// only where it is stuck.
+  List<String> _bringupSteps() {
+    const order = [
+      PlaybackBringupPhase.stoppingPrevious,
+      PlaybackBringupPhase.resolving,
+      PlaybackBringupPhase.opening,
+      PlaybackBringupPhase.waitingForReady,
+      PlaybackBringupPhase.seekingResume,
+    ];
+    const done = {
+      PlaybackBringupPhase.stoppingPrevious: 'Closed previous stream',
+      PlaybackBringupPhase.resolving: 'Connection tested',
+      PlaybackBringupPhase.opening: 'Stream opened',
+      PlaybackBringupPhase.waitingForReady: 'Buffer filled',
+      PlaybackBringupPhase.seekingResume: 'Position restored',
+    };
+    final index = order.indexOf(_bringupState.phase);
+    if (index <= 0) return const [];
+    return [for (var i = 0; i < index; i++) done[order[i]]!];
+  }
+
+  /// The play method the server negotiated, named plainly. This is the single
+  /// most useful line for triage: a customer saying "it says Transcode" tells
+  /// us the box refused the file and the server is re-encoding it.
+  String? _bringupDetail() {
+    final method = _bringupState.playMethod;
+    final route = _sipflixServer == null
+        ? null
+        : SipflixConnectionManager.currentRoute(_sipflixServer!).label;
+    final parts = <String>[
+      ?route,
+      if (method != null) switch (method) {
+        'directPlay' => 'Direct Play',
+        'directStream' => 'Direct Stream',
+        'transcode' => 'Transcode',
+        _ => method,
+      },
+    ];
+    return parts.isEmpty ? null : parts.join('  ·  ');
   }
 
   Widget _buildBringupOverlay(BuildContext context) {
@@ -3979,7 +4041,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           decoration: BoxDecoration(
             color: Colors.black.withValues(alpha: 0.45),
           ),
-          child: Center(child: PlayerLoadingOverlay(label: _bringupLabel())),
+          child: Center(
+            child: PlayerLoadingOverlay(
+              label: _bringupLabel(),
+              steps: _bringupSteps(),
+              detail: _bringupDetail(),
+            ),
+          ),
         ),
       ),
     );
@@ -5143,6 +5211,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
               extent: secondaryExtent,
               iconSize: secondaryIconSize,
               tooltip: l10n.sipflixServerRoute,
+            ),
+          // Sipflix: run the connection check on the stream playing now, for
+          // the customer who is watching it stutter.
+          if (shows(OsdButton.streamCheck) && _sipflixRouteSwitchAvailable)
+            OsdButton.streamCheck: _controlButton(
+              Icons.network_check_rounded,
+              onPressed: _runStreamCheck,
+              size: secondaryIconSize,
+              extent: secondaryExtent,
+              tooltip: l10n.sipflixStreamCheck,
             ),
           if (shows(OsdButton.zoom))
             OsdButton.zoom: _buildZoomButton(
@@ -6425,6 +6503,31 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       await _switchServerRoute(server, picked);
     }());
     _showControls();
+  }
+
+  /// Run Stream Preflight on demand for whatever is playing, then apply what
+  /// it decided and restart at the current position.
+  ///
+  /// The same work the per-play gate does, asked for instead of imposed.
+  Future<void> _runStreamCheck() async {
+    final item = _queue.currentItem;
+    if (item is! AggregatedItem) return;
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final result =
+        await GetIt.instance<SipflixPreflightController>().runFor(item);
+    if (!mounted) return;
+    if (result?.capMbps != null) {
+      await _manager.changeBitrate(result!.capMbps);
+    } else {
+      // Route may still have moved; re-resolve so playback follows it.
+      await _manager.changeBitrate(_manager.maxBitrateOverrideMbps);
+    }
+    if (!mounted) return;
+    messenger.showSnackBar(
+      SnackBar(content: Text(l10n.sipflixStreamCheckDone)),
+    );
+    setState(() {});
   }
 
   /// Move the app — and the stream playing right now — onto [route].

@@ -8030,6 +8030,14 @@
   "@sipflixServerRoute": {
     "description": "Sipflix: player button and dialog title for picking the connection route to the server"
   },
+  "sipflixStreamCheck": "Stream Check",
+  "@sipflixStreamCheck": {
+    "description": "Sipflix: player button that runs the connection diagnostics on demand"
+  },
+  "sipflixStreamCheckDone": "Stream check complete",
+  "@sipflixStreamCheckDone": {
+    "description": "Sipflix: toast after an on-demand stream check finishes"
+  },
   "sipflixRouteInUse": "In use now",
   "@sipflixRouteInUse": {
     "description": "Sipflix: subtitle on the connection route the app is already streaming over"
