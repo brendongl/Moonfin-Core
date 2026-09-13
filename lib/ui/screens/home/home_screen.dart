@@ -3390,19 +3390,17 @@ class _ContentRowsState extends State<_ContentRows>
     // Never steal keys from a live node elsewhere.
     if (!_focusIsGenuinelyLost()) return false;
 
-    final consume = !event.logicalKey.isDirectional;
-
     final activeRow = _activeFocusedRowIndex;
     if (activeRow != null) {
       final rowState = _rowStateOf(activeRow);
       if (rowState != null) {
         rowState.requestFocusFromMemory();
-        return consume;
+        return true;
       }
     }
     if (_isMediaBarIncluded() && _mediaBarFocusNode.context != null) {
       _mediaBarFocusNode.requestFocus();
-      return consume;
+      return true;
     }
     final rows = widget.viewModel.rows;
     for (var i = 0; i < rows.length; i++) {
@@ -3410,11 +3408,11 @@ class _ContentRowsState extends State<_ContentRows>
       final rowState = _rowStateOf(i);
       if (rowState != null) {
         rowState.requestFocusFromMemory();
-        return consume;
+        return true;
       }
     }
     _requestFocusToNavbar();
-    return consume;
+    return true;
   }
 
   double _libraryRowExtent(double rowHeight, {double metadataScale = 1.0}) =>

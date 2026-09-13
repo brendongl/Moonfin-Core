@@ -253,7 +253,7 @@ class LockedFocusRowState<T> extends State<LockedFocusRow<T>> {
         widget.onLeftEdge!();
         return KeyEventResult.handled;
       }
-      return KeyEventResult.ignored;
+      return KeyEventResult.handled;
     }
     if (key.isRightKey) {
       if (_focusedIndex < widget.items.length - 1) {
@@ -265,7 +265,7 @@ class LockedFocusRowState<T> extends State<LockedFocusRow<T>> {
         widget.onRightEdge!();
         return KeyEventResult.handled;
       }
-      return KeyEventResult.ignored;
+      return KeyEventResult.handled;
     }
     if (key.isUpKey) {
       final handled = widget.onVerticalNavigation?.call(true) ?? false;
