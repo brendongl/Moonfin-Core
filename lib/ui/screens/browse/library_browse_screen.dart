@@ -22,6 +22,7 @@ import '../../../util/focus/dpad_keys.dart';
 import '../../../util/focus/grid_focus_node_mixin.dart';
 import '../../../util/platform_detection.dart';
 import '../../navigation/destinations.dart';
+import '../../navigation/route_lifecycle_observer.dart';
 import '../../widgets/fullscreen_backdrop_switcher.dart';
 import '../../widgets/focus/context_menu_sheet.dart';
 import '../../widgets/focus/focusable_toolbar_button.dart';
@@ -108,7 +109,7 @@ class LibraryBrowseScreen extends StatefulWidget {
 }
 
 class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
-    with GridFocusNodeMixin<LibraryBrowseScreen> {
+    with GridFocusNodeMixin<LibraryBrowseScreen>, RouteAware {
   late final LibraryBrowseViewModel _vm;
   final _scrollController = ScrollController();
   final _searchController = TextEditingController();
@@ -121,6 +122,9 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
   StreamSubscription<String?>? _backgroundSub;
   String? _backdropUrl;
   final Set<String> _localProgressItemIds = const {};
+  ModalRoute<dynamic>? _observedRoute;
+  int? _returnFocusGridIndex;
+  double? _returnScrollOffset;
 
   @override
   void initState() {
@@ -152,6 +156,10 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
 
   @override
   void dispose() {
+    if (_observedRoute != null) {
+      routeLifecycleObserver.unsubscribe(this);
+      _observedRoute = null;
+    }
     _searchController.dispose();
     _searchFocusNode.dispose();
     _homeButtonFocusNode.dispose();
@@ -203,6 +211,49 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _hasSubtitlesCache = null;
+    final route = ModalRoute.of(context);
+    if (route == null || route == _observedRoute) return;
+    if (_observedRoute != null) routeLifecycleObserver.unsubscribe(this);
+    _observedRoute = route;
+    routeLifecycleObserver.subscribe(this, route);
+  }
+
+  /// Runs before the pushed route takes focus, so the grid position the user
+  /// left from still reads true here.
+  @override
+  void didPushNext() {
+    final focusedIndex = lastFocusedGridIndex;
+    final gridHadFocus = focusedIndex != null &&
+        (gridItemFocusNodes[focusedIndex]?.hasFocus ?? false);
+    _returnFocusGridIndex = gridHadFocus ? focusedIndex : null;
+    _returnScrollOffset =
+        _scrollController.hasClients && _scrollController.positions.length == 1
+            ? _scrollController.offset
+            : null;
+  }
+
+  /// Puts focus back on the item that opened the detail page. This has to land
+  /// in the pop itself: FocusRouteObserver grants focus to the first focusable
+  /// one frame later, and traversal scrolls the grid to the top with it.
+  @override
+  void didPopNext() {
+    if (PlatformDetection.useMobileUi) return;
+    final index = _returnFocusGridIndex;
+    final node = index == null ? null : gridItemFocusNodes[index];
+    if (node != null && node.canRequestFocus) {
+      node.requestFocus();
+      lastFocusedGridContentVersion = gridContentVersion;
+    }
+    final offset = _returnScrollOffset;
+    if (offset == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      if (_scrollController.positions.length != 1) return;
+      final target =
+          offset.clamp(0.0, _scrollController.position.maxScrollExtent);
+      if ((target - _scrollController.offset).abs() <= 1.0) return;
+      _scrollController.jumpTo(target);
+    });
   }
 
   /// Whether the scroll view has settled metrics and is within
@@ -1232,6 +1283,8 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
                 ),
               ),
             );
+          } else if (_vm.pageErrorMessage != null) {
+            slivers.add(_buildPageErrorSliver());
           }
 
           return CustomScrollView(
@@ -1284,6 +1337,8 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
                   ),
                 ),
               ),
+            if (!_vm.loadingMore && _vm.pageErrorMessage != null)
+              _buildPageErrorSliver(),
           ],
         );
 
@@ -1637,12 +1692,38 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
                     ),
                   ),
                 ),
+              if (!_vm.loadingMore && _vm.pageErrorMessage != null)
+                _buildPageErrorSliver(),
             ],
           ),
         );
       },
     );
   }
+
+  /// A page that failed still owes its rows, so the grid says so and offers
+  /// the retry rather than ending quietly at whatever loaded.
+  Widget _buildPageErrorSliver() => SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 24),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  AppLocalizations.of(context).failedToLoadLibrary,
+                  style: const TextStyle(color: Colors.white70),
+                ),
+                const SizedBox(height: 12),
+                ElevatedButton(
+                  onPressed: () => _vm.loadMore(),
+                  child: Text(AppLocalizations.of(context).retry),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
 
   String? _cardSubtitle(AggregatedItem item) {
     if (item.type == 'Playlist') {

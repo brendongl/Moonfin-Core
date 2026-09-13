@@ -1370,7 +1370,11 @@ class UserPreferences extends ChangeNotifier {
     if (probed == null) return learned;
     if (learned == null) return probed;
     // The link is only as good as the worse of "what a probe measured" and
-    // "what playback actually sustained".
+    // "what playback actually sustained" — unless the probe is the newer of the
+    // two, in which case it supersedes a ceiling learned on an older link.
+    final learnedAt = get(autoLearnedCeilingAt);
+    final probedAt = get(measuredBandwidthAt);
+    if (probedAt > learnedAt) return probed;
     return probed < learned ? probed : learned;
   }
 

@@ -938,9 +938,13 @@ class _ContentRowsState extends State<_ContentRows>
         (!onIdleFocus && !desktopUnfocused && !onMediaBar && !hasRowContext);
     final chromeAudioActive = chromeFocusActive || onSidebar;
 
+    final mediaBarBusy =
+        widget.mediaBarViewModel.state is MediaBarLoading ||
+        widget.mediaBarViewModel.state is MediaBarError;
     final nextMediaBarVisible = isMobileUi
         ? true
         : (_isMediaBarIncluded() && _isBannerMode()) ||
+              mediaBarBusy ||
               onMediaBar ||
               _holdMediaBarWhileSidebarFocused ||
               (_verticalNavInFlight && _mediaBarVisible) ||
@@ -1110,6 +1114,7 @@ class _ContentRowsState extends State<_ContentRows>
     final barFocusDetaching =
         !_isMediaBarIncluded() && _mediaBarFocusNode.hasFocus;
     _updateOffsets();
+    _onGlobalFocusChanged();
     setState(() {});
     if (barFocusDetaching) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -3385,17 +3390,19 @@ class _ContentRowsState extends State<_ContentRows>
     // Never steal keys from a live node elsewhere.
     if (!_focusIsGenuinelyLost()) return false;
 
+    final consume = !event.logicalKey.isDirectional;
+
     final activeRow = _activeFocusedRowIndex;
     if (activeRow != null) {
       final rowState = _rowStateOf(activeRow);
       if (rowState != null) {
         rowState.requestFocusFromMemory();
-        return true;
+        return consume;
       }
     }
     if (_isMediaBarIncluded() && _mediaBarFocusNode.context != null) {
       _mediaBarFocusNode.requestFocus();
-      return true;
+      return consume;
     }
     final rows = widget.viewModel.rows;
     for (var i = 0; i < rows.length; i++) {
@@ -3403,11 +3410,11 @@ class _ContentRowsState extends State<_ContentRows>
       final rowState = _rowStateOf(i);
       if (rowState != null) {
         rowState.requestFocusFromMemory();
-        return true;
+        return consume;
       }
     }
     _requestFocusToNavbar();
-    return true;
+    return consume;
   }
 
   double _libraryRowExtent(double rowHeight, {double metadataScale = 1.0}) =>

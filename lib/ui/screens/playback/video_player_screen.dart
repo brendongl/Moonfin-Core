@@ -140,6 +140,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   bool _displayPlaying = false;
   Timer? _displayPlayingDebounce;
   Timer? _endsAtTicker;
+  int? _lastEndsAtMinute;
   bool _isSeeking = false;
   double _seekValue = 0;
   Timer? _scrubSeekDebounceTimer;
@@ -207,6 +208,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   // Sipflix: Auto-mode recovery — how long playback must stay stall-free
   // before the learned ceiling is relaxed one tier.
   static const Duration _sipflixRecoveryAfter = Duration(minutes: 10);
+
+  /// A link only counts as too slow when it cannot carry the stream plus room
+  /// for jitter and protocol overhead.
+  static const double _sipflixLinkHeadroom = 1.3;
   Timer? _sipflixRecoveryTimer;
   StreamSubscription<bool>? _sipflixBufferingSub;
   // Sipflix: pending qualifies-as-sustained-stall check; cancelled if playback
@@ -871,12 +876,38 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   bool _sipflixIsAutoBitrate() =>
       int.tryParse(_prefs.get(UserPreferences.maxBitrate)) == null;
 
+  /// Sipflix: is the link actually the suspect?
+  ///
+  /// A stall count on its own is not evidence: a direct play the server never
+  /// re-encoded stalls for plenty of reasons a lower ceiling cannot fix, and
+  /// capping it buys a needless transcode that then sticks. A fresh
+  /// measurement below what the stream needs is evidence; with no fresh
+  /// measurement a direct play defers to the stream check offered alongside
+  /// rather than guessing the link down.
+  bool _sipflixStallLooksLikeBandwidth() {
+    final method = _manager.currentResolution?.playMethod;
+    final direct = method == StreamPlayMethod.directPlay ||
+        method == StreamPlayMethod.directStream;
+    if (!direct) return true;
+    final measured = _prefs.get(UserPreferences.measuredBandwidthMbps);
+    final at = _prefs.get(UserPreferences.measuredBandwidthAt);
+    if (measured <= 0 || at <= 0) return false;
+    final age = DateTime.now().difference(
+      DateTime.fromMillisecondsSinceEpoch(at),
+    );
+    if (age.isNegative || age > UserPreferences.measuredBandwidthTtl) {
+      return false;
+    }
+    return measured < _sipflixEffectiveStreamMbps() * _sipflixLinkHeadroom;
+  }
+
   /// Sipflix: Auto mode's reaction to sustained buffering — step the ceiling
   /// down and re-resolve, with no prompt. The new ceiling is remembered (see
   /// [UserPreferences.noteAutoCeiling]) so the next title starts at a rate the
   /// link has actually proven it can carry, instead of relearning every time.
   Future<void> _adaptBitrateAutomatically() async {
     if (!mounted) return;
+    if (!_sipflixStallLooksLikeBandwidth()) return;
     final current = _sipflixEffectiveStreamMbps();
     final target = SipflixBitrateWatchdog.suggestLowerBitrate(current);
     if (target >= current) return;
@@ -898,18 +929,47 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   /// stalls again the watchdog simply steps it down once more.
   void _sipflixScheduleAutoRecovery() {
     _sipflixRecoveryTimer?.cancel();
-    _sipflixRecoveryTimer = Timer(_sipflixRecoveryAfter, () async {
-      if (!mounted || !_sipflixIsAutoBitrate()) return;
-      final ceiling = _prefs.autoCeilingMbps();
-      if (ceiling == null) return;
-      final higher = SipflixBitrateWatchdog.tiers
-          .lastWhere((t) => t > ceiling, orElse: () => ceiling);
-      if (higher <= ceiling) {
-        await _prefs.clearAutoCeiling();
-        return;
-      }
-      await _prefs.noteAutoCeiling(higher);
+    _sipflixRecoveryTimer = Timer.periodic(_sipflixRecoveryAfter, (_) {
+      if (!mounted) return;
+      unawaited(_sipflixRelaxAutoCeiling());
     });
+  }
+
+  /// Step the learned ceiling back up, one tier per stall-free
+  /// [_sipflixRecoveryAfter], until nothing is holding the box down.
+  ///
+  /// The clock is the stored timestamp, not a live timer, so time spent
+  /// outside the player counts and a viewer who leaves mid-recovery doesn't
+  /// lose the tiers they had earned — the player picks the relaxation up again
+  /// on the next start.
+  Future<void> _sipflixRelaxAutoCeiling() async {
+    if (!_sipflixIsAutoBitrate()) return;
+    final ceiling = _prefs.autoCeilingMbps();
+    if (ceiling == null) return;
+    const tiers = SipflixBitrateWatchdog.tiers;
+    if (ceiling >= tiers.first) {
+      await _prefs.clearAutoCeiling();
+      return;
+    }
+    final at = _prefs.get(UserPreferences.autoLearnedCeilingAt);
+    if (at <= 0) return;
+    final elapsed = DateTime.now().difference(
+      DateTime.fromMillisecondsSinceEpoch(at),
+    );
+    final steps = elapsed.inSeconds ~/ _sipflixRecoveryAfter.inSeconds;
+    if (steps <= 0) return;
+    var target = ceiling;
+    for (var i = 0; i < steps; i++) {
+      final higher = tiers.lastWhere((t) => t > target, orElse: () => target);
+      if (higher <= target) break;
+      target = higher;
+    }
+    if (target <= ceiling) return;
+    if (target >= tiers.first) {
+      await _prefs.clearAutoCeiling();
+      return;
+    }
+    await _prefs.noteAutoCeiling(target);
   }
 
   Future<void> _showBitrateAdaptationDialog() async {
@@ -1012,6 +1072,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     _applySubtitleStyle();
     _scheduleHide();
     _startEndsAtTicker();
+    if (_prefs.autoCeilingMbps() != null) {
+      unawaited(_sipflixRelaxAutoCeiling());
+      _sipflixScheduleAutoRecovery();
+    }
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     if (PlatformDetection.isMobile) {
       _forcedLandscape = true;
@@ -1038,6 +1102,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       unawaited(_exitPlayback());
     });
     _backendSub = _manager.backendChangedStream.listen((backend) {
+      // On TV the surface is pushed before a backend exists, so initState's
+      // _applySubtitleStyle() was a no-op — re-apply now that one is attached.
+      _applySubtitleStyle();
       if (backend is Media3PlayerBackend) {
         unawaited(_syncMedia3ZoomMode());
         _syncMedia3VolumeBoostLevel();
@@ -1707,7 +1774,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         return;
       case 'skipBackward':
         _seekRelative(
-          -_prefs.get(UserPreferences.skipForwardLength),
+          -_prefs.get(UserPreferences.skipBackLength),
           showControls: false,
         );
         return;
@@ -2479,6 +2546,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         return;
       }
       _manager.seekTo(result.skipTo!);
+      _bitrateWatchdog.markSeek();
       _clearSkipSegment();
       return;
     }
@@ -2824,6 +2892,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           _state.duration <= Duration.zero) {
         return;
       }
+      // The label only carries wall-clock minutes, and the position stream
+      // already rebuilds the time row in between — a rebuild per second is
+      // pure jank on a 2 GB box.
+      final minute = DateTime.now().minute;
+      if (minute == _lastEndsAtMinute) return;
+      _lastEndsAtMinute = minute;
       setState(() {});
     });
   }
@@ -2834,15 +2908,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         ? const Duration(seconds: 8)
         : const Duration(seconds: 5);
     _hideTimer = Timer(hideDelay, () {
-      if (mounted && _state.isPlaying) {
-        setState(() {
-          _controlsVisible = false;
-          if (PlatformDetection.isMobile &&
-              _prefs.get(UserPreferences.osdLockEnabled)) {
-            _isOsdLocked = true;
-          }
-        });
+      if (!mounted) return;
+      if (!_state.isPlaying) {
+        // Bring-up on a slow box can outlast the delay; without re-arming, the
+        // tick is simply skipped and the OSD stays up until a key is pressed.
+        _scheduleHide();
+        return;
       }
+      setState(() {
+        _controlsVisible = false;
+        if (PlatformDetection.isMobile &&
+            _prefs.get(UserPreferences.osdLockEnabled)) {
+          _isOsdLocked = true;
+        }
+      });
     });
   }
 
@@ -2956,6 +3035,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
 
   void _seekRelative(int ms, {bool showControls = true}) {
     _suppressSeekPrompts();
+    // Duration is still unknown during bring-up; clamping against zero would
+    // send every seek to 0:00 and restart the title.
+    if (_state.duration <= Duration.zero) {
+      if (showControls) _showControls();
+      return;
+    }
     final target = _state.position + Duration(milliseconds: ms);
     final clamped = Duration(
       milliseconds: target.inMilliseconds.clamp(
@@ -2965,6 +3050,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     );
     _manager.seekTo(clamped);
     _lastSeekTime = DateTime.now();
+    _bitrateWatchdog.markSeek();
     if (showControls) {
       _showControls();
     }
@@ -2981,6 +3067,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     Duration target, {
     bool showControls = true,
   }) {
+    if (_state.duration <= Duration.zero) {
+      if (showControls) _showControls();
+      return;
+    }
     final clamped = Duration(
       milliseconds: target.inMilliseconds.clamp(
         0,
@@ -3000,6 +3090,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         _scrubSeekDebounceTimer = null;
         unawaited(_manager.seekTo(pendingTarget));
         _lastSeekTime = DateTime.now();
+        _bitrateWatchdog.markSeek();
         if (mounted) {
           setState(() {
             _isSeeking = false;
@@ -3308,6 +3399,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           case LogicalKeyboardKey.mediaRewind:
             unawaited(_manager.seekTo(Duration.zero));
             _lastSeekTime = DateTime.now();
+            _bitrateWatchdog.markSeek();
             unawaited(_manager.resume());
             return KeyEventResult.handled;
 
@@ -6517,12 +6609,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     final result =
         await GetIt.instance<SipflixPreflightController>().runFor(item);
     if (!mounted) return;
-    if (result?.capMbps != null) {
-      await _manager.changeBitrate(result!.capMbps);
-    } else {
-      // Route may still have moved; re-resolve so playback follows it.
-      await _manager.changeBitrate(_manager.maxBitrateOverrideMbps);
-    }
+    // A null result is no verdict at all — skipped, aborted, timed out, or a
+    // second press while one is already running. Nothing moved, so leave the
+    // live stream alone instead of re-resolving it out from under the viewer.
+    if (result == null) return;
+    // A completed check may legitimately decide on no cap (direct play); the
+    // re-resolve is still wanted, because the route may have moved.
+    await _manager.changeBitrate(result.capMbps);
     if (!mounted) return;
     messenger.showSnackBar(
       SnackBar(content: Text(l10n.sipflixStreamCheckDone)),
@@ -6546,11 +6639,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       GetIt.instance<ServerRepository>(),
       GetIt.instance<MediaServerClientFactory>(),
     );
-    // Re-resolve at the current position on the new route. Passing the override
-    // back in is deliberately a no-op change to the cap — it is the public way
-    // into the manager's restart-in-place path, and an internal re-resolve does
-    // not re-arm Stream Preflight.
-    await _manager.changeBitrate(_manager.maxBitrateOverrideMbps);
+    // Re-resolve at the current position on the new route. An internal
+    // re-resolve does not re-arm Stream Preflight.
+    await _manager.restartCurrentStream();
     if (!mounted) return;
     messenger.showSnackBar(
       SnackBar(content: Text(l10n.sipflixRouteSwitched(route.label))),
@@ -6851,6 +6942,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       final ticks = ch['StartPositionTicks'] as int? ?? 0;
       _suppressSeekPrompts();
       _manager.seekTo(Duration(microseconds: ticks ~/ 10));
+      _bitrateWatchdog.markSeek();
     }());
     _showControls();
   }

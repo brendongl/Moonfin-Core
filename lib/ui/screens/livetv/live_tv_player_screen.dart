@@ -153,6 +153,9 @@ class _LiveTvPlayerScreenState extends State<LiveTvPlayerScreen>
     _applyPlayerDisplayMode();
     _applySubtitleStyle();
     _backendSub = _manager.backendChangedStream.listen((backend) {
+      // On TV the surface is pushed before a backend exists, so the call above
+      // was a no-op — re-apply now that one is attached.
+      _applySubtitleStyle();
       if (!mounted) return;
       _listenForPlayerTrackChanges();
       setState(() {});

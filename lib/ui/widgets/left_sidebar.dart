@@ -731,9 +731,22 @@ class _LeftSidebarState extends State<LeftSidebar> with RouteAware {
                         if (AppColorScheme.isGlass)
                           SizedBox(
                             width: _kExpandedBackdropWidthTV,
-                            child: const GlassSurface(
-                              cornerRadius: 18,
-                              fallbackColor: Colors.transparent,
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    color: overlayColor.withValues(
+                                      alpha: math.max(opacity, 0.92),
+                                    ),
+                                    borderRadius: BorderRadius.circular(18),
+                                  ),
+                                ),
+                                const GlassSurface(
+                                  cornerRadius: 18,
+                                  fallbackColor: Colors.transparent,
+                                ),
+                              ],
                             ),
                           )
                         else

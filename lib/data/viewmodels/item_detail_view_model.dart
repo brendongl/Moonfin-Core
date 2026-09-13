@@ -141,7 +141,16 @@ class ItemDetailViewModel extends ChangeNotifier {
   }
 
   List<AggregatedItem> _similar = const [];
-  List<AggregatedItem> get similar => _similar;
+  /// Similar items, one row per title. The 4K and 1080p copies of a film are
+  /// distinct server items, so they arrive as two identical-looking cards.
+  List<AggregatedItem> get similar {
+    final seen = <String>{};
+    return _similar.where((item) {
+      final name = item.name.trim().toLowerCase();
+      if (name.isEmpty) return true;
+      return seen.add('$name|${item.productionYear ?? ''}');
+    }).toList(growable: false);
+  }
 
   List<AggregatedItem> _filmography = const [];
   List<AggregatedItem> get filmography => _filmography;

@@ -39,3 +39,13 @@ ImageProvider offlineAwareImageProvider(
   }
   return provider;
 }
+
+/// Drops a cached body that failed to decode, so a poisoned entry (an error
+/// page served with HTTP 200) cannot pin a blank image for the whole TTL.
+void evictFailedImageCacheEntry(String url, {String? cacheKey}) {
+  if (isLocalImagePath(url) || url.isEmpty) return;
+  final key = cacheKey ?? url;
+  CachedNetworkImageProvider.defaultCacheManager
+      .removeFile(key)
+      .catchError((_) {});
+}

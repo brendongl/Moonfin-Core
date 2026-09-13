@@ -98,8 +98,8 @@ class SipflixBandwidthProbe {
     final url = '$root/emby/Playback/BitrateTest?Size=$_probeBytes';
 
     try {
-      final raw = await Isolate.run(
-        () => sipflixProbeWorker([
+      final raw = await sipflixRunProbeIsolate(
+        [
           url,
           accessToken,
           _probeBytes,
@@ -107,10 +107,8 @@ class SipflixBandwidthProbe {
           _measureWindow.inMicroseconds,
           _overallTimeout.inMilliseconds,
           500000,
-        ]),
-      ).timeout(
-        _overallTimeout + const Duration(seconds: 5),
-        onTimeout: () => null,
+        ],
+        hardDeadline: _overallTimeout + const Duration(seconds: 5),
       );
       if (raw == null) return null;
       final sustained = raw['sustained'] ?? 0;
@@ -218,33 +216,48 @@ Future<Map<String, double>?> sipflixProbeWorker(List<Object> args) async {
   final timeoutMs = args[5] as int;
   final burstWindowUs = args[6] as int;
 
+  // One wall-clock budget for the whole attempt. A route that accepts the TCP
+  // connection and then stalls used to cost nothing here — the deadline was
+  // only read when a chunk ARRIVED, and the header wait had no bound at all —
+  // so a blackholed CDN edge ran until the caller's outer timeout.
+  final wall = Stopwatch()..start();
+  Duration remaining() {
+    final left = timeoutMs - wall.elapsedMilliseconds;
+    return Duration(milliseconds: left < 0 ? 0 : left);
+  }
+
   final client = HttpClient()
     ..connectionTimeout = const Duration(seconds: 8)
     ..autoUncompress = false;
   try {
-    final request = await client.getUrl(Uri.parse(url));
+    final request = await client.getUrl(Uri.parse(url)).timeout(remaining());
     request.headers.set('X-Emby-Token', token);
     request.headers.set('Authorization', 'MediaBrowser Token="$token"');
     // Compressed bytes would be counted against wall time and under-report a
     // payload that is mostly zeroes.
     request.headers.set('Accept-Encoding', 'identity');
-    final response = await request.close();
+    final response = await request.close().timeout(remaining());
     if (response.statusCode >= 400) return null;
 
     final clock = Stopwatch()..start();
     final samples = <(int, int)>[];
     var total = 0;
     var sustainedStartUs = -1;
-    final deadline = Duration(milliseconds: timeoutMs);
 
-    await for (final chunk in response) {
+    final body = response.timeout(
+      remaining(),
+      onTimeout: (sink) => sink.close(),
+    );
+    await for (final chunk in body) {
       total += chunk.length;
       final nowUs = clock.elapsedMicroseconds;
       samples.add((nowUs, total));
       if (total >= warmupBytes && sustainedStartUs < 0) sustainedStartUs = nowUs;
       final haveWindow =
           sustainedStartUs >= 0 && nowUs - sustainedStartUs >= sustainUs;
-      if (haveWindow || total >= probeBytes || clock.elapsed >= deadline) break;
+      if (haveWindow || total >= probeBytes || remaining() == Duration.zero) {
+        break;
+      }
     }
 
     final result = sipflixThroughputFrom(
@@ -263,6 +276,87 @@ Future<Map<String, double>?> sipflixProbeWorker(List<Object> args) async {
     return null;
   } finally {
     client.close(force: true);
+  }
+}
+
+/// Entry point for the killable probe isolate. [args] is [replyPort, ...the
+/// argument list [sipflixProbeWorker] takes].
+Future<void> _sipflixProbeEntry(List<Object> args) async {
+  final reply = args[0] as SendPort;
+  Map<String, double>? out;
+  try {
+    out = await sipflixProbeWorker(args.sublist(1));
+  } catch (_) {
+    out = null;
+  }
+  reply.send(out);
+}
+
+/// Runs [sipflixProbeWorker] in an isolate that can actually be stopped.
+///
+/// `Isolate.run(...).timeout(...)` abandons the future but leaves the isolate
+/// downloading, so neither the preflight's Skip nor the per-route deadline had
+/// any effect on the transfer — the box kept pulling up to 16 MB with nobody
+/// waiting for it. Spawning the isolate directly means [hardDeadline] and
+/// [isCancelled] can kill it. Never throws; null when nothing was measured.
+Future<Map<String, double>?> sipflixRunProbeIsolate(
+  List<Object> args, {
+  required Duration hardDeadline,
+  bool Function()? isCancelled,
+}) async {
+  // Ticks from before the spawn, so the caller's per-route budget covers the
+  // isolate bring-up too — on an Allwinner box that is not free.
+  final since = Stopwatch()..start();
+  final port = ReceivePort();
+  final errors = ReceivePort();
+  Isolate isolate;
+  try {
+    isolate = await Isolate.spawn(
+      _sipflixProbeEntry,
+      [port.sendPort, ...args],
+      onError: errors.sendPort,
+      onExit: port.sendPort,
+      errorsAreFatal: true,
+    );
+  } catch (_) {
+    port.close();
+    errors.close();
+    return null;
+  }
+
+  final done = Completer<Map<String, double>?>();
+  void finish(Map<String, double>? value) {
+    if (!done.isCompleted) done.complete(value);
+  }
+
+  // onExit also posts here (as null), so a worker that dies without answering
+  // still completes instead of waiting out the deadline.
+  final sub = port.listen((msg) {
+    finish(msg is Map ? msg.cast<String, double>() : null);
+  });
+  final errSub = errors.listen((_) => finish(null));
+  final left = hardDeadline - since.elapsed;
+  final deadline = Timer(
+    left.isNegative ? Duration.zero : left,
+    () => finish(null),
+  );
+  Timer? cancelPoll;
+  if (isCancelled != null) {
+    cancelPoll = Timer.periodic(const Duration(milliseconds: 200), (_) {
+      if (isCancelled()) finish(null);
+    });
+  }
+
+  try {
+    return await done.future;
+  } finally {
+    deadline.cancel();
+    cancelPoll?.cancel();
+    isolate.kill(priority: Isolate.immediate);
+    await sub.cancel();
+    await errSub.cancel();
+    port.close();
+    errors.close();
   }
 }
 
@@ -287,13 +381,16 @@ extension SipflixRouteProbing on SipflixBandwidthProbe {
     const warmupBytes = 2000000;
     const burstWindowUs = 500000;
     const sustainUs = 2500000;
-    const timeoutMs = 10000;
+    // Leaves the isolate spawn and hand-back inside the caller's 10s per-route
+    // cap, which [SipflixPreflightController.overallTimeout] is derived from.
+    const timeoutMs = 9000;
+    const hardDeadlineMs = 10000;
     final url = '$root/emby/Playback/BitrateTest?Size=$probeBytes';
 
     try {
       // Off the UI isolate on purpose — see [sipflixProbeWorker].
-      final raw = await Isolate.run(
-        () => sipflixProbeWorker([
+      final raw = await sipflixRunProbeIsolate(
+        [
           url,
           accessToken,
           probeBytes,
@@ -301,10 +398,9 @@ extension SipflixRouteProbing on SipflixBandwidthProbe {
           sustainUs,
           timeoutMs,
           burstWindowUs,
-        ]),
-      ).timeout(
-        const Duration(milliseconds: timeoutMs + 5000),
-        onTimeout: () => null,
+        ],
+        hardDeadline: const Duration(milliseconds: hardDeadlineMs),
+        isCancelled: isCancelled,
       );
       if (raw == null) return null;
 

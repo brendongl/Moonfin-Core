@@ -150,6 +150,7 @@ class BoundedNetworkImage extends StatelessWidget {
                     alignment: alignment,
                   );
                 },
+          errorListener: (_) => evictFailedImageCacheEntry(imageUrl),
           errorWidget: errorBuilder == null && onLoadFinished == null
               ? null
               : (context, url, error) {

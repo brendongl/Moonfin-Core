@@ -433,7 +433,22 @@ Future<void> watchNextBackgroundMain() => watch_next_bg.watchNextBackgroundMain(
 
 void main() async {
   configureHttpOverrides();
-  WidgetsFlutterBinding.ensureInitialized();
+  final binding = WidgetsFlutterBinding.ensureInitialized();
+
+  // Nothing else installs a zone guard, so an error thrown out of an async
+  // gap would otherwise die with the future that raised it and leave the
+  // screen it belonged to sitting there with no diagnostic.
+  final presentFlutterError = FlutterError.onError;
+  FlutterError.onError = (details) {
+    debugPrint(
+      'Unhandled Flutter error: ${details.exceptionAsString()}\n${details.stack ?? ''}',
+    );
+    presentFlutterError?.call(details);
+  };
+  binding.platformDispatcher.onError = (error, stack) {
+    debugPrint('Unhandled async error: $error\n$stack');
+    return true;
+  };
 
   // Pre-warms the liquid_glass_widgets shader programs so the first glass
   // pane doesn't white-flash. Cheap no-op on tiers where the package

@@ -118,9 +118,7 @@ class _MediaBarState extends State<MediaBar>
   bool _readyHooksAppliedForCurrentLoad = false;
 
   DateTime? _keyDownTime;
-  DateTime? _lastFocusReceivedAt;
   static const _keyLongPressThreshold = Duration(milliseconds: 500);
-  static const _focusActivationGuardDuration = Duration(milliseconds: 350);
 
   Player? _trailerPlayer;
   VideoController? _trailerController;
@@ -804,9 +802,7 @@ class _MediaBarState extends State<MediaBar>
   }
 
   void _handleFocusChange(bool focused) {
-    if (focused) {
-      _lastFocusReceivedAt = DateTime.now();
-    }
+    _keyDownTime = null;
   }
 
   bool _isBookshelfMode() {
@@ -2630,16 +2626,10 @@ class _MediaBarState extends State<MediaBar>
         final now = DateTime.now();
         final downTime = _keyDownTime;
         _keyDownTime = null;
-        final focusedAt = _lastFocusReceivedAt;
-        final shouldSuppressBleedThrough =
-            downTime == null &&
-            focusedAt != null &&
-            now.difference(focusedAt) < _focusActivationGuardDuration;
-        if (shouldSuppressBleedThrough) {
+        if (downTime == null) {
           return KeyEventResult.handled;
         }
-        if (downTime != null &&
-            now.difference(downTime) >= _keyLongPressThreshold) {
+        if (now.difference(downTime) >= _keyLongPressThreshold) {
           if (_isBookshelfMode()) {
             _playFromBookshelf(context, items);
           } else if (_isGalleryMode()) {

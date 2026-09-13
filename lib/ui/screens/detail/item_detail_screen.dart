@@ -11177,6 +11177,16 @@ class _CastPersonCard extends StatefulWidget {
 }
 
 class _CastPersonCardState extends State<_CastPersonCard> with FocusStateMixin {
+  bool _avatarFailed = false;
+
+  @override
+  void didUpdateWidget(covariant _CastPersonCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imageUrl != widget.imageUrl) {
+      _avatarFailed = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isNeon = ThemeRegistry.active.id == ThemeRegistry.neonPulseId;
@@ -11244,10 +11254,19 @@ class _CastPersonCardState extends State<_CastPersonCard> with FocusStateMixin {
                     child: CircleAvatar(
                       radius: widget.avatarRadius,
                       backgroundColor: Colors.white.withValues(alpha: 0.1),
-                      backgroundImage: widget.imageUrl != null
+                      backgroundImage: widget.imageUrl != null && !_avatarFailed
                           ? offlineAwareImageProvider(widget.imageUrl!)
                           : null,
-                      child: widget.imageUrl == null
+                      onBackgroundImageError:
+                          widget.imageUrl != null && !_avatarFailed
+                          ? (_, _) {
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (!mounted || _avatarFailed) return;
+                                setState(() => _avatarFailed = true);
+                              });
+                            }
+                          : null,
+                      child: widget.imageUrl == null || _avatarFailed
                           ? AdaptiveIcon(
                               Icons.person,
                               color: Colors.white54,
@@ -11512,12 +11531,14 @@ class DetailChaptersRow extends StatelessWidget {
               ? (chapter['Name'] as String)
               : AppLocalizations.of(context).chapterNumber(index + 1);
           final imageTag = chapter['ImageTag'] as String?;
-          final chapterImageUrl = imageApi.getChapterImageUrl(
-            item.id,
-            index: index,
-            maxWidth: chapterImageWidth,
-            tag: imageTag,
-          );
+          final chapterImageUrl = (imageTag == null || imageTag.isEmpty)
+              ? null
+              : imageApi.getChapterImageUrl(
+                  item.id,
+                  index: index,
+                  maxWidth: chapterImageWidth,
+                  tag: imageTag,
+                );
 
           return _ChapterListCard(
             chapterName: name,
@@ -11550,7 +11571,7 @@ class DetailChaptersRow extends StatelessWidget {
 
 class _ChapterListCard extends StatefulWidget {
   final String chapterName;
-  final String chapterImageUrl;
+  final String? chapterImageUrl;
   final double chapterCardWidth;
   final bool isMobile;
   final Duration position;
@@ -11577,6 +11598,18 @@ class _ChapterListCard extends StatefulWidget {
 
 class _ChapterListCardState extends State<_ChapterListCard>
     with FocusStateMixin {
+  Widget _chapterImageFallback() {
+    return Container(
+      color: Colors.white.withValues(alpha: 0.08),
+      alignment: Alignment.center,
+      child: AdaptiveIcon(
+        Icons.movie,
+        size: widget.isMobile ? 22 : 26,
+        color: Colors.white.withValues(alpha: 0.4),
+      ),
+    );
+  }
+
   String _normalizeTimeString(String s) {
     s = s.trim();
     final parts = s.split(':');
@@ -11685,20 +11718,15 @@ class _ChapterListCardState extends State<_ChapterListCard>
                         borderRadius: AppRadius.circular(9),
                         child: SizedBox(
                           width: double.infinity,
-                          child: Image.network(
-                            widget.chapterImageUrl,
-                            fit: BoxFit.cover,
-                            filterQuality: FilterQuality.high,
-                            errorBuilder: (_, _, _) => Container(
-                              color: Colors.white.withValues(alpha: 0.08),
-                              alignment: Alignment.center,
-                              child: AdaptiveIcon(
-                                Icons.movie,
-                                size: widget.isMobile ? 22 : 26,
-                                color: Colors.white.withValues(alpha: 0.4),
-                              ),
-                            ),
-                          ),
+                          child: widget.chapterImageUrl == null
+                              ? _chapterImageFallback()
+                              : Image.network(
+                                  widget.chapterImageUrl!,
+                                  fit: BoxFit.cover,
+                                  filterQuality: FilterQuality.high,
+                                  errorBuilder: (_, _, _) =>
+                                      _chapterImageFallback(),
+                                ),
                         ),
                       ),
                     ),

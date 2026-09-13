@@ -734,6 +734,84 @@ class PlaybackManager implements AudioOwnable {
     return true;
   }
 
+  /// Builds the backend-style error event a bring-up failure maps onto, so a
+  /// thrown resolve surfaces the same viewer-facing wording as a native error.
+  Map<String, dynamic> _bringupFailureEvent(Object error) {
+    final text = error.toString();
+    final status = RegExp(
+      r'(?:status code of|response code:?)\s*(\d{3})',
+      caseSensitive: false,
+    ).firstMatch(text);
+    return <String, dynamic>{
+      'message': status == null ? text : '',
+      if (status != null) 'httpStatus': int.parse(status.group(1)!),
+    };
+  }
+
+  void _emitFailedBringupState(
+    Map<String, dynamic> event,
+    String fallbackMessage, {
+    required dynamic queueItem,
+    required StreamResolutionResult? resolution,
+  }) {
+    final rawMessage = event['message']?.toString().trim();
+    final httpStatus = event['httpStatus'] is int
+        ? event['httpStatus'] as int
+        : -1;
+    // Sipflix: the player's own text is useless for support ("Source error"
+    // covers everything from a deleted file to a dead transcoder), so map the
+    // HTTP status onto a cause the viewer — and whoever they message — can act
+    // on. The status is always appended so a screenshot is enough to diagnose.
+    final transcoding = resolution?.playMethod == StreamPlayMethod.transcode;
+    final rawIsUnhelpful = rawMessage == null ||
+        rawMessage.isEmpty ||
+        rawMessage.toLowerCase().contains('source error') ||
+        rawMessage.toLowerCase().startsWith('response code:');
+
+    String? mapped;
+    if (httpStatus == 404 ||
+        httpStatus == 410 ||
+        (rawMessage != null && rawMessage.contains('Response code: 40') &&
+            httpStatus < 0)) {
+      // Gone server-side — most often a stale Continue-Watching tile.
+      mapped = 'This content is no longer available';
+    } else if (httpStatus == 401 || httpStatus == 403) {
+      mapped = 'Not allowed to play this title (error $httpStatus). '
+          'Sign out and back in, or contact support.';
+    } else if (httpStatus == 429) {
+      mapped = 'Too many streams running right now (error 429). '
+          'Stop another device and try again.';
+    } else if (httpStatus >= 500) {
+      mapped = transcoding
+          ? 'The server could not convert this video (error $httpStatus). '
+              'It may be missing a video encoder or be overloaded — try again, '
+              'or report this title to support.'
+          : 'The server could not send this video (error $httpStatus). '
+              'Try again, or report this title to support.';
+    } else if (rawIsUnhelpful) {
+      mapped = transcoding
+          ? 'Could not start the converted stream — the server may be busy or '
+              'unreachable. Check your connection and try again.'
+          : 'Could not load this video — the server may be busy or '
+              'unreachable. Check your connection and try again.';
+    }
+
+    final message = mapped ??
+        (rawMessage != null && rawMessage.isNotEmpty
+            ? rawMessage
+            : fallbackMessage);
+    _setBringupState(
+      PlaybackBringupState(
+        phase: PlaybackBringupPhase.failed,
+        sessionToken: _playbackSessionToken,
+        itemId: queueItem == null ? null : _traceItemId(queueItem),
+        backend: _traceBackendName(_backend),
+        playMethod: resolution?.playMethod.name,
+        error: message,
+      ),
+    );
+  }
+
   void _onBackendErrorEvent(Map<String, dynamic> event) {
     unawaited(_handleBackendErrorEvent(event));
   }
@@ -760,64 +838,13 @@ class PlaybackManager implements AudioOwnable {
     final recoverable = event['recoverable'] == true;
     final resolution = _currentResolution ?? _lastPlaybackResolution;
 
-    void emitFailedBringupState(String fallbackMessage) {
-      final rawMessage = event['message']?.toString().trim();
-      final httpStatus = event['httpStatus'] is int
-          ? event['httpStatus'] as int
-          : -1;
-      // Sipflix: the player's own text is useless for support ("Source error"
-      // covers everything from a deleted file to a dead transcoder), so map the
-      // HTTP status onto a cause the viewer — and whoever they message — can act
-      // on. The status is always appended so a screenshot is enough to diagnose.
-      final transcoding = resolution?.playMethod == StreamPlayMethod.transcode;
-      final rawIsUnhelpful = rawMessage == null ||
-          rawMessage.isEmpty ||
-          rawMessage.toLowerCase().contains('source error') ||
-          rawMessage.toLowerCase().startsWith('response code:');
-
-      String? mapped;
-      if (httpStatus == 404 ||
-          httpStatus == 410 ||
-          (rawMessage != null && rawMessage.contains('Response code: 40') &&
-              httpStatus < 0)) {
-        // Gone server-side — most often a stale Continue-Watching tile.
-        mapped = 'This content is no longer available';
-      } else if (httpStatus == 401 || httpStatus == 403) {
-        mapped = 'Not allowed to play this title (error $httpStatus). '
-            'Sign out and back in, or contact support.';
-      } else if (httpStatus == 429) {
-        mapped = 'Too many streams running right now (error 429). '
-            'Stop another device and try again.';
-      } else if (httpStatus >= 500) {
-        mapped = transcoding
-            ? 'The server could not convert this video (error $httpStatus). '
-                'It may be missing a video encoder or be overloaded — try again, '
-                'or report this title to support.'
-            : 'The server could not send this video (error $httpStatus). '
-                'Try again, or report this title to support.';
-      } else if (rawIsUnhelpful) {
-        mapped = transcoding
-            ? 'Could not start the converted stream — the server may be busy or '
-                'unreachable. Check your connection and try again.'
-            : 'Could not load this video — the server may be busy or '
-                'unreachable. Check your connection and try again.';
-      }
-
-      final message = mapped ??
-          (rawMessage != null && rawMessage.isNotEmpty
-              ? rawMessage
-              : fallbackMessage);
-      _setBringupState(
-        PlaybackBringupState(
-          phase: PlaybackBringupPhase.failed,
-          sessionToken: _playbackSessionToken,
-          itemId: queueItem == null ? null : _traceItemId(queueItem),
-          backend: _traceBackendName(_backend),
-          playMethod: resolution?.playMethod.name,
-          error: message,
-        ),
-      );
-    }
+    void emitFailedBringupState(String fallbackMessage) =>
+        _emitFailedBringupState(
+          event,
+          fallbackMessage,
+          queueItem: queueItem,
+          resolution: resolution,
+        );
 
     // A transcoded stream that errors right after a user track switch gets
     // one silent re-resolve: the old encoder teardown can transiently break
@@ -946,15 +973,18 @@ class PlaybackManager implements AudioOwnable {
       return;
     }
 
-    _suppressNextGenericBackendError = true;
-
+    // Only swallow the trailing generic error when something is actually going
+    // to recover from it — the native offload retry, or a re-resolve. Arming it
+    // on a bail-out leaves a dead player with no message at all.
     if (event['audioOffloadRetryTriggered'] == true) {
+      _suppressNextGenericBackendError = true;
       return;
     }
 
     if (!canReResolve()) {
       return;
     }
+    _suppressNextGenericBackendError = true;
     await recoverViaTranscode();
   }
 
@@ -1183,6 +1213,12 @@ class PlaybackManager implements AudioOwnable {
       _preflightArmed = false;
       final hook = preflightHook;
       if (hook != null) {
+        // The hook can hold this continuation for tens of seconds, so it sits
+        // inside the stale-continuation defense rather than before it: a
+        // Next/Prev or a stop in the meantime bumps the token, and resuming
+        // past here would tear down the live session or start a backend behind
+        // a player screen that is already gone.
+        final preflightToken = _playbackSessionToken;
         try {
           final preflight = await hook(item);
           if (preflight != null) {
@@ -1191,6 +1227,7 @@ class PlaybackManager implements AudioOwnable {
         } catch (_) {
           // Preflight is best-effort: any failure just plays normally.
         }
+        if (preflightToken != _playbackSessionToken) return;
       }
     }
 
@@ -1226,54 +1263,74 @@ class PlaybackManager implements AudioOwnable {
     );
     _externalSubsLoaded = null;
 
-    await _resetSubtitleRendererMode();
-    if (sessionToken != _playbackSessionToken) { return; }
-
-    if (_resolverConfigurator != null) {
-      await _resolverConfigurator!(item);
+    final int? startTicks;
+    final Map<String, dynamic> profile;
+    final int? maxBitrate;
+    final StreamResolutionResult resolution;
+    // Nothing above the backend hand-off used to be guarded, so a resolve
+    // failure left the phase pinned at `resolving` and the UI spinning with no
+    // way to learn what went wrong.
+    try {
+      await _resetSubtitleRendererMode();
       if (sessionToken != _playbackSessionToken) { return; }
-    }
 
-    if (_resolver == null) {
-      throw StateError('No MediaStreamResolver configured');
-    }
-
-    final startTicks = startPosition > Duration.zero
-        ? startPosition.inMicroseconds * 10
-        : null;
-
-    final forceTranscode = !enableDirectPlay && !enableDirectStream;
-    final profile = _backend!.getDeviceProfile(
-      useProgressiveTranscode: forceTranscode,
-    );
-    if (_maxBitrateOverrideMbps != null) {
-      profile['MaxStreamingBitrate'] = _maxBitrateOverrideMbps! * 1000000;
-    }
-    var maxBitrate = profile['MaxStreamingBitrate'] as int?;
-    if (maxBitrate == null && autoBitrateProvider != null) {
-      final measured = await autoBitrateProvider!();
-      if (sessionToken != _playbackSessionToken) return;
-      if (measured != null && measured > 0) {
-        maxBitrate = measured;
-        profile['MaxStreamingBitrate'] = measured;
+      if (_resolverConfigurator != null) {
+        await _resolverConfigurator!(item);
+        if (sessionToken != _playbackSessionToken) { return; }
       }
-    }
 
-    final resolution = await _resolver!.resolve(
-      item,
-      deviceProfile: profile,
-      maxStreamingBitrate: maxBitrate,
-      audioStreamIndex: _audioStreamIndex,
-      subtitleStreamIndex: _subtitleStreamIndex,
-      startTimeTicks: startTicks,
-      mediaSourceId: _mediaSourceId,
-      enableDirectPlay: enableDirectPlay,
-      enableDirectStream: enableDirectStream,
-      enableTranscoding: enableTranscoding,
-    );
+      if (_resolver == null) {
+        throw StateError('No MediaStreamResolver configured');
+      }
+
+      startTicks = startPosition > Duration.zero
+          ? startPosition.inMicroseconds * 10
+          : null;
+
+      final forceTranscode = !enableDirectPlay && !enableDirectStream;
+      profile = _backend!.getDeviceProfile(
+        useProgressiveTranscode: forceTranscode,
+      );
+      if (_maxBitrateOverrideMbps != null) {
+        profile['MaxStreamingBitrate'] = _maxBitrateOverrideMbps! * 1000000;
+      }
+      var resolvedMaxBitrate = profile['MaxStreamingBitrate'] as int?;
+      if (resolvedMaxBitrate == null && autoBitrateProvider != null) {
+        final measured = await autoBitrateProvider!();
+        if (sessionToken != _playbackSessionToken) return;
+        if (measured != null && measured > 0) {
+          resolvedMaxBitrate = measured;
+          profile['MaxStreamingBitrate'] = measured;
+        }
+      }
+      maxBitrate = resolvedMaxBitrate;
+
+      resolution = await _resolver!.resolve(
+        item,
+        deviceProfile: profile,
+        maxStreamingBitrate: maxBitrate,
+        audioStreamIndex: _audioStreamIndex,
+        subtitleStreamIndex: _subtitleStreamIndex,
+        startTimeTicks: startTicks,
+        mediaSourceId: _mediaSourceId,
+        enableDirectPlay: enableDirectPlay,
+        enableDirectStream: enableDirectStream,
+        enableTranscoding: enableTranscoding,
+      );
+    } catch (error) {
+      if (sessionToken == _playbackSessionToken) {
+        _emitFailedBringupState(
+          _bringupFailureEvent(error),
+          'Could not start playback.',
+          queueItem: item,
+          resolution: null,
+        );
+      }
+      rethrow;
+    }
 
     if (sessionToken != _playbackSessionToken) {
-      _cleanupPreemptedSession(item, resolution);
+      _cleanupPreemptedSession(item, resolution, startPosition);
       return;
     }
 
@@ -1517,7 +1574,7 @@ class PlaybackManager implements AudioOwnable {
       );
       await _arbiter?.acquire(AudioProducer.mainPlayback);
       if (sessionToken != _playbackSessionToken) {
-        _cleanupPreemptedSession(item, resolution);
+        _cleanupPreemptedSession(item, resolution, startPosition);
         return;
       }
       await _backend!.play(
@@ -1525,12 +1582,12 @@ class PlaybackManager implements AudioOwnable {
         startPosition: useNativeStart ? startPosition : Duration.zero,
       );
       if (sessionToken != _playbackSessionToken) {
-        _cleanupPreemptedSession(item, resolution);
+        _cleanupPreemptedSession(item, resolution, startPosition);
         return;
       }
       await _syncBackendRepeatModeIfSupported();
       if (sessionToken != _playbackSessionToken) {
-        _cleanupPreemptedSession(item, resolution);
+        _cleanupPreemptedSession(item, resolution, startPosition);
         return;
       }
       if (_backend!.requiresStartupMediaReadyCheck) {
@@ -1551,7 +1608,7 @@ class PlaybackManager implements AudioOwnable {
         mediaReady = true;
       }
       if (sessionToken != _playbackSessionToken) {
-        _cleanupPreemptedSession(item, resolution);
+        _cleanupPreemptedSession(item, resolution, startPosition);
         return;
       }
     } catch (e, st) {
@@ -1563,7 +1620,7 @@ class PlaybackManager implements AudioOwnable {
     }
 
     if (sessionToken != _playbackSessionToken) {
-      _cleanupPreemptedSession(item, resolution);
+      _cleanupPreemptedSession(item, resolution, startPosition);
       return;
     }
 
@@ -2286,8 +2343,59 @@ class PlaybackManager implements AudioOwnable {
   });
 
   Future<void> changeBitrate(int? mbps) async {
+    // Re-applying the cap a live session already runs on changes nothing, so
+    // tearing the stream down and rebuffering it is pure damage.
+    if (mbps == _maxBitrateOverrideMbps && _currentResolution != null) {
+      return;
+    }
     _maxBitrateOverrideMbps = mbps;
-    await _reResolveAtCurrentPosition(forceTranscode: mbps != null);
+    await _reResolveAtCurrentPosition(
+      forceTranscode: mbps != null && _capForcesTranscode(mbps),
+    );
+  }
+
+  /// Re-resolves the current item on the current route and position, without
+  /// touching the bitrate cap.
+  Future<void> restartCurrentStream() => _reResolveAtCurrentPosition();
+
+  /// A cap only needs a forced transcode when the source is genuinely above
+  /// it. The profile's MaxStreamingBitrate already makes the server demote a
+  /// too-fat source on its own, so forcing it for every non-null cap converts
+  /// healthy Direct Play sessions into transcodes for nothing.
+  bool _capForcesTranscode(int mbps) {
+    final sourceBps = _sourceBitrateBps();
+    if (sourceBps == null) return false;
+    return sourceBps > mbps * 1000000;
+  }
+
+  int? _sourceBitrateBps() {
+    final resolution = _currentResolution ?? _lastPlaybackResolution;
+    final item = queueService.currentItem ?? _lastPlaybackItem;
+    final mediaSourceId = resolution?.mediaSourceId ?? _mediaSourceId;
+
+    if (item != null && mediaSourceId != null) {
+      try {
+        final mediaSources = item.mediaSources as List?;
+        if (mediaSources != null) {
+          for (final source in mediaSources) {
+            if (source is! Map) continue;
+            if (source['Id'] != mediaSourceId) continue;
+            final bitrate = source['Bitrate'];
+            if (bitrate is num && bitrate > 0) return bitrate.toInt();
+            break;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // No media source bitrate (offline metadata, trimmed item payloads): the
+    // video track's own rate is the closest honest stand-in.
+    for (final stream in resolution?.mediaStreams ?? const <Map<String, dynamic>>[]) {
+      if (stream['Type'] != 'Video') continue;
+      final bitrate = stream['BitRate'];
+      if (bitrate is num && bitrate > 0) return bitrate.toInt();
+    }
+    return null;
   }
 
   /// Serializes re-resolves so rapid track switches can't tear down the same
@@ -2745,9 +2853,16 @@ class PlaybackManager implements AudioOwnable {
     }
   }
 
-  void _cleanupPreemptedSession(dynamic item, StreamResolutionResult? resolution) {
+  /// [position] is where this preempted session meant to be — reporting zero
+  /// instead tells the server the item was left at the very beginning and
+  /// wipes the resume point the viewer was about to come back to.
+  void _cleanupPreemptedSession(
+    dynamic item,
+    StreamResolutionResult? resolution,
+    Duration position,
+  ) {
     if (item != null && resolution != null) {
-      unawaited(_service?.onPlaybackStop(item, resolution, Duration.zero).catchError((_) => null));
+      unawaited(_service?.onPlaybackStop(item, resolution, position).catchError((_) => null));
     }
   }
 

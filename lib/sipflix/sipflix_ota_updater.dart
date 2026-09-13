@@ -122,6 +122,7 @@ class SipflixOtaUpdater {
     SipflixOtaUpdate update, {
     void Function(double progress)? onProgress,
     void Function(SipflixOtaPhase phase)? onPhase,
+    CancelToken? cancelToken,
   }) async {
     if (_busy) return 'An update is already in progress';
     _busy = true;
@@ -159,6 +160,7 @@ class SipflixOtaUpdater {
         try {
           final response = await _dio.get<ResponseBody>(
             update.url,
+            cancelToken: cancelToken,
             options: Options(
               responseType: ResponseType.stream,
               receiveTimeout: const Duration(minutes: 10),
@@ -179,6 +181,11 @@ class SipflixOtaUpdater {
         }
         hasher.close();
 
+        if (cancelToken?.isCancelled ?? false) {
+          if (await file.exists()) await file.delete();
+          return null;
+        }
+
         // Never hand a mismatched file to the installer: a truncated or
         // tampered download must fail HERE, with a message, not as a cryptic
         // parse error.
@@ -192,6 +199,10 @@ class SipflixOtaUpdater {
         _verifiedVersionCode = update.versionCode;
       }
 
+      // The customer can back out at any point; the system package installer
+      // must never erupt over whatever they went back to watching.
+      if (cancelToken?.isCancelled ?? false) return null;
+
       onPhase?.call(SipflixOtaPhase.installing);
       final outcome =
           await _channel.invokeMethod<String>('installApk', {'path': file.path});
@@ -201,6 +212,10 @@ class SipflixOtaUpdater {
         return null;
       }
       return null;
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.cancel) return null;
+      _logger.w('Sipflix OTA install failed: $e');
+      return 'Update failed to download — check the connection and try again';
     } catch (e) {
       _logger.w('Sipflix OTA install failed: $e');
       return 'Update failed to download — check the connection and try again';
@@ -243,8 +258,9 @@ class SipflixOtaUpdate {
 }
 
 /// TV-friendly update dialog: version + notes, one focused "Update now" button,
-/// live progress while downloading. Barrier-dismissable so a customer can
-/// always back out and keep watching.
+/// live progress while downloading. A customer can always back out and keep
+/// watching; backing out mid-transfer cancels it rather than leaving it running
+/// headless towards an installer nobody asked for any more.
 Future<void> showSipflixOtaDialog(
   BuildContext context,
   SipflixOtaUpdater updater,
@@ -252,6 +268,7 @@ Future<void> showSipflixOtaDialog(
 ) async {
   await showDialog<void>(
     context: context,
+    barrierDismissible: false,
     builder: (context) => _SipflixOtaDialog(updater: updater, update: update),
   );
 }
@@ -272,6 +289,7 @@ class _SipflixOtaDialogState extends State<_SipflixOtaDialog>
   String? _error;
   SipflixOtaPhase? _phase;
   bool _working = false;
+  CancelToken? _cancelToken;
 
   @override
   void initState() {
@@ -281,6 +299,8 @@ class _SipflixOtaDialogState extends State<_SipflixOtaDialog>
 
   @override
   void dispose() {
+    _cancelToken?.cancel('dialog dismissed');
+    _cancelToken = null;
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -311,14 +331,17 @@ class _SipflixOtaDialogState extends State<_SipflixOtaDialog>
     // TV remotes double-activate buttons (key action + tap semantics); the
     // second call must not clobber the live progress with a busy error.
     if (_working) return;
+    final token = CancelToken();
     setState(() {
       _error = null;
       _working = true;
+      _cancelToken = token;
       _progress = 0;
       _phase = SipflixOtaPhase.downloading;
     });
     final error = await widget.updater.downloadAndInstall(
       widget.update,
+      cancelToken: token,
       onProgress: (p) {
         if (mounted) setState(() => _progress = p);
       },
@@ -327,7 +350,11 @@ class _SipflixOtaDialogState extends State<_SipflixOtaDialog>
       },
     );
     if (!mounted) return;
-    setState(() => _working = false);
+    setState(() {
+      _working = false;
+      _cancelToken = null;
+    });
+    if (token.isCancelled) return;
     if (error != null) {
       setState(() {
         _error = error;
@@ -344,45 +371,54 @@ class _SipflixOtaDialogState extends State<_SipflixOtaDialog>
     final update = widget.update;
     final showBar =
         _working && _phase == SipflixOtaPhase.downloading && _error == null;
-    return AlertDialog(
-      title: Text('Update available — ${update.versionName}'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (update.notes.isNotEmpty) Text(update.notes),
-          if (showBar) ...[
-            const SizedBox(height: 16),
-            LinearProgressIndicator(value: _progress),
+    return PopScope(
+      canPop: !_working,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _cancelToken?.cancel('update cancelled');
+        _cancelToken = null;
+        Navigator.of(context).pop();
+      },
+      child: AlertDialog(
+        title: Text('Update available — ${update.versionName}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (update.notes.isNotEmpty) Text(update.notes),
+            if (showBar) ...[
+              const SizedBox(height: 16),
+              LinearProgressIndicator(value: _progress),
+            ],
+            if (_statusLine.isNotEmpty && _error == null) ...[
+              const SizedBox(height: 8),
+              Text(_statusLine),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: 16),
+              Text(
+                _error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
           ],
-          if (_statusLine.isNotEmpty && _error == null) ...[
-            const SizedBox(height: 8),
-            Text(_statusLine),
-          ],
-          if (_error != null) ...[
-            const SizedBox(height: 16),
-            Text(
-              _error!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+        ),
+        actions: [
+          TextButton(
+            onPressed: _working ? null : () => Navigator.of(context).pop(),
+            child: const Text('Later'),
+          ),
+          TextButton(
+            autofocus: true,
+            onPressed: _working ? null : _start,
+            child: Text(
+              _phase == SipflixOtaPhase.needsPermission
+                  ? 'Continue'
+                  : (_error != null ? 'Try again' : 'Update now'),
             ),
-          ],
+          ),
         ],
       ),
-      actions: [
-        TextButton(
-          onPressed: _working ? null : () => Navigator.of(context).pop(),
-          child: const Text('Later'),
-        ),
-        TextButton(
-          autofocus: true,
-          onPressed: _working ? null : _start,
-          child: Text(
-            _phase == SipflixOtaPhase.needsPermission
-                ? 'Continue'
-                : (_error != null ? 'Try again' : 'Update now'),
-          ),
-        ),
-      ],
     );
   }
 }

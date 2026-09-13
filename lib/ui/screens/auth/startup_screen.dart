@@ -41,6 +41,7 @@ class _StartupScreenState extends State<StartupScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _fadeController;
   late final Animation<double> _fadeAnimation;
+  String? _initError;
 
   @override
   void initState() {
@@ -89,7 +90,18 @@ class _StartupScreenState extends State<StartupScreen>
     unawaited(GetIt.instance<SipflixAutoBitrateService>().refreshIfStale());
   }
 
+  /// The splash has nothing focusable on it, so an escaped throw here would
+  /// strand the user on a spinner with only "Exit app" left on Back.
   Future<void> _initialize() async {
+    try {
+      await _runInitialize();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _initError = e.toString());
+    }
+  }
+
+  Future<void> _runInitialize() async {
     final session = GetIt.instance<SessionRepository>();
     final serverRepo = GetIt.instance<ServerRepository>();
     final credentialStore = GetIt.instance<CredentialStore>();
@@ -224,9 +236,64 @@ class _StartupScreenState extends State<StartupScreen>
         platform == TargetPlatform.windows;
   }
 
+  void _retryInitialize() {
+    setState(() => _initError = null);
+    _initialize();
+  }
+
   @override
-  Widget build(BuildContext context) =>
-      RequestInitialFocus(child: _buildContent(context));
+  Widget build(BuildContext context) => RequestInitialFocus(
+        child: _initError == null
+            ? _buildContent(context)
+            : _buildError(context, _initError!),
+      );
+
+  Widget _buildError(BuildContext context, String message) {
+    final l10n = AppLocalizations.of(context);
+    return Scaffold(
+      backgroundColor: AppColorScheme.background,
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                l10n.error,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white70),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ElevatedButton(
+                    autofocus: true,
+                    onPressed: _retryInitialize,
+                    child: Text(l10n.retry),
+                  ),
+                  const SizedBox(width: 16),
+                  ElevatedButton(
+                    onPressed: () => context.go(Destinations.serverSelect),
+                    child: Text(l10n.selectServer),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _buildContent(BuildContext context) {
     final gradientColors = [

@@ -5,6 +5,7 @@ import 'package:logger/logger.dart';
 import '../data/services/media_server_client_factory.dart';
 import '../preference/user_preferences.dart';
 import 'sipflix_bandwidth_probe.dart';
+import 'sipflix_log.dart';
 
 /// Sipflix: keeps the measured link speed behind the "Auto" quality setting
 /// fresh, so Auto caps at what the connection can actually carry instead of
@@ -26,7 +27,7 @@ class SipflixAutoBitrateService {
   })  : _prefs = prefs,
         _clientFactory = clientFactory,
         _probe = probe ?? SipflixBandwidthProbe(),
-        _logger = logger ?? Logger();
+        _logger = logger ?? sipflixLogger();
 
   final UserPreferences _prefs;
   final MediaServerClientFactory _clientFactory;

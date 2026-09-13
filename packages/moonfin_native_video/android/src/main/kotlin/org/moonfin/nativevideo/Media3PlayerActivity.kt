@@ -53,6 +53,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.nativeKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -482,7 +488,32 @@ class Media3PlayerActivity : ComponentActivity() {
                                         }
                                     },
                                     enabled = uiState.durationMs > 0L,
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .onPreviewKeyEvent { keyEvent ->
+                                            val isSeekKey = keyEvent.key == Key.DirectionLeft ||
+                                                keyEvent.key == Key.DirectionRight
+                                            if (!isSeekKey) {
+                                                return@onPreviewKeyEvent false
+                                            }
+                                            if (keyEvent.type == KeyEventType.KeyDown &&
+                                                keyEvent.nativeKeyEvent.repeatCount == 0
+                                            ) {
+                                                controlsVisibleState.value = true
+                                                if (keyEvent.key == Key.DirectionLeft) {
+                                                    seekRelative(
+                                                        uiState,
+                                                        -metadataState.skipBackMs.toLong(),
+                                                    )
+                                                } else {
+                                                    seekRelative(
+                                                        uiState,
+                                                        metadataState.skipForwardMs.toLong(),
+                                                    )
+                                                }
+                                            }
+                                            true
+                                        },
                                     colors = androidx.compose.material3.SliderDefaults.colors(
                                         thumbColor = Color.White,
                                         activeTrackColor = Color.White,
@@ -725,38 +756,51 @@ class Media3PlayerActivity : ComponentActivity() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         controlsVisibleState.value = true
 
+        val isAutoRepeat = (event?.repeatCount ?: 0) > 0
         val uiState = Media3UiState.fromMap(Media3Bridge.activeState())
         return when (keyCode) {
             KeyEvent.KEYCODE_DPAD_CENTER,
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
             -> {
-                togglePlayPause(uiState)
+                if (!isAutoRepeat) {
+                    togglePlayPause(uiState)
+                }
                 true
             }
 
             KeyEvent.KEYCODE_MEDIA_PLAY -> {
-                Media3Bridge.dispatchControl("play")
+                if (!isAutoRepeat) {
+                    Media3Bridge.dispatchControl("play")
+                }
                 true
             }
 
             KeyEvent.KEYCODE_MEDIA_PAUSE -> {
-                Media3Bridge.dispatchControl("pause")
+                if (!isAutoRepeat) {
+                    Media3Bridge.dispatchControl("pause")
+                }
                 true
             }
 
             KeyEvent.KEYCODE_DPAD_LEFT,
             KeyEvent.KEYCODE_MEDIA_REWIND,
             -> {
-                val metadataState = Media3UiMetadataState.fromMap(Media3Bridge.activeUiMetadata())
-                seekRelative(uiState, -metadataState.skipBackMs.toLong())
+                if (!isAutoRepeat) {
+                    val metadataState =
+                        Media3UiMetadataState.fromMap(Media3Bridge.activeUiMetadata())
+                    seekRelative(uiState, -metadataState.skipBackMs.toLong())
+                }
                 true
             }
 
             KeyEvent.KEYCODE_DPAD_RIGHT,
             KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
             -> {
-                val metadataState = Media3UiMetadataState.fromMap(Media3Bridge.activeUiMetadata())
-                seekRelative(uiState, metadataState.skipForwardMs.toLong())
+                if (!isAutoRepeat) {
+                    val metadataState =
+                        Media3UiMetadataState.fromMap(Media3Bridge.activeUiMetadata())
+                    seekRelative(uiState, metadataState.skipForwardMs.toLong())
+                }
                 true
             }
 

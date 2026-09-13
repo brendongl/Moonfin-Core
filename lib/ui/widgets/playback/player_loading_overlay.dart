@@ -84,7 +84,9 @@ class _PlayerLoadingOverlayState extends State<PlayerLoadingOverlay>
               alignment: Alignment.center,
               transform: Matrix4.identity()
                 ..setEntry(3, 2, 0.001)
-                ..rotateY(_logoController.value * 2 * math.pi),
+                ..rotateY(
+                  math.sin(_logoController.value * 2 * math.pi) * 0.32,
+                ),
               child: child,
             );
           },

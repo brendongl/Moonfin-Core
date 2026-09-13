@@ -168,6 +168,11 @@ class LibraryBrowseViewModel extends ChangeNotifier {
   String? get selectedCategoryTab => _selectedCategoryTab;
 
   int _pageWalkGeneration = 0;
+
+  /// Bumped every time the list the pages belong to is thrown away. A page
+  /// still in flight from the previous sort would otherwise splice itself into
+  /// the new ordering and take the paging counters with it.
+  int _fetchGeneration = 0;
   bool _disposed = false;
 
   // Grouping walks every item and sorts the keys, and the grid asks for it
@@ -180,6 +185,9 @@ class LibraryBrowseViewModel extends ChangeNotifier {
 
   String? _errorMessage;
   String? get errorMessage => _errorMessage;
+
+  String? _pageErrorMessage;
+  String? get pageErrorMessage => _pageErrorMessage;
 
   bool? _lastGroupCollectionsValue;
 
@@ -381,6 +389,7 @@ class LibraryBrowseViewModel extends ChangeNotifier {
   Future<void> load() async {
     // Any page walk still running belongs to the list we are about to drop.
     _pageWalkGeneration++;
+    final generation = ++_fetchGeneration;
     _state = LibraryBrowseState.loading;
     _items = const [];
     _totalCount = 0;
@@ -390,6 +399,7 @@ class LibraryBrowseViewModel extends ChangeNotifier {
     _playlistCategoryMap.clear();
     _totalCountKnown = true;
     _hasMoreFromPageSize = false;
+    _pageErrorMessage = null;
     notifyListeners();
 
     try {
@@ -456,8 +466,10 @@ class LibraryBrowseViewModel extends ChangeNotifier {
 
       await imageTypeSync;
       await _fetchPage(0);
+      if (generation != _fetchGeneration) return;
       _state = LibraryBrowseState.ready;
     } catch (e) {
+      if (generation != _fetchGeneration) return;
       _errorMessage = e.toString();
       _state = LibraryBrowseState.error;
     }
@@ -521,22 +533,33 @@ class LibraryBrowseViewModel extends ChangeNotifier {
     _loadingMore = true;
     if (notify) notifyListeners();
 
+    final generation = _fetchGeneration;
     final previouslyFetched = _fetchedCount;
     try {
       await _fetchPage(_fetchedCount, pageSizeOverride: pageSizeOverride);
+      if (generation != _fetchGeneration) {
+        _loadingMore = false;
+        return;
+      }
+      _pageErrorMessage = null;
       // Stop on a page the server had nothing left for, not on one that only
       // repeated what is already shown, which a random sort does by chance.
       if (_fetchedCount <= previouslyFetched) {
         _totalCount = _items.length;
         _hasMoreFromPageSize = false;
       }
-    } catch (_) {}
+    } catch (e) {
+      // A page that failed is a page still owed. Leaving hasMore alone keeps
+      // it retriable, and the message stops the grid from reading as complete.
+      if (generation == _fetchGeneration) _pageErrorMessage = e.toString();
+    }
 
     _loadingMore = false;
     if (notify) notifyListeners();
   }
 
   Future<void> _fetchPage(int startIndex, {int? pageSizeOverride}) async {
+    final generation = _fetchGeneration;
     final pageSize = pageSizeOverride ?? (startIndex == 0 ? _firstPageSize : _pageSize);
     final filters = <String>[];
     if (_playedFilter == PlayedStatusFilter.watched) {
@@ -692,6 +715,11 @@ class LibraryBrowseViewModel extends ChangeNotifier {
       );
     }
 
+    // The list this window was requested for is gone, so nothing it carries
+    // belongs in the one on screen — not the rows, not the counters, not the
+    // ids the de-dupe reads.
+    if (_disposed || generation != _fetchGeneration) return;
+
     final rawItems = (response['Items'] as List?) ?? [];
     var mapped = rawItems
         .whereType<Map>()
@@ -709,6 +737,7 @@ class LibraryBrowseViewModel extends ChangeNotifier {
         .toList();
 
     var filtered = await _filterLibraryItems(mapped);
+    if (_disposed || generation != _fetchGeneration) return;
 
     if (isPlaylistBrowse) {
       final filteredOutInBatch = mapped.length - filtered.length;
@@ -729,14 +758,21 @@ class LibraryBrowseViewModel extends ChangeNotifier {
     _fetchedCount = startIndex + rawItems.length;
 
     final totalFromServer = response['TotalRecordCount'] as int?;
-    _totalCountKnown = totalFromServer != null;
-    if (_totalCountKnown) {
-      _totalCount = totalFromServer! - _filteredOutCount;
+    // The 5xx fallback asks for the window without a count. Dropping the total
+    // already established would move the rest of the paging onto the page-size
+    // heuristic halfway through the library.
+    if (totalFromServer == null && _totalCountKnown && startIndex > 0) {
       _hasMoreFromPageSize = _items.length + filtered.length < _totalCount;
     } else {
-      _hasMoreFromPageSize = rawItems.length == pageSize;
-      final loadedCount = _items.length + filtered.length;
-      _totalCount = loadedCount + (_hasMoreFromPageSize ? 1 : 0);
+      _totalCountKnown = totalFromServer != null;
+      if (_totalCountKnown) {
+        _totalCount = totalFromServer! - _filteredOutCount;
+        _hasMoreFromPageSize = _items.length + filtered.length < _totalCount;
+      } else {
+        _hasMoreFromPageSize = rawItems.length == pageSize;
+        final loadedCount = _items.length + filtered.length;
+        _totalCount = loadedCount + (_hasMoreFromPageSize ? 1 : 0);
+      }
     }
 
     if (startIndex == 0) {

@@ -102,6 +102,8 @@ class OfflineAwareImage extends StatelessWidget {
       placeholder: placeholder,
       progressIndicatorBuilder: progressIndicatorBuilder,
       errorWidget: errorWidget,
+      errorListener: (_) =>
+          evictFailedImageCacheEntry(imageUrl, cacheKey: cacheKey),
       placeholderFadeInDuration: placeholderFadeInDuration,
       fadeOutDuration: fadeOutDuration,
       fadeOutCurve: fadeOutCurve,

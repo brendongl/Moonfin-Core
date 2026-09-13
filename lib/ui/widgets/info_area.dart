@@ -235,14 +235,6 @@ class _InfoAreaContentState extends State<_InfoAreaContent> {
             itemTypes: ['BoxSet'],
             label: _MyMediaSummaryLabel.collection,
           ),
-          _MyMediaSummaryTypeQuery(
-            itemTypes: ['Movie'],
-            label: _MyMediaSummaryLabel.movie,
-          ),
-          _MyMediaSummaryTypeQuery(
-            itemTypes: ['Series'],
-            label: _MyMediaSummaryLabel.series,
-          ),
         ];
       case 'playlists':
         return const [

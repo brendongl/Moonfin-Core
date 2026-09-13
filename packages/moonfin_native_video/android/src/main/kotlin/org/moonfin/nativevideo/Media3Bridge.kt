@@ -322,6 +322,7 @@ object Media3Bridge {
             "disableTunnelingForSession",
             "addExternalSubtitle",
             "configureSubtitleStyle",
+            "setSubtitleBottomInset",
             -> {
                 queueCall(call.method, call.arguments)
                 result.success(null)

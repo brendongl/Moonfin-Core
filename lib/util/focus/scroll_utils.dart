@@ -14,7 +14,7 @@ void scrollListToIndex(
 }) {
   if (!controller.hasClients) return;
   final maxOffset = controller.position.maxScrollExtent;
-  final target = (index * itemExtent + leadingPadding).clamp(0.0, maxOffset);
+  final target = (index * itemExtent).clamp(0.0, maxOffset);
   if (animate) {
     controller.animateTo(target, duration: duration, curve: curve);
   } else {

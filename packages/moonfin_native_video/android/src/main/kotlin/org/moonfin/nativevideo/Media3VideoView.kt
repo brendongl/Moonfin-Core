@@ -521,6 +521,13 @@ class Media3VideoView(
     val role: String = "main",
 ) : PlatformView, MethodChannel.MethodCallHandler {
     companion object {
+        // The Dart side applies subtitle style once, from the player screen's
+        // initState, and skips it when the backend is not up yet (pushVideoEarly
+        // on TV). Keeping the last payload here lets a freshly attached surface
+        // re-apply it instead of falling back to ExoPlayer defaults.
+        @Volatile
+        private var lastSubtitleStyleArgs: Map<*, *>? = null
+
         private const val TS_SEARCH_BYTES_LOW_RAM = TsExtractor.TS_PACKET_SIZE * 1800
         private const val TS_SEARCH_BYTES_DEFAULT = TsExtractor.DEFAULT_TIMESTAMP_SEARCH_BYTES
         private const val EXTERNAL_SUBTITLE_ID_BASE = 10000
@@ -647,6 +654,8 @@ class Media3VideoView(
         setBackgroundColor(Color.BLACK)
     }
     private val subtitleView = SubtitleView(context)
+    private var subtitleStyleBottomFraction: Float = SubtitleView.DEFAULT_BOTTOM_PADDING_FRACTION
+    private var subtitleOsdBottomFraction: Float = 0f
     private val containerView: FrameLayout = FrameLayout(context).also { container ->
         container.setBackgroundColor(Color.BLACK)
         // Hold the screen awake while a real player surface is attached so the
@@ -1259,6 +1268,8 @@ class Media3VideoView(
         }
 
         refreshSubtitleRendererMode()
+
+        lastSubtitleStyleArgs?.let { configureSubtitleStyle(it) }
 
         startTicker()
         Media3Bridge.registerView(platformViewId, this)
@@ -1973,6 +1984,11 @@ class Media3VideoView(
                     result.success(null)
                 }
 
+                "setSubtitleBottomInset" -> {
+                    setSubtitleBottomInset(call.arguments as? Map<*, *>)
+                    result.success(null)
+                }
+
                 "getState" -> {
                     result.success(stateMap())
                 }
@@ -2110,6 +2126,7 @@ class Media3VideoView(
 
                 "addExternalSubtitle" -> addExternalSubtitle(args as? Map<*, *>)
                 "configureSubtitleStyle" -> configureSubtitleStyle(args as? Map<*, *>)
+                "setSubtitleBottomInset" -> setSubtitleBottomInset(args as? Map<*, *>)
             }
         } catch (_: Throwable) {
         }
@@ -3116,6 +3133,9 @@ class Media3VideoView(
     }
 
     private fun configureSubtitleStyle(args: Map<*, *>?) {
+        if (args != null) {
+            lastSubtitleStyleArgs = args
+        }
         val textColor = (args?.get("textColor") as? Number)?.toInt() ?: Color.WHITE
         val bgColor = (args?.get("backgroundColor") as? Number)?.toInt() ?: Color.TRANSPARENT
         val strokeColor = (args?.get("strokeColor") as? Number)?.toInt() ?: Color.TRANSPARENT
@@ -3167,8 +3187,22 @@ class Media3VideoView(
         }
 
         if (verticalOffset != null) {
-            subtitleView.setBottomPaddingFraction(verticalOffset.coerceIn(0f, 0.95f))
+            subtitleStyleBottomFraction = verticalOffset.coerceIn(0f, 0.95f)
+            applySubtitleBottomPadding()
         }
+    }
+
+    // The OSD is a Flutter layer composited above this platform view, so the
+    // cues can only clear it by moving up inside the view that draws them.
+    private fun setSubtitleBottomInset(args: Map<*, *>?) {
+        val fraction = (args?.get("fraction") as? Number)?.toFloat() ?: 0f
+        subtitleOsdBottomFraction = fraction.coerceIn(0f, 0.95f)
+        applySubtitleBottomPadding()
+    }
+
+    private fun applySubtitleBottomPadding() {
+        val fraction = maxOf(subtitleStyleBottomFraction, subtitleOsdBottomFraction)
+        subtitleView.setBottomPaddingFraction(fraction.coerceIn(0f, 0.95f))
     }
 
     private fun setMediaItem(startPositionMs: Long, playWhenReady: Boolean) {
