@@ -16,13 +16,13 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('Media3 audio decoder preferences payload', () {
-    test('defaults to auto with no downmix', () async {
+    test('defaults to auto with the Sipflix stereo downmix', () async {
       final prefs = await _prefs();
 
       final payload = Media3PlayerBackend.audioDecoderPreferencesPayload(prefs);
 
       expect(payload['passthroughMode'], 'auto');
-      expect(payload['downmixToStereo'], isFalse);
+      expect(payload['downmixToStereo'], isTrue);
       expect(payload['passthroughCodecs'], isA<List<String>>());
     });
 

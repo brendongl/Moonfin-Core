@@ -37,6 +37,10 @@ class _MarqueeTextState extends State<MarqueeText>
   late final ScrollController _controller;
   late final AnimationController _anim;
   double _lastTextWidth = 0.0;
+  TextSpan? _measuredSpan;
+  TextDirection? _measuredDirection;
+  TextScaler? _measuredScaler;
+  double _measuredWidth = 0;
 
   /// What gets painted and measured, the spans when given, otherwise [text].
   TextSpan get _span => widget.spans != null
@@ -124,13 +128,19 @@ class _MarqueeTextState extends State<MarqueeText>
   @override
   Widget build(BuildContext context) {
     final span = _span;
-    final textPainter = TextPainter(
-      text: span,
-      textDirection: Directionality.maybeOf(context) ?? TextDirection.ltr,
-      maxLines: 1,
-      textScaler: MediaQuery.textScalerOf(context),
-    )..layout();
-    final textWidth = textPainter.width;
+    final direction = Directionality.maybeOf(context) ?? TextDirection.ltr;
+    final scaler = MediaQuery.textScalerOf(context);
+    if (_measuredSpan != span || _measuredDirection != direction ||
+        _measuredScaler != scaler) {
+      final painter = TextPainter(text: span, textDirection: direction,
+          maxLines: 1, textScaler: scaler)..layout();
+      _measuredWidth = painter.width;
+      painter.dispose();
+      _measuredSpan = span;
+      _measuredDirection = direction;
+      _measuredScaler = scaler;
+    }
+    final textWidth = _measuredWidth;
 
     return LayoutBuilder(
       builder: (context, constraints) {

@@ -3689,7 +3689,11 @@ class _ContentRowsState extends State<_ContentRows>
     }
 
 
-    final focusedRowIndex = _focusedRowIndex(FocusManager.instance.primaryFocus) ?? 0;
+    final rememberedRowIndex = widget.viewModel.rows.indexWhere(
+      (row) => row.id == _lastFocusedRowId,
+    );
+    final focusedRowIndex = _focusedRowIndex(FocusManager.instance.primaryFocus) ??
+        (rememberedRowIndex >= 0 ? rememberedRowIndex : 0);
 
     // Compute viewport geometry
     final rowViewportTop = rowTopOffsets[rowIndex] - _scrollOffset;

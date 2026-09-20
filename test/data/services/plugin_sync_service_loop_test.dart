@@ -131,7 +131,7 @@ void main() {
     await service.pushSettingsForProfile(client, profile: 'desktop');
     expect(postCount(), 1);
 
-    await prefs.set(UserPreferences.use24HourClock, true);
+    await prefs.set(UserPreferences.use24HourClock, false);
     await service.pushSettingsForProfile(client, profile: 'desktop');
     expect(postCount(), 2);
   });
@@ -143,19 +143,19 @@ void main() {
   });
 
   test('a genuinely changed remote value still lands and notifies', () async {
-    adapter.resolvedProfile = {'use24HourClock': true};
-    expect(prefs.get(UserPreferences.use24HourClock), isFalse);
+    adapter.resolvedProfile = {'use24HourClock': false};
+    expect(prefs.get(UserPreferences.use24HourClock), isTrue);
 
     var notified = false;
     prefs.addListener(() => notified = true);
     await service.handleServerEvent(client, {'type': 'settingsUpdated'});
 
-    expect(prefs.get(UserPreferences.use24HourClock), isTrue);
+    expect(prefs.get(UserPreferences.use24HourClock), isFalse);
     expect(notified, isTrue);
   });
 
   test('a real local change still pushes after the debounce', () async {
-    await prefs.set(UserPreferences.use24HourClock, true);
+    await prefs.set(UserPreferences.use24HourClock, false);
     await settle();
     expect(postCount(), 1);
   });

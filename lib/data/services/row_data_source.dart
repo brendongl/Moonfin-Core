@@ -2482,12 +2482,15 @@ class RowDataSource {
       // If we have fewer than 15 items after candidate scoring and filtering, fetch filler items
       if (scoredCandidates.length < 15) {
         try {
-          final fallbackCacheKey = '$serverId:fallback:${types.join(",")}:${genres.join(",")}';
+          final fallbackCacheKey = '$serverId:$scope:fallback:${types.join(",")}:${genres.join(",")}';
           final List<Map<String, dynamic>> items;
           if (_recommendationCache.containsKey(fallbackCacheKey)) {
             items = _recommendationCache[fallbackCacheKey]!;
           } else {
-            final res = await _client.itemsApi.getItems(
+            final responses = await _searchLibraries(
+              parentIds,
+              (parentId) => _client.itemsApi.getItems(
+              parentId: parentId,
               includeItemTypes: types,
               genres: genres.isNotEmpty ? genres : null,
               recursive: true,
@@ -2495,8 +2498,9 @@ class RowDataSource {
               sortBy: 'ProductionYear,SortName',
               sortOrder: 'Descending',
               fields: 'Genres,Tags,People,UserData,OfficialRating,ProductionYear,CommunityRating,Studios',
+              ),
             );
-            items = (res['Items'] as List? ?? [])
+            items = responses.expand((res) => res['Items'] as List? ?? const [])
                 .map((e) => e is Map ? Map<String, dynamic>.from(e) : null)
                 .whereType<Map<String, dynamic>>()
                 .toList();

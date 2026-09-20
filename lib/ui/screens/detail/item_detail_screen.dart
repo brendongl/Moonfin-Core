@@ -11206,6 +11206,7 @@ class _CastPersonCardState extends State<_CastPersonCard> with FocusStateMixin {
       onEnter: (_) => setHovered(true),
       onExit: (_) => setHovered(false),
       child: Focus(
+        canRequestFocus: widget.onTap != null,
         focusNode: widget.focusNode,
         onFocusChange: (focused) => setFocused(focused),
         onKeyEvent: (_, event) {

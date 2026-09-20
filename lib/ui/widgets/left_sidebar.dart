@@ -1265,8 +1265,7 @@ class _LeftSidebarState extends State<LeftSidebar> with RouteAware {
               focusNode: _profileFocusNode,
               onKeyEvent: (_, event) {
                 if (event is KeyDownEvent) {
-                  if (event.logicalKey == LogicalKeyboardKey.select ||
-                      event.logicalKey == LogicalKeyboardKey.enter) {
+                  if (isActivateKey(event)) {
                     _onNavigate();
                     showUserMenu(context);
                     return KeyEventResult.handled;
@@ -1392,8 +1391,7 @@ class _SidebarItemState extends State<_SidebarItem> {
           focusNode: _focusNode,
           onKeyEvent: (node, event) {
             if (event is KeyDownEvent &&
-                (event.logicalKey == LogicalKeyboardKey.select ||
-                    event.logicalKey == LogicalKeyboardKey.enter)) {
+                isActivateKey(event)) {
               widget.onPressed();
               return KeyEventResult.handled;
             }
@@ -1517,8 +1515,7 @@ class _SidebarLibraryItemState extends State<_SidebarLibraryItem> {
           focusNode: _focusNode,
           onKeyEvent: (_, event) {
             if (event is KeyDownEvent &&
-                (event.logicalKey == LogicalKeyboardKey.select ||
-                    event.logicalKey == LogicalKeyboardKey.enter)) {
+                isActivateKey(event)) {
               widget.onPressed();
               return KeyEventResult.handled;
             }

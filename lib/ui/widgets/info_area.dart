@@ -18,7 +18,7 @@ const _textShadows = [Shadow(blurRadius: 4, color: Colors.black54)];
 const _myMediaSummarySeparator = ' \u2022 ';
 const _myMediaSummaryMaxParts = 3;
 
-final Map<String, String?> _myMediaSummaryCache = {};
+final Map<String, ({String summary, DateTime at})> _myMediaSummaryCache = {};
 final Map<String, Future<String?>> _myMediaSummaryRequests = {};
 
 class _MyMediaSummaryTypeQuery {
@@ -360,9 +360,11 @@ class _InfoAreaContentState extends State<_InfoAreaContent> {
     final l10n = currentAppLocalizations();
     final cacheKey = _summaryCacheKey(item, l10n.localeName);
 
-    if (_myMediaSummaryCache.containsKey(cacheKey)) {
-      return _myMediaSummaryCache[cacheKey];
+    final cached = _myMediaSummaryCache[cacheKey];
+    if (cached != null && DateTime.now().difference(cached.at) < const Duration(minutes: 5)) {
+      return cached.summary;
     }
+    _myMediaSummaryCache.remove(cacheKey);
 
     final inFlightRequest = _myMediaSummaryRequests[cacheKey];
     if (inFlightRequest != null) {
@@ -372,7 +374,9 @@ class _InfoAreaContentState extends State<_InfoAreaContent> {
     final request = _buildMyMediaSummary(item, l10n)
         .then((summary) {
           if (summary != null && summary.isNotEmpty) {
-            _myMediaSummaryCache[cacheKey] = summary;
+            _myMediaSummaryCache.removeWhere((_, entry) =>
+              DateTime.now().difference(entry.at) >= const Duration(minutes: 5));
+            _myMediaSummaryCache[cacheKey] = (summary: summary, at: DateTime.now());
           }
           return summary;
         })

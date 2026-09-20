@@ -1219,8 +1219,14 @@ class PlaybackManager implements AudioOwnable {
         // past here would tear down the live session or start a backend behind
         // a player screen that is already gone.
         final preflightToken = _playbackSessionToken;
+        _setBringupState(PlaybackBringupState(
+          phase: PlaybackBringupPhase.resolving,
+          itemId: _traceItemId(item),
+          backend: _traceBackendName(_backend),
+        ));
         try {
           final preflight = await hook(item);
+          if (preflightToken != _playbackSessionToken) return;
           if (preflight != null) {
             _maxBitrateOverrideMbps = preflight.capMbps;
           }

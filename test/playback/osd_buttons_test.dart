@@ -33,6 +33,8 @@ void main() {
       OsdButton.audio.id,
       OsdButton.castAndCrew.id,
       OsdButton.quality.id,
+      OsdButton.serverRoute.id,
+      OsdButton.streamCheck.id,
       OsdButton.zoom.id,
       OsdButton.info.id,
     ]);
@@ -69,6 +71,8 @@ void main() {
         OsdButton.audio.id,
         OsdButton.castAndCrew.id,
         OsdButton.quality.id,
+      OsdButton.serverRoute.id,
+      OsdButton.streamCheck.id,
         OsdButton.zoom.id,
       ]);
     },

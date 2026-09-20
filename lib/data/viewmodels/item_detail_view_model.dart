@@ -1636,12 +1636,13 @@ class ItemDetailViewModel extends ChangeNotifier {
     final list = _item?.people ?? const [];
     final dirNames = directors.map((d) => d['Name'] as String?).toSet();
     final writNames = writers.map((w) => w['Name'] as String?).toSet();
+    final actorNames = <String?>{};
     return list.where((p) {
       final type = p['Type'] as String?;
       if (type != 'Actor' && type != 'GuestStar') return false;
       final name = p['Name'] as String?;
       if (dirNames.contains(name) || writNames.contains(name)) return false;
-      return true;
+      return actorNames.add(name);
     }).toList();
   }
 

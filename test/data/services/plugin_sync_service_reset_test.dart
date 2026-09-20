@@ -145,24 +145,24 @@ void main() {
   });
 
   test('a changed setting is back to its default afterwards', () async {
-    await prefs.set(UserPreferences.use24HourClock, true);
+    await prefs.set(UserPreferences.use24HourClock, false);
+    expect(prefs.get(UserPreferences.use24HourClock), isFalse);
+
+    await service.resetProfileToDefaults(client, profile: 'desktop');
+
     expect(prefs.get(UserPreferences.use24HourClock), isTrue);
+  });
+
+  test('what the server still resolves lands on top of the defaults', () async {
+    adapter.resolvedProfile = {'use24HourClock': false};
 
     await service.resetProfileToDefaults(client, profile: 'desktop');
 
     expect(prefs.get(UserPreferences.use24HourClock), isFalse);
   });
 
-  test('what the server still resolves lands on top of the defaults', () async {
-    adapter.resolvedProfile = {'use24HourClock': true};
-
-    await service.resetProfileToDefaults(client, profile: 'desktop');
-
-    expect(prefs.get(UserPreferences.use24HourClock), isTrue);
-  });
-
   test('the reset never pushes the cleared settings back', () async {
-    await prefs.set(UserPreferences.use24HourClock, true);
+    await prefs.set(UserPreferences.use24HourClock, false);
     await service.resetProfileToDefaults(client, profile: 'desktop');
     await settle();
 
@@ -172,7 +172,7 @@ void main() {
   test('an edit after a reset still reaches the server', () async {
     await service.resetProfileToDefaults(client, profile: 'desktop');
 
-    await prefs.set(UserPreferences.use24HourClock, true);
+    await prefs.set(UserPreferences.use24HourClock, false);
     await settle();
 
     expect(postCount(), 1);
@@ -193,12 +193,12 @@ void main() {
   });
 
   test('a refused delete leaves the settings alone', () async {
-    await prefs.set(UserPreferences.use24HourClock, true);
+    await prefs.set(UserPreferences.use24HourClock, false);
     adapter.failDeletes = true;
 
     final ok = await service.resetProfileToDefaults(client, profile: 'desktop');
 
     expect(ok, isFalse);
-    expect(prefs.get(UserPreferences.use24HourClock), isTrue);
+    expect(prefs.get(UserPreferences.use24HourClock), isFalse);
   });
 }

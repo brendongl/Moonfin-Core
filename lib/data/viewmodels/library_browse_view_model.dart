@@ -637,7 +637,6 @@ class LibraryBrowseViewModel extends ChangeNotifier {
     if (isBookLibrary) {
       recursive = true;
       includeTypes = ['Book', 'Audio', 'AudioBook'];
-      sortBy = 'SortName';
     } else if (isHomeVideosLibrary || isMixedContentLibrary) {
       recursive = false;
       sortBy = 'IsFolder,$sortBy';

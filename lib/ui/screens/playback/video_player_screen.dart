@@ -59,6 +59,7 @@ import '../../screensaver/screensaver_controller.dart';
 import '../../widgets/remote_play_to_session_dialog.dart';
 import '../../widgets/track_selector_dialog.dart';
 import '../../widgets/playback/player_loading_overlay.dart';
+import '../../widgets/playback/playback_failure_overlay.dart';
 import '../../widgets/playback/skip_segment_overlay.dart';
 import '../../widgets/playback/next_up_overlay.dart';
 import '../../widgets/playback/still_watching_dialog.dart';
@@ -288,6 +289,31 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   int _skipForwardAccum = 0;
   int _skipBackwardAccum = 0;
   PlaybackBringupState _bringupState = const PlaybackBringupState.idle();
+  final _tvBottomOverlayKey = GlobalKey();
+  Media3PlayerBackend? _subtitleInsetBackend;
+  double? _subtitleInsetFraction;
+
+  void _syncNativeSubtitleInset() {
+    final backend = _activeMedia3Backend;
+    if (backend == null || !PlatformDetection.isTV) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !identical(backend, _activeMedia3Backend)) return;
+      final box = _tvBottomOverlayKey.currentContext?.findRenderObject();
+      final height = MediaQuery.sizeOf(context).height;
+      final fraction = _controlsVisible &&
+              box is RenderBox && box.hasSize && height > 0
+          ? ((box.size.height + 16) / height).clamp(0.0, 0.95)
+          : 0.0;
+      if (identical(backend, _subtitleInsetBackend) &&
+          fraction == _subtitleInsetFraction) {
+        return;
+      }
+      _subtitleInsetBackend = backend;
+      _subtitleInsetFraction = fraction;
+      unawaited(backend.setSubtitleBottomInset(fraction));
+    });
+  }
+
   PlayerState get _state => _manager.state;
   QueueService get _queue => _manager.queueService;
 
@@ -711,7 +737,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     );
   }
 
+  bool get _canFocusPlaybackControls => mounted &&
+      ModalRoute.of(context)?.isCurrent != false &&
+      _bringupState.phase != PlaybackBringupPhase.failed;
+
   void _ensureDesktopOverlayFocus() {
+    if (!_canFocusPlaybackControls) return;
     if (!(PlatformDetection.isDesktop || PlatformDetection.isWeb)) return;
     if (_overlayFocus.hasFocus) return;
     _overlayFocus.requestFocus();
@@ -801,6 +832,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   // minStallDuration is recorded — brief rebuffers (e.g. right after a seek on
   // a healthy link) resolve before the timer fires and never count.
   void _onSipflixBuffering(bool buffering) {
+    _sipflixRefreshScreensaverSuppression(buffering: buffering);
     if (!buffering) {
       _sipflixStallTimer?.cancel();
       _sipflixStallTimer = null;
@@ -1024,12 +1056,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   // Sipflix: the screensaver must never fire while a stream is being brought
   // up (preflight + resolve + open can exceed the 1-minute ship timeout). Only
   // a genuinely idle player (paused / failed / idle bring-up) re-arms it.
-  void _sipflixRefreshScreensaverSuppression({bool? playing}) {
+  void _sipflixRefreshScreensaverSuppression({bool? playing, bool? buffering}) {
     final phase = _bringupState.phase;
-    final bringingUp = phase != PlaybackBringupPhase.idle &&
-        phase != PlaybackBringupPhase.failed;
+    final bringingUp = _isBringupInProgress(phase);
     final isPlaying = playing ?? _state.isPlaying;
-    _screensaverController.setPlaybackActive(isPlaying || bringingUp);
+    final activeBuffer = phase != PlaybackBringupPhase.failed &&
+        (buffering ?? _state.isBuffering);
+    _screensaverController.setPlaybackActive(
+      isPlaying || bringingUp || activeBuffer,
+    );
   }
 
   @override
@@ -2720,7 +2755,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   void _focusTvNextUpPlay({int attempt = 0}) {
     if (!PlatformDetection.isTV || !_showNextUp) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_showNextUp) return;
+      if (!_canFocusPlaybackControls || !_showNextUp) return;
       _tvNextUpPlayFocus.requestFocus();
 
       if (!_tvNextUpPlayFocus.hasFocus && attempt < 8) {
@@ -2932,7 +2967,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   void _focusTvPrimaryButton() {
     if (!PlatformDetection.isTV) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_controlsVisible) return;
+      if (!_canFocusPlaybackControls || !_controlsVisible) return;
       _tvBottomPrimaryFocus.requestFocus();
     });
   }
@@ -2950,7 +2985,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
 
   void _focusTvSeekbar({int attempt = 0}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_controlsVisible || _isOsdLocked) return;
+      if (!_canFocusPlaybackControls || !_controlsVisible || _isOsdLocked) return;
       _tvSeekbarFocus.requestFocus();
 
       if (!_tvSeekbarFocus.hasFocus && attempt < 8) {
@@ -2965,7 +3000,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   void _focusTvSkipSegment({int attempt = 0}) {
     if (!PlatformDetection.isTV || _skipSegment == null) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _skipSegment == null) return;
+      if (!_canFocusPlaybackControls || _skipSegment == null) return;
       _tvSkipSegmentFocus.requestFocus();
 
       if (!_tvSkipSegmentFocus.hasFocus && attempt < 8) {
@@ -3355,6 +3390,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   }
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (ModalRoute.of(context)?.isCurrent == false) {
+      return KeyEventResult.ignored;
+    }
+    if (_bringupState.phase == PlaybackBringupPhase.failed) {
+      if (event.logicalKey.isBackKey) {
+        if (event is KeyDownEvent) unawaited(_exitPlayback());
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
     if (_isCurrentPreroll) {
       if (event is KeyUpEvent) {
         final isBackKey = event.logicalKey.isBackKey;
@@ -3560,7 +3605,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
               _prefs.get(UserPreferences.skipBackLength),
               event,
             );
-            _seekRelative(-step, showControls: false);
+            _seekRelativeDebounced(-step, showControls: false);
             _showControls(focusSeekbar: true);
             return KeyEventResult.handled;
           }
@@ -3574,7 +3619,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
               _prefs.get(UserPreferences.skipForwardLength),
               event,
             );
-            _seekRelative(step, showControls: false);
+            _seekRelativeDebounced(step, showControls: false);
             _showControls(focusSeekbar: true);
             return KeyEventResult.handled;
           }
@@ -3718,6 +3763,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
 
   @override
   Widget build(BuildContext context) {
+    _syncNativeSubtitleInset();
     final hideOsdForPreroll = _isCurrentPreroll;
     if (_isInPiP) {
       return Scaffold(
@@ -3730,6 +3776,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       canPop: _readyToPop,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
+        if (_bringupState.phase == PlaybackBringupPhase.failed) {
+          unawaited(_exitPlayback());
+          return;
+        }
         if (_isBackNavigationSuppressed()) {
           return;
         }
@@ -3816,11 +3866,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                       child: ColoredBox(color: Colors.black),
                     ),
                     _buildVideoSurface(),
-                    _buildBringupOverlay(context),
                     if (_isRestoringPosition)
                       const Positioned.fill(
                         child: ColoredBox(color: Colors.black),
                       ),
+                    _buildBringupOverlay(context),
                     _buildPausedDescriptionOverlay(),
                     if (_controlsVisible &&
                         !_isOsdLocked &&
@@ -3884,6 +3934,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                         dismissFocusNode: PlatformDetection.isTV
                             ? _tvNextUpDismissFocus
                             : null,
+                      ),
+                    if (_bringupState.phase == PlaybackBringupPhase.failed)
+                      PlaybackFailureOverlay(
+                        message: _bringupState.error ?? 'Please try again.',
+                        onRetry: () => unawaited(
+                          _manager.restartCurrentStream().catchError((Object _) {}),
+                        ),
+                        onBack: () => unawaited(_exitPlayback()),
+                        onChangeConnection: _sipflixServer == null
+                            ? null
+                            : _showServerRouteSelector,
                       ),
                   ],
                 ),
@@ -4629,6 +4690,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       left: 0,
       right: 0,
       child: Container(
+        key: _tvBottomOverlayKey,
         padding: EdgeInsets.only(
           bottom: padding.bottom + AppSpacing.spaceSm,
           left: AppSpacing.spaceLg,
@@ -4638,7 +4700,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           gradient: LinearGradient(
             begin: Alignment.bottomCenter,
             end: Alignment.topCenter,
-            colors: [Colors.black87, Colors.transparent],
+            colors: [Colors.black87, Colors.black54],
           ),
         ),
         child: Column(
@@ -4783,64 +4845,75 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                             return KeyEventResult.ignored;
                         }
                       },
-                      child: ExcludeFocus(
-                        excluding: PlatformDetection.isTV,
-                        child: SliderTheme(
-                          data: SliderThemeData(
-                            trackHeight: 4,
-                            thumbShape: const RoundSliderThumbShape(
-                              enabledThumbRadius: 7,
-                            ),
-                            overlayShape: const RoundSliderOverlayShape(
-                              overlayRadius: 14,
-                            ),
-                            activeTrackColor: AppColorScheme.rangeProgress,
-                            secondaryActiveTrackColor: AppColorScheme.rangeTrack
-                                .withValues(alpha: 0.8),
-                            inactiveTrackColor: AppColorScheme.rangeTrack,
-                            thumbColor:
-                                (PlatformDetection.isTV && _seekbarFocused)
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: PlatformDetection.isTV && _seekbarFocused
                                 ? Colors.white
-                                : AppColorScheme.rangeThumb,
-                            overlayColor: AppColorScheme.rangeThumb.withValues(
-                              alpha: 0.2,
-                            ),
+                                : Colors.transparent,
+                            width: 2,
                           ),
-                          child: Slider(
-                            value: positionMs.clamp(0.0, durationMs),
-                            secondaryTrackValue: bufferMs.clamp(
-                              0.0,
-                              durationMs,
+                        ),
+                        child: ExcludeFocus(
+                          excluding: PlatformDetection.isTV,
+                          child: SliderTheme(
+                            data: SliderThemeData(
+                              trackHeight: 4,
+                              thumbShape: const RoundSliderThumbShape(
+                                enabledThumbRadius: 7,
+                              ),
+                              overlayShape: const RoundSliderOverlayShape(
+                                overlayRadius: 14,
+                              ),
+                              activeTrackColor: AppColorScheme.rangeProgress,
+                              secondaryActiveTrackColor: AppColorScheme.rangeTrack
+                                  .withValues(alpha: 0.8),
+                              inactiveTrackColor: AppColorScheme.rangeTrack,
+                              thumbColor:
+                                  (PlatformDetection.isTV && _seekbarFocused)
+                                  ? Colors.white
+                                  : AppColorScheme.rangeThumb,
+                              overlayColor: AppColorScheme.rangeThumb.withValues(
+                                alpha: 0.2,
+                              ),
                             ),
-                            max: durationMs,
-                            onChangeStart: (v) {
-                              _suppressSeekPrompts(
-                                duration: _seekDragPromptSuppressionDuration,
-                              );
-                              _scrubSeekDebounceTimer?.cancel();
-                              _scrubSeekDebounceTimer = null;
-                              _pendingScrubSeekTarget = null;
-                              setState(() {
-                                _isSeeking = true;
-                                _seekValue = v;
-                              });
-                              _hideTimer?.cancel();
-                            },
-                            onChanged: (v) {
-                              _suppressSeekPrompts(
-                                duration: _seekDragPromptSuppressionDuration,
-                                dismissVisiblePrompts: false,
-                              );
-                              setState(() => _seekValue = v);
-                            },
-                            onChangeEnd: (v) {
-                              _suppressSeekPrompts();
-                              _scheduleDebouncedScrubSeek(
-                                Duration(milliseconds: v.round()),
-                                showControls: false,
-                              );
-                              _scheduleHide();
-                            },
+                            child: Slider(
+                              value: positionMs.clamp(0.0, durationMs),
+                              secondaryTrackValue: bufferMs.clamp(
+                                0.0,
+                                durationMs,
+                              ),
+                              max: durationMs,
+                              onChangeStart: (v) {
+                                _suppressSeekPrompts(
+                                  duration: _seekDragPromptSuppressionDuration,
+                                );
+                                _scrubSeekDebounceTimer?.cancel();
+                                _scrubSeekDebounceTimer = null;
+                                _pendingScrubSeekTarget = null;
+                                setState(() {
+                                  _isSeeking = true;
+                                  _seekValue = v;
+                                });
+                                _hideTimer?.cancel();
+                              },
+                              onChanged: (v) {
+                                _suppressSeekPrompts(
+                                  duration: _seekDragPromptSuppressionDuration,
+                                  dismissVisiblePrompts: false,
+                                );
+                                setState(() => _seekValue = v);
+                              },
+                              onChangeEnd: (v) {
+                                _suppressSeekPrompts();
+                                _scheduleDebouncedScrubSeek(
+                                  Duration(milliseconds: v.round()),
+                                  showControls: false,
+                                );
+                                _scheduleHide();
+                              },
+                            ),
                           ),
                         ),
                       ),

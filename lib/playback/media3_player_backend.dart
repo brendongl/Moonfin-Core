@@ -123,6 +123,7 @@ class Media3PlayerBackend extends PlayerBackend {
   // a frozen-picture playback is visible without adb. See _checkPlaybackWatchdogs.
   static const _watchdogStallMs = 6000;
   Timer? _watchdogTimer;
+  Timer? _startupDeadline;
   String _watchdogItemLabel = 'item';
   bool _sawFirstFrame = false;
   bool _firstFrameWarned = false;
@@ -188,6 +189,7 @@ class Media3PlayerBackend extends PlayerBackend {
         _duration = Duration(milliseconds: _toInt(map['durationMs']));
         _buffer = Duration(milliseconds: _toInt(map['bufferedMs']));
         _isPlaying = _toBool(map['isPlaying']);
+        if (_isPlaying) _startupDeadline?.cancel();
         _isBuffering = _toBool(map['isBuffering']);
         if (_isPlaying != wasPlaying || _isBuffering != wasBuffering) {
           _diag(
@@ -248,12 +250,14 @@ class Media3PlayerBackend extends PlayerBackend {
       case 'activityAction':
         _activityActionController.add(map.cast<String, dynamic>());
       case 'playerError':
+        _startupDeadline?.cancel();
         _diag(
           'Media3 player error: ${map['errorCode'] ?? ''} ${map['message'] ?? ''}',
           level: LogLevel.error,
         );
         _errorStream.add(map.cast<String, dynamic>());
       case 'error':
+        _startupDeadline?.cancel();
         final cause = map['cause']?.toString();
         _diag(
           // Sipflix: keep httpStatus in the line — the player-error mapper
@@ -283,6 +287,7 @@ class Media3PlayerBackend extends PlayerBackend {
         _onTunnelingDiscontinuity();
       case 'firstFrameRendered':
         _sawFirstFrame = true;
+        _startupDeadline?.cancel();
         _diag('Media3: first frame rendered @ ${_toInt(map['positionMs'])}ms');
       case 'droppedFrames':
         _diag(
@@ -486,6 +491,25 @@ class Media3PlayerBackend extends PlayerBackend {
     }
   }
 
+  // Metadata and a tiny initial buffer do not mean the stream can play.
+  // Stop waiting after a minute and leave recovery in the viewer's hands.
+  void _armStartupDeadline() {
+    _startupDeadline?.cancel();
+    if (_sawFirstFrame || _loadRequestedAtMs == 0) return;
+    _startupDeadline = Timer(const Duration(seconds: 60), () {
+      if (_disposed || _sawFirstFrame || _isPlaying) return;
+      unawaited(_invoke<void>('pause'));
+      _errorStream.add({
+        'event': 'playerError',
+        'kind': 'startupTimeout',
+        'recoverable': false,
+        'message':
+            'This connection is too slow or the server is not responding. '
+            'Try again or change connection.',
+      });
+    });
+  }
+
   void _resetPlaybackWatchdogs(String itemLabel) {
     _watchdogItemLabel = itemLabel;
     _sawFirstFrame = false;
@@ -655,6 +679,7 @@ class Media3PlayerBackend extends PlayerBackend {
         : <String, String>{};
 
     final isPreview = payload['preview'] == true;
+    _startupDeadline?.cancel();
 
     _completed = false;
     _tracksKnown = false;
@@ -757,16 +782,19 @@ class Media3PlayerBackend extends PlayerBackend {
       'mode': _modeToWire(_requestedSubtitleRendererMode),
     });
     await _invoke<void>('play');
+    _armStartupDeadline();
   }
 
   @override
   Future<void> resume() async {
     await _ensureActivityStarted();
     await _invoke<void>('play');
+    _armStartupDeadline();
   }
 
   @override
   Future<void> pause() async {
+    _startupDeadline?.cancel();
     await _invoke<void>('pause');
   }
 
@@ -776,14 +804,18 @@ class Media3PlayerBackend extends PlayerBackend {
   Future<void> release() => _teardown('release');
 
   Future<void> appPaused() async {
+    _startupDeadline?.cancel();
     await _invoke<void>('appPaused');
   }
 
   Future<void> appResumed() async {
     await _invoke<void>('appResumed');
+    _armStartupDeadline();
   }
 
   Future<void> _teardown(String command) async {
+    _startupDeadline?.cancel();
+    _loadRequestedAtMs = 0;
     await _invoke<void>(command);
     if (_isPlaying) {
       _isPlaying = false;
@@ -855,7 +887,8 @@ class Media3PlayerBackend extends PlayerBackend {
       // codec has a software decoder behind it.
       universalAudioDecode: true,
       maxResolution: maxResolution,
-      pgsDirectPlay: _prefs.get(UserPreferences.pgsDirectPlay) && canRenderBitmapSubtitles,
+      pgsDirectPlay:
+          _prefs.get(UserPreferences.pgsDirectPlay) && canRenderBitmapSubtitles,
       assDirectPlay: _prefs.get(UserPreferences.assDirectPlay),
       supportsAvc: PlatformDetection.supportsAvc,
       supportsAvcHigh10: PlatformDetection.supportsAvcHigh10,
@@ -868,9 +901,11 @@ class Media3PlayerBackend extends PlayerBackend {
           PlatformDetection.supportsHevcMain10 && !SipflixServers.forceH264,
       transcodeHevcAllowed: serverAllowsHevcTranscode(),
       hevcMainLevel: PlatformDetection.hevcMainLevel,
-      supportsHevcDolbyVision: PlatformDetection.supportsHevcDolbyVision &&
+      supportsHevcDolbyVision:
+          PlatformDetection.supportsHevcDolbyVision &&
           !SipflixServers.forceH264,
-      supportsHevcDolbyVisionEl: PlatformDetection.supportsHevcDolbyVisionEl &&
+      supportsHevcDolbyVisionEl:
+          PlatformDetection.supportsHevcDolbyVisionEl &&
           !SipflixServers.forceH264,
       supportsHevcHdr10:
           PlatformDetection.supportsHevcHdr10 && !SipflixServers.forceH264,
@@ -963,7 +998,6 @@ class Media3PlayerBackend extends PlayerBackend {
     await _invoke<void>('setAudioTrack', {'index': index});
   }
 
-
   @override
   Future<void> setSubtitleTrack(
     int index, {
@@ -982,7 +1016,8 @@ class Media3PlayerBackend extends PlayerBackend {
   }
 
   @override
-  List<EmbeddedCaptionTrack> get embeddedCaptionTracks => _embeddedCaptionTracks;
+  List<EmbeddedCaptionTrack> get embeddedCaptionTracks =>
+      _embeddedCaptionTracks;
 
   @override
   Stream<void> get tracksChangedStream => _tracksChangedController.stream;
@@ -1040,10 +1075,12 @@ class Media3PlayerBackend extends PlayerBackend {
     _audioDelayDebounce = Timer(const Duration(milliseconds: 350), () {
       _audioDelayDebounce = null;
       if (_disposed) return;
-      unawaited(_invoke<void>('setAudioDelay', {
-        'seconds': _audioDelaySeconds,
-        'delayMs': (_audioDelaySeconds * 1000).round(),
-      }));
+      unawaited(
+        _invoke<void>('setAudioDelay', {
+          'seconds': _audioDelaySeconds,
+          'delayMs': (_audioDelaySeconds * 1000).round(),
+        }),
+      );
     });
   }
 
@@ -1104,6 +1141,10 @@ class Media3PlayerBackend extends PlayerBackend {
     await _invoke<void>('setZoomMode', {'mode': mode});
   }
 
+  Future<void> setSubtitleBottomInset(double fraction) async {
+    await _invoke<void>('setSubtitleBottomInset', {'fraction': fraction});
+  }
+
   Future<void> setRepeatMode(RepeatMode mode) async {
     _repeatMode = mode;
     await _invoke<void>('setRepeatMode', {'mode': _repeatModeToWire(mode)});
@@ -1150,6 +1191,7 @@ class Media3PlayerBackend extends PlayerBackend {
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    _startupDeadline?.cancel();
     _audioDelayDebounce?.cancel();
     _audioDelayDebounce = null;
     _watchdogTimer?.cancel();

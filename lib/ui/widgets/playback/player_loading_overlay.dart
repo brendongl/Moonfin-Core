@@ -96,6 +96,9 @@ class _PlayerLoadingOverlayState extends State<PlayerLoadingOverlay>
             width: widget.logoSize,
             height: widget.logoSize,
             filterQuality: FilterQuality.medium,
+            errorBuilder: (_, _, _) => const SizedBox(
+              width: 48, height: 48, child: CircularProgressIndicator(),
+            ),
           ),
         ),
         if (hasLabel) ...[
