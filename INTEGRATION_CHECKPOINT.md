@@ -146,3 +146,9 @@
 - Shield IPv4/IPv6 test rules independently absent; isolated ADB5040 server stopped. No device test processes/helpers remain.
 - Final code31, all756 Flutter+25 relay tests passed. No customer rollout. Reporting relay remains diagnosis-only. Remaining external failures: provider sends4KStop; dedicated Seerr identity401. Missing evidence: full missing-source issue E2E, startup-interruption gate.
 - Final report docs/testing/mvp-2026-09-25.md and sanitized evidence preserved in durable artifact directory. Next: commit final changes; provider resolves Stop sender/account access before release acceptance.
+
+## Gate 19: user-authorized shared admin reporting identity
+- User explicitly requested using supplied admin account for Seerr reporting. Fresh login200/auth-me200 verified ID782, createIssues permission, existing issue65 readback200.
+- Protected /etc/sipflix-playback-report/seerr-admin.json (0600, sipflix-report owner); config now uses expected SeerrID782. Previous diagnosis-only config backed up locally. Password not in source/APK/docs.
+- Deployed adapter executed as service user successfully authenticated and read existing issue65. Service restarted active. No issue created, no message sent, no device modified.
+- Login blocker resolved; live missing-source issue creation/readback remains missing evidence. External provider4KStop remains unresolved. No helpers. Next: full missing-source acceptance once valid fixture available; customer rollout remains on hold.
