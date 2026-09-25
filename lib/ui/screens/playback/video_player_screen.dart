@@ -72,6 +72,7 @@ import '../../../sipflix/sipflix_bitrate_watchdog.dart';
 import '../../../sipflix/sipflix_connection_manager.dart';
 import '../../../sipflix/sipflix_preflight.dart';
 import '../../../sipflix/sipflix_servers.dart';
+import '../../../sipflix/sipflix_playback_report.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../playback/media3_player_backend.dart';
 import '../../../playback/tizen_player_backend.dart';
@@ -96,6 +97,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   static const _scrubSeekDebounceDuration = Duration(milliseconds: 250);
 
   final _manager = GetIt.instance<PlaybackManager>();
+  final _playbackReport = SipflixPlaybackReportController();
   // media_kit isn't registered on platforms that run a different backend, so
   // ask the container rather than listing them.
   final MediaKitPlayerBackend? _backend =
@@ -1070,6 +1072,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   @override
   void initState() {
     super.initState();
+    _playbackReport.addListener(_onPlaybackReportChanged);
     _screensaverController.setPlaybackActive(true);
     // Sipflix: watch for repeated buffering to offer a lower bitrate.
     _sipflixBufferingSub = _state.bufferingStream.listen(_onSipflixBuffering);
@@ -1266,6 +1269,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
 
   @override
   void dispose() {
+    _playbackReport.dispose();
     if (_isInPiP && GetIt.instance.isRegistered<PlaybackArbiter>()) {
       GetIt.instance<PlaybackArbiter>().pipActive = false;
     }
@@ -1457,15 +1461,44 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     ).showSnackBar(SnackBar(content: Text(normalized)));
   }
 
+  void _onPlaybackReportChanged() {
+    if (mounted) setState(() {});
+  }
+
   void _showBringupFailureIfAny(PlaybackBringupState state) {
     if (state.phase != PlaybackBringupPhase.failed) {
+      _playbackReport.reset();
       return;
+    }
+    final item = _queue.currentItem;
+    if (item is AggregatedItem &&
+        (item.type == 'Movie' || item.type == 'Episode') &&
+        item.id == state.itemId &&
+        SipflixServers.isSipflixServerRef(item.serverId) &&
+        !state.isLocalMedia &&
+        _manager.currentResolution?.isLocalMedia != true &&
+        state.mediaSourceId != null &&
+        _playbackReport.enabled) {
+      final client = _clientForItem(item);
+      final token = client.accessToken;
+      final userId = client.userId;
+      if (SipflixServers.isSipflixServerRef(client.baseUrl) &&
+          token != null && userId != null) {
+        unawaited(_playbackReport.check(
+          failureKey: '${state.sessionToken}:${item.id}:${state.mediaSourceId}',
+          token: token,
+          userId: userId,
+          itemId: item.id,
+          mediaSourceId: state.mediaSourceId!,
+          playMethod: state.playMethod ?? 'unknown',
+          httpStatus: state.httpStatus ?? -1,
+          appVersion: client.deviceInfo.appVersion,
+        ));
+        return;
+      }
     }
     final error = state.error?.trim();
-    if (error == null || error.isEmpty) {
-      return;
-    }
-    _showThrottledPlaybackError(error);
+    if (error != null && error.isNotEmpty) _showThrottledPlaybackError(error);
   }
 
   Future<void> _refreshRemoteVolume() async {
@@ -3937,12 +3970,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                       ),
                     if (_bringupState.phase == PlaybackBringupPhase.failed)
                       PlaybackFailureOverlay(
-                        message: _bringupState.error ?? 'Please try again.',
-                        onRetry: () => unawaited(
+                        title: _playbackReport.checking
+                            ? 'We’re checking this video'
+                            : _playbackReport.result?.title ?? 'Playback could not start',
+                        message: _playbackReport.checking
+                            ? 'Playback failed. We’re checking our copy and whether it needs to be reported.'
+                            : _playbackReport.result?.message ?? _bringupState.error ?? 'Please try again.',
+                        checking: _playbackReport.checking,
+                        onRetry: _playbackReport.checking || _playbackReport.result?.isMissing == true
+                            ? null : () => unawaited(
                           _manager.restartCurrentStream().catchError((Object _) {}),
                         ),
                         onBack: () => unawaited(_exitPlayback()),
-                        onChangeConnection: _sipflixServer == null
+                        onChangeConnection: _sipflixServer == null ||
+                            _playbackReport.checking || _playbackReport.result?.isMissing == true
                             ? null
                             : _showServerRouteSelector,
                       ),

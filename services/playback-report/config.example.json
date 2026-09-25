@@ -1,0 +1,10 @@
+{
+  "port": 8431,
+  "database": "/var/lib/sipflix-playback-report/incidents.sqlite",
+  "servers": {
+    "alphav2": {"origin": "https://emby.n2.d-crypt.io"}
+  },
+  "seerrOrigin": "https://request.sipflix.net",
+  "seerrUserId": "REPLACE_WITH_VERIFIED_SERVICE_USER_ID",
+  "seerrCredentialsFile": "/etc/sipflix-playback-report/seerr-service.json"
+}

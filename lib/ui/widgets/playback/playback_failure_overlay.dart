@@ -6,13 +6,17 @@ class PlaybackFailureOverlay extends StatelessWidget {
   const PlaybackFailureOverlay({
     super.key,
     required this.message,
-    required this.onRetry,
+    this.onRetry,
+    this.title = 'Playback could not start',
+    this.checking = false,
     required this.onBack,
     this.onChangeConnection,
   });
 
   final String message;
-  final VoidCallback onRetry;
+  final VoidCallback? onRetry;
+  final String title;
+  final bool checking;
   final VoidCallback onBack;
   final VoidCallback? onChangeConnection;
 
@@ -29,11 +33,19 @@ class PlaybackFailureOverlay extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.error_outline, color: Colors.white, size: 48),
+                if (checking)
+                  const CircularProgressIndicator()
+                else
+                  const Icon(
+                    Icons.error_outline,
+                    color: Colors.white,
+                    size: 48,
+                  ),
                 const SizedBox(height: 16),
-                const Text(
-                  'Playback could not start',
-                  style: TextStyle(color: Colors.white, fontSize: 24),
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white, fontSize: 24),
                 ),
                 const SizedBox(height: 16),
                 Text(
@@ -47,11 +59,12 @@ class PlaybackFailureOverlay extends StatelessWidget {
                   spacing: 16,
                   runSpacing: 12,
                   children: [
-                    FilledButton(
-                      autofocus: true,
-                      onPressed: onRetry,
-                      child: const Text('Try again'),
-                    ),
+                    if (onRetry != null)
+                      FilledButton(
+                        autofocus: true,
+                        onPressed: onRetry,
+                        child: const Text('Try again'),
+                      ),
                     if (onChangeConnection != null) ...[
                       OutlinedButton(
                         onPressed: onChangeConnection,
@@ -59,6 +72,7 @@ class PlaybackFailureOverlay extends StatelessWidget {
                       ),
                     ],
                     OutlinedButton(
+                      autofocus: onRetry == null,
                       onPressed: onBack,
                       child: const Text('Go back'),
                     ),

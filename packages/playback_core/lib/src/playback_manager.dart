@@ -769,18 +769,15 @@ class PlaybackManager implements AudioOwnable {
         rawMessage.toLowerCase().startsWith('response code:');
 
     String? mapped;
-    if (httpStatus == 404 ||
-        httpStatus == 410 ||
-        (rawMessage != null && rawMessage.contains('Response code: 40') &&
-            httpStatus < 0)) {
-      // Gone server-side — most often a stale Continue-Watching tile.
-      mapped = 'This content is no longer available';
+    if (httpStatus == 404 || httpStatus == 410) {
+      // A missing HLS segment or stale route is not proof of a missing file.
+      // Sipflix's relay verifies the exact origin source before claiming that.
+      mapped = 'The requested stream is unavailable. Please try again.';
     } else if (httpStatus == 401 || httpStatus == 403) {
       mapped = 'Not allowed to play this title (error $httpStatus). '
           'Sign out and back in, or contact support.';
     } else if (httpStatus == 429) {
-      mapped = 'Too many streams running right now (error 429). '
-          'Stop another device and try again.';
+      mapped = 'The server is limiting requests (error 429). Please try again shortly.';
     } else if (httpStatus >= 500) {
       mapped = transcoding
           ? 'The server could not convert this video (error $httpStatus). '
@@ -808,6 +805,9 @@ class PlaybackManager implements AudioOwnable {
         backend: _traceBackendName(_backend),
         playMethod: resolution?.playMethod.name,
         error: message,
+        httpStatus: httpStatus,
+        isLocalMedia: resolution?.isLocalMedia ?? false,
+        mediaSourceId: resolution?.mediaSourceId ?? _mediaSourceId,
       ),
     );
   }
@@ -3012,6 +3012,9 @@ class PlaybackBringupState {
   final String? backend;
   final String? playMethod;
   final String? error;
+  final int? httpStatus;
+  final String? mediaSourceId;
+  final bool isLocalMedia;
 
   const PlaybackBringupState({
     required this.phase,
@@ -3020,6 +3023,9 @@ class PlaybackBringupState {
     this.backend,
     this.playMethod,
     this.error,
+    this.httpStatus,
+    this.mediaSourceId,
+    this.isLocalMedia = false,
   });
 
   const PlaybackBringupState.idle()
@@ -3028,7 +3034,10 @@ class PlaybackBringupState {
       itemId = null,
       backend = null,
       playMethod = null,
-      error = null;
+      error = null,
+      httpStatus = null,
+      mediaSourceId = null,
+      isLocalMedia = false;
 }
 
 bool _languagesMatch(Map? stream, String? targetLanguage) {

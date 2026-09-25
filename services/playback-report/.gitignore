@@ -1,0 +1,6 @@
+__pycache__/
+*.sqlite*
+.env
+config.json
+seerr-service.json
+venv/

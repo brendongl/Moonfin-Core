@@ -120,6 +120,18 @@ void main() {
   });
   tearDown(() => manager.dispose());
 
+  test('404 preserves selected source without claiming the file is missing', () async {
+    await manager.playItems([a]);
+    final source = manager.currentResolution!.mediaSourceId;
+    backend.errors.add({'event': 'error', 'httpStatus': 404, 'message': 'Source error'});
+    await Future<void>.delayed(Duration.zero);
+    expect(manager.bringupState.phase, PlaybackBringupPhase.failed);
+    expect(manager.bringupState.httpStatus, 404);
+    expect(manager.bringupState.mediaSourceId, source);
+    expect(manager.bringupState.error, contains('stream is unavailable'));
+    expect(manager.bringupState.error, isNot(contains('no longer available')));
+  });
+
   test('stop during preflight never starts the abandoned item', () async {
     final entered = Completer<void>();
     final preflight = Completer<PlaybackPreflightResult?>();

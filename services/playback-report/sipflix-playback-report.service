@@ -1,0 +1,28 @@
+[Unit]
+Description=Sipflix playback diagnosis and issue relay
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=sipflix-report
+Group=sipflix-report
+WorkingDirectory=/opt/sipflix-playback-report
+ExecStart=/opt/sipflix-playback-report/venv/bin/python relay.py --config /etc/sipflix-playback-report/config.json
+Restart=on-failure
+RestartSec=15
+StateDirectory=sipflix-playback-report
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/etc/sipflix-playback-report
+ReadWritePaths=/var/lib/sipflix-playback-report
+MemoryMax=256M
+TasksMax=32
+
+[Install]
+WantedBy=multi-user.target
