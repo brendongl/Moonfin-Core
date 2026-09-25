@@ -152,3 +152,22 @@
 - Protected /etc/sipflix-playback-report/seerr-admin.json (0600, sipflix-report owner); config now uses expected SeerrID782. Previous diagnosis-only config backed up locally. Password not in source/APK/docs.
 - Deployed adapter executed as service user successfully authenticated and read existing issue65. Service restarted active. No issue created, no message sent, no device modified.
 - Login blocker resolved; live missing-source issue creation/readback remains missing evidence. External provider4KStop remains unresolved. No helpers. Next: full missing-source acceptance once valid fixture available; customer rollout remains on hold.
+
+## Gate 20: Shield4K test after user clarified no4Ktranscoding
+- Same episode562340,4K3840x2160 HEVC DolbyVision MKV~72.4Mbps/TrueHD7.1. Shield identity/version31 verified; initial asleep/unmuted15. Testing muted/awake, restore afterward; only isolated ADB5040 used.
+- First resume at20m43s: server initially DirectPlay, native buffering, then automatically fell back to H264/AAC Transcode (VideoProfileNotSupported,DirectPlayError). Stopped test on detection; no DirectPlay success claimed.
+- User's no4Ktranscoding rule means prior providerStop evidence is not proof of a provider fault; may be enforcement. Sender/policy still unconfirmed.
+- Fresh restart-from-zero test in progress. Evidence /tmp/moonfin-shield-directplay-1548358041089351721.bvLWKe. No source edits/helpers. Next observe method/video, stop any transcode, restoreShield15/asleep.
+
+## Shield 4K Direct Play test — 2026-09-25 22:34–22:44 UTC
+
+- Tested installed .31 on home NVIDIA Shield, item562340 House of the Dragon S2E4: 3840x2160 HEVC DolbyVision MKV, TrueHD7.1, ~72.4Mbps.
+- Resume: Emby initially reported DirectPlay at20m43s while native player buffered. It subsequently reported H264/AAC Transcode, IsVideoDirect=false, reasons VideoProfileNotSupported/DirectPlayError. No sustained4K DirectPlay proved.
+- Restart fromzero also buffered then reported H264/AAC Transcode, reasons ContainerBitrateExceedsLimit/DirectPlayError. Stopped each attempt once detected. Reasons are server fallback metadata, not proof of the original failure cause.
+- Original static source range probe returned206, video/x-matroska, validMKV header,65536bytes in1.86s. This host probe proves source readability only, not Shield throughput or decoder compatibility.
+- Failed gate: .31 did not sustain DirectPlay on this4K title. Missing evidence: original native startup-error cause, successful4K rendering, sustained playback/seek/resume.
+- User clarified4Ktranscoding is prohibited. Prior serverStop evidence must not be called a provider fault; enforcement is plausible but unconfirmed. Moonfin's automatic4Ktranscode fallback conflicts with this requirement. No provider escalation needed on the current evidence.
+- Shield restored launcher/asleep, music15/15 unmuted, verified. IsolatedADB5040 stopped. No source/settings changes, no helpers.
+- Next engineering gate: capture original startup error and prevent prohibited4Kvideo-transcode fallback, then repeat DirectPlay acceptance.
+
+Safe evidence: /home/brendongl/moonfin-gauntlet/shield-4k-1548358041089351721-is_psrub
