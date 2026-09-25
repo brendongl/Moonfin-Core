@@ -3102,26 +3102,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   }
 
   void _seekRelative(int ms, {bool showControls = true}) {
-    _suppressSeekPrompts();
-    // Duration is still unknown during bring-up; clamping against zero would
-    // send every seek to 0:00 and restart the title.
-    if (_state.duration <= Duration.zero) {
-      if (showControls) _showControls();
-      return;
-    }
-    final target = _state.position + Duration(milliseconds: ms);
-    final clamped = Duration(
-      milliseconds: target.inMilliseconds.clamp(
-        0,
-        _state.duration.inMilliseconds,
-      ),
-    );
-    _manager.seekTo(clamped);
-    _lastSeekTime = DateTime.now();
-    _bitrateWatchdog.markSeek();
-    if (showControls) {
-      _showControls();
-    }
+    // Media keys, OSD buttons and double taps must accumulate just like hidden
+    // D-pad seeks. Reading backend position twice before its next update made
+    // two quick +30 presses collapse into one +30 seek.
+    _seekRelativeDebounced(ms, showControls: showControls);
   }
 
   void _seekRelativeDebounced(int ms, {bool showControls = true}) {
@@ -4152,7 +4136,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   }
 
   bool _isBringupInProgress(PlaybackBringupPhase phase) {
-    return phase == PlaybackBringupPhase.stoppingPrevious ||
+    // The route opens before the detail page finishes fetching its episode
+    // queue. That initial gap still needs loading feedback and must not let
+    // the screensaver cover a pending play request.
+    return (phase == PlaybackBringupPhase.idle &&
+            _queue.currentItem == null &&
+            !_isStopping) ||
+        phase == PlaybackBringupPhase.stoppingPrevious ||
         phase == PlaybackBringupPhase.resolving ||
         phase == PlaybackBringupPhase.opening ||
         phase == PlaybackBringupPhase.waitingForReady ||
@@ -4167,6 +4157,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   /// wording IS the diagnostic.
   String _bringupLabel() {
     switch (_bringupState.phase) {
+      case PlaybackBringupPhase.idle:
+        return 'Preparing video...';
       case PlaybackBringupPhase.stoppingPrevious:
         return 'Closing previous stream...';
       case PlaybackBringupPhase.resolving:

@@ -6,8 +6,10 @@ report_flutter="${SIPFLIX_FLUTTER_BIN:-flutter}"
 report_endpoint="${SIPFLIX_PLAYBACK_REPORT_URL:-https://playback.sipflix.net/v1/playback-failures}"
 "$report_flutter" clean
 "$report_flutter" pub get
-"$report_flutter" build apk --release --flavor androidtv \
+"$report_flutter" build apk --release --flavor androidTv \
   --target-platform android-arm,android-arm64 \
+  --dart-define=MOONFIN_FORCE_TV=true \
+  --dart-define=DISTRIBUTION_CHANNEL=android_tv_apk \
   --dart-define="SIPFLIX_PLAYBACK_REPORT_URL=$report_endpoint"
 python3 - "$report_endpoint" <<'PY'
 import hashlib, sys, zipfile

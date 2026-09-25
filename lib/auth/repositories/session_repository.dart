@@ -705,7 +705,7 @@ class SessionRepository {
       case 'play':
         await manager.resume();
       case 'stop':
-        await manager.stop(userInitiated: false);
+        await manager.stop(userInitiated: false, notifySessionEnded: true);
       case 'seek':
         final seek = _durationFromTicks(message.seekPositionTicks);
         if (seek != null) {

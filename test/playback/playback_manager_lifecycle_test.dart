@@ -120,6 +120,29 @@ void main() {
   });
   tearDown(() => manager.dispose());
 
+  test('remote stop ends the player session and preserves resume position', () async {
+    var ended = 0;
+    manager.sessionEndedStream.listen((_) => ended++);
+    await manager.playItems([a]);
+    await manager.seekTo(const Duration(minutes: 14));
+    await manager.stop(userInitiated: false, notifySessionEnded: true);
+    await Future<void>.delayed(Duration.zero);
+    expect(ended, 1);
+    expect(manager.queueService.currentItem, isNull);
+    expect(service.stops, [const Duration(minutes: 14)]);
+    await manager.playItems([b]);
+    expect(manager.queueService.currentItem, b);
+  });
+
+  test('ordinary teardown does not close the player route', () async {
+    var ended = 0;
+    manager.sessionEndedStream.listen((_) => ended++);
+    await manager.playItems([a]);
+    await manager.stop(userInitiated: false);
+    await Future<void>.delayed(Duration.zero);
+    expect(ended, 0);
+  });
+
   test('404 preserves selected source without claiming the file is missing', () async {
     await manager.playItems([a]);
     final source = manager.currentResolution!.mediaSourceId;

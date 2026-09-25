@@ -1882,9 +1882,21 @@ class PlaybackManager implements AudioOwnable {
     await _backend!.resume();
   }
 
-  Future<void> stop({bool userInitiated = true}) async {
+  Future<void> stop({
+    bool userInitiated = true,
+    bool notifySessionEnded = false,
+  }) async {
     if (userInitiated && await _maybeIntercept(TransportAction.stop)) return;
-    await _stopAndReportCurrent();
+    final stopping = _stopAndReportCurrent();
+    final stoppedSession = _playbackSessionToken;
+    await stopping;
+    // A remote Stop has no local Back action to close the player route.
+    // Never let a delayed stop notification close a newer playback session.
+    if (notifySessionEnded &&
+        stoppedSession == _playbackSessionToken &&
+        queueService.currentItem == null) {
+      _notifySessionEnded();
+    }
   }
 
   Future<void> seekTo(Duration position) async {

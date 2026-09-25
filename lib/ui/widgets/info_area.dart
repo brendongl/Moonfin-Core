@@ -399,6 +399,25 @@ class _InfoAreaContentState extends State<_InfoAreaContent> {
         clientFactory.getClientIfExists(item.serverId) ??
         clientFactory.getActiveClient();
 
+    if (collectionType?.toLowerCase() == 'livetv') {
+      // Emby's synthetic Live TV view is not an Items parent. Querying its
+      // folders can return the entire server's folder count instead.
+      try {
+        final response = await client.liveTvApi.getChannels(
+          userId: client.userId,
+          limit: 1,
+          enableTotalRecordCount: true,
+        );
+        return _summaryPartForCount(
+          l10n: l10n,
+          count: (response['TotalRecordCount'] as num?)?.toInt() ?? 0,
+          label: _MyMediaSummaryLabel.channel,
+        );
+      } catch (_) {
+        return null;
+      }
+    }
+
     final parts = <String>[];
     for (final query in queries) {
       final count = await _countItems(

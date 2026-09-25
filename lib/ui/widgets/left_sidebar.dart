@@ -737,7 +737,7 @@ class _LeftSidebarState extends State<LeftSidebar> with RouteAware {
                                 DecoratedBox(
                                   decoration: BoxDecoration(
                                     color: overlayColor.withValues(
-                                      alpha: math.max(opacity, 0.92),
+                                      alpha: math.max(opacity, 0.98),
                                     ),
                                     borderRadius: BorderRadius.circular(18),
                                   ),
@@ -758,10 +758,10 @@ class _LeftSidebarState extends State<LeftSidebar> with RouteAware {
                                 end: Alignment.centerRight,
                                 colors: [
                                   overlayColor.withValues(
-                                    alpha: math.max(opacity, 0.7),
+                                    alpha: math.max(opacity, 0.98),
                                   ),
                                   overlayColor.withValues(
-                                    alpha: math.max(opacity, 0.5),
+                                    alpha: math.max(opacity, 0.98),
                                   ),
                                 ],
                               ),
@@ -792,7 +792,7 @@ class _LeftSidebarState extends State<LeftSidebar> with RouteAware {
                                   end: Alignment.centerRight,
                                   colors: [
                                     overlayColor.withValues(
-                                      alpha: math.max(opacity, 0.5),
+                                      alpha: math.max(opacity, 0.98),
                                     ),
                                     Colors.transparent,
                                   ],

@@ -7901,7 +7901,7 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
     return queue.sublist(0, nextIndex);
   }
 
-  Future<bool> _pushPlayerRouteWhileStartingPlayback(
+  Future<bool> _openPlayerRouteWithRecovery(
     BuildContext context, {
     required String destination,
     required Future<bool> startupFuture,
@@ -7913,7 +7913,7 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
     // iOS-only), so pressing Play/Resume instantly shows the loading player
     // instead of sitting on the detail OSD for 2-3s while the stream resolves
     // (which felt like the button didn't register). The player screen already
-    // renders its own bringup/loading state, and pops itself if startup fails.
+    // renders its own loading state and retains recovery controls on failure.
     final pushVideoEarly =
         destination == Destinations.videoPlayer &&
         (PlatformDetection.isIOS || PlatformDetection.isTV);
@@ -7934,10 +7934,19 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
     try {
       started = await startupFuture;
     } catch (_) {
-      if (routeFuture != null && context.mounted) {
-        popTopPlayerRoute();
+      if (pushVideoEarly &&
+          routeFuture != null &&
+          manager.bringupState.phase == PlaybackBringupPhase.failed) {
+        // The player owns this failure and its Retry/Back/connection actions.
+        // Closing it here hid the error as soon as resolution threw, leaving
+        // the viewer on an apparently unresponsive detail page.
+        started = true;
+      } else {
+        if (routeFuture != null && context.mounted) {
+          popTopPlayerRoute();
+        }
+        rethrow;
       }
-      rethrow;
     }
 
     if (!started) {
@@ -8681,7 +8690,7 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
       },
     );
 
-    await _pushPlayerRouteWhileStartingPlayback(
+    await _openPlayerRouteWithRecovery(
       context,
       destination: isAudio
           ? Destinations.audioPlayer
@@ -8728,7 +8737,7 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
       ),
     );
 
-    await _pushPlayerRouteWhileStartingPlayback(
+    await _openPlayerRouteWithRecovery(
       context,
       destination: isAudio
           ? Destinations.audioPlayer
@@ -8928,7 +8937,7 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
           enableDirectStream: !forceTranscode,
         ),
       );
-      await _pushPlayerRouteWhileStartingPlayback(
+      await _openPlayerRouteWithRecovery(
         context,
         destination: Destinations.videoPlayer,
         startupFuture: startupFuture,
