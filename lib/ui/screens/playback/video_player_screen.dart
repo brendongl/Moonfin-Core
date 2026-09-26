@@ -73,6 +73,7 @@ import '../../../sipflix/sipflix_connection_manager.dart';
 import '../../../sipflix/sipflix_preflight.dart';
 import '../../../sipflix/sipflix_servers.dart';
 import '../../../sipflix/sipflix_playback_report.dart';
+import '../../../sipflix/sipflix_4k_policy.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../playback/media3_player_backend.dart';
 import '../../../playback/tizen_player_backend.dart';
@@ -1474,7 +1475,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       return;
     }
     final item = _queue.currentItem;
-    if (item is AggregatedItem &&
+    // A 4K title refused on purpose is not a fault to diagnose or report,
+    // and the report's generic verdict would hide why it didn't play.
+    if (!Sipflix4kPolicy.isRefusal(state.error) &&
+        item is AggregatedItem &&
         (item.type == 'Movie' || item.type == 'Episode') &&
         item.id == state.itemId &&
         SipflixServers.isSipflixServerRef(item.serverId) &&

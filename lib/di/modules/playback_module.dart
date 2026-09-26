@@ -328,6 +328,7 @@ void registerPlaybackModule() {
     _getIt<MediaServerClientFactory>(),
   ).measuredBpsForActiveServer;
   manager.directPlayOnlyPolicy = Sipflix4kPolicy.directPlayOnly;
+  manager.directPlayOnlyUnavailable = Sipflix4kPolicy.unavailableOnThisDevice;
 
   // The streams of one kind belonging to whatever is playing, or null when
   // that isn't an episode and so has no series to remember a choice for.

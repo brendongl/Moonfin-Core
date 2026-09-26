@@ -69,4 +69,14 @@ void main() {
       expect(Sipflix4kPolicy.directPlayOnly(Object(), const [], null), isNull);
     });
   });
+
+  test('refusals are recognised so they are not reported as faults', () {
+    expect(Sipflix4kPolicy.isRefusal(Sipflix4kPolicy.refusalMessage), isTrue);
+    expect(
+      Sipflix4kPolicy.isRefusal(Sipflix4kPolicy.unsupportedDeviceMessage),
+      isTrue,
+    );
+    expect(Sipflix4kPolicy.isRefusal('Playback failed.'), isFalse);
+    expect(Sipflix4kPolicy.isRefusal(null), isFalse);
+  });
 }

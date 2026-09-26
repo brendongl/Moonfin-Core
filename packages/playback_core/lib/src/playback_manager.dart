@@ -131,6 +131,11 @@ class PlaybackManager implements AudioOwnable {
     );
   }
 
+  /// Host answer to "can this device direct play a direct-play-only source at
+  /// all?" — a non-null message refuses such a source before anything is
+  /// requested, so a decoder known to fail on it is never handed the stream.
+  String? Function()? directPlayOnlyUnavailable;
+
   String? _directPlayOnlyMessage(
     dynamic item, [
     List<Map<String, dynamic>> mediaStreams = const [],
@@ -1338,6 +1343,14 @@ class PlaybackManager implements AudioOwnable {
     // asked for it (a forced-transcode queue, a recovery, a bitrate cap).
     final directOnly = _directPlayOnlyMessage(item);
     if (directOnly != null) {
+      String? unavailable;
+      try {
+        unavailable = directPlayOnlyUnavailable?.call();
+      } catch (_) {}
+      if (unavailable != null) {
+        _emitDirectPlayOnlyFailure(unavailable, item, null);
+        return;
+      }
       enableDirectPlay = true;
       enableDirectStream = true;
       enableTranscoding = false;

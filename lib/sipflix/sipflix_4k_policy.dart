@@ -47,6 +47,20 @@ class Sipflix4kPolicy {
       'converted. This device or connection could not play it. Choose the '
       'HD version instead.';
 
+  static const String unsupportedDeviceMessage =
+      'This is a 4K title and this device can\'t play 4K. Choose the HD '
+      'version instead.';
+
+  /// Whether [message] is one of this policy's deliberate refusals rather
+  /// than a playback fault.
+  static bool isRefusal(String? message) =>
+      message == refusalMessage || message == unsupportedDeviceMessage;
+
+  /// [PlaybackManager.directPlayOnlyUnavailable]: a box on H.264 only can't
+  /// direct play 4K HEVC, and trying hands it to the decoder that crashes.
+  static String? unavailableOnThisDevice() =>
+      isFragileHevcDecoder ? unsupportedDeviceMessage : null;
+
   /// [PlaybackManager.directPlayOnlyPolicy]: the refusal message for a 4K
   /// source, null for anything else.
   ///
