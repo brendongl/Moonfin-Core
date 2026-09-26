@@ -919,6 +919,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   /// measurement a direct play defers to the stream check offered alongside
   /// rather than guessing the link down.
   bool _sipflixStallLooksLikeBandwidth() {
+    // 4K only ever direct plays; there is no lower rate to step down to.
+    if (_manager.currentIsDirectPlayOnly) return false;
     final method = _manager.currentResolution?.playMethod;
     final direct = method == StreamPlayMethod.directPlay ||
         method == StreamPlayMethod.directStream;
@@ -1008,6 +1010,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
 
   Future<void> _showBitrateAdaptationDialog() async {
     if (_bitrateDialogShowing || !mounted) return;
+    if (_manager.currentIsDirectPlayOnly) return;
     final current = _sipflixEffectiveStreamMbps();
     final target = SipflixBitrateWatchdog.suggestLowerBitrate(current);
     if (target >= current) return;

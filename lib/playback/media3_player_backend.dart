@@ -870,7 +870,9 @@ class Media3PlayerBackend extends PlayerBackend {
     bool useProgressiveTranscode = false,
   }) {
     final maxBitrate = _prefs.resolveMaxBitrateMbps();
-    final maxResolution = _prefs.get(UserPreferences.maxVideoResolution);
+    final maxResolution = _prefs.resolveMaxVideoResolution(
+      capableOf4k: !SipflixServers.forceH264,
+    );
     final audioCapabilityProfile = _prefs.detectedAudioCapabilities;
 
     return DeviceProfileBuilder.build(

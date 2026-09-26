@@ -1437,6 +1437,18 @@ class UserPreferences extends ChangeNotifier {
     values: MaxVideoResolution.values,
   );
 
+  /// The resolution ceiling to advertise. The 1080p default exists for boxes
+  /// that can't decode 4K; on one that can, a ceiling nobody chose is dropped
+  /// so 4K can direct play rather than be downscaled by the server.
+  MaxVideoResolution resolveMaxVideoResolution({
+    required bool capableOf4k,
+  }) {
+    if (capableOf4k && !containsPreference(maxVideoResolution)) {
+      return MaxVideoResolution.auto;
+    }
+    return get(maxVideoResolution);
+  }
+
   static final mediaQueuingEnabled = Preference(
     key: 'pref_enable_tv_queuing',
     defaultValue: true,

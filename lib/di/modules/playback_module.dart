@@ -15,6 +15,7 @@ import '../../data/services/media_server_client_factory.dart';
 import '../../data/services/offline_playback_tracker.dart';
 import '../../playback/local_aware_player_service.dart';
 import '../../playback/local_first_media_stream_resolver.dart';
+import '../../sipflix/sipflix_4k_policy.dart';
 import '../../sipflix/sipflix_preflight.dart';
 
 import '../../playback/hdr_stream_capability.dart';
@@ -326,6 +327,7 @@ void registerPlaybackModule() {
   manager.autoBitrateProvider = AutoBitrateService(
     _getIt<MediaServerClientFactory>(),
   ).measuredBpsForActiveServer;
+  manager.directPlayOnlyPolicy = Sipflix4kPolicy.directPlayOnly;
 
   // The streams of one kind belonging to whatever is playing, or null when
   // that isn't an episode and so has no series to remember a choice for.

@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../auth/models/server.dart';
 import '../auth/store/authentication_store.dart';
 import '../util/server_url.dart';
+import 'sipflix_4k_policy.dart';
 
 /// A selectable connection route for the Sipflix server. Every route fronts the
 /// SAME AlphaV2 backend (verified: same Emby server Id), so switching between
@@ -31,7 +32,9 @@ class SipflixServers {
   /// Force H.264 video (advertise no HEVC/AV1 to the server) so weak Allwinner
   /// boxes never feed HEVC to the buggy `libOmxVdec` hardware decoder, which
   /// SIGSEGVs and freezes the device. The server transcodes HEVC/AV1 -> H.264.
-  static const bool forceH264 = true;
+  /// Boxes with a sound HEVC decoder (Shield, Amlogic, ...) are left alone so
+  /// they can direct play 4K.
+  static bool get forceH264 => Sipflix4kPolicy.isFragileHevcDecoder;
 
   /// Whether the Server Page connection-route toggle is shown.
   static const bool enableRouteToggle = true;

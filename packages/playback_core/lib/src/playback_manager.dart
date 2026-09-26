@@ -90,6 +90,59 @@ class PlaybackManager implements AudioOwnable {
   /// measured ceiling rather than no ceiling. Null answers keep the request
   /// uncapped.
   Future<int?> Function()? autoBitrateProvider;
+
+  /// Host policy for sources that may only ever play directly (Sipflix: 4K,
+  /// which the provider refuses to transcode). Returns the message to show
+  /// when such a source cannot direct play, or null for ordinary sources. A
+  /// match strips every bitrate ceiling from the request, turns off server
+  /// transcoding, and makes transcode-based recovery surface this failure
+  /// instead.
+  ///
+  /// [mediaSourceId] is the version being played when known; null means the
+  /// server's default (the first source).
+  String? Function(
+    dynamic item,
+    List<Map<String, dynamic>> mediaStreams,
+    String? mediaSourceId,
+  )? directPlayOnlyPolicy;
+
+  /// Whether the current source may only direct play, so no bitrate step-down
+  /// applies to it.
+  bool get currentIsDirectPlayOnly =>
+      _directPlayOnlyMessage(
+        queueService.currentItem,
+        (_currentResolution ?? _lastPlaybackResolution)?.mediaStreams ??
+            const [],
+      ) !=
+      null;
+
+  void _emitDirectPlayOnlyFailure(
+    String message,
+    dynamic queueItem,
+    StreamResolutionResult? resolution,
+  ) {
+    // The policy's own words, not the player's: "source error" says nothing
+    // about why a direct-play-only title has nowhere else to go.
+    _emitFailedBringupState(
+      {'message': message},
+      message,
+      queueItem: queueItem,
+      resolution: resolution,
+    );
+  }
+
+  String? _directPlayOnlyMessage(
+    dynamic item, [
+    List<Map<String, dynamic>> mediaStreams = const [],
+  ]) {
+    final policy = directPlayOnlyPolicy;
+    if (policy == null || item == null) return null;
+    try {
+      return policy(item, mediaStreams, _mediaSourceId);
+    } catch (_) {
+      return null;
+    }
+  }
   DateTime? _playbackStartTime;
   bool _waitingForMedia = false;
   SubtitleRendererMode _subtitleRendererMode = SubtitleRendererMode.native;
@@ -906,6 +959,14 @@ class PlaybackManager implements AudioOwnable {
         !_unsupportedAudioRecoveryInFlight;
 
     Future<void> recoverViaTranscode() async {
+      final directOnly = _directPlayOnlyMessage(
+        queueItem,
+        resolution?.mediaStreams ?? const [],
+      );
+      if (directOnly != null) {
+        _emitDirectPlayOnlyFailure(directOnly, queueItem, resolution);
+        return;
+      }
       _unsupportedAudioRecoveryInFlight = true;
       try {
         await _reResolveAtCurrentPosition(forceTranscode: true);
@@ -1273,6 +1334,14 @@ class PlaybackManager implements AudioOwnable {
     final Map<String, dynamic> profile;
     final int? maxBitrate;
     final StreamResolutionResult resolution;
+    // A direct-play-only source never goes through the transcoder, whatever
+    // asked for it (a forced-transcode queue, a recovery, a bitrate cap).
+    final directOnly = _directPlayOnlyMessage(item);
+    if (directOnly != null) {
+      enableDirectPlay = true;
+      enableDirectStream = true;
+      enableTranscoding = false;
+    }
     // Nothing above the backend hand-off used to be guarded, so a resolve
     // failure left the phase pinned at `resolving` and the UI spinning with no
     // way to learn what went wrong.
@@ -1297,11 +1366,17 @@ class PlaybackManager implements AudioOwnable {
       profile = _backend!.getDeviceProfile(
         useProgressiveTranscode: forceTranscode,
       );
-      if (_maxBitrateOverrideMbps != null) {
+      if (directOnly != null) {
+        // A ceiling below the file's rate only buys a transcode, and there
+        // isn't one to buy.
+        profile.remove('MaxStreamingBitrate');
+      } else if (_maxBitrateOverrideMbps != null) {
         profile['MaxStreamingBitrate'] = _maxBitrateOverrideMbps! * 1000000;
       }
       var resolvedMaxBitrate = profile['MaxStreamingBitrate'] as int?;
-      if (resolvedMaxBitrate == null && autoBitrateProvider != null) {
+      if (directOnly == null &&
+          resolvedMaxBitrate == null &&
+          autoBitrateProvider != null) {
         final measured = await autoBitrateProvider!();
         if (sessionToken != _playbackSessionToken) return;
         if (measured != null && measured > 0) {
@@ -1326,7 +1401,7 @@ class PlaybackManager implements AudioOwnable {
     } catch (error) {
       if (sessionToken == _playbackSessionToken) {
         _emitFailedBringupState(
-          _bringupFailureEvent(error),
+          directOnly != null ? {'message': directOnly} : _bringupFailureEvent(error),
           'Could not start playback.',
           queueItem: item,
           resolution: null,
@@ -1338,6 +1413,21 @@ class PlaybackManager implements AudioOwnable {
     if (sessionToken != _playbackSessionToken) {
       _cleanupPreemptedSession(item, resolution, startPosition);
       return;
+    }
+
+    // The item payload can be too thin to recognise the source up front; the
+    // resolved streams can't. A transcode the server chose anyway is refused.
+    if (resolution.playMethod == StreamPlayMethod.transcode) {
+      final refused = directOnly ??
+          _directPlayOnlyMessage(item, resolution.mediaStreams);
+      if (refused != null) {
+        final service = _service;
+        if (service != null) {
+          unawaited(service.stopTranscoding(resolution).catchError((_) {}));
+        }
+        _emitDirectPlayOnlyFailure(refused, item, resolution);
+        return;
+      }
     }
 
     _setBringupState(
@@ -2366,6 +2456,8 @@ class PlaybackManager implements AudioOwnable {
     if (mbps == _maxBitrateOverrideMbps && _currentResolution != null) {
       return;
     }
+    // Lowering the rate of a direct-play-only source means transcoding it.
+    if (mbps != null && currentIsDirectPlayOnly) return;
     _maxBitrateOverrideMbps = mbps;
     await _reResolveAtCurrentPosition(
       forceTranscode: mbps != null && _capForcesTranscode(mbps),
