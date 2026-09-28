@@ -71,7 +71,7 @@ class SipflixPreflightController {
   /// the link and each read a fraction of the truth), so this has to grow with
   /// the list.
   static Duration get overallTimeout =>
-      perRouteCap * SipflixServers.routeChoices.length + _verdictSlack;
+      perRouteCap * SipflixServers.maxRouteCount + _verdictSlack;
 
   /// Watchdog fires this session (for the enable-offer prompt).
   int watchdogFireCount = 0;
@@ -129,11 +129,24 @@ class SipflixPreflightController {
     final token = client?.accessToken;
     if (client == null || token == null || token.isEmpty) return null;
 
+    // The item's own server, so Delta and iDuck test their routes, not
+    // AlphaV2's.
+    final serverRepo = GetIt.instance<ServerRepository>();
+    final def = SipflixServers.defForRef(item.serverId) ??
+        SipflixServers.defForRef(client.baseUrl);
+    final server = SipflixServers.findServer(
+      serverRepo.servers,
+      preferId: def?.recordId,
+    );
+    final routes = server != null
+        ? SipflixServers.routesFor(server)
+        : (def ?? SipflixServers.alphaV2).routes;
+
     final requiredMbps = _requiredMbpsFor(item);
     final progress = SipflixPreflightProgress(
       itemName: item.name,
       requiredMbps: requiredMbps,
-      routes: SipflixServers.routeChoices,
+      routes: routes,
     );
     _activeProgress = progress;
 
@@ -157,7 +170,7 @@ class SipflixPreflightController {
 
     try {
       final results = <({SipflixRouteDef route, SipflixRouteMeasurement m})>[];
-      for (final route in SipflixServers.routeChoices) {
+      for (final route in routes) {
         if (progress.aborted) break;
         progress.markTesting(route.id);
         final m = await _probe.measureRoute(
@@ -184,8 +197,6 @@ class SipflixPreflightController {
       // Apply the route in place: persist the address AND retarget the live
       // client, so the resolve that follows uses the winning route without any
       // client teardown mid-flight.
-      final serverRepo = GetIt.instance<ServerRepository>();
-      final server = SipflixServers.findServer(serverRepo.servers);
       if (server != null &&
           SipflixConnectionManager.currentRoute(server).id !=
               decision.route.id) {

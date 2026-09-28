@@ -1500,6 +1500,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           playMethod: state.playMethod ?? 'unknown',
           httpStatus: state.httpStatus ?? -1,
           appVersion: client.deviceInfo.appVersion,
+          server: (SipflixServers.defForRef(client.baseUrl) ??
+                  SipflixServers.alphaV2)
+              .reportKey,
         ));
         return;
       }
@@ -6638,6 +6641,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     // hardcoded injection it is an id we do not recognise at all.
     final server = SipflixServers.findServer(
       GetIt.instance<ServerRepository>().servers,
+      preferId: SipflixServers.defForRef(item.serverId)?.recordId,
     );
     if (server == null) return null;
 
@@ -6647,8 +6651,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     return belongsToSipflix ? server : null;
   }
 
-  bool get _sipflixRouteSwitchAvailable =>
-      SipflixServers.routeChoices.length > 1 && _sipflixServer != null;
+  bool get _sipflixRouteSwitchAvailable {
+    final server = _sipflixServer;
+    return server != null && SipflixServers.routesFor(server).length > 1;
+  }
 
   Widget _buildServerRouteButton({
     double extent = 48,
@@ -6660,7 +6666,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     final server = _sipflixServer;
     final onDefault = server == null ||
         SipflixConnectionManager.currentRoute(server).id ==
-            SipflixServers.routeChoices.first.id;
+            SipflixServers.routesFor(server).first.id;
     return _controlButton(
       Icons.alt_route_rounded,
       onPressed: _showServerRouteSelector,
@@ -6679,7 +6685,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     final server = _sipflixServer;
     if (server == null) return;
 
-    final routes = SipflixServers.routeChoices;
+    final routes = SipflixServers.routesFor(server);
     final current = SipflixConnectionManager.currentRoute(server);
     final currentIdx = routes.indexWhere((r) => r.id == current.id);
 

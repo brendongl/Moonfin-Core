@@ -30,6 +30,8 @@ import '../../playback/last_playback_session_store.dart';
 import '../../playback/media_browse_service.dart';
 import '../../preference/preference_constants.dart';
 import '../../preference/user_preferences.dart';
+import '../../sipflix/sipflix_credential_vault.dart';
+import '../../sipflix/sipflix_servers.dart';
 import '../../syncplay/syncplay_manager.dart';
 import '../../util/platform_detection.dart';
 import '../store/authentication_preferences.dart';
@@ -298,7 +300,18 @@ class SessionRepository {
     } on DioException catch (e) {
       if (e.response?.statusCode == 401) {
         _logger.w('Access token expired or unauthorized. Logging out.');
+        final server = _serverRepository.getServer(serverId);
         await destroyCurrentSession();
+        // Sipflix: a 401 on a token that worked is how a server says the
+        // account left it (the admin disabled it here after moving it). With
+        // the box's credentials stored, ask every server where it went and
+        // sign in there instead of dropping the customer at a login page.
+        if (server != null &&
+            SipflixServers.isSipflixServerRecord(server) &&
+            await SipflixCredentialVault().read() != null) {
+          appRouter.go('${Destinations.qrLogin}?serverId=$serverId&reprobe=1');
+          return;
+        }
         appRouter.go(
           '${Destinations.login}?serverId=$serverId&username=${Uri.encodeComponent(user.name)}',
         );

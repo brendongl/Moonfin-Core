@@ -388,7 +388,7 @@ class _ServerScreenState extends State<ServerScreen> {
   /// readable from the sofa without having to try it: "CDN 1 -> Switch to Direct".
   String _sipflixRouteButtonLabel(Server server) {
     final current = SipflixConnectionManager.currentRoute(server);
-    final next = SipflixConnectionManager.nextRoute(current);
+    final next = SipflixConnectionManager.nextRoute(server, current);
     final currentLabel = SipflixConnectionManager.label(current);
     if (next.id == current.id) return 'Connection: $currentLabel';
     return '$currentLabel \u2192 Switch to ${SipflixConnectionManager.label(next)}';

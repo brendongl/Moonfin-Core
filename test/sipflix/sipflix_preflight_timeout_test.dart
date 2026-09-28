@@ -9,7 +9,7 @@ import 'package:moonfin/sipflix/sipflix_servers.dart';
 void main() {
   test('the budget clears a worst-case probe of every route', () {
     final worstCase = SipflixPreflightController.perRouteCap *
-        SipflixServers.routeChoices.length;
+        SipflixServers.maxRouteCount;
     expect(
       SipflixPreflightController.overallTimeout,
       greaterThan(worstCase),
@@ -21,7 +21,7 @@ void main() {
     // Two routes' worth of budget would not have covered today's three.
     final twoRouteBudget = SipflixPreflightController.perRouteCap * 2 +
         const Duration(seconds: 6);
-    expect(SipflixServers.routeChoices.length, greaterThan(2));
+    expect(SipflixServers.maxRouteCount, greaterThan(2));
     expect(
       SipflixPreflightController.overallTimeout,
       greaterThan(twoRouteBudget),

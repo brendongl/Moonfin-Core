@@ -22,6 +22,7 @@ import 'adaptive/adaptive_dialog.dart';
 import '../screens/downloads/downloads_panel.dart';
 import '../screens/settings/settings_side_panel.dart';
 import 'overlay_sheet.dart';
+import '../../sipflix/sipflix_credential_vault.dart';
 import 'pin_entry_dialog.dart';
 import 'remote_control_dialog.dart';
 import 'settings/settings_panel.dart';
@@ -162,6 +163,9 @@ class _AccountDialogState extends State<_AccountDialog> {
     if (_busy) return;
     setState(() => _busy = true);
     await _sessionRepo.destroyCurrentSession();
+    // Sipflix: signing out forgets the stored account, so a later token
+    // refusal can't sign the box back in on its own.
+    await SipflixCredentialVault().clear();
 
     if (!mounted) return;
     Navigator.of(context).pop();
@@ -173,6 +177,7 @@ class _AccountDialogState extends State<_AccountDialog> {
     setState(() => _busy = true);
 
     await _sessionRepo.destroyCurrentSession();
+    await SipflixCredentialVault().clear();
     await _serverRepo.loadStoredServers();
     final serverIds = _serverRepo.servers.map((s) => s.id).toList();
     for (final id in serverIds) {

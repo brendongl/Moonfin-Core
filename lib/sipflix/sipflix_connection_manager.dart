@@ -7,8 +7,9 @@ import '../data/services/media_server_client_factory.dart';
 import '../util/server_url.dart';
 import 'sipflix_servers.dart';
 
-/// Sipflix: switches the server between its connection routes (CDN 1 / CDN 2 /
-/// Direct — see [SipflixServers.routeChoices]).
+/// Sipflix: switches a server between its connection routes (AlphaV2's
+/// CDN 1 / CDN 2 / Direct, Delta's Direct / CDN 2, ... — see
+/// [SipflixServers.routesFor]).
 ///
 /// The active route is derived from the server's persisted `address` (which the
 /// AuthenticationStore already saves), so no separate state is needed.
@@ -28,19 +29,20 @@ class SipflixConnectionManager {
   static String label(SipflixRouteDef route) => route.label;
 
   /// The route whose URL matches the server's current address (normalized).
-  /// Falls back to the first route (CDN 1) when nothing matches.
+  /// Falls back to the server's first route when nothing matches.
   static SipflixRouteDef currentRoute(Server server) {
+    final routes = SipflixServers.routesFor(server);
     final addr = normalizeServerBaseUrl(server.address);
-    for (final r in SipflixServers.routeChoices) {
+    for (final r in routes) {
       if (normalizeServerBaseUrl(r.url) == addr) return r;
     }
-    return SipflixServers.routeChoices.first;
+    return routes.first;
   }
 
-  /// The route after [route] in [SipflixServers.routeChoices], wrapping around.
+  /// The route after [route] among [server]'s routes, wrapping around.
   /// Public so the UI can name what a switch would land on.
-  static SipflixRouteDef nextRoute(SipflixRouteDef route) {
-    final choices = SipflixServers.routeChoices;
+  static SipflixRouteDef nextRoute(Server server, SipflixRouteDef route) {
+    final choices = SipflixServers.routesFor(server);
     final i = choices.indexWhere((r) => r.id == route.id);
     return choices[(i + 1) % choices.length];
   }
@@ -73,7 +75,7 @@ class SipflixConnectionManager {
       // Only retarget the singleton when it is this server's client; on a
       // multi-server install it could belong to somebody else entirely.
       final activeAddr = normalizeServerBaseUrl(active.baseUrl);
-      final isThisServer = SipflixServers.routeChoices.any(
+      final isThisServer = SipflixServers.routesFor(server).any(
         (r) => normalizeServerBaseUrl(r.url) == activeAddr,
       );
       if (isThisServer) active.baseUrl = route.url;
@@ -88,10 +90,10 @@ class SipflixConnectionManager {
     MediaServerClientFactory clientFactory,
   ) async {
     if (!SipflixServers.isSipflixServerRecord(server) ||
-        SipflixServers.routeChoices.length < 2) {
+        SipflixServers.routesFor(server).length < 2) {
       return currentRoute(server);
     }
-    final next = nextRoute(currentRoute(server));
+    final next = nextRoute(server, currentRoute(server));
     await applyRoute(server, next, serverRepo, clientFactory);
     return next;
   }

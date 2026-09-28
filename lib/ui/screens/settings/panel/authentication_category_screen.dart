@@ -22,10 +22,16 @@ class _AuthenticationCategoryScreen extends StatelessWidget {
       langOptions[tag] = kLocaleDisplayNames[tag] ?? locale.toString();
     }
 
+    final sipflixServer = _SipflixServerSection.activeServer();
+
     return Scaffold(
       appBar: buildSettingsAppBar(context, Text(l10n.settingsAccountSecurity)),
       body: ListView(
         children: [
+          if (sipflixServer != null) ...[
+            const _SectionHeader('Server'),
+            _SipflixServerSection(server: sipflixServer),
+          ],
           _SectionHeader(l10n.settingsAuthenticationSection),
           adaptiveListSection(
             children: [
@@ -71,7 +77,7 @@ class _AuthenticationCategoryScreen extends StatelessWidget {
                 icon: Icons.lock,
               ),
               _TvSettingsListTile(
-                autofocus: true,
+                autofocus: sipflixServer == null,
                 leading: const Icon(Icons.pin),
                 title: Text(l10n.pinCode),
                 subtitle: Text(l10n.requirePinToAccess),
@@ -138,6 +144,74 @@ class _AuthenticationCategoryScreen extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// Sipflix: which server this box is on, its connection route, and the way to
+/// move to another server when the account is on more than one.
+class _SipflixServerSection extends StatefulWidget {
+  final Server server;
+  const _SipflixServerSection({required this.server});
+
+  static Server? activeServer() {
+    final getIt = GetIt.instance;
+    if (!getIt.isRegistered<ServerRepository>()) return null;
+    return SipflixServers.findServer(
+      getIt<ServerRepository>().servers,
+      preferId: getIt<SessionRepository>().activeServerId,
+    );
+  }
+
+  @override
+  State<_SipflixServerSection> createState() => _SipflixServerSectionState();
+}
+
+class _SipflixServerSectionState extends State<_SipflixServerSection> {
+  late Server _server = widget.server;
+
+  Future<void> _cycleRoute() async {
+    final getIt = GetIt.instance;
+    final serverRepo = getIt<ServerRepository>();
+    await SipflixConnectionManager.toggle(
+      _server,
+      serverRepo,
+      getIt<MediaServerClientFactory>(),
+    );
+    if (!mounted) return;
+    setState(() => _server = serverRepo.getServer(_server.id) ?? _server);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final def = SipflixServers.defForServer(_server);
+    final routes = SipflixServers.routesFor(_server);
+    final current = SipflixConnectionManager.currentRoute(_server);
+    final next = SipflixConnectionManager.nextRoute(_server, current);
+    return adaptiveListSection(
+      children: [
+        _TvSettingsListTile(
+          autofocus: true,
+          leading: const Icon(Icons.dns),
+          title: Text(def?.name ?? _server.name),
+          subtitle: const Text('The server this box is signed in to'),
+        ),
+        if (routes.length > 1)
+          _TvSettingsListTile(
+            leading: const Icon(Icons.alt_route),
+            title: Text('Connection: ${current.label}'),
+            subtitle: Text('Select to switch to ${next.label}'),
+            onTap: _cycleRoute,
+          ),
+        _TvSettingsListTile(
+          leading: const Icon(Icons.swap_horiz),
+          title: const Text('Switch server'),
+          subtitle: const Text(
+            "Favourites and watch history don't move between servers",
+          ),
+          onTap: () => runSipflixSwitchServer(context),
+        ),
+      ],
     );
   }
 }

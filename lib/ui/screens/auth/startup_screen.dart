@@ -195,6 +195,10 @@ class _StartupScreenState extends State<StartupScreen>
 
       await _waitForNetworkSettle();
       _refreshAutoBitrateInBackground();
+      // The restored token can be refused while the network settles (an
+      // account moved to another server). The 401 handler has then already
+      // ended the session and routed to sign-in; going Home would undo that.
+      if (session.activeUserId == null) return;
       if (mounted) context.go(Destinations.home);
     } else {
       if (mounted) {

@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../../../sipflix/sipflix_sign_in.dart';
 import 'dart:convert';
 import 'dart:ui' as ui;
 
@@ -145,6 +146,10 @@ class _HomeShellState extends State<_HomeShell>
     appRouter.routerDelegate.addListener(_onRouteChanged);
     _lastObservedPath = appRouter.routerDelegate.currentConfiguration.uri.path;
     homeRefreshBus.addListener(_onHomeRefreshRequested);
+    // Sipflix: the account moved and the box followed it — say so once.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(SipflixMigrationNotice.showIfPending(context));
+    });
     if (homeRefreshBus.consumePending()) {
       _viewModel.refresh(preserveExisting: true);
     }

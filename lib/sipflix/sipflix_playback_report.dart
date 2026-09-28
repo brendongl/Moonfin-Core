@@ -135,6 +135,7 @@ class SipflixPlaybackReportController extends ChangeNotifier {
     required String playMethod,
     required int httpStatus,
     required String appVersion,
+    String server = 'alphav2',
   }) async {
     if (!enabled || _disposed || _key == failureKey) return;
     reset();
@@ -144,7 +145,7 @@ class SipflixPlaybackReportController extends ChangeNotifier {
     checking = true;
     notifyListeners();
     final event = <String, dynamic>{
-      'server': 'alphav2',
+      'server': server,
       'userId': userId,
       'itemId': itemId,
       'mediaSourceId': mediaSourceId,

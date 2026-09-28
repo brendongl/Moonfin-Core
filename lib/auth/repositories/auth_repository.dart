@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:logger/logger.dart';
 import 'package:server_core/server_core.dart';
 
+import '../../sipflix/sipflix_credential_vault.dart';
 import '../models/login_state.dart';
 import '../models/user.dart';
 import '../store/authentication_store.dart';
@@ -79,6 +80,24 @@ class AuthRepository {
       _stateController.add(state);
       return state;
     }
+  }
+
+  /// Sipflix: finish signing in with an `AuthenticateByName` response obtained
+  /// elsewhere (the multi-server account probe), instead of logging in again
+  /// and minting a second token for the same device.
+  Future<LoginState> adoptAuthResult({
+    required Map<String, dynamic> result,
+    required MediaServerClient client,
+    required String serverId,
+    required String fallbackName,
+  }) {
+    _stateController.add(const Authenticating());
+    return _handleAuthResult(
+      result: result,
+      client: client,
+      serverId: serverId,
+      fallbackName: fallbackName,
+    );
   }
 
   Future<LoginState> _handleAuthResult({
@@ -186,6 +205,9 @@ class AuthRepository {
 
     _userRepository.setCurrentUser(null);
     await _sessionRepository.destroyCurrentSession();
+    // Sipflix: a deliberate sign-out forgets the stored credentials too, so
+    // nothing signs the box back in behind the customer's back.
+    await SipflixCredentialVault().clear();
     _stateController.add(const RequireSignIn());
   }
 

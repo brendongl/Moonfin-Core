@@ -251,6 +251,7 @@ final appRouter = GoRouter(
       path: Destinations.qrLogin,
       builder: (context, state) => SipflixQrLoginScreen(
         serverId: state.uri.queryParameters['serverId'] ?? '',
+        reprobe: state.uri.queryParameters['reprobe'] == '1',
       ),
     ),
 

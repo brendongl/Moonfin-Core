@@ -24,6 +24,7 @@ import '../../../util/platform_detection.dart';
 import '../../../util/web_diagnostics_failure.dart';
 import '../../../sipflix/sipflix_connection_manager.dart';
 import '../../../sipflix/sipflix_servers.dart';
+import '../../../sipflix/sipflix_sign_in.dart';
 import '../../navigation/destinations.dart';
 import '../../widgets/login_scaffold.dart';
 import '../../widgets/pin_entry_dialog.dart';
@@ -485,6 +486,24 @@ class _LoginScreenState extends State<LoginScreen> {
       _isLoading = true;
       _errorMessage = null;
     });
+
+    // Sipflix: ask every server, not only the one this page was opened for —
+    // the customer doesn't need to know which server holds the account.
+    if (SipflixServers.isSipflixServerRecord(_server!)) {
+      String? error;
+      try {
+        error = await runSipflixSignIn(
+          context,
+          username: username,
+          password: _passwordController.text,
+        );
+      } catch (_) {
+        error = 'Sign-in failed. Please try again.';
+      }
+      if (!mounted || error == null) return;
+      _finishLoginWithError(error);
+      return;
+    }
 
     try {
       final result = await _authRepo.authenticate(
