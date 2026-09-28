@@ -23,6 +23,7 @@ class _AuthenticationCategoryScreen extends StatelessWidget {
     }
 
     final sipflixServer = _SipflixServerSection.activeServer();
+    final advanced = SipflixSettingsMode.advanced;
 
     return Scaffold(
       appBar: buildSettingsAppBar(context, Text(l10n.settingsAccountSecurity)),
@@ -35,47 +36,48 @@ class _AuthenticationCategoryScreen extends StatelessWidget {
           _SectionHeader(l10n.settingsAuthenticationSection),
           adaptiveListSection(
             children: [
-              EnumPreferenceTile<UserSelectBehavior>(
-                preference: UserPreferences.autoLoginUserBehavior,
-                title: l10n.autoLogin,
-                icon: Icons.person,
-                labelOf: (v) {
-                  if (v == UserSelectBehavior.currentUser) {
-                    final session = GetIt.instance<SessionRepository>();
-                    // If I'm the auto-login user, just say "Current User"
-                    // If someone else is, show their name so it's clear
-                    if (session.activeUserIsAutoLoginTarget) {
-                      return l10n.currentUser;
+              if (advanced)
+                EnumPreferenceTile<UserSelectBehavior>(
+                  preference: UserPreferences.autoLoginUserBehavior,
+                  title: l10n.autoLogin,
+                  icon: Icons.person,
+                  labelOf: (v) {
+                    if (v == UserSelectBehavior.currentUser) {
+                      final session = GetIt.instance<SessionRepository>();
+                      // If I'm the auto-login user, just say "Current User"
+                      // If someone else is, show their name so it's clear
+                      if (session.activeUserIsAutoLoginTarget) {
+                        return l10n.currentUser;
+                      }
+                      return session.autoLoginTargetDisplayName() ??
+                          l10n.currentUser;
                     }
-                    return session.autoLoginTargetDisplayName() ??
-                        l10n.currentUser;
-                  }
-                  return switch (v) {
+                    return switch (v) {
+                      UserSelectBehavior.disabled => l10n.disabled,
+                      UserSelectBehavior.lastUser => l10n.lastUser,
+                      _ => l10n.currentUser,
+                    };
+                  },
+                  dialogLabelOf: (v) => switch (v) {
                     UserSelectBehavior.disabled => l10n.disabled,
                     UserSelectBehavior.lastUser => l10n.lastUser,
-                    _ => l10n.currentUser,
-                  };
-                },
-                dialogLabelOf: (v) => switch (v) {
-                  UserSelectBehavior.disabled => l10n.disabled,
-                  UserSelectBehavior.lastUser => l10n.lastUser,
-                  UserSelectBehavior.currentUser => l10n.currentUser,
-                },
-                onChanged: () {
-                  final behavior = GetIt.instance<PreferenceStore>().get(
-                    UserPreferences.autoLoginUserBehavior,
-                  );
-                  GetIt.instance<SessionRepository>().applyAutoLoginForBehavior(
-                    behavior,
-                  );
-                },
-              ),
-              SwitchPreferenceTile(
-                preference: UserPreferences.alwaysAuthenticate,
-                title: l10n.alwaysAuthenticate,
-                subtitle: l10n.requirePasswordWithToken,
-                icon: Icons.lock,
-              ),
+                    UserSelectBehavior.currentUser => l10n.currentUser,
+                  },
+                  onChanged: () {
+                    final behavior = GetIt.instance<PreferenceStore>().get(
+                      UserPreferences.autoLoginUserBehavior,
+                    );
+                    GetIt.instance<SessionRepository>()
+                        .applyAutoLoginForBehavior(behavior);
+                  },
+                ),
+              if (advanced)
+                SwitchPreferenceTile(
+                  preference: UserPreferences.alwaysAuthenticate,
+                  title: l10n.alwaysAuthenticate,
+                  subtitle: l10n.requirePasswordWithToken,
+                  icon: Icons.lock,
+                ),
               _TvSettingsListTile(
                 autofocus: sipflixServer == null,
                 leading: const Icon(Icons.pin),
@@ -95,7 +97,8 @@ class _AuthenticationCategoryScreen extends StatelessWidget {
                 icon: Icons.language,
                 options: langOptions,
               ),
-              if (!hideWebOnlyAuthControls)
+              // Sipflix: a box holds one server, so there is nothing to sort.
+              if (!hideWebOnlyAuthControls && SipflixSettingsMode.showRetired)
                 EnumPreferenceTile<UserSortBy>(
                   preference: AuthenticationPreferences.sortBy,
                   title: l10n.settingsSortServersBy,
@@ -117,7 +120,7 @@ class _AuthenticationCategoryScreen extends StatelessWidget {
                 onTap: () =>
                     context.pushSettingsScreen(const ParentalSettingsScreen()),
               ),
-              if (!hideWebOnlyAuthControls)
+              if (!hideWebOnlyAuthControls && advanced)
                 SwitchPreferenceTile(
                   preference: UserPreferences.confirmExit,
                   title: l10n.confirmExit,
@@ -128,7 +131,9 @@ class _AuthenticationCategoryScreen extends StatelessWidget {
           ),
           // Certificate trust is the browser's job on web, so this is
           // native-only.
-          if (!PlatformDetection.isWeb) ...[
+          // Sipflix: every server has a real certificate; this only weakens
+          // HTTPS checks.
+          if (!PlatformDetection.isWeb && SipflixSettingsMode.showRetired) ...[
             _SectionHeader(l10n.settingsConnectionSection),
             adaptiveListSection(
               children: [
@@ -203,14 +208,15 @@ class _SipflixServerSectionState extends State<_SipflixServerSection> {
             subtitle: Text('Select to switch to ${next.label}'),
             onTap: _cycleRoute,
           ),
-        _TvSettingsListTile(
-          leading: const Icon(Icons.swap_horiz),
-          title: const Text('Switch server'),
-          subtitle: const Text(
-            "Favourites and watch history don't move between servers",
+        if (SipflixSettingsMode.advanced)
+          _TvSettingsListTile(
+            leading: const Icon(Icons.swap_horiz),
+            title: const Text('Switch server'),
+            subtitle: const Text(
+              "Favourites and watch history don't move between servers",
+            ),
+            onTap: () => runSipflixSwitchServer(context),
           ),
-          onTap: () => runSipflixSwitchServer(context),
-        ),
       ],
     );
   }

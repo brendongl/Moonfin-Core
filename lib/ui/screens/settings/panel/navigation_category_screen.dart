@@ -142,7 +142,9 @@ class _NavigationCategoryScreenState extends State<_NavigationCategoryScreen> {
                   icon: Icons.folder,
                   onChanged: _pushPersonalizationSync,
                 ),
-                if (seerrEnabledOnAccount && _syncService.seerrAvailable)
+                if (SipflixSettingsMode.showRetired &&
+                    seerrEnabledOnAccount &&
+                    _syncService.seerrAvailable)
                   SwitchPreferenceTile(
                     preference: UserPreferences.showSeerrButton,
                     title: l10n.showSeerrButton,

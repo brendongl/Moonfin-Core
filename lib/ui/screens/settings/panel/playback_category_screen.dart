@@ -6,12 +6,20 @@ class _PlaybackCategoryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final advanced = SipflixSettingsMode.advanced;
+    // Sipflix: no game libraries, so the game settings stay hidden.
+    const games = SipflixSettingsMode.showRetired;
     return withCleanSettingsTypography(
       context,
       Scaffold(
         appBar: buildSettingsAppBar(
           context,
-          Text(l10n.settingsPlaybackSyncplay),
+          Text(
+            SipflixSettingsMode.label(
+              l10n.settingsPlaybackSyncplay,
+              l10n.playback,
+            ),
+          ),
         ),
         // Rebuild on preference changes so the Emulator Cores tile appears or
         // disappears the moment the emulator backend toggle flips.
@@ -26,15 +34,25 @@ class _PlaybackCategoryScreen extends StatelessWidget {
                     autofocus: true,
                     leading: const Icon(Icons.play_circle),
                     title: Text(l10n.settingsVideoPlaybackPreferences),
-                    subtitle:
-                        Text(l10n.settingsVideoPlaybackPreferencesSubtitle),
-                    onTap: () =>
-                        context.pushSettingsScreen(const _VideoPlaybackScreen()),
+                    subtitle: Text(
+                      SipflixSettingsMode.label(
+                        l10n.settingsVideoPlaybackPreferencesSubtitle,
+                        'Picture zoom',
+                      ),
+                    ),
+                    onTap: () => context.pushSettingsScreen(
+                      const _VideoPlaybackScreen(),
+                    ),
                   ),
                   _TvSettingsListTile(
                     leading: const Icon(Icons.volume_up),
                     title: Text(l10n.settingsAudioPreferences),
-                    subtitle: Text(l10n.settingsAudioPreferencesSubtitle),
+                    subtitle: Text(
+                      SipflixSettingsMode.label(
+                        l10n.settingsAudioPreferencesSubtitle,
+                        'Audio language and night mode',
+                      ),
+                    ),
                     onTap: () => context.pushSettingsScreen(
                       const _AudioPreferencesScreen(),
                     ),
@@ -42,7 +60,12 @@ class _PlaybackCategoryScreen extends StatelessWidget {
                   _TvSettingsListTile(
                     leading: const Icon(Icons.subtitles),
                     title: Text(l10n.subtitlePreferences),
-                    subtitle: Text(l10n.subtitlePreferencesDescription),
+                    subtitle: Text(
+                      SipflixSettingsMode.label(
+                        l10n.subtitlePreferencesDescription,
+                        'Subtitle language, mode and size',
+                      ),
+                    ),
                     onTap: () => context.pushSettingsScreen(
                       const SubtitleSettingsScreen(),
                     ),
@@ -69,14 +92,14 @@ class _PlaybackCategoryScreen extends StatelessWidget {
                         const DownloadSettingsScreen(),
                       ),
                     ),
-                  if (canToggleGameBackend)
+                  if (games && canToggleGameBackend)
                     SwitchPreferenceTile(
                       preference: UserPreferences.useNativeEmulator,
                       title: l10n.useNativeEmulator,
                       subtitle: l10n.useNativeEmulatorSubtitle,
                       icon: Icons.sports_esports,
                     ),
-                  if (supportsCoreDownloads && usesNativeGameBackend)
+                  if (games && supportsCoreDownloads && usesNativeGameBackend)
                     _TvSettingsListTile(
                       leading: const Icon(Icons.videogame_asset),
                       title: Text(l10n.emulatorCores),
@@ -85,7 +108,7 @@ class _PlaybackCategoryScreen extends StatelessWidget {
                         const EmulatorCoresScreen(),
                       ),
                     ),
-                  if (usesNativeGameBackend)
+                  if (games && usesNativeGameBackend)
                     _TvSettingsListTile(
                       leading: const Icon(Icons.sd_storage),
                       title: Text(l10n.downloadedGames),
@@ -94,22 +117,24 @@ class _PlaybackCategoryScreen extends StatelessWidget {
                         const DownloadedGamesScreen(),
                       ),
                     ),
-                  _TvSettingsListTile(
-                    leading: const Icon(Icons.groups),
-                    title: Text(l10n.syncPlay),
-                    subtitle: Text(l10n.settingsSyncplaySubtitle),
-                    onTap: () => context.pushSettingsScreen(
-                      const _SyncPlaySettingsScreen(),
+                  if (advanced)
+                    _TvSettingsListTile(
+                      leading: const Icon(Icons.groups),
+                      title: Text(l10n.syncPlay),
+                      subtitle: Text(l10n.settingsSyncplaySubtitle),
+                      onTap: () => context.pushSettingsScreen(
+                        const _SyncPlaySettingsScreen(),
+                      ),
                     ),
-                  ),
-                  _TvSettingsListTile(
-                    leading: const Icon(Icons.settings),
-                    title: Text(l10n.advancedOptions),
-                    subtitle: Text(l10n.settingsAdvancedOptionsSubtitle),
-                    onTap: () => context.pushSettingsScreen(
-                      const _AdvancedOptionsScreen(),
+                  if (advanced)
+                    _TvSettingsListTile(
+                      leading: const Icon(Icons.settings),
+                      title: Text(l10n.advancedOptions),
+                      subtitle: Text(l10n.settingsAdvancedOptionsSubtitle),
+                      onTap: () => context.pushSettingsScreen(
+                        const _AdvancedOptionsScreen(),
+                      ),
                     ),
-                  ),
                 ],
               ),
             ],

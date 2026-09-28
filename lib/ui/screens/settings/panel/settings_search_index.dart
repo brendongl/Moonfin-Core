@@ -117,6 +117,11 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
 }) {
   final seerrAvailable = GetIt.instance<PluginSyncService>().seerrAvailable;
   final tmdbAvailable = GetIt.instance<PluginSyncService>().tmdbAvailable;
+  // Sipflix: Basic mode calls the category plain "Playback".
+  final playbackTitle = SipflixSettingsMode.label(
+    l10n.settingsPlaybackSyncplay,
+    l10n.playback,
+  );
 
   final account = _SearchSection(
     slug: 'account',
@@ -132,7 +137,7 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
   );
   final playback = _SearchSection(
     slug: 'playback',
-    path: [l10n.settingsPlaybackSyncplay],
+    path: [playbackTitle],
     icon: Icons.play_circle,
     open: () => push(const _PlaybackCategoryScreen()),
   );
@@ -325,7 +330,7 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
   final video = _SearchSection(
     slug: 'video',
     path: [
-      l10n.settingsPlaybackSyncplay,
+      playbackTitle,
       l10n.settingsVideoPlaybackPreferences,
     ],
     icon: Icons.play_circle_outline,
@@ -334,7 +339,7 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
   final playbackTime = _SearchSection(
     slug: 'playback-time',
     path: [
-      l10n.settingsPlaybackSyncplay,
+      playbackTitle,
       l10n.settingsVideoPlaybackPreferences,
       l10n.playbackTimeDisplay,
     ],
@@ -344,7 +349,7 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
   final osdButtons = _SearchSection(
     slug: 'osd-buttons',
     path: [
-      l10n.settingsPlaybackSyncplay,
+      playbackTitle,
       l10n.settingsVideoPlaybackPreferences,
       l10n.osdButtons,
     ],
@@ -353,20 +358,20 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
   );
   final audio = _SearchSection(
     slug: 'audio',
-    path: [l10n.settingsPlaybackSyncplay, l10n.settingsAudioPreferences],
+    path: [playbackTitle, l10n.settingsAudioPreferences],
     icon: Icons.audiotrack,
     open: () => push(const _AudioPreferencesScreen()),
   );
   final subtitles = _SearchSection(
     slug: 'subtitles',
-    path: [l10n.settingsPlaybackSyncplay, l10n.subtitlePreferences],
+    path: [playbackTitle, l10n.subtitlePreferences],
     icon: Icons.subtitles,
     open: () => push(const SubtitleSettingsScreen()),
   );
   final subtitleStyle = _SearchSection(
     slug: 'subtitle-style',
     path: [
-      l10n.settingsPlaybackSyncplay,
+      playbackTitle,
       l10n.subtitlePreferences,
       l10n.subtitleCustomization,
     ],
@@ -375,37 +380,37 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
   );
   final automation = _SearchSection(
     slug: 'automation',
-    path: [l10n.settingsPlaybackSyncplay, l10n.settingsAutomationAndQueue],
+    path: [playbackTitle, l10n.settingsAutomationAndQueue],
     icon: Icons.queue_play_next,
     open: () => push(const _AutomationQueueScreen()),
   );
   final downloads = _SearchSection(
     slug: 'downloads',
-    path: [l10n.settingsPlaybackSyncplay, l10n.settingsOfflineDownloads],
+    path: [playbackTitle, l10n.settingsOfflineDownloads],
     icon: Icons.download,
     open: () => push(const DownloadSettingsScreen()),
   );
   final emulatorCores = _SearchSection(
     slug: 'emulator-cores',
-    path: [l10n.settingsPlaybackSyncplay, l10n.emulatorCores],
+    path: [playbackTitle, l10n.emulatorCores],
     icon: Icons.videogame_asset,
     open: () => push(const EmulatorCoresScreen()),
   );
   final downloadedGames = _SearchSection(
     slug: 'downloaded-games',
-    path: [l10n.settingsPlaybackSyncplay, l10n.downloadedGames],
+    path: [playbackTitle, l10n.downloadedGames],
     icon: Icons.videogame_asset,
     open: () => push(const DownloadedGamesScreen()),
   );
   final syncplay = _SearchSection(
     slug: 'syncplay',
-    path: [l10n.settingsPlaybackSyncplay, l10n.syncPlay],
+    path: [playbackTitle, l10n.syncPlay],
     icon: Icons.groups,
     open: () => push(const _SyncPlaySettingsScreen()),
   );
   final advanced = _SearchSection(
     slug: 'advanced',
-    path: [l10n.settingsPlaybackSyncplay, l10n.advancedOptions],
+    path: [playbackTitle, l10n.advancedOptions],
     icon: Icons.tune,
     open: () => push(const _AdvancedOptionsScreen()),
   );
@@ -417,7 +422,11 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
   );
   final metadata = _SearchSection(
     slug: 'metadata',
-    path: [l10n.integrations, l10n.settingsMetadataAndRatings],
+    // Sipflix: with Integrations hidden, the rating looks live under
+    // Personalization.
+    path: SipflixSettingsMode.showRetired
+        ? [l10n.integrations, l10n.settingsMetadataAndRatings]
+        : [l10n.settingsPersonalization, 'Ratings'],
     icon: Icons.star,
     open: () => push(const _MetadataRatingsScreen()),
   );
@@ -1478,5 +1487,95 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
     return true;
   }());
 
-  return entries;
+  final advancedMode = SipflixSettingsMode.advanced;
+  return [
+    for (final entry in entries)
+      if (_sipflixSearchVisible(entry.id, advanced: advancedMode)) entry,
+  ];
 }
+
+/// Sipflix: search only finds what the screens show in the current mode, so
+/// Basic mode can't search its way into hidden settings.
+bool _sipflixSearchVisible(String id, {required bool advanced}) {
+  final slug = id.split('.').first;
+  if (!SipflixSettingsMode.showRetired &&
+      (_sipflixRetiredSearchSlugs.contains(slug) ||
+          _sipflixRetiredSearchIds.contains(id))) {
+    return false;
+  }
+  return advanced || _sipflixBasicSearchIds.contains(id);
+}
+
+/// Whole sections that are hidden in both modes (see [SipflixSettingsMode]).
+const _sipflixRetiredSearchSlugs = {
+  'integrations',
+  'plugin',
+  'seerr',
+  'rating-sources',
+  'external-lists',
+  'imdb',
+  'tmdb',
+  'calendars',
+  'seerr-lists',
+  'custom-rows',
+  'emulator-cores',
+  'downloaded-games',
+};
+
+/// Single settings that are hidden in both modes.
+const _sipflixRetiredSearchIds = {
+  'account.pref_user_sort_by',
+  'account.pref_allow_self_signed_certs',
+  'navigation.pref_show_seerr_button',
+  'libraries.enable_multi_server_libraries',
+  'playback.pref_use_native_emulator',
+  'metadata.enableAdditionalRatings',
+  'metadata.enableEpisodeRatings',
+  'about.check_updates',
+  'about.report_issue',
+};
+
+/// Everything Basic mode shows. Anything not listed is Advanced.
+const _sipflixBasicSearchIds = {
+  'account',
+  'account.pref_language_override',
+  'pin',
+  'pin.enable',
+  'pin.change',
+  'pin.remove',
+  'parental',
+  'personalization',
+  'style',
+  'style.pref_clock_behavior',
+  'style.pref_use_24_hour_clock',
+  'screensaver',
+  'screensaver.pref_screensaver_enabled',
+  'screensaver.pref_screensaver_timeout',
+  'home',
+  'home-sections',
+  'libraries',
+  'library-visibility',
+  'previews',
+  'previews.mediaBarTrailerPreview',
+  'previews.mediaBarTrailerAudio',
+  'theme-music',
+  'theme-music.themeMusicEnabled',
+  'theme-music.themeMusicVolume',
+  'playback',
+  'video',
+  'video.player_zoom_mode',
+  'audio',
+  'audio.audio_night_mode',
+  'audio.pref_audio_language',
+  'subtitles',
+  'subtitles.pref_subtitle_mode',
+  'subtitles.pref_subtitle_language',
+  'subtitle-style',
+  'subtitle-style.subtitles_text_size',
+  'automation',
+  'automation.media_segment_actions',
+  'automation.pref_autoplay_next_episode',
+  'automation.enable_still_watching',
+  'about',
+};
+

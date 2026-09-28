@@ -10,6 +10,7 @@ class _ThemeMusicScreen extends StatelessWidget {
       context,
       Scaffold(
         appBar: buildSettingsAppBar(context, Text(l10n.themeMusic)),
+        // Sipflix: Basic mode keeps the on/off switch and the volume.
         body: ListView(
           children: [
             _SectionHeader(l10n.themeMusic),
@@ -32,20 +33,22 @@ class _ThemeMusicScreen extends StatelessWidget {
                   labelOf: (v) => '$v%',
                   onChangeEnd: _pushPersonalizationSync,
                 ),
-                SwitchPreferenceTile(
-                  preference: UserPreferences.themeMusicOnHomeRows,
-                  title: l10n.themeMusicOnHomeRows,
-                  subtitle: l10n.playWhenBrowsingHomeScreen,
-                  icon: Icons.queue_music,
-                  onChanged: _pushPersonalizationSync,
-                ),
-                SwitchPreferenceTile(
-                  preference: UserPreferences.themeMusicLoop,
-                  title: l10n.loopThemeMusic,
-                  subtitle: l10n.loopThemeMusicSubtitle,
-                  icon: Icons.repeat,
-                  onChanged: _pushPersonalizationSync,
-                ),
+                if (SipflixSettingsMode.advanced) ...[
+                  SwitchPreferenceTile(
+                    preference: UserPreferences.themeMusicOnHomeRows,
+                    title: l10n.themeMusicOnHomeRows,
+                    subtitle: l10n.playWhenBrowsingHomeScreen,
+                    icon: Icons.queue_music,
+                    onChanged: _pushPersonalizationSync,
+                  ),
+                  SwitchPreferenceTile(
+                    preference: UserPreferences.themeMusicLoop,
+                    title: l10n.loopThemeMusic,
+                    subtitle: l10n.loopThemeMusicSubtitle,
+                    icon: Icons.repeat,
+                    onChanged: _pushPersonalizationSync,
+                  ),
+                ],
               ],
             ),
           ],

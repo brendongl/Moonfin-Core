@@ -37,6 +37,7 @@ class _AutomationQueueScreenState extends State<_AutomationQueueScreen> {
     final showNextUpOptions = nextUpBehavior != NextUpBehavior.disabled;
     final showReplaceSkipOutroWithNextUp =
         showNextUpOptions && mediaSegmentActions == _promptSkipSegments;
+    final advanced = SipflixSettingsMode.advanced;
 
     return Scaffold(
       appBar: buildSettingsAppBar(
@@ -48,18 +49,20 @@ class _AutomationQueueScreenState extends State<_AutomationQueueScreen> {
           _SectionHeader(l10n.playbackEnhancements),
           adaptiveListSection(
             children: [
-              SwitchPreferenceTile(
-                preference: UserPreferences.cinemaModeEnabled,
-                title: l10n.settingsCinemaMode,
-                subtitle: l10n.settingsCinemaModeSubtitle,
-                icon: Icons.movie_filter,
-              ),
-              SwitchPreferenceTile(
-                preference: UserPreferences.cinemaModeEpisodesEnabled,
-                title: l10n.settingsCinemaModeEpisodes,
-                subtitle: l10n.settingsCinemaModeEpisodesSubtitle,
-                icon: Icons.live_tv,
-              ),
+              if (advanced) ...[
+                SwitchPreferenceTile(
+                  preference: UserPreferences.cinemaModeEnabled,
+                  title: l10n.settingsCinemaMode,
+                  subtitle: l10n.settingsCinemaModeSubtitle,
+                  icon: Icons.movie_filter,
+                ),
+                SwitchPreferenceTile(
+                  preference: UserPreferences.cinemaModeEpisodesEnabled,
+                  title: l10n.settingsCinemaModeEpisodes,
+                  subtitle: l10n.settingsCinemaModeEpisodesSubtitle,
+                  icon: Icons.live_tv,
+                ),
+              ],
               StringPickerPreferenceTile(
                 preference: UserPreferences.mediaSegmentActions,
                 title: l10n.settingsSkipIntrosAndOutros,
@@ -70,8 +73,9 @@ class _AutomationQueueScreenState extends State<_AutomationQueueScreen> {
                   'intro:doNothing,outro:doNothing': l10n.settingsDoNothing,
                 },
               ),
-              if (mediaSegmentActions == _promptSkipSegments ||
-                  showNextUpOptions)
+              if (advanced &&
+                  (mediaSegmentActions == _promptSkipSegments ||
+                      showNextUpOptions))
                 EnumPreferenceTile<MediaSegmentCountdown>(
                   preference: UserPreferences.mediaSegmentCountdown,
                   title: l10n.settingsMediaSegmentCountdown,
@@ -84,7 +88,7 @@ class _AutomationQueueScreenState extends State<_AutomationQueueScreen> {
                     MediaSegmentCountdown.none => l10n.settingsNone,
                   },
                 ),
-              if (mediaSegmentActions == _promptSkipSegments)
+              if (advanced && mediaSegmentActions == _promptSkipSegments)
                 EnumPreferenceTile<MediaSegmentAutoHide>(
                   preference: UserPreferences.mediaSegmentAutoHide,
                   title: l10n.settingsSkipButtonAutoHide,
@@ -100,45 +104,48 @@ class _AutomationQueueScreenState extends State<_AutomationQueueScreen> {
           _SectionHeader(l10n.automaticQueuing),
           adaptiveListSection(
             children: [
-              ListTile(
-                leading: const Icon(Icons.queue),
-                title: Text(l10n.mediaQueuing),
-                subtitle: Text(l10n.alwaysOn),
-              ),
+              if (advanced)
+                ListTile(
+                  leading: const Icon(Icons.queue),
+                  title: Text(l10n.mediaQueuing),
+                  subtitle: Text(l10n.alwaysOn),
+                ),
               SwitchPreferenceTile(
                 preference: UserPreferences.autoplayNextEpisode,
                 title: l10n.autoplayNextEpisode,
                 subtitle: l10n.autoplayNextEpisodeSubtitle,
                 icon: Icons.play_circle,
               ),
-              EnumPreferenceTile<NextUpBehavior>(
-                preference: UserPreferences.nextUpBehavior,
-                title: l10n.nextUpDisplay,
-                description: l10n.settingsNextUpDisplayDescription,
-                icon: Icons.skip_next,
-                labelOf: (v) => switch (v) {
-                  NextUpBehavior.extended => l10n.extended,
-                  NextUpBehavior.minimal => l10n.minimal,
-                  NextUpBehavior.disabled => l10n.disabled,
-                },
-              ),
-              if (showNextUpOptions)
-                SliderPreferenceTile(
-                  preference: UserPreferences.nextUpTimeout,
-                  title: l10n.nextUpTimeout,
-                  icon: Icons.timer,
-                  min: 0,
-                  max: 30000,
-                  divisions: 30,
-                  labelOf: (v) => l10n.secondsValue((v / 1000).round()),
-                ),
-              if (showReplaceSkipOutroWithNextUp)
-                SwitchPreferenceTile(
-                  preference: UserPreferences.replaceSkipOutroWithNextUp,
-                  title: l10n.replaceSkipOutroWithNextUpDisplay,
-                  subtitle: l10n.replaceSkipOutroWithNextUpDisplaySubtitle,
+              if (advanced) ...[
+                EnumPreferenceTile<NextUpBehavior>(
+                  preference: UserPreferences.nextUpBehavior,
+                  title: l10n.nextUpDisplay,
+                  description: l10n.settingsNextUpDisplayDescription,
                   icon: Icons.skip_next,
+                  labelOf: (v) => switch (v) {
+                    NextUpBehavior.extended => l10n.extended,
+                    NextUpBehavior.minimal => l10n.minimal,
+                    NextUpBehavior.disabled => l10n.disabled,
+                  },
                 ),
+                if (showNextUpOptions)
+                  SliderPreferenceTile(
+                    preference: UserPreferences.nextUpTimeout,
+                    title: l10n.nextUpTimeout,
+                    icon: Icons.timer,
+                    min: 0,
+                    max: 30000,
+                    divisions: 30,
+                    labelOf: (v) => l10n.secondsValue((v / 1000).round()),
+                  ),
+                if (showReplaceSkipOutroWithNextUp)
+                  SwitchPreferenceTile(
+                    preference: UserPreferences.replaceSkipOutroWithNextUp,
+                    title: l10n.replaceSkipOutroWithNextUpDisplay,
+                    subtitle: l10n.replaceSkipOutroWithNextUpDisplaySubtitle,
+                    icon: Icons.skip_next,
+                  ),
+              ],
               EnumPreferenceTile<StillWatchingBehavior>(
                 preference: UserPreferences.stillWatchingBehavior,
                 title: l10n.stillWatchingPrompt,

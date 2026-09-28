@@ -6,6 +6,7 @@ class _CustomizationCategoryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final advanced = SipflixSettingsMode.advanced;
     return withCleanSettingsTypography(
       context,
       Scaffold(
@@ -22,26 +23,33 @@ class _CustomizationCategoryScreen extends StatelessWidget {
                   autofocus: true,
                   leading: const Icon(Icons.style),
                   title: Text(l10n.settingsGeneralStyle),
-                  subtitle: Text(l10n.settingsGeneralStyleSubtitle),
+                  subtitle: Text(
+                    SipflixSettingsMode.label(
+                      l10n.settingsGeneralStyleSubtitle,
+                      'Clock',
+                    ),
+                  ),
                   onTap: () =>
                       context.pushSettingsScreen(const _GeneralStyleScreen()),
                 ),
-                _TvSettingsListTile(
-                  leading: const Icon(Icons.article_outlined),
-                  title: Text(l10n.settingsDetailsScreen),
-                  subtitle: Text(l10n.settingsDetailsScreenSubtitle),
-                  onTap: () => context.pushSettingsScreen(
-                    const _DetailsScreenSettingsScreen(),
+                if (advanced)
+                  _TvSettingsListTile(
+                    leading: const Icon(Icons.article_outlined),
+                    title: Text(l10n.settingsDetailsScreen),
+                    subtitle: Text(l10n.settingsDetailsScreenSubtitle),
+                    onTap: () => context.pushSettingsScreen(
+                      const _DetailsScreenSettingsScreen(),
+                    ),
                   ),
-                ),
-                _TvSettingsListTile(
-                  leading: const Icon(Icons.view_sidebar),
-                  title: Text(l10n.navigation),
-                  subtitle: Text(l10n.navbarStyleToolbarAppearance),
-                  onTap: () => context.pushSettingsScreen(
-                    const _NavigationCategoryScreen(),
+                if (advanced)
+                  _TvSettingsListTile(
+                    leading: const Icon(Icons.view_sidebar),
+                    title: Text(l10n.navigation),
+                    subtitle: Text(l10n.navbarStyleToolbarAppearance),
+                    onTap: () => context.pushSettingsScreen(
+                      const _NavigationCategoryScreen(),
+                    ),
                   ),
-                ),
                 if (PlatformDetection.isTV)
                   _TvSettingsListTile(
                     leading: const Icon(Icons.wallpaper),
@@ -59,7 +67,12 @@ class _CustomizationCategoryScreen extends StatelessWidget {
                 _TvSettingsListTile(
                   leading: const Icon(Icons.home),
                   title: Text(l10n.homeScreen),
-                  subtitle: Text(l10n.settingsHomePageSubtitle),
+                  subtitle: Text(
+                    SipflixSettingsMode.label(
+                      l10n.settingsHomePageSubtitle,
+                      'Choose which rows show on the home screen',
+                    ),
+                  ),
                   onTap: () => context.pushSettingsScreen(
                     const _HomeScreenCategoryScreen(),
                   ),
@@ -67,7 +80,12 @@ class _CustomizationCategoryScreen extends StatelessWidget {
                 _TvSettingsListTile(
                   leading: const Icon(Icons.video_library),
                   title: Text(l10n.libraries),
-                  subtitle: Text(l10n.settingsLibrariesSubtitle),
+                  subtitle: Text(
+                    SipflixSettingsMode.label(
+                      l10n.settingsLibrariesSubtitle,
+                      'Choose which libraries show',
+                    ),
+                  ),
                   onTap: () => context.pushSettingsScreen(
                     const _LibrariesCategoryScreen(),
                   ),
@@ -77,13 +95,15 @@ class _CustomizationCategoryScreen extends StatelessWidget {
             _SectionHeader(l10n.extras),
             adaptiveListSection(
               children: [
-                _TvSettingsListTile(
-                  leading: const Icon(Icons.featured_play_list),
-                  title: Text(l10n.mediaBar),
-                  subtitle: Text(l10n.featuredContentAppearance),
-                  onTap: () =>
-                      context.pushSettingsScreen(const MediaBarSettingsScreen()),
-                ),
+                if (advanced)
+                  _TvSettingsListTile(
+                    leading: const Icon(Icons.featured_play_list),
+                    title: Text(l10n.mediaBar),
+                    subtitle: Text(l10n.featuredContentAppearance),
+                    onTap: () => context.pushSettingsScreen(
+                      const MediaBarSettingsScreen(),
+                    ),
+                  ),
                 _TvSettingsListTile(
                   leading: const Icon(Icons.preview),
                   title: Text(l10n.localPreviews),
@@ -92,13 +112,15 @@ class _CustomizationCategoryScreen extends StatelessWidget {
                     const LocalPreviewsSettingsScreen(),
                   ),
                 ),
-                _TvSettingsListTile(
-                  leading: const Icon(Icons.auto_awesome),
-                  title: Text(l10n.seasonalEffects),
-                  subtitle: Text(l10n.seasonalEffectsDescription),
-                  onTap: () =>
-                      context.pushSettingsScreen(const _SeasonalEffectsScreen()),
-                ),
+                if (advanced)
+                  _TvSettingsListTile(
+                    leading: const Icon(Icons.auto_awesome),
+                    title: Text(l10n.seasonalEffects),
+                    subtitle: Text(l10n.seasonalEffectsDescription),
+                    onTap: () => context.pushSettingsScreen(
+                      const _SeasonalEffectsScreen(),
+                    ),
+                  ),
                 _TvSettingsListTile(
                   leading: const Icon(Icons.music_note),
                   title: Text(l10n.themeMusic),
@@ -106,6 +128,16 @@ class _CustomizationCategoryScreen extends StatelessWidget {
                   onTap: () =>
                       context.pushSettingsScreen(const _ThemeMusicScreen()),
                 ),
+                // Sipflix: moved here from the hidden Integrations category.
+                if (advanced && !SipflixSettingsMode.showRetired)
+                  _TvSettingsListTile(
+                    leading: const Icon(Icons.star_outline),
+                    title: const Text('Ratings'),
+                    subtitle: const Text('How the star rating looks'),
+                    onTap: () => context.pushSettingsScreen(
+                      const _MetadataRatingsScreen(),
+                    ),
+                  ),
               ],
             ),
           ],

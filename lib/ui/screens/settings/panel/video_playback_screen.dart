@@ -6,6 +6,7 @@ class _VideoPlaybackScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final advanced = SipflixSettingsMode.advanced;
     return Scaffold(
       appBar: buildSettingsAppBar(
         context,
@@ -16,12 +17,13 @@ class _VideoPlaybackScreen extends StatelessWidget {
           const _SectionHeader('Media Player Behavior'),
           adaptiveListSection(
             children: [
-              SwitchPreferenceTile(
-                preference: UserPreferences.showDescriptionOnPause,
-                title: l10n.showDescriptionOnPause,
-                subtitle: l10n.dimVideoShowOverview,
-                icon: Icons.pause_circle_outline,
-              ),
+              if (advanced)
+                SwitchPreferenceTile(
+                  preference: UserPreferences.showDescriptionOnPause,
+                  title: l10n.showDescriptionOnPause,
+                  subtitle: l10n.dimVideoShowOverview,
+                  icon: Icons.pause_circle_outline,
+                ),
               EnumPreferenceTile<ZoomMode>(
                 preference: UserPreferences.playerZoomMode,
                 title: l10n.playerZoomMode,
@@ -33,254 +35,261 @@ class _VideoPlaybackScreen extends StatelessWidget {
                   ZoomMode.stretch => l10n.stretch,
                 },
               ),
-              _TvSettingsListTile(
-                leading: const Icon(Icons.timer_outlined),
-                title: Text(l10n.playbackTimeDisplay),
-                subtitle: Text(l10n.settingsPlaybackTimeDisplayDescription),
-                onTap: () => context.pushSettingsScreen(
-                  const _PlaybackTimeLayoutScreen(),
+              if (advanced) ...[
+                _TvSettingsListTile(
+                  leading: const Icon(Icons.timer_outlined),
+                  title: Text(l10n.playbackTimeDisplay),
+                  subtitle: Text(l10n.settingsPlaybackTimeDisplayDescription),
+                  onTap: () => context.pushSettingsScreen(
+                    const _PlaybackTimeLayoutScreen(),
+                  ),
                 ),
-              ),
-              SwitchPreferenceTile(
-                preference: UserPreferences.trickPlayEnabled,
-                title: l10n.trickPlay,
-                subtitle: l10n.showPreviewThumbnailsWhenSeeking,
-                icon: Icons.image_search,
-              ),
-              if (PlatformDetection.useDesktopUi)
-                EnumPreferenceTile<DesktopScrollWheelAction>(
-                  preference: UserPreferences.desktopScrollWheelAction,
-                  title: l10n.settingsScrollWheelAction,
-                  description: l10n.settingsScrollWheelActionDescription,
-                  icon: Icons.mouse_outlined,
-                  labelOf: (v) => switch (v) {
-                    DesktopScrollWheelAction.off => l10n.scrollWheelActionOff,
-                    DesktopScrollWheelAction.seek => l10n.scrollWheelActionSeek,
-                    DesktopScrollWheelAction.volume =>
-                      l10n.scrollWheelActionVolume,
+                SwitchPreferenceTile(
+                  preference: UserPreferences.trickPlayEnabled,
+                  title: l10n.trickPlay,
+                  subtitle: l10n.showPreviewThumbnailsWhenSeeking,
+                  icon: Icons.image_search,
+                ),
+                if (PlatformDetection.useDesktopUi)
+                  EnumPreferenceTile<DesktopScrollWheelAction>(
+                    preference: UserPreferences.desktopScrollWheelAction,
+                    title: l10n.settingsScrollWheelAction,
+                    description: l10n.settingsScrollWheelActionDescription,
+                    icon: Icons.mouse_outlined,
+                    labelOf: (v) => switch (v) {
+                      DesktopScrollWheelAction.off => l10n.scrollWheelActionOff,
+                      DesktopScrollWheelAction.seek =>
+                        l10n.scrollWheelActionSeek,
+                      DesktopScrollWheelAction.volume =>
+                        l10n.scrollWheelActionVolume,
+                    },
+                  ),
+                StringPickerPreferenceTile(
+                  preference: UserPreferences.resumeSubtractDuration,
+                  title: l10n.resumeRewind,
+                  description: l10n.settingsResumeRewindDescription,
+                  icon: Icons.replay,
+                  options: {
+                    '0': l10n.disabled,
+                    '5': l10n.fiveSeconds,
+                    '10': l10n.tenSeconds,
+                    '15': l10n.fifteenSeconds,
+                    '30': l10n.thirtySeconds,
                   },
                 ),
-              StringPickerPreferenceTile(
-                preference: UserPreferences.resumeSubtractDuration,
-                title: l10n.resumeRewind,
-                description: l10n.settingsResumeRewindDescription,
-                icon: Icons.replay,
-                options: {
-                  '0': l10n.disabled,
-                  '5': l10n.fiveSeconds,
-                  '10': l10n.tenSeconds,
-                  '15': l10n.fifteenSeconds,
-                  '30': l10n.thirtySeconds,
-                },
-              ),
-              IntPickerPreferenceTile(
-                preference: UserPreferences.unpauseRewindDuration,
-                title: l10n.unpauseRewind,
-                description: l10n.settingsUnpauseRewindDescription,
-                icon: Icons.replay_circle_filled,
-                options: {
-                  0: l10n.disabled,
-                  5000: l10n.fiveSeconds,
-                  10000: l10n.tenSeconds,
-                  15000: l10n.fifteenSeconds,
-                  30000: l10n.thirtySeconds,
-                },
-              ),
-              IntPickerPreferenceTile(
-                preference: UserPreferences.skipBackLength,
-                title: l10n.skipBackLength,
-                description: l10n.settingsSkipBackLengthDescription,
-                icon: Icons.fast_rewind,
-                options: {
-                  1000: l10n.settingsOneSecond,
-                  3000: l10n.settingsThreeSeconds,
-                  5000: l10n.fiveSeconds,
-                  10000: l10n.tenSeconds,
-                  15000: l10n.fifteenSeconds,
-                  30000: l10n.thirtySeconds,
-                  45000: l10n.settingsFortyFiveSeconds,
-                  60000: l10n.settingsSixtySeconds,
-                },
-              ),
-              IntPickerPreferenceTile(
-                preference: UserPreferences.skipForwardLength,
-                title: l10n.skipForwardLength,
-                description: l10n.settingsSkipForwardLengthDescription,
-                icon: Icons.fast_forward,
-                options: {
-                  1000: l10n.settingsOneSecond,
-                  3000: l10n.settingsThreeSeconds,
-                  5000: l10n.fiveSeconds,
-                  10000: l10n.tenSeconds,
-                  15000: l10n.fifteenSeconds,
-                  30000: l10n.thirtySeconds,
-                  45000: l10n.settingsFortyFiveSeconds,
-                  60000: l10n.settingsSixtySeconds,
-                },
-              ),
-              if (PlatformDetection.useMobileUi)
-                SwitchPreferenceTile(
-                  preference: UserPreferences.osdLockEnabled,
-                  title: l10n.osdLockButton,
-                  subtitle: l10n.osdLockButtonDescription,
-                  icon: Icons.lock,
+                IntPickerPreferenceTile(
+                  preference: UserPreferences.unpauseRewindDuration,
+                  title: l10n.unpauseRewind,
+                  description: l10n.settingsUnpauseRewindDescription,
+                  icon: Icons.replay_circle_filled,
+                  options: {
+                    0: l10n.disabled,
+                    5000: l10n.fiveSeconds,
+                    10000: l10n.tenSeconds,
+                    15000: l10n.fifteenSeconds,
+                    30000: l10n.thirtySeconds,
+                  },
                 ),
-              _TvSettingsListTile(
-                leading: const Icon(Icons.tune),
-                title: Text(l10n.osdButtons),
-                subtitle: Text(l10n.osdButtonsDescription),
-                onTap: () =>
-                    context.pushSettingsScreen(const _OsdButtonsScreen()),
-              ),
+                IntPickerPreferenceTile(
+                  preference: UserPreferences.skipBackLength,
+                  title: l10n.skipBackLength,
+                  description: l10n.settingsSkipBackLengthDescription,
+                  icon: Icons.fast_rewind,
+                  options: {
+                    1000: l10n.settingsOneSecond,
+                    3000: l10n.settingsThreeSeconds,
+                    5000: l10n.fiveSeconds,
+                    10000: l10n.tenSeconds,
+                    15000: l10n.fifteenSeconds,
+                    30000: l10n.thirtySeconds,
+                    45000: l10n.settingsFortyFiveSeconds,
+                    60000: l10n.settingsSixtySeconds,
+                  },
+                ),
+                IntPickerPreferenceTile(
+                  preference: UserPreferences.skipForwardLength,
+                  title: l10n.skipForwardLength,
+                  description: l10n.settingsSkipForwardLengthDescription,
+                  icon: Icons.fast_forward,
+                  options: {
+                    1000: l10n.settingsOneSecond,
+                    3000: l10n.settingsThreeSeconds,
+                    5000: l10n.fiveSeconds,
+                    10000: l10n.tenSeconds,
+                    15000: l10n.fifteenSeconds,
+                    30000: l10n.thirtySeconds,
+                    45000: l10n.settingsFortyFiveSeconds,
+                    60000: l10n.settingsSixtySeconds,
+                  },
+                ),
+                if (PlatformDetection.useMobileUi)
+                  SwitchPreferenceTile(
+                    preference: UserPreferences.osdLockEnabled,
+                    title: l10n.osdLockButton,
+                    subtitle: l10n.osdLockButtonDescription,
+                    icon: Icons.lock,
+                  ),
+                _TvSettingsListTile(
+                  leading: const Icon(Icons.tune),
+                  title: Text(l10n.osdButtons),
+                  subtitle: Text(l10n.osdButtonsDescription),
+                  onTap: () =>
+                      context.pushSettingsScreen(const _OsdButtonsScreen()),
+                ),
+              ],
             ],
           ),
 
-          const _SectionHeader('Decoding & Rendering'),
-          adaptiveListSection(
-            children: [
-              if (PlatformDetection.isAndroid)
-                EnumPreferenceTile<PlaybackEnginePreference>(
-                  preference: UserPreferences.playbackEnginePreference,
-                  title: PlatformDetection.isTV
-                      ? l10n.settingsPlaybackEngineAndroidTv
-                      : l10n.settingsPlaybackEngineAndroidTv.replaceAll(
-                          'Android TV',
-                          'Android',
-                        ),
-                  description: PlatformDetection.isTV
-                      ? l10n.settingsPlaybackEngineAndroidTvDescription
-                      : l10n.settingsPlaybackEngineAndroidTvDescription
-                            .replaceAll('Android TV', 'Android'),
-                  icon: Icons.video_settings,
-                  labelOf: (v) => switch (v) {
-                    PlaybackEnginePreference.media3 =>
-                      PlatformDetection.isTV
-                          ? l10n.settingsPlaybackEngineMedia3Recommended
-                          : l10n.settingsPlaybackEngineMedia3Legacy,
-                    PlaybackEnginePreference.mpv =>
-                      PlatformDetection.isTV
-                          ? l10n.settingsPlaybackEngineMpvLegacy
-                          : l10n.settingsPlaybackEngineMpvRecommended,
-                  },
-                ),
-              if (PlatformDetection.isAndroid && PlatformDetection.isTV)
-                EnumPreferenceTile<DolbyVisionFallbackBehavior>(
-                  preference: UserPreferences.dolbyVisionFallbackBehavior,
-                  title: l10n.settingsDolbyVisionFallback,
-                  description: l10n.settingsDolbyVisionFallbackDescription,
-                  icon: Icons.hdr_strong,
-                  labelOf: (v) => switch (v) {
-                    DolbyVisionFallbackBehavior.ask => l10n.settingsAskEachTime,
-                    DolbyVisionFallbackBehavior.hdr10Fallback =>
-                      l10n.settingsPreferHdr10Fallback,
-                    DolbyVisionFallbackBehavior.transcode =>
-                      l10n.settingsPreferServerTranscode,
-                  },
-                ),
-              if (PlatformDetection.isAndroid && PlatformDetection.isTV)
-                EnumPreferenceTile<DolbyVisionProfile7DirectPlayBehavior>(
-                  preference:
-                      UserPreferences.dolbyVisionProfile7DirectPlayBehavior,
-                  title: l10n.settingsDolbyVisionProfile7DirectPlay,
-                  description:
-                      l10n.settingsDolbyVisionProfile7DirectPlayDescription,
-                  icon: Icons.movie_filter,
-                  labelOf: (v) => switch (v) {
-                    DolbyVisionProfile7DirectPlayBehavior.auto =>
-                      l10n.settingsAutoAftkrtEnabled,
-                    DolbyVisionProfile7DirectPlayBehavior.enabled =>
-                      l10n.settingsEnabledOnThisDevice,
-                    DolbyVisionProfile7DirectPlayBehavior.disabled =>
-                      l10n.settingsDisabledPreferTranscode,
-                  },
-                ),
-              // Hidden on Apple TV: AetherEngine always uses VideoToolbox for
-              // hardware-capable codecs and software decode otherwise, so there
-              // is no user-facing toggle to honor.
-              if (!PlatformDetection.isWeb && !PlatformDetection.isAppleTV)
+          if (advanced) ...[
+            const _SectionHeader('Decoding & Rendering'),
+            adaptiveListSection(
+              children: [
+                if (PlatformDetection.isAndroid)
+                  EnumPreferenceTile<PlaybackEnginePreference>(
+                    preference: UserPreferences.playbackEnginePreference,
+                    title: PlatformDetection.isTV
+                        ? l10n.settingsPlaybackEngineAndroidTv
+                        : l10n.settingsPlaybackEngineAndroidTv.replaceAll(
+                            'Android TV',
+                            'Android',
+                          ),
+                    description: PlatformDetection.isTV
+                        ? l10n.settingsPlaybackEngineAndroidTvDescription
+                        : l10n.settingsPlaybackEngineAndroidTvDescription
+                              .replaceAll('Android TV', 'Android'),
+                    icon: Icons.video_settings,
+                    labelOf: (v) => switch (v) {
+                      PlaybackEnginePreference.media3 =>
+                        PlatformDetection.isTV
+                            ? l10n.settingsPlaybackEngineMedia3Recommended
+                            : l10n.settingsPlaybackEngineMedia3Legacy,
+                      PlaybackEnginePreference.mpv =>
+                        PlatformDetection.isTV
+                            ? l10n.settingsPlaybackEngineMpvLegacy
+                            : l10n.settingsPlaybackEngineMpvRecommended,
+                    },
+                  ),
+                if (PlatformDetection.isAndroid && PlatformDetection.isTV)
+                  EnumPreferenceTile<DolbyVisionFallbackBehavior>(
+                    preference: UserPreferences.dolbyVisionFallbackBehavior,
+                    title: l10n.settingsDolbyVisionFallback,
+                    description: l10n.settingsDolbyVisionFallbackDescription,
+                    icon: Icons.hdr_strong,
+                    labelOf: (v) => switch (v) {
+                      DolbyVisionFallbackBehavior.ask =>
+                        l10n.settingsAskEachTime,
+                      DolbyVisionFallbackBehavior.hdr10Fallback =>
+                        l10n.settingsPreferHdr10Fallback,
+                      DolbyVisionFallbackBehavior.transcode =>
+                        l10n.settingsPreferServerTranscode,
+                    },
+                  ),
+                if (PlatformDetection.isAndroid && PlatformDetection.isTV)
+                  EnumPreferenceTile<DolbyVisionProfile7DirectPlayBehavior>(
+                    preference:
+                        UserPreferences.dolbyVisionProfile7DirectPlayBehavior,
+                    title: l10n.settingsDolbyVisionProfile7DirectPlay,
+                    description:
+                        l10n.settingsDolbyVisionProfile7DirectPlayDescription,
+                    icon: Icons.movie_filter,
+                    labelOf: (v) => switch (v) {
+                      DolbyVisionProfile7DirectPlayBehavior.auto =>
+                        l10n.settingsAutoAftkrtEnabled,
+                      DolbyVisionProfile7DirectPlayBehavior.enabled =>
+                        l10n.settingsEnabledOnThisDevice,
+                      DolbyVisionProfile7DirectPlayBehavior.disabled =>
+                        l10n.settingsDisabledPreferTranscode,
+                    },
+                  ),
+                // Hidden on Apple TV: AetherEngine always uses VideoToolbox for
+                // hardware-capable codecs and software decode otherwise, so there
+                // is no user-facing toggle to honor.
+                if (!PlatformDetection.isWeb && !PlatformDetection.isAppleTV)
+                  SwitchPreferenceTile(
+                    preference: UserPreferences.hardwareDecoding,
+                    title: l10n.hardwareDecoding,
+                    subtitle: l10n.hardwareDecodingSubtitle,
+                    icon: Icons.memory,
+                  ),
+                if (PlatformDetection.isAndroid && PlatformDetection.isTV)
+                  EnumPreferenceTile<RefreshRateSwitchingBehavior>(
+                    preference: UserPreferences.refreshRateSwitchingBehavior,
+                    title: l10n.refreshRateSwitching,
+                    icon: Icons.speed,
+                    labelOf: (v) => switch (v) {
+                      RefreshRateSwitchingBehavior.disabled => l10n.disabled,
+                      RefreshRateSwitchingBehavior.scaleOnTv => l10n.scaleOnTv,
+                      RefreshRateSwitchingBehavior.scaleOnDevice =>
+                        l10n.scaleOnDevice,
+                    },
+                  ),
+                if (PlatformDetection.isWindows)
+                  EnumPreferenceTile<AutoHdrSwitchingBehavior>(
+                    preference: UserPreferences.autoHdrSwitchingBehavior,
+                    title: l10n.autoHdrSwitching,
+                    description: l10n.autoHdrSwitchingDescription,
+                    icon: Icons.hdr_strong,
+                    labelOf: (v) => switch (v) {
+                      AutoHdrSwitchingBehavior.disabled => l10n.disabled,
+                      AutoHdrSwitchingBehavior.whenFullscreen =>
+                        l10n.whenFullscreen,
+                      AutoHdrSwitchingBehavior.always => l10n.always,
+                    },
+                  ),
                 SwitchPreferenceTile(
-                  preference: UserPreferences.hardwareDecoding,
-                  title: l10n.hardwareDecoding,
-                  subtitle: l10n.hardwareDecodingSubtitle,
-                  icon: Icons.memory,
-                ),
-              if (PlatformDetection.isAndroid && PlatformDetection.isTV)
-                EnumPreferenceTile<RefreshRateSwitchingBehavior>(
-                  preference: UserPreferences.refreshRateSwitchingBehavior,
-                  title: l10n.refreshRateSwitching,
+                  preference: UserPreferences.preflightEnabled,
+                  title: 'Stream Preflight',
+                  subtitle:
+                      'Test your connection before each video and pick '
+                      'the best route and quality automatically',
                   icon: Icons.speed,
-                  labelOf: (v) => switch (v) {
-                    RefreshRateSwitchingBehavior.disabled => l10n.disabled,
-                    RefreshRateSwitchingBehavior.scaleOnTv => l10n.scaleOnTv,
-                    RefreshRateSwitchingBehavior.scaleOnDevice =>
-                      l10n.scaleOnDevice,
-                  },
                 ),
-              if (PlatformDetection.isWindows)
-                EnumPreferenceTile<AutoHdrSwitchingBehavior>(
-                  preference: UserPreferences.autoHdrSwitchingBehavior,
-                  title: l10n.autoHdrSwitching,
-                  description: l10n.autoHdrSwitchingDescription,
-                  icon: Icons.hdr_strong,
-                  labelOf: (v) => switch (v) {
-                    AutoHdrSwitchingBehavior.disabled => l10n.disabled,
-                    AutoHdrSwitchingBehavior.whenFullscreen =>
-                      l10n.whenFullscreen,
-                    AutoHdrSwitchingBehavior.always => l10n.always,
-                  },
+                SwitchPreferenceTile(
+                  preference: UserPreferences.liveTvDirectPlayEnabled,
+                  title: l10n.settingsLiveTvDirect,
+                  subtitle: l10n.settingsLiveTvDirectSubtitle,
+                  icon: Icons.live_tv,
                 ),
-              SwitchPreferenceTile(
-                preference: UserPreferences.preflightEnabled,
-                title: 'Stream Preflight',
-                subtitle: 'Test your connection before each video and pick '
-                    'the best route and quality automatically',
-                icon: Icons.speed,
-              ),
-              SwitchPreferenceTile(
-                preference: UserPreferences.liveTvDirectPlayEnabled,
-                title: l10n.settingsLiveTvDirect,
-                subtitle: l10n.settingsLiveTvDirectSubtitle,
-                icon: Icons.live_tv,
-              ),
-            ],
-          ),
+              ],
+            ),
 
-          _SectionHeader(l10n.transcodingLimits),
-          adaptiveListSection(
-            children: [
-              StringPickerPreferenceTile(
-                preference: UserPreferences.maxBitrate,
-                title: l10n.maxStreamingBitrate,
-                description: l10n.settingsMaxBitrateDescription,
-                icon: Icons.network_check,
-                options: {
-                  'auto': l10n.auto,
-                  '200': '200 Mbps',
-                  '120': '120 Mbps',
-                  '80': '80 Mbps',
-                  '40': '40 Mbps',
-                  '20': '20 Mbps',
-                  '10': '10 Mbps',
-                  '5': '5 Mbps',
-                  '2': '2 Mbps',
-                  '1': '1 Mbps',
-                },
-              ),
-              EnumPreferenceTile<MaxVideoResolution>(
-                preference: UserPreferences.maxVideoResolution,
-                title: l10n.maxResolution,
-                description: l10n.settingsMaxResolutionDescription,
-                icon: Icons.high_quality,
-                labelOf: (v) => switch (v) {
-                  MaxVideoResolution.auto => l10n.auto,
-                  MaxVideoResolution.res480p => '480p',
-                  MaxVideoResolution.res720p => '720p',
-                  MaxVideoResolution.res1080p => '1080p',
-                  MaxVideoResolution.res2160p => '2160p (4K)',
-                },
-              ),
-            ],
-          ),
+            _SectionHeader(l10n.transcodingLimits),
+            adaptiveListSection(
+              children: [
+                StringPickerPreferenceTile(
+                  preference: UserPreferences.maxBitrate,
+                  title: l10n.maxStreamingBitrate,
+                  description: l10n.settingsMaxBitrateDescription,
+                  icon: Icons.network_check,
+                  options: {
+                    'auto': l10n.auto,
+                    '200': '200 Mbps',
+                    '120': '120 Mbps',
+                    '80': '80 Mbps',
+                    '40': '40 Mbps',
+                    '20': '20 Mbps',
+                    '10': '10 Mbps',
+                    '5': '5 Mbps',
+                    '2': '2 Mbps',
+                    '1': '1 Mbps',
+                  },
+                ),
+                EnumPreferenceTile<MaxVideoResolution>(
+                  preference: UserPreferences.maxVideoResolution,
+                  title: l10n.maxResolution,
+                  description: l10n.settingsMaxResolutionDescription,
+                  icon: Icons.high_quality,
+                  labelOf: (v) => switch (v) {
+                    MaxVideoResolution.auto => l10n.auto,
+                    MaxVideoResolution.res480p => '480p',
+                    MaxVideoResolution.res720p => '720p',
+                    MaxVideoResolution.res1080p => '1080p',
+                    MaxVideoResolution.res2160p => '2160p (4K)',
+                  },
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

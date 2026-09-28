@@ -30,6 +30,9 @@ class _MetadataRatingsScreenState extends State<_MetadataRatingsScreen> {
       Builder(
         builder: (context) {
           final l10n = AppLocalizations.of(context);
+          // Sipflix: MDBList/TMDB ratings come through the Moonbase plugin,
+          // which no Sipflix server runs. Only the rating looks stay.
+          const retired = SipflixSettingsMode.showRetired;
           return RequestInitialFocus(
             targetNode: PlatformDetection.isTV
                 ? _additionalRatingsFocusNode
@@ -37,7 +40,7 @@ class _MetadataRatingsScreenState extends State<_MetadataRatingsScreen> {
             child: Scaffold(
               appBar: buildSettingsAppBar(
                 context,
-                Text(l10n.settingsMetadataAndRatings),
+                Text(retired ? l10n.settingsMetadataAndRatings : 'Ratings'),
               ),
               body: FocusScope(
                 node: _metadataScope,
@@ -47,30 +50,36 @@ class _MetadataRatingsScreenState extends State<_MetadataRatingsScreen> {
                     _SectionHeader(l10n.ratings),
                     adaptiveListSection(
                       children: [
-                        SwitchPreferenceTile(
-                          focusNode: _additionalRatingsFocusNode,
-                          preference: UserPreferences.enableAdditionalRatings,
-                          title: l10n.additionalRatings,
-                          subtitle: l10n.showMdbListAndTmdbRatings,
-                          icon: Icons.star,
-                          onChanged: _pushPersonalizationSync,
-                        ),
-                        _TvSettingsListTile(
-                          leading: const Icon(Icons.reorder),
-                          title: Text(l10n.ratingSources),
-                          subtitle: Text(l10n.ratingSourcesDescription),
-                          onTap: () => context.pushSettingsScreen(
-                            const RatingsConfigScreen(),
+                        if (retired)
+                          SwitchPreferenceTile(
+                            focusNode: _additionalRatingsFocusNode,
+                            preference: UserPreferences.enableAdditionalRatings,
+                            title: l10n.additionalRatings,
+                            subtitle: l10n.showMdbListAndTmdbRatings,
+                            icon: Icons.star,
+                            onChanged: _pushPersonalizationSync,
                           ),
-                        ),
+                        if (retired)
+                          _TvSettingsListTile(
+                            leading: const Icon(Icons.reorder),
+                            title: Text(l10n.ratingSources),
+                            subtitle: Text(l10n.ratingSourcesDescription),
+                            onTap: () => context.pushSettingsScreen(
+                              const RatingsConfigScreen(),
+                            ),
+                          ),
+                        if (retired)
+                          SwitchPreferenceTile(
+                            preference: UserPreferences.enableEpisodeRatings,
+                            title: l10n.episodeRatings,
+                            subtitle: l10n.showRatingsOnEpisodes,
+                            icon: Icons.stars,
+                            onChanged: _pushPersonalizationSync,
+                          ),
                         SwitchPreferenceTile(
-                          preference: UserPreferences.enableEpisodeRatings,
-                          title: l10n.episodeRatings,
-                          subtitle: l10n.showRatingsOnEpisodes,
-                          icon: Icons.stars,
-                          onChanged: _pushPersonalizationSync,
-                        ),
-                        SwitchPreferenceTile(
+                          focusNode: retired
+                              ? null
+                              : _additionalRatingsFocusNode,
                           preference: UserPreferences.showRatingLabels,
                           title: l10n.ratingLabels,
                           subtitle: l10n.showLabelsNextToIcons,

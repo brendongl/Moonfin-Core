@@ -42,6 +42,7 @@ import '../../../auth/repositories/server_repository.dart';
 import '../../../data/services/media_server_client_factory.dart';
 import '../../../sipflix/sipflix_connection_manager.dart';
 import '../../../sipflix/sipflix_servers.dart';
+import '../../../sipflix/sipflix_settings_mode.dart';
 import '../../../sipflix/sipflix_sign_in.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../playback/audio_capability_profile.dart';
@@ -269,7 +270,10 @@ class _SettingsSidePanelState extends ConsumerState<SettingsSidePanel> {
       _PanelEntry(
         icon: Icons.lock,
         title: l10n.settingsAccountSecurity,
-        subtitle: l10n.settingsAccountSecuritySubtitle,
+        subtitle: SipflixSettingsMode.label(
+          l10n.settingsAccountSecuritySubtitle,
+          'PIN code, language and parental controls',
+        ),
         focusNode: (!showAdmin && enablePanelAutofocus)
             ? _firstFocusNode
             : null,
@@ -279,23 +283,35 @@ class _SettingsSidePanelState extends ConsumerState<SettingsSidePanel> {
       _PanelEntry(
         icon: Icons.palette,
         title: l10n.settingsPersonalization,
-        subtitle: l10n.settingsPersonalizationSubtitle,
+        subtitle: SipflixSettingsMode.label(
+          l10n.settingsPersonalizationSubtitle,
+          'Clock, screensaver, home rows and libraries',
+        ),
         onTap: () =>
             context.pushSettingsScreen(const _CustomizationCategoryScreen()),
       ),
       _PanelEntry(
         icon: Icons.play_circle,
-        title: l10n.settingsPlaybackSyncplay,
-        subtitle: l10n.settingsPlaybackSyncplaySubtitle,
+        title: SipflixSettingsMode.label(
+          l10n.settingsPlaybackSyncplay,
+          l10n.playback,
+        ),
+        subtitle: SipflixSettingsMode.label(
+          l10n.settingsPlaybackSyncplaySubtitle,
+          'Picture, sound, subtitles and autoplay',
+        ),
         onTap: () =>
             context.pushSettingsScreen(const _PlaybackCategoryScreen()),
       ),
-      _PanelEntry(
-        icon: Icons.hub,
-        title: l10n.integrations,
-        subtitle: l10n.settingsIntegrationsSubtitle,
-        onTap: () => context.pushSettingsScreen(const _IntegrationsScreen()),
-      ),
+      // Sipflix: everything under Integrations needs the Moonbase plugin,
+      // which no Sipflix server runs. Rating looks moved to Personalization.
+      if (SipflixSettingsMode.showRetired)
+        _PanelEntry(
+          icon: Icons.hub,
+          title: l10n.integrations,
+          subtitle: l10n.settingsIntegrationsSubtitle,
+          onTap: () => context.pushSettingsScreen(const _IntegrationsScreen()),
+        ),
       if (_showThemeEditorEntry)
         _PanelEntry(
           icon: Icons.brush,
@@ -306,7 +322,10 @@ class _SettingsSidePanelState extends ConsumerState<SettingsSidePanel> {
       _PanelEntry(
         icon: Icons.info_outline,
         title: l10n.aboutTitle,
-        subtitle: l10n.settingsAboutSubtitle,
+        subtitle: SipflixSettingsMode.label(
+          l10n.settingsAboutSubtitle,
+          'App version',
+        ),
         onTap: () => context.pushSettingsScreen(const _AboutCategoryScreen()),
       ),
     ];
@@ -342,6 +361,19 @@ class _SettingsSidePanelState extends ConsumerState<SettingsSidePanel> {
                         children: [
                           for (final entry in entries)
                             _PanelEntryTile(entry: entry),
+                        ],
+                      ),
+                      adaptiveListSection(
+                        children: [
+                          SwitchPreferenceTile(
+                            preference: UserPreferences.sipflixAdvancedSettings,
+                            title: 'Advanced mode',
+                            subtitle:
+                                'Show every setting. Leave off unless '
+                                'support asks you to change something.',
+                            icon: Icons.tune,
+                            onChangedValue: (_) => setState(() {}),
+                          ),
                         ],
                       ),
                     ],

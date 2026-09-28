@@ -6,6 +6,7 @@ import 'package:moonfin_design/moonfin_design.dart';
 import 'package:jellyfin_preference/jellyfin_preference.dart';
 
 import '../../../preference/user_preferences.dart';
+import '../../../sipflix/sipflix_settings_mode.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../util/idiom/app_ui_idiom.dart';
 import '../../../util/platform_detection.dart';
@@ -121,6 +122,8 @@ class _SubtitleCustomizationScreenState
 
   Widget _buildContent(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    // Sipflix: Basic mode keeps only the size.
+    final advanced = SipflixSettingsMode.advanced;
     return withCleanSettingsTypography(
       context,
       Scaffold(
@@ -131,22 +134,24 @@ class _SubtitleCustomizationScreenState
           ),
           children: [
             const SubtitlePreview(),
-            _ColorPickerTile(
-              title: l10n.textFillColor,
-              icon: Icons.format_color_text,
-              preference: UserPreferences.subtitlesTextColor,
-              allowTransparent: false,
-            ),
-            _ColorPickerTile(
-              title: l10n.textStrokeColor,
-              icon: Icons.border_color,
-              preference: UserPreferences.subtitleTextStrokeColor,
-            ),
-            _ColorPickerTile(
-              title: l10n.backgroundColor,
-              icon: Icons.format_color_fill,
-              preference: UserPreferences.subtitlesBackgroundColor,
-            ),
+            if (advanced) ...[
+              _ColorPickerTile(
+                title: l10n.textFillColor,
+                icon: Icons.format_color_text,
+                preference: UserPreferences.subtitlesTextColor,
+                allowTransparent: false,
+              ),
+              _ColorPickerTile(
+                title: l10n.textStrokeColor,
+                icon: Icons.border_color,
+                preference: UserPreferences.subtitleTextStrokeColor,
+              ),
+              _ColorPickerTile(
+                title: l10n.backgroundColor,
+                icon: Icons.format_color_fill,
+                preference: UserPreferences.subtitlesBackgroundColor,
+              ),
+            ],
             _sliderTile(
               context: context,
               icon: Icons.format_size,
@@ -166,26 +171,27 @@ class _SubtitleCustomizationScreenState
               step: 2,
               labelBuilder: (v) => l10n.pixelValue(v.round()),
             ),
-            _sliderTile(
-              context: context,
-              icon: Icons.vertical_align_bottom,
-              label: l10n.verticalOffset,
-              binding: _offsetBind,
-              outerNode: _offsetOuterNode,
-              innerNode: _offsetInnerNode,
-              focused: _offsetFocused,
-              onFocusChange: (f) {
-                if (_offsetFocused != f && mounted) {
-                  setState(() => _offsetFocused = f);
-                }
-              },
-              min: 0.0,
-              max: 0.5,
-              divisions: 50,
-              step: 0.01,
-              swallowDown: true,
-              labelBuilder: (v) => l10n.percentValue((v * 100).round()),
-            ),
+            if (advanced)
+              _sliderTile(
+                context: context,
+                icon: Icons.vertical_align_bottom,
+                label: l10n.verticalOffset,
+                binding: _offsetBind,
+                outerNode: _offsetOuterNode,
+                innerNode: _offsetInnerNode,
+                focused: _offsetFocused,
+                onFocusChange: (f) {
+                  if (_offsetFocused != f && mounted) {
+                    setState(() => _offsetFocused = f);
+                  }
+                },
+                min: 0.0,
+                max: 0.5,
+                divisions: 50,
+                step: 0.01,
+                swallowDown: true,
+                labelBuilder: (v) => l10n.percentValue((v * 100).round()),
+              ),
           ],
         ),
       ),

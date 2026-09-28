@@ -10,8 +10,8 @@ moonfin:
   # published OTA build — the updater compares versionCode, so a repeat
   # number means boxes never see the update. Kept well above upstream's
   # numbering so a merge can't overtake a build already on the fleet.
-  sipflix_tv_version: 2.4.0-sipflix.34
-  sipflix_tv_build_number: 2400034
+  sipflix_tv_version: 2.4.0-sipflix.35
+  sipflix_tv_build_number: 2400035
 
 environment:
   sdk: ^3.11.0

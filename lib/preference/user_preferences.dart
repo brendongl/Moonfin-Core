@@ -2416,6 +2416,12 @@ class UserPreferences extends ChangeNotifier {
     defaultValue: true,
   );
 
+  /// Sipflix: show every setting instead of the Basic list.
+  static final sipflixAdvancedSettings = Preference(
+    key: 'sipflix_advanced_settings',
+    defaultValue: false,
+  );
+
   static final updateNotificationsEnabled = Preference(
     key: 'update_notifications_enabled',
     defaultValue: true,

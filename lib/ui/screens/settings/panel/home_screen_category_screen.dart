@@ -33,109 +33,112 @@ class _HomeScreenCategoryScreenState extends State<_HomeScreenCategoryScreen> {
         rowsStyle == HomeRowsStyle.v1 &&
         _prefs.get(UserPreferences.homeRowInfoOverlay);
     final isPaddingEnabled = !isFullScreenRows && !isInfoOverlayOn;
+    final advanced = SipflixSettingsMode.advanced;
     return Scaffold(
       appBar: buildSettingsAppBar(context, Text(l10n.homeScreen)),
       body: ListView(
         children: [
-          _SectionHeader(l10n.homeRowDisplay),
-          adaptiveListSection(
-            children: [
-              EnumPreferenceTile<HomeRowsStyle>(
-                preference: UserPreferences.homeRowsStyle,
-                title: l10n.rowsType,
-                description: l10n.rowsTypeDescription,
-                icon: Icons.view_carousel,
-                labelOf: (style) => _rowsStyleLabel(l10n, style),
-                onChanged: () {
-                  _pushPersonalizationSync();
-                  _reloadHomeRows();
-                  if (!mounted) return;
-                  setState(() {});
-                },
-              ),
-              SwitchPreferenceTile(
-                preference: UserPreferences.mergeContinueWatchingNextUp,
-                title: l10n.mergeContinueWatchingAndNextUp,
-                subtitle: l10n.combineBothRows,
-                icon: Icons.merge_type,
-                onChanged: _pushPersonalizationSync,
-              ),
-              IntPickerPreferenceTile(
-                preference: UserPreferences.nextUpMaxDays,
-                title: l10n.nextUpMaxDays,
-                description: l10n.nextUpMaxDaysDescription,
-                icon: Icons.event_busy,
-                options: {
-                  0: l10n.noLimit,
-                  30: l10n.daysValue(30),
-                  90: l10n.daysValue(90),
-                  180: l10n.daysValue(180),
-                  365: l10n.daysValue(365),
-                  730: l10n.daysValue(730),
-                },
-                onChanged: () {
-                  _pushPersonalizationSync();
-                  _reloadHomeRows();
-                },
-              ),
-              SwitchPreferenceTile(
-                preference: UserPreferences.seriesThumbnailsEnabled,
-                title: l10n.seriesThumbnails,
-                subtitle: l10n.seriesThumbnailsDescription,
-                icon: Icons.image_aspect_ratio,
-                onChanged: _pushPersonalizationSync,
-              ),
-              if (!PlatformDetection.useMobileUi)
+          if (advanced) ...[
+            _SectionHeader(l10n.homeRowDisplay),
+            adaptiveListSection(
+              children: [
+                EnumPreferenceTile<HomeRowsStyle>(
+                  preference: UserPreferences.homeRowsStyle,
+                  title: l10n.rowsType,
+                  description: l10n.rowsTypeDescription,
+                  icon: Icons.view_carousel,
+                  labelOf: (style) => _rowsStyleLabel(l10n, style),
+                  onChanged: () {
+                    _pushPersonalizationSync();
+                    _reloadHomeRows();
+                    if (!mounted) return;
+                    setState(() {});
+                  },
+                ),
                 SwitchPreferenceTile(
-                  preference: UserPreferences.fullScreenRows,
-                  title: l10n.fullScreenRows,
-                  subtitle: l10n.fullScreenRowsDescription,
+                  preference: UserPreferences.mergeContinueWatchingNextUp,
+                  title: l10n.mergeContinueWatchingAndNextUp,
+                  subtitle: l10n.combineBothRows,
+                  icon: Icons.merge_type,
+                  onChanged: _pushPersonalizationSync,
+                ),
+                IntPickerPreferenceTile(
+                  preference: UserPreferences.nextUpMaxDays,
+                  title: l10n.nextUpMaxDays,
+                  description: l10n.nextUpMaxDaysDescription,
+                  icon: Icons.event_busy,
+                  options: {
+                    0: l10n.noLimit,
+                    30: l10n.daysValue(30),
+                    90: l10n.daysValue(90),
+                    180: l10n.daysValue(180),
+                    365: l10n.daysValue(365),
+                    730: l10n.daysValue(730),
+                  },
+                  onChanged: () {
+                    _pushPersonalizationSync();
+                    _reloadHomeRows();
+                  },
+                ),
+                SwitchPreferenceTile(
+                  preference: UserPreferences.seriesThumbnailsEnabled,
+                  title: l10n.seriesThumbnails,
+                  subtitle: l10n.seriesThumbnailsDescription,
                   icon: Icons.image_aspect_ratio,
-                  onChanged: () {
-                    _pushPersonalizationSync();
-                    if (!mounted) return;
-                    setState(() {});
-                  },
+                  onChanged: _pushPersonalizationSync,
                 ),
-              if (rowsStyle == HomeRowsStyle.v1)
-                SwitchPreferenceTile(
-                  preference: UserPreferences.homeRowInfoOverlay,
-                  title: l10n.homeRowInfoOverlay,
-                  subtitle: l10n.showTitleMetadataOnHomeRows,
-                  icon: Icons.info_outline,
-                  onChanged: () {
-                    _pushPersonalizationSync();
-                    if (!mounted) return;
-                    setState(() {});
-                  },
+                if (!PlatformDetection.useMobileUi)
+                  SwitchPreferenceTile(
+                    preference: UserPreferences.fullScreenRows,
+                    title: l10n.fullScreenRows,
+                    subtitle: l10n.fullScreenRowsDescription,
+                    icon: Icons.image_aspect_ratio,
+                    onChanged: () {
+                      _pushPersonalizationSync();
+                      if (!mounted) return;
+                      setState(() {});
+                    },
+                  ),
+                if (rowsStyle == HomeRowsStyle.v1)
+                  SwitchPreferenceTile(
+                    preference: UserPreferences.homeRowInfoOverlay,
+                    title: l10n.homeRowInfoOverlay,
+                    subtitle: l10n.showTitleMetadataOnHomeRows,
+                    icon: Icons.info_outline,
+                    onChanged: () {
+                      _pushPersonalizationSync();
+                      if (!mounted) return;
+                      setState(() {});
+                    },
+                  ),
+                SliderPreferenceTile(
+                  preference: rowsStyle == HomeRowsStyle.v2
+                      ? UserPreferences.modernHomeRowsPadding
+                      : UserPreferences.classicHomeRowsPadding,
+                  title: l10n.homeRowsPadding,
+                  description: l10n.homeRowsPaddingDescription,
+                  icon: Icons.unfold_more,
+                  min: rowsStyle == HomeRowsStyle.v2 ? 360 : 10,
+                  max: rowsStyle == HomeRowsStyle.v2 ? 560 : 130,
+                  divisions: rowsStyle == HomeRowsStyle.v2 ? 10 : 6,
+                  enabled: isPaddingEnabled,
+                  onChangeEnd: _pushPersonalizationSync,
                 ),
-              SliderPreferenceTile(
-                preference: rowsStyle == HomeRowsStyle.v2
-                    ? UserPreferences.modernHomeRowsPadding
-                    : UserPreferences.classicHomeRowsPadding,
-                title: l10n.homeRowsPadding,
-                description: l10n.homeRowsPaddingDescription,
-                icon: Icons.unfold_more,
-                min: rowsStyle == HomeRowsStyle.v2 ? 360 : 10,
-                max: rowsStyle == HomeRowsStyle.v2 ? 560 : 130,
-                divisions: rowsStyle == HomeRowsStyle.v2 ? 10 : 6,
-                enabled: isPaddingEnabled,
-                onChangeEnd: _pushPersonalizationSync,
-              ),
-              EnumPreferenceTile<PosterSize>(
-                preference: UserPreferences.posterSize,
-                title: l10n.cardSize,
-                icon: Icons.photo_size_select_large,
-                labelOf: (v) => switch (v) {
-                  PosterSize.small => l10n.small,
-                  PosterSize.medium => l10n.medium,
-                  PosterSize.large => l10n.large,
-                  PosterSize.extraLarge => l10n.extraLarge,
-                },
-                onChanged: _pushPersonalizationSync,
-              ),
-            ],
-          ),
+                EnumPreferenceTile<PosterSize>(
+                  preference: UserPreferences.posterSize,
+                  title: l10n.cardSize,
+                  icon: Icons.photo_size_select_large,
+                  labelOf: (v) => switch (v) {
+                    PosterSize.small => l10n.small,
+                    PosterSize.medium => l10n.medium,
+                    PosterSize.large => l10n.large,
+                    PosterSize.extraLarge => l10n.extraLarge,
+                  },
+                  onChanged: _pushPersonalizationSync,
+                ),
+              ],
+            ),
+          ],
 
           _SectionHeader(l10n.homeRowSections),
           adaptiveListSection(
@@ -149,14 +152,15 @@ class _HomeScreenCategoryScreenState extends State<_HomeScreenCategoryScreen> {
                   const HomeSectionsScreen(showGeneralOptions: false),
                 ),
               ),
-              _TvSettingsListTile(
-                leading: const Icon(Icons.tune),
-                title: Text(l10n.homeRowToggles),
-                subtitle: Text(l10n.homeRowTogglesSubtitle),
-                onTap: () =>
-                    context.pushSettingsScreen(const HomeRowTogglesScreen()),
-              ),
-              if (rowsStyle == HomeRowsStyle.v1)
+              if (advanced)
+                _TvSettingsListTile(
+                  leading: const Icon(Icons.tune),
+                  title: Text(l10n.homeRowToggles),
+                  subtitle: Text(l10n.homeRowTogglesSubtitle),
+                  onTap: () =>
+                      context.pushSettingsScreen(const HomeRowTogglesScreen()),
+                ),
+              if (rowsStyle == HomeRowsStyle.v1 && advanced)
                 _TvSettingsListTile(
                   leading: const Icon(Icons.image_outlined),
                   title: Text(l10n.perRowImageTypeSelection),
@@ -165,11 +169,14 @@ class _HomeScreenCategoryScreenState extends State<_HomeScreenCategoryScreen> {
                     const HomeRowsImageTypeScreen(),
                   ),
                 ),
-              if (GetIt.instance<PluginSyncService>().seerrAvailable)
+              if (SipflixSettingsMode.showRetired &&
+                  GetIt.instance<PluginSyncService>().seerrAvailable)
                 _TvSettingsListTile(
                   leading: const Icon(Icons.link),
                   title: const Text('External Home Rows'),
-                  subtitle: const Text('Set-up external sources for Home Rows (e.g., Seerr, IMDb, Letterboxd, and more!)'),
+                  subtitle: const Text(
+                    'Set-up external sources for Home Rows (e.g., Seerr, IMDb, Letterboxd, and more!)',
+                  ),
                   onTap: () =>
                       context.pushSettingsScreen(const _ExternalListsScreen()),
                 ),

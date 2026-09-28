@@ -213,6 +213,7 @@ class _AudioPreferencesScreenState extends State<_AudioPreferencesScreen> {
       fallbackAudioLangOptions[code] = displayName;
     }
 
+    final advanced = SipflixSettingsMode.advanced;
     return Scaffold(
       appBar: buildSettingsAppBar(context, Text(l10n.settingsAudioPreferences)),
       body: ListView(
@@ -237,28 +238,30 @@ class _AudioPreferencesScreenState extends State<_AudioPreferencesScreen> {
                 icon: Icons.language,
                 options: defaultAudioLangOptions,
               ),
-              StringPickerPreferenceTile(
-                preference: UserPreferences.fallbackAudioLanguage,
-                title: l10n.fallbackAudioLanguage,
-                icon: Icons.language,
-                options: fallbackAudioLangOptions,
-              ),
-              SwitchPreferenceTile(
-                preference: UserPreferences.preferDefaultAudioTrack,
-                title: l10n.preferDefaultAudioTrack,
-                subtitle: l10n.preferDefaultAudioTrackDescription,
-                icon: Icons.audiotrack,
-              ),
-              SwitchPreferenceTile(
-                preference: UserPreferences.preferAudioDescription,
-                title: l10n.preferAudioDescription,
-                subtitle: l10n.preferAudioDescriptionDescription,
-                icon: Icons.hearing,
-              ),
+              if (advanced) ...[
+                StringPickerPreferenceTile(
+                  preference: UserPreferences.fallbackAudioLanguage,
+                  title: l10n.fallbackAudioLanguage,
+                  icon: Icons.language,
+                  options: fallbackAudioLangOptions,
+                ),
+                SwitchPreferenceTile(
+                  preference: UserPreferences.preferDefaultAudioTrack,
+                  title: l10n.preferDefaultAudioTrack,
+                  subtitle: l10n.preferDefaultAudioTrackDescription,
+                  icon: Icons.audiotrack,
+                ),
+                SwitchPreferenceTile(
+                  preference: UserPreferences.preferAudioDescription,
+                  title: l10n.preferAudioDescription,
+                  subtitle: l10n.preferAudioDescriptionDescription,
+                  icon: Icons.hearing,
+                ),
+              ],
             ],
           ),
 
-          if (!PlatformDetection.isWeb) ...[
+          if (!PlatformDetection.isWeb && advanced) ...[
             const _SectionHeader('Audio Output'),
             adaptiveListSection(
               children: [
@@ -390,7 +393,7 @@ class _AudioPreferencesScreenState extends State<_AudioPreferencesScreen> {
             ),
           ],
 
-          if (AudioCapabilityProbe.isSupported) ...[
+          if (AudioCapabilityProbe.isSupported && advanced) ...[
             _SectionHeader(l10n.settingsDetectedAudioCapabilities),
             adaptiveListSection(
               children: [

@@ -6,6 +6,7 @@ class _LibrariesCategoryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final advanced = SipflixSettingsMode.advanced;
     return Scaffold(
       appBar: buildSettingsAppBar(context, Text(l10n.libraries)),
       body: ListView(
@@ -20,92 +21,107 @@ class _LibrariesCategoryScreen extends StatelessWidget {
                 onTap: () =>
                     context.pushSettingsScreen(const LibraryVisibilityScreen()),
               ),
-              SwitchPreferenceTile(
-                preference: UserPreferences.enableMultiServerLibraries,
-                title: l10n.multiServerLibraries,
-                subtitle: l10n.showLibrariesFromAllServers,
-                icon: Icons.dns,
-                onChanged: _pushPersonalizationSync,
-              ),
-              SwitchPreferenceTile(
-                preference: UserPreferences.mergeRecentRowsByType,
-                title: l10n.mergeRecentRowsByType,
-                subtitle: l10n.mergeRecentRowsByTypeDescription,
-                icon: Icons.library_books,
-                onChanged: _pushPersonalizationSync,
-              ),
+              // Sipflix: a box holds one server.
+              if (SipflixSettingsMode.showRetired)
+                SwitchPreferenceTile(
+                  preference: UserPreferences.enableMultiServerLibraries,
+                  title: l10n.multiServerLibraries,
+                  subtitle: l10n.showLibrariesFromAllServers,
+                  icon: Icons.dns,
+                  onChanged: _pushPersonalizationSync,
+                ),
+              if (advanced)
+                SwitchPreferenceTile(
+                  preference: UserPreferences.mergeRecentRowsByType,
+                  title: l10n.mergeRecentRowsByType,
+                  subtitle: l10n.mergeRecentRowsByTypeDescription,
+                  icon: Icons.library_books,
+                  onChanged: _pushPersonalizationSync,
+                ),
             ],
           ),
-          _SectionHeader(l10n.libraryView),
-          adaptiveListSection(
-            children: [
-              SwitchPreferenceTile(
-                preference: UserPreferences.groupItemsIntoCollections,
-                title: l10n.groupItemsIntoCollections,
-                subtitle: l10n.hideCollectionAssociatedItems,
-                icon: Icons.collections_bookmark,
-                onChanged: () async {
-                  _pushPersonalizationSync();
-                  final prefs = GetIt.instance<PreferenceStore>();
-                  final isEnabled = prefs.get(UserPreferences.groupItemsIntoCollections);
-                  if (isEnabled) {
-                    final client = GetIt.instance<MediaServerClient>();
-                    try {
-                      final config =
-                          await client.adminSystemApi.getServerConfiguration();
-                      final groupMovies =
-                          (config['EnableGroupingMoviesIntoCollections'] as bool?) ??
-                          (config['EnableGroupingIntoCollections'] as bool?) ??
-                          false;
-                      final groupShows =
-                          (config['EnableGroupingShowsIntoCollections'] as bool?) ??
-                          (config['EnableGroupingIntoCollections'] as bool?) ??
-                          false;
-                      if (groupMovies && groupShows) {
-                        return;
-                      }
-                    } catch (_) {}
-
-                    if (!context.mounted) return;
-                    showFocusRestoringDialog(
-                      context: context,
-                      builder: (dialogContext) => AlertDialog(
-                        title: Text(l10n.groupItemsIntoCollectionsDialogTitle),
-                        content: Text(l10n.groupItemsIntoCollectionsDialogMessage),
-                        actions: [
-                          TextButton(
-                            autofocus: true,
-                            onPressed: () => Navigator.pop(dialogContext),
-                            child: Text(l10n.ok),
-                          ),
-                        ],
-                      ),
+          if (advanced) ...[
+            _SectionHeader(l10n.libraryView),
+            adaptiveListSection(
+              children: [
+                SwitchPreferenceTile(
+                  preference: UserPreferences.groupItemsIntoCollections,
+                  title: l10n.groupItemsIntoCollections,
+                  subtitle: l10n.hideCollectionAssociatedItems,
+                  icon: Icons.collections_bookmark,
+                  onChanged: () async {
+                    _pushPersonalizationSync();
+                    final prefs = GetIt.instance<PreferenceStore>();
+                    final isEnabled = prefs.get(
+                      UserPreferences.groupItemsIntoCollections,
                     );
-                  }
-                },
-              ),
-              SwitchPreferenceTile(
-                preference: UserPreferences.showMediaDetailsOnLibraryPage,
-                title: l10n.showMediaDetailsOnLibraryPage,
-                subtitle: l10n.showMediaDetailsOnLibraryPageDescription,
-                icon: Icons.info_outline,
-                onChanged: _pushPersonalizationSync,
-              ),
-              SwitchPreferenceTile(
-                preference: UserPreferences.useDetailedSubHeadings,
-                title: l10n.useDetailedSubHeadings,
-                subtitle: l10n.useDetailedSubHeadingsDescription,
-                icon: Icons.subtitles,
-                onChanged: _pushPersonalizationSync,
-              ),
-              SwitchPreferenceTile(
-                preference: UserPreferences.hideBackdropsInLibraries,
-                title: l10n.hideBackdropsInLibraries,
-                icon: Icons.hide_image_outlined,
-                onChanged: _pushPersonalizationSync,
-              ),
-            ],
-          ),
+                    if (isEnabled) {
+                      final client = GetIt.instance<MediaServerClient>();
+                      try {
+                        final config = await client.adminSystemApi
+                            .getServerConfiguration();
+                        final groupMovies =
+                            (config['EnableGroupingMoviesIntoCollections']
+                                as bool?) ??
+                            (config['EnableGroupingIntoCollections']
+                                as bool?) ??
+                            false;
+                        final groupShows =
+                            (config['EnableGroupingShowsIntoCollections']
+                                as bool?) ??
+                            (config['EnableGroupingIntoCollections']
+                                as bool?) ??
+                            false;
+                        if (groupMovies && groupShows) {
+                          return;
+                        }
+                      } catch (_) {}
+
+                      if (!context.mounted) return;
+                      showFocusRestoringDialog(
+                        context: context,
+                        builder: (dialogContext) => AlertDialog(
+                          title: Text(
+                            l10n.groupItemsIntoCollectionsDialogTitle,
+                          ),
+                          content: Text(
+                            l10n.groupItemsIntoCollectionsDialogMessage,
+                          ),
+                          actions: [
+                            TextButton(
+                              autofocus: true,
+                              onPressed: () => Navigator.pop(dialogContext),
+                              child: Text(l10n.ok),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                  },
+                ),
+                SwitchPreferenceTile(
+                  preference: UserPreferences.showMediaDetailsOnLibraryPage,
+                  title: l10n.showMediaDetailsOnLibraryPage,
+                  subtitle: l10n.showMediaDetailsOnLibraryPageDescription,
+                  icon: Icons.info_outline,
+                  onChanged: _pushPersonalizationSync,
+                ),
+                SwitchPreferenceTile(
+                  preference: UserPreferences.useDetailedSubHeadings,
+                  title: l10n.useDetailedSubHeadings,
+                  subtitle: l10n.useDetailedSubHeadingsDescription,
+                  icon: Icons.subtitles,
+                  onChanged: _pushPersonalizationSync,
+                ),
+                SwitchPreferenceTile(
+                  preference: UserPreferences.hideBackdropsInLibraries,
+                  title: l10n.hideBackdropsInLibraries,
+                  icon: Icons.hide_image_outlined,
+                  onChanged: _pushPersonalizationSync,
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

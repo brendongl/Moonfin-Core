@@ -7,6 +7,10 @@ class _AboutCategoryScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final appVersion = GetIt.instance<DeviceInfo>().appVersion;
     final l10n = AppLocalizations.of(context);
+    final advanced = SipflixSettingsMode.advanced;
+    // Sipflix: updates come by OTA, and the issue tracker, Discord and
+    // donation links are upstream Moonfin's, not Sipflix support.
+    const retired = SipflixSettingsMode.showRetired;
     return Scaffold(
       appBar: buildSettingsAppBar(context, Text(l10n.aboutTitle)),
       body: ListView(
@@ -35,83 +39,91 @@ class _AboutCategoryScreen extends StatelessWidget {
                 trailing: const SizedBox.shrink(),
                 onTap: () {},
               ),
-              if (AppDistribution.supportsInAppUpdates)
+              if (retired && AppDistribution.supportsInAppUpdates)
                 const _CheckForUpdatesTile(),
-              _TvSettingsListTile(
-                leading: const Icon(Icons.code),
-                title: Text(l10n.sourceCode),
-                subtitle: Text(l10n.sourceCodeUrl),
-                onTap: () => showQrOrLaunch(
-                  context,
-                  url: 'https://github.com/Moonfin-Client/Moonfin-Core',
-                  title: l10n.sourceCode,
+              if (advanced)
+                _TvSettingsListTile(
+                  leading: const Icon(Icons.code),
+                  title: Text(l10n.sourceCode),
+                  subtitle: Text(l10n.sourceCodeUrl),
+                  onTap: () => showQrOrLaunch(
+                    context,
+                    url: 'https://github.com/Moonfin-Client/Moonfin-Core',
+                    title: l10n.sourceCode,
+                  ),
                 ),
-              ),
-              _TvSettingsListTile(
-                leading: const Icon(Icons.bug_report),
-                title: Text(l10n.settingsReportAnIssue),
-                subtitle: Text(l10n.settingsReportAnIssueSubtitle),
-                onTap: () => showQrOrLaunch(
-                  context,
-                  url: 'https://github.com/Moonfin-Client/Moonfin-Core/issues',
-                  title: l10n.settingsReportAnIssue,
+              if (retired)
+                _TvSettingsListTile(
+                  leading: const Icon(Icons.bug_report),
+                  title: Text(l10n.settingsReportAnIssue),
+                  subtitle: Text(l10n.settingsReportAnIssueSubtitle),
+                  onTap: () => showQrOrLaunch(
+                    context,
+                    url:
+                        'https://github.com/Moonfin-Client/Moonfin-Core/issues',
+                    title: l10n.settingsReportAnIssue,
+                  ),
                 ),
-              ),
-              _TvSettingsListTile(
-                leading: const Icon(Icons.troubleshoot),
-                title: const Text('Diagnostics & Logging'),
-                subtitle: const Text(
-                  'Capture media, login and network logs and send them to the '
-                  'server as a report',
+              if (advanced)
+                _TvSettingsListTile(
+                  leading: const Icon(Icons.troubleshoot),
+                  title: const Text('Diagnostics & Logging'),
+                  subtitle: const Text(
+                    'Capture media, login and network logs and send them to the '
+                    'server as a report',
+                  ),
+                  onTap: () => context.pushSettingsScreen(
+                    const DiagnosticsSettingsScreen(),
+                  ),
                 ),
-                onTap: () => context.pushSettingsScreen(
-                  const DiagnosticsSettingsScreen(),
+              if (retired)
+                _TvSettingsListTile(
+                  leading: const Icon(Icons.forum),
+                  title: Text(l10n.settingsJoinDiscord),
+                  subtitle: Text(l10n.settingsJoinDiscordSubtitle),
+                  onTap: () => showQrOrLaunch(
+                    context,
+                    url: 'https://discord.gg/moonfin',
+                    title: l10n.settingsJoinTheDiscord,
+                  ),
                 ),
-              ),
-              _TvSettingsListTile(
-                leading: const Icon(Icons.forum),
-                title: Text(l10n.settingsJoinDiscord),
-                subtitle: Text(l10n.settingsJoinDiscordSubtitle),
-                onTap: () => showQrOrLaunch(
-                  context,
-                  url: 'https://discord.gg/moonfin',
-                  title: l10n.settingsJoinTheDiscord,
+              if (retired)
+                _TvSettingsListTile(
+                  leading: const Icon(Icons.favorite),
+                  title: Text(l10n.settingsSupportMoonfin),
+                  subtitle: Text(l10n.settingsSupportMoonfinSubtitle),
+                  onTap: () => showSupportDialog(context),
                 ),
-              ),
-              _TvSettingsListTile(
-                leading: const Icon(Icons.favorite),
-                title: Text(l10n.settingsSupportMoonfin),
-                subtitle: Text(l10n.settingsSupportMoonfinSubtitle),
-                onTap: () => showSupportDialog(context),
-              ),
             ],
           ),
-          _SectionHeader(l10n.settingsLegal),
-          adaptiveListSection(
-            children: [
-              _TvSettingsListTile(
-                leading: const Icon(Icons.description),
-                title: Text(l10n.settingsLicenses),
-                subtitle: Text(l10n.settingsOpenSourceLicenseNotices),
-                onTap: () => showQrOrLaunch(
-                  context,
-                  url:
-                      'https://github.com/Moonfin-Client/Moonfin-Core/blob/main/LICENSE',
-                  title: l10n.settingsLicenses,
+          if (advanced) ...[
+            _SectionHeader(l10n.settingsLegal),
+            adaptiveListSection(
+              children: [
+                _TvSettingsListTile(
+                  leading: const Icon(Icons.description),
+                  title: Text(l10n.settingsLicenses),
+                  subtitle: Text(l10n.settingsOpenSourceLicenseNotices),
+                  onTap: () => showQrOrLaunch(
+                    context,
+                    url:
+                        'https://github.com/Moonfin-Client/Moonfin-Core/blob/main/LICENSE',
+                    title: l10n.settingsLicenses,
+                  ),
                 ),
-              ),
-              _TvSettingsListTile(
-                leading: const Icon(Icons.privacy_tip),
-                title: Text(l10n.settingsPrivacyPolicy),
-                subtitle: Text(l10n.settingsPrivacyPolicySubtitle),
-                onTap: () => showQrOrLaunch(
-                  context,
-                  url: 'https://moonfin.io/privacy',
-                  title: l10n.settingsPrivacyPolicy,
+                _TvSettingsListTile(
+                  leading: const Icon(Icons.privacy_tip),
+                  title: Text(l10n.settingsPrivacyPolicy),
+                  subtitle: Text(l10n.settingsPrivacyPolicySubtitle),
+                  onTap: () => showQrOrLaunch(
+                    context,
+                    url: 'https://moonfin.io/privacy',
+                    title: l10n.settingsPrivacyPolicy,
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
+          ],
         ],
       ),
     );

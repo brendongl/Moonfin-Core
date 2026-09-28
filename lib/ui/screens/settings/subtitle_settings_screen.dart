@@ -6,6 +6,7 @@ import '../../../util/language_codes.dart';
 import '../../../util/locale_names.dart';
 import '../../../preference/preference_constants.dart';
 import '../../../preference/user_preferences.dart';
+import '../../../sipflix/sipflix_settings_mode.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../util/platform_detection.dart';
 import '../../widgets/adaptive/adaptive_list_section.dart';
@@ -60,6 +61,7 @@ class SubtitleSettingsScreen extends StatelessWidget {
           builder: (context, _) {
             final mode = prefs.get(UserPreferences.subtitleMode);
             final showStreamSettings = mode != SubtitleMode.none;
+            final advanced = SipflixSettingsMode.advanced;
 
             return ListView(
               padding: const EdgeInsets.only(bottom: 64.0),
@@ -102,31 +104,34 @@ class SubtitleSettingsScreen extends StatelessWidget {
                         icon: Icons.language,
                         options: langOptions,
                       ),
-                      StringPickerPreferenceTile(
-                        preference: UserPreferences.fallbackSubtitleLanguage,
-                        title: l10n.fallbackSubtitleLanguage,
-                        icon: Icons.language,
-                        options: langOptions,
-                      ),
-                      SwitchPreferenceTile(
-                        preference: UserPreferences.preferSdhSubtitles,
-                        title: l10n.preferSdhSubtitles,
-                        subtitle: l10n.preferSdhSubtitlesSubtitle,
-                        icon: Icons.hearing,
-                      ),
+                      if (advanced) ...[
+                        StringPickerPreferenceTile(
+                          preference: UserPreferences.fallbackSubtitleLanguage,
+                          title: l10n.fallbackSubtitleLanguage,
+                          icon: Icons.language,
+                          options: langOptions,
+                        ),
+                        SwitchPreferenceTile(
+                          preference: UserPreferences.preferSdhSubtitles,
+                          title: l10n.preferSdhSubtitles,
+                          subtitle: l10n.preferSdhSubtitlesSubtitle,
+                          icon: Icons.hearing,
+                        ),
+                      ],
                     ],
                   ),
                   SettingsSectionHeader(l10n.subtitleCustomization),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                    child: Text(
-                      l10n.subtitleStyleDescription,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  if (advanced)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                      child: Text(
+                        l10n.subtitleStyleDescription,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
-                  ),
                   adaptiveListSection(
                     children: [
                       TvFocusHighlight(
@@ -160,7 +165,7 @@ class SubtitleSettingsScreen extends StatelessWidget {
                           );
                         },
                       ),
-                      if (PlatformDetection.isAndroid) ...[
+                      if (PlatformDetection.isAndroid && advanced) ...[
                         SwitchPreferenceTile(
                           preference:
                               UserPreferences.subtitlesUseEmbeddedStyles,
@@ -178,23 +183,25 @@ class SubtitleSettingsScreen extends StatelessWidget {
                       ],
                     ],
                   ),
-                  SettingsSectionHeader(l10n.subtitleRendering),
-                  adaptiveListSection(
-                    children: [
-                      SwitchPreferenceTile(
-                        preference: UserPreferences.pgsDirectPlay,
-                        title: l10n.pgsDirectPlay,
-                        subtitle: l10n.directPlayPgsSubtitles,
-                        icon: Icons.image,
-                      ),
-                      SwitchPreferenceTile(
-                        preference: UserPreferences.assDirectPlay,
-                        title: l10n.assSsaDirectPlay,
-                        subtitle: l10n.directPlayAssSsaSubtitles,
-                        icon: Icons.text_snippet,
-                      ),
-                    ],
-                  ),
+                  if (advanced) ...[
+                    SettingsSectionHeader(l10n.subtitleRendering),
+                    adaptiveListSection(
+                      children: [
+                        SwitchPreferenceTile(
+                          preference: UserPreferences.pgsDirectPlay,
+                          title: l10n.pgsDirectPlay,
+                          subtitle: l10n.directPlayPgsSubtitles,
+                          icon: Icons.image,
+                        ),
+                        SwitchPreferenceTile(
+                          preference: UserPreferences.assDirectPlay,
+                          title: l10n.assSsaDirectPlay,
+                          subtitle: l10n.directPlayAssSsaSubtitles,
+                          icon: Icons.text_snippet,
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ],
             );
