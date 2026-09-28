@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:server_core/server_core.dart';
 
@@ -199,7 +200,11 @@ class SearchViewModel extends ChangeNotifier {
       _state = SearchState.ready;
     } catch (e) {
       if (query != _query) return;
-      _errorMessage = e.toString();
+      // Sipflix: raw Dio text means nothing to a customer.
+      debugPrint('Search failed: $e');
+      _errorMessage = e is DioException
+          ? "Couldn't reach the server. Try again in a moment."
+          : e.toString();
       _state = SearchState.error;
     }
     notifyListeners();
@@ -213,11 +218,7 @@ class SearchViewModel extends ChangeNotifier {
         .searchPeople(query, limit: _resultLimit)
         .catchError((_) => <AggregatedItem>[]);
     final channelsFuture = _channelMatches(query);
-    final allItems = await _searchRepository.search(
-      query,
-      parentId: _scopedParentId,
-      limit: _globalFetchLimit,
-    );
+    final allItems = await _searchBuckets(query);
     final people = await peopleFuture;
     final channels = await channelsFuture;
 
@@ -241,6 +242,55 @@ class SearchViewModel extends ChangeNotifier {
     }
 
     return grouped;
+  }
+
+  // Sipflix: one all-types /Items search takes 13 s or more on a big server
+  // and can hit the proxy's 504, while each bucket alone answers in about
+  // 2 s. Search the buckets in parallel and keep whatever answers; only fail
+  // when every bucket fails.
+  static const _searchBucketTypes = <List<String>>[
+    ['Movie', 'Series', 'BoxSet'],
+    ['Season'],
+    ['Episode'],
+    [
+      'Video',
+      'MusicVideo',
+      'Trailer',
+      'Book',
+      'Playlist',
+      'Program',
+      'MusicArtist',
+      'AlbumArtist',
+      'MusicAlbum',
+      'Audio',
+      'PhotoAlbum',
+      'Photo',
+      'Folder',
+      'CollectionFolder',
+      'UserView',
+    ],
+  ];
+
+  Future<List<AggregatedItem>> _searchBuckets(String query) async {
+    Object? lastError;
+    final buckets = await Future.wait(
+      _searchBucketTypes.map(
+        (types) => _searchRepository
+            .search(
+              query,
+              includeItemTypes: types,
+              parentId: _scopedParentId,
+              limit: _globalFetchLimit,
+            )
+            .then<List<AggregatedItem>?>((items) => items)
+            .catchError((Object e) {
+              lastError = e;
+              return null;
+            }),
+      ),
+    );
+    if (buckets.every((b) => b == null)) throw lastError!;
+    return [for (final b in buckets) ...?b];
   }
 
   // The lineup is fetched once per search session and reused across queries,
