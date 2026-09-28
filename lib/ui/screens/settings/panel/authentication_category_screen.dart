@@ -29,7 +29,7 @@ class _AuthenticationCategoryScreen extends StatelessWidget {
       body: ListView(
         children: [
           if (sipflixServer != null) ...[
-            const _SectionHeader('Server'),
+            const _SectionHeader('SERVER'),
             _SipflixServerSection(server: sipflixServer),
           ],
           _SectionHeader(l10n.settingsAuthenticationSection),

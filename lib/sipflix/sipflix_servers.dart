@@ -101,6 +101,9 @@ class SipflixServers {
   static const String cdn2Url = 'https://nebula.cdn2.d-crypt.io';
   static const String directUrl = 'https://emby.n2.d-crypt.io';
 
+  /// The name the server record carries until someone signs in.
+  static const String unsignedName = 'Sipflix';
+
   /// The URL new installs default to (AlphaV2 CDN 1).
   static const String serverUrl = cdnUrl;
 
@@ -249,7 +252,10 @@ class SipflixServers {
 
     if (existing == null) {
       if (store.getServers().isEmpty) {
-        await store.putServer(alphaV2.toRecord());
+        // Not "AlphaV2" yet: signing in decides the server, and a customer
+        // whose account is on Delta should not be told they are joining
+        // AlphaV2. Sign-in renames the record to wherever it lands.
+        await store.putServer(alphaV2.toRecord().copyWith(name: unsignedName));
       }
       // Fresh install is already on the CDN 1 default; lock migration so a later
       // toggle to Direct is honoured. A box signed in to Delta or iDuck lands
@@ -258,8 +264,10 @@ class SipflixServers {
       return;
     }
 
-    // Single-server builds named the record "Sipflix". Show the real name.
-    if (existing.name != alphaV2.name) {
+    // Single-server builds named the record "Sipflix". Show the real name
+    // once an account is on it.
+    if (existing.name != alphaV2.name &&
+        store.getUsers(serverId).isNotEmpty) {
       await store.putServer(existing.copyWith(name: alphaV2.name));
     }
 

@@ -117,7 +117,7 @@ class SipflixAccountProbe {
             deviceInfo: deviceInfo,
             accessToken: token,
           ),
-          if (token != null) 'X-Emby-Token': token,
+          'X-Emby-Token': ?token,
           'Accept': 'application/json',
         };
     return SipflixAccountProbe(

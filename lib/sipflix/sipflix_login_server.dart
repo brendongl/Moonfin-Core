@@ -4,13 +4,19 @@ import 'dart:io';
 
 /// Sipflix: a tiny LAN web server so customers can type their credentials on a
 /// phone instead of the TV remote. It serves a styled login form; submitted
-/// credentials are handed to [onCredentials]. Ported from the old Kotlin
-/// `LoginServer` (NanoHTTPD) — same port and flow.
+/// credentials are handed to [onCredentials], and the phone is told how the
+/// sign-in went (its answer is the message to show, null for success). Ported
+/// from the old Kotlin `LoginServer` (NanoHTTPD) — same port and flow.
 class SipflixLoginServer {
   static const int port = 8765;
 
   final String serverName;
-  final void Function(String username, String password) onCredentials;
+  final Future<String?> Function(String username, String password)
+      onCredentials;
+
+  /// How long the phone waits for an answer. A server choice waiting on the
+  /// TV outlasts it; the phone is then pointed at the TV instead.
+  static const Duration answerWait = Duration(seconds: 30);
   HttpServer? _server;
 
   SipflixLoginServer({required this.serverName, required this.onCredentials});
@@ -40,9 +46,22 @@ class SipflixLoginServer {
         final params = Uri.splitQueryString(body);
         final username = (params['username'] ?? '').trim();
         final password = params['password'] ?? '';
-        res.statusCode = HttpStatus.ok;
-        res.write('OK');
-        if (username.isNotEmpty) onCredentials(username, password);
+        if (username.isEmpty) {
+          res.statusCode = HttpStatus.badRequest;
+          res.write('Please enter a username');
+          return;
+        }
+        final error = await onCredentials(username, password)
+            .timeout(answerWait, onTimeout: () => null)
+            .catchError((Object _) => 'Sign-in failed. Please try again.');
+        if (error == null) {
+          res.statusCode = HttpStatus.ok;
+          res.write('OK');
+        } else {
+          res.statusCode = HttpStatus.unauthorized;
+          res.headers.contentType = ContentType.text;
+          res.write(error);
+        }
       } else {
         res.statusCode = HttpStatus.notFound;
         res.write('Not Found');
@@ -138,9 +157,9 @@ form.addEventListener('submit',async(e)=>{
   try{
     const r=await fetch('/login',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
       body:'username='+encodeURIComponent(username)+'&password='+encodeURIComponent(password)});
-    if(r.ok){status.className='status success';status.textContent='Success! Check your TV screen.';form.reset();}
-    else{throw new Error('Login failed');}
-  }catch(err){status.className='status error';status.textContent='Failed to send credentials. Please try again.';}
+    if(r.ok){status.className='status success';status.textContent='Done! Check your TV screen.';form.reset();}
+    else{status.className='status error';status.textContent=(await r.text())||'Sign-in failed. Please try again.';}
+  }catch(err){status.className='status error';status.textContent='Could not reach the TV. Please try again.';}
   finally{submitBtn.disabled=false;}
 });
 </script>

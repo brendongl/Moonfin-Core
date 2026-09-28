@@ -315,7 +315,13 @@ Future<void> runSipflixSwitchServer(BuildContext context) async {
       ],
     ),
   );
-  if (confirmed != true || !context.mounted) return;
+  if (confirmed != true) return;
+
+  // The settings panel this started from closes around the dialog, taking its
+  // context with it; everything after the confirmation runs on the app's
+  // root navigator instead.
+  final root = appRouter.routerDelegate.navigatorKey.currentContext;
+  if (root == null || !root.mounted) return;
 
   final creds = await flow.vault.read();
   if (creds == null || currentDef == null) {
@@ -328,7 +334,8 @@ Future<void> runSipflixSwitchServer(BuildContext context) async {
     return;
   }
 
-  final messenger = ScaffoldMessenger.maybeOf(context);
+  if (!root.mounted) return;
+  final messenger = ScaffoldMessenger.maybeOf(root);
   messenger?.showSnackBar(
     const SnackBar(content: Text('Checking which servers your account is on…')),
   );
@@ -347,7 +354,7 @@ Future<void> runSipflixSwitchServer(BuildContext context) async {
   final accepted = results
       .where((r) => r.outcome == SipflixProbeOutcome.accepted)
       .toList();
-  if (!context.mounted) {
+  if (!root.mounted) {
     await flow.release(accepted);
     return;
   }
@@ -364,7 +371,7 @@ Future<void> runSipflixSwitchServer(BuildContext context) async {
   }
 
   final chosen = await showSipflixServerPicker(
-    context,
+    root,
     [
       SipflixProbeResult(
         server: currentDef,
@@ -384,7 +391,6 @@ Future<void> runSipflixSwitchServer(BuildContext context) async {
     username: creds.username,
     password: creds.password,
   );
-  if (!context.mounted) return;
   if (!ok) {
     messenger?.showSnackBar(
       const SnackBar(content: Text('Switching failed. Please try again.')),

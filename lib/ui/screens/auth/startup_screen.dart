@@ -173,6 +173,12 @@ class _StartupScreenState extends State<StartupScreen>
       if (!mounted) return;
     }
 
+    // Restored, then refused: the server answered the restored token with a
+    // 401 during the first sync (an account moved to another server does
+    // this). The 401 handler has already ended the session and chosen where
+    // to go; routing to the server page here would overwrite that.
+    if (restored && session.activeUserId == null) return;
+
     if (restored && session.activeUserId != null) {
       final store = GetIt.instance<PreferenceStore>();
       final pinUtil = PinCodeUtil(store, session.activeUserId!);

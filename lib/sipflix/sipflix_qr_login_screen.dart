@@ -51,7 +51,12 @@ class _SipflixQrLoginScreenState extends State<SipflixQrLoginScreen> {
 
   @override
   void dispose() {
-    _httpServer?.stop();
+    // A successful sign-in navigates away while the phone's request is still
+    // waiting for its answer; give that answer time to go out first.
+    final srv = _httpServer;
+    if (srv != null) {
+      unawaited(Future<void>.delayed(const Duration(seconds: 2), srv.stop));
+    }
     super.dispose();
   }
 
@@ -101,14 +106,16 @@ class _SipflixQrLoginScreenState extends State<SipflixQrLoginScreen> {
 
   /// Sipflix: sign in on whichever server holds the account — every server
   /// is asked, so the customer never has to know which one they are on.
-  Future<void> _onCredentials(
+  /// Returns the message for the phone, null when sign-in went through.
+  Future<String?> _onCredentials(
       Server server, String username, String password) async {
-    if (_busy || !mounted) return;
+    if (!mounted) return null;
+    if (_busy) return 'The TV is already signing in. Please wait.';
     setState(() {
       _busy = true;
       _status = 'Signing in as $username…';
     });
-    await _signIn(username, password);
+    return _signIn(username, password);
   }
 
   /// The old server refused this box's token. Sign in again with the stored
@@ -127,7 +134,7 @@ class _SipflixQrLoginScreenState extends State<SipflixQrLoginScreen> {
     );
   }
 
-  Future<void> _signIn(
+  Future<String?> _signIn(
     String username,
     String password, {
     String? movedFromKey,
@@ -143,15 +150,13 @@ class _SipflixQrLoginScreenState extends State<SipflixQrLoginScreen> {
     } catch (_) {
       error = 'Sign-in failed. Please try again.';
     }
-    if (!mounted) return;
-    if (error == null) {
-      await _httpServer?.stop();
-      return;
-    }
+    if (!mounted) return error;
+    if (error == null) return null; // leaving this screen stops the helper
     setState(() {
       _busy = false;
       _status = error!;
     });
+    return error;
   }
 
   @override
@@ -193,7 +198,34 @@ class _SipflixQrLoginScreenState extends State<SipflixQrLoginScreen> {
                   style: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 28),
+                const SizedBox(height: 16),
+                if (_status.isNotEmpty) ...[
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (_busy) ...[
+                        const SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        const SizedBox(width: 10),
+                      ],
+                      Flexible(
+                        child: Text(
+                          _status,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 16),
                 if (url != null) ...[
                   Container(
                     padding: const EdgeInsets.all(16),
@@ -204,7 +236,7 @@ class _SipflixQrLoginScreenState extends State<SipflixQrLoginScreen> {
                     child: QrImageView(
                       data: url,
                       version: QrVersions.auto,
-                      size: 280,
+                      size: 220,
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -230,29 +262,6 @@ class _SipflixQrLoginScreenState extends State<SipflixQrLoginScreen> {
                   ),
                 ] else if (_status.isEmpty) ...[
                   const CircularProgressIndicator(),
-                ],
-                if (_status.isNotEmpty) ...[
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (_busy) ...[
-                        const SizedBox(
-                          height: 18,
-                          width: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        const SizedBox(width: 10),
-                      ],
-                      Flexible(
-                        child: Text(
-                          _status,
-                          style: const TextStyle(color: Colors.white),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ],
-                  ),
                 ],
                 const SizedBox(height: 28),
                 OutlinedButton.icon(
