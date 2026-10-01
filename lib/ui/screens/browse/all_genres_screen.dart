@@ -58,6 +58,7 @@ class _AllGenresScreenState extends State<AllGenresScreen> {
 
   List<GenreCardData> _genres = [];
   bool _isLoading = true;
+  bool _loadFailed = false;
 
   void _onChanged() {
     if (mounted) setState(() {});
@@ -120,9 +121,13 @@ class _AllGenresScreenState extends State<AllGenresScreen> {
             return (
               data: data,
               itemCount: itemCount,
+              candidate: isBrowsableGenreCandidate(
+                data,
+                normalizedItemTypes: kBrowsableGenreItemTypes,
+              ),
             );
           })
-          .where((x) => x.itemCount > 0)
+          .where((x) => x.candidate)
           .toList();
 
       _genres = temp.map((x) {
@@ -172,7 +177,10 @@ class _AllGenresScreenState extends State<AllGenresScreen> {
           isGenreFallback: !hasCustomArtwork,
         );
       }).toList();
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Genres failed to load: $e');
+      _loadFailed = _genres.isEmpty;
+    }
 
     _isLoading = false;
     if (!_disposed && mounted) setState(() {});
@@ -397,7 +405,9 @@ class _AllGenresScreenState extends State<AllGenresScreen> {
     if (_genres.isEmpty) {
       return Center(
         child: Text(
-          AppLocalizations.of(context).noGenresFound,
+          _loadFailed
+              ? "Couldn't reach the server. Try again in a moment."
+              : AppLocalizations.of(context).noGenresFound,
           style: TextStyle(
             color: AppColorScheme.onSurface.withValues(alpha: 0.7),
           ),

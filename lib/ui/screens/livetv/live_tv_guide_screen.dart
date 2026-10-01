@@ -877,12 +877,19 @@ class _LiveTvGuideScreenState extends State<LiveTvGuideScreen> {
     );
   }
 
+  bool get _guideHasNoChannels =>
+      !widget.embedded &&
+      (_vm.state == GuideState.error ||
+          (_vm.state == GuideState.ready && _vm.filteredChannels.isEmpty));
+
   Widget _buildToolbar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: Row(
         children: [
-          if (!PlatformDetection.isTV) ...[
+          // On TV, BACK normally leaves the guide. An empty or failed guide
+          // also gets a visible way out, so focus always has somewhere to go.
+          if (!PlatformDetection.isTV || _guideHasNoChannels) ...[
             _GuidePillButton(
               icon: Icons.arrow_back,
               onPressed: () => Navigator.of(context).pop(),

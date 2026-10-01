@@ -1132,12 +1132,10 @@ class MultiServerRepository {
         .whereType<Map>()
         .map((item) => item.cast<String, dynamic>())
         .where(
-          (genre) =>
-              browsableGenreCount(
-                genre,
-                normalizedItemTypes: includeItemTypes,
-              ) >
-              0,
+          (genre) => isBrowsableGenreCandidate(
+            genre,
+            normalizedItemTypes: includeItemTypes,
+          ),
         )
         .toList(growable: false);
 

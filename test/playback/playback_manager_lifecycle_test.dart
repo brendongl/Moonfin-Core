@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:playback_core/playback_core.dart';
 
@@ -153,6 +154,22 @@ void main() {
     expect(manager.bringupState.mediaSourceId, source);
     expect(manager.bringupState.error, contains('stream is unavailable'));
     expect(manager.bringupState.error, isNot(contains('no longer available')));
+  });
+
+  test('a PlaybackInfo that never answers fails with a plain message', () {
+    fakeAsync((async) {
+      resolver.handler = (_) => Completer<StreamResolutionResult>().future;
+      Object? thrown;
+      manager.playItems([a]).catchError((Object e) => thrown = e);
+      async.elapse(PlaybackManager.resolveDeadline + const Duration(seconds: 1));
+      expect(thrown, isA<TimeoutException>());
+      expect(manager.bringupState.phase, PlaybackBringupPhase.failed);
+      expect(
+        manager.bringupState.error,
+        PlaybackManager.resolveTimeoutMessage,
+      );
+      expect(backend.played, isEmpty);
+    });
   });
 
   test('stop during preflight never starts the abandoned item', () async {

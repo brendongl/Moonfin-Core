@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'platform_detection.dart';
@@ -26,6 +29,7 @@ Future<void> configureImageDiskCache() async {
         key,
         stalePeriod: stalePeriod,
         maxNrOfCacheObjects: maxObjects,
+        fileService: ImageFileService(),
         repo: JsonCacheInfoRepository.withFile(
           File('${cacheDir.path}/$key.json'),
         ),
@@ -35,6 +39,7 @@ Future<void> configureImageDiskCache() async {
         key,
         stalePeriod: stalePeriod,
         maxNrOfCacheObjects: maxObjects,
+        fileService: ImageFileService(),
       );
     }
     // Deliberately a plain CacheManager: nothing asks the disk layer to resize,
@@ -98,4 +103,73 @@ Future<void> clearImageDiskCache() async {
   try {
     await CachedNetworkImageProvider.defaultCacheManager.emptyCache();
   } catch (_) {}
+}
+
+/// The cache manager's stock file service has two ways to strand a pooled
+/// connection, and the image pool is capped at 12 per host, so a handful of
+/// them leave every later poster (and the server it shares a host with)
+/// waiting:
+/// - a non-200 reply throws without its body ever being read, and an unread
+///   body keeps the socket checked out;
+/// - nothing times out, so a reply that sends headers and then goes quiet
+///   holds its socket forever.
+/// This one drains error bodies and puts deadlines on both the headers and
+/// every gap in the body.
+class ImageFileService extends FileService {
+  ImageFileService({
+    http.Client? httpClient,
+    this.headerTimeout = const Duration(seconds: 20),
+    this.bodyIdleTimeout = const Duration(seconds: 20),
+  }) : _httpClient = httpClient ??
+            IOClient(
+              HttpClient()
+                ..connectionTimeout = const Duration(seconds: 15)
+                ..idleTimeout = const Duration(seconds: 15),
+            );
+
+  final http.Client _httpClient;
+  final Duration headerTimeout;
+  final Duration bodyIdleTimeout;
+
+  @override
+  Future<FileServiceResponse> get(
+    String url, {
+    Map<String, String>? headers,
+  }) async {
+    final request = http.Request('GET', Uri.parse(url));
+    if (headers != null) request.headers.addAll(headers);
+    final response = await _httpClient.send(request).timeout(headerTimeout);
+
+    final status = response.statusCode;
+    if (status != HttpStatus.ok && status != HttpStatus.accepted) {
+      // The cache manager rejects these without reading them; read the body
+      // here so the connection goes back to the pool.
+      unawaited(
+        response.stream
+            .timeout(bodyIdleTimeout)
+            .drain<void>()
+            .catchError((Object _) {}),
+      );
+      return HttpGetResponse(
+        http.StreamedResponse(
+          const Stream<List<int>>.empty(),
+          status,
+          headers: response.headers,
+          request: response.request,
+          reasonPhrase: response.reasonPhrase,
+        ),
+      );
+    }
+
+    return HttpGetResponse(
+      http.StreamedResponse(
+        response.stream.timeout(bodyIdleTimeout),
+        status,
+        contentLength: response.contentLength,
+        headers: response.headers,
+        request: response.request,
+        reasonPhrase: response.reasonPhrase,
+      ),
+    );
+  }
 }

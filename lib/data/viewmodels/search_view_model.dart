@@ -87,6 +87,13 @@ class SearchViewModel extends ChangeNotifier {
 
   static const _debounceMs = 600;
   static const _resultLimit = 24;
+
+  // Sipflix: Dio's receive timeout only starts once the body begins, so a
+  // reply that sends headers and then stalls kept search spinning for
+  // minutes. Every part of a search gets this deadline; a part that misses it
+  // counts as failed and the rest still show.
+  @visibleForTesting
+  static Duration partDeadline = const Duration(seconds: 20);
   static const _globalFetchLimit = 240;
 
   static List<SearchResultGroup> _bookSearchGroups() {
@@ -185,7 +192,7 @@ class SearchViewModel extends ChangeNotifier {
                 includeItemTypes: group.itemTypes,
                 parentId: _scopedParentId,
                 limit: _resultLimit,
-              );
+              ).timeout(partDeadline);
               return group.copyWith(items: items);
             }))
           : await _buildGroupedGlobalResults(query, activeGroups);
@@ -202,7 +209,7 @@ class SearchViewModel extends ChangeNotifier {
       if (query != _query) return;
       // Sipflix: raw Dio text means nothing to a customer.
       debugPrint('Search failed: $e');
-      _errorMessage = e is DioException
+      _errorMessage = e is DioException || e is TimeoutException
           ? "Couldn't reach the server. Try again in a moment."
           : e.toString();
       _state = SearchState.error;
@@ -216,6 +223,7 @@ class SearchViewModel extends ChangeNotifier {
   ) async {
     final peopleFuture = _searchRepository
         .searchPeople(query, limit: _resultLimit)
+        .timeout(partDeadline)
         .catchError((_) => <AggregatedItem>[]);
     final channelsFuture = _channelMatches(query);
     final allItems = await _searchBuckets(query);
@@ -282,6 +290,7 @@ class SearchViewModel extends ChangeNotifier {
               parentId: _scopedParentId,
               limit: _globalFetchLimit,
             )
+            .timeout(partDeadline)
             .then<List<AggregatedItem>?>((items) => items)
             .catchError((Object e) {
               lastError = e;
@@ -302,7 +311,7 @@ class SearchViewModel extends ChangeNotifier {
     if (q.isEmpty || q.startsWith('studio:')) return const [];
     _channelsFuture ??= _searchRepository.fetchLiveTvChannels();
     try {
-      final all = await _channelsFuture!;
+      final all = await _channelsFuture!.timeout(partDeadline);
       return all
           .where((c) => c.name.toLowerCase().contains(q))
           .take(_resultLimit)
@@ -323,7 +332,9 @@ class SearchViewModel extends ChangeNotifier {
     try {
       await repo.ensureInitialized();
       if (!repo.isAvailable) return const [];
-      final page = await repo.search(query, limit: _resultLimit);
+      final page = await repo
+          .search(query, limit: _resultLimit)
+          .timeout(partDeadline);
       return page.results;
     } catch (_) {
       return const [];
@@ -337,7 +348,7 @@ class SearchViewModel extends ChangeNotifier {
     if (gamesApi == null) return const [];
     try {
       _allGamesFuture ??= _fetchAllGames(gamesApi);
-      final all = await _allGamesFuture!;
+      final all = await _allGamesFuture!.timeout(partDeadline);
       return all
           .where(
             (r) =>

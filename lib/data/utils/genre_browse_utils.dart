@@ -64,6 +64,32 @@ int browsableGenreCount(
   return _asInt(genreData['ChildCount']);
 }
 
+/// Emby 4.9 leaves out every count field on /Genres, even when ItemCounts is
+/// requested, so a missing count means "unknown", not "empty". Keep those
+/// genres; the per-genre item fetch prunes the ones that are really empty.
+bool isBrowsableGenreCandidate(
+  Map<String, dynamic> genreData, {
+  List<String>? includeItemTypes,
+  List<String>? normalizedItemTypes,
+}) {
+  const countFields = [
+    'MovieCount',
+    'SeriesCount',
+    'SongCount',
+    'AlbumCount',
+    'ChildCount',
+  ];
+  if (!countFields.any((field) => genreData[field] != null)) {
+    return true;
+  }
+  return browsableGenreCount(
+        genreData,
+        includeItemTypes: includeItemTypes,
+        normalizedItemTypes: normalizedItemTypes,
+      ) >
+      0;
+}
+
 Map<String, dynamic> mergeGenreWithRepresentativeItem({
   required Map<String, dynamic> genreData,
   required Map<String, dynamic> representativeItem,

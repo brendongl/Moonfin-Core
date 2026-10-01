@@ -48,9 +48,23 @@ mixin GridFocusNodeMixin<T extends StatefulWidget> on State<T> {
     _gridItemListeners.clear();
   }
 
-  void restoreGridFocusIfNeeded() {
+  /// With [onlyIfFocusLost], a focus that sits somewhere real (a toolbar
+  /// button, a filter chip) is left alone. A big library keeps loading pages
+  /// in the background, and restoring on every page pulled focus back off the
+  /// toolbar a moment after D-pad UP reached it.
+  void restoreGridFocusIfNeeded({bool onlyIfFocusLost = false}) {
     if (ModalRoute.of(context)?.isCurrent != true) return;
     if (lastFocusedGridContentVersion == gridContentVersion) return;
+    if (onlyIfFocusLost) {
+      final primary = FocusManager.instance.primaryFocus;
+      if (primary != null &&
+          primary is! FocusScopeNode &&
+          primary.context != null &&
+          !gridItemFocusNodes.containsValue(primary)) {
+        lastFocusedGridContentVersion = gridContentVersion;
+        return;
+      }
+    }
     final idx = lastFocusedGridIndex;
     if (idx == null) return;
     // The grid may have shrunk, so fall back to the last available row when the

@@ -118,4 +118,42 @@ void main() {
     expect(vm.errorMessage, isNot(contains('DioException')));
     expect(vm.errorMessage, contains("Couldn't reach the server"));
   });
+
+  group('a part that stalls', () {
+    setUp(() => SearchViewModel.partDeadline = const Duration(milliseconds: 50));
+    tearDown(
+      () => SearchViewModel.partDeadline = const Duration(seconds: 20),
+    );
+
+    test('does not hold back the parts that answered', () async {
+      answerBuckets((types) {
+        if (types.contains('Episode')) {
+          return Completer<List<AggregatedItem>>().future;
+        }
+        if (types.contains('Series')) {
+          return Future.value([_item('sh', 'Series')]);
+        }
+        return Future.value(const <AggregatedItem>[]);
+      });
+      when(
+        () => repo.searchPeople(any(), limit: any(named: 'limit')),
+      ).thenAnswer((_) => Completer<List<AggregatedItem>>().future);
+
+      final vm = SearchViewModel(repo, client);
+      await _runSearch(vm, 'slow horses').timeout(const Duration(seconds: 5));
+
+      expect(vm.state, SearchState.ready);
+      expect(vm.results.expand((g) => g.items).map((i) => i.id), contains('sh'));
+    });
+
+    test('ends in the plain message when nothing answers', () async {
+      answerBuckets((_) => Completer<List<AggregatedItem>>().future);
+
+      final vm = SearchViewModel(repo, client);
+      await _runSearch(vm, 'slow horses').timeout(const Duration(seconds: 5));
+
+      expect(vm.state, SearchState.error);
+      expect(vm.errorMessage, contains("Couldn't reach the server"));
+    });
+  });
 }

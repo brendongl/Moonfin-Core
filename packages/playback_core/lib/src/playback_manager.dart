@@ -19,6 +19,13 @@ class PlaybackManager implements AudioOwnable {
   // 45s lets a slow-but-viable stream actually start; if it still can't, the
   // bitrate watchdog now correctly offers a transcode-down (changeBitrate).
   static const _onlineStartupReadyTimeout = Duration(seconds: 45);
+  // Sipflix: PlaybackInfo had no limit beyond the 3 minute receive timeout,
+  // and a reply that sends headers and stalls never trips that, so a slow
+  // route sat on "Testing connection to server" for minutes.
+  static const resolveDeadline = Duration(seconds: 40);
+  static const resolveTimeoutMessage =
+      'The server took too long to start this title. '
+      'Try again, or choose Change connection.';
 
   PlayerBackend? _backend;
   MediaStreamResolver? _resolver;
@@ -795,6 +802,9 @@ class PlaybackManager implements AudioOwnable {
   /// Builds the backend-style error event a bring-up failure maps onto, so a
   /// thrown resolve surfaces the same viewer-facing wording as a native error.
   Map<String, dynamic> _bringupFailureEvent(Object error) {
+    if (error is TimeoutException) {
+      return <String, dynamic>{'message': resolveTimeoutMessage};
+    }
     final text = error.toString();
     final status = RegExp(
       r'(?:status code of|response code:?)\s*(\d{3})',
@@ -1253,7 +1263,41 @@ class PlaybackManager implements AudioOwnable {
     return false;
   }
 
+  // Sipflix: only resolve and backend open publish a failed state when they
+  // throw. Anything else that threw on the way up (a track selector, a bad
+  // cast on server data) closed the player with no message, so the viewer
+  // landed back on the details page with no idea why.
   Future<void> _playCurrentItem({
+    Duration startPosition = Duration.zero,
+    bool enableDirectPlay = true,
+    bool enableDirectStream = true,
+    bool enableTranscoding = true,
+    bool allowStartupRecovery = true,
+  }) async {
+    final sessionToken = _playbackSessionToken;
+    try {
+      await _playCurrentItemUnguarded(
+        startPosition: startPosition,
+        enableDirectPlay: enableDirectPlay,
+        enableDirectStream: enableDirectStream,
+        enableTranscoding: enableTranscoding,
+        allowStartupRecovery: allowStartupRecovery,
+      );
+    } catch (error) {
+      if (sessionToken == _playbackSessionToken &&
+          _bringupState.phase != PlaybackBringupPhase.failed) {
+        _emitFailedBringupState(
+          _bringupFailureEvent(error),
+          'Could not start playback.',
+          queueItem: queueService.currentItem,
+          resolution: null,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _playCurrentItemUnguarded({
     Duration startPosition = Duration.zero,
     bool enableDirectPlay = true,
     bool enableDirectStream = true,
@@ -1410,7 +1454,7 @@ class PlaybackManager implements AudioOwnable {
         enableDirectPlay: enableDirectPlay,
         enableDirectStream: enableDirectStream,
         enableTranscoding: enableTranscoding,
-      );
+      ).timeout(resolveDeadline);
     } catch (error) {
       if (sessionToken == _playbackSessionToken) {
         _emitFailedBringupState(

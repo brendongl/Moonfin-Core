@@ -395,6 +395,7 @@ class _GlobalShortcutScopeState extends State<_GlobalShortcutScope>
   DateTime? _lastMouseThumbNavAt;
   String? _pendingRouteHistoryLocation;
   bool _exitDialogShowing = false;
+  int _popRouteSeq = 0;
 
   @override
   void initState() {
@@ -580,6 +581,7 @@ class _GlobalShortcutScopeState extends State<_GlobalShortcutScope>
 
   @override
   Future<bool> didPopRoute() async {
+    _popRouteSeq++;
     if (PlatformDetection.isTV && _screensaverController.dismissIfVisible()) {
       return true;
     }
@@ -601,6 +603,31 @@ class _GlobalShortcutScopeState extends State<_GlobalShortcutScope>
       return true;
     }
     return false;
+  }
+
+  // Android follows a BACK key with a popRoute call. The key has already been
+  // used to close something, so that second call must not pop the page too.
+  void _suppressAndroidPopRoute(LogicalKeyboardKey key) {
+    if (PlatformDetection.isAndroid && key == LogicalKeyboardKey.goBack) {
+      DialogBackSuppressor.markDismissed();
+    }
+  }
+
+  // Most boxes send popRoute after BACK and didPopRoute does the pop. Some
+  // never send it, which left BACK dead on screens with nothing focusable
+  // (the empty Live TV guide on Max29), so pop here if it doesn't arrive.
+  void _popIfAndroidSkipsPopRoute() {
+    final seq = _popRouteSeq;
+    final location = appRouter.routerDelegate.currentConfiguration.uri;
+    Timer(const Duration(milliseconds: 700), () {
+      if (!mounted || _popRouteSeq != seq) return;
+      if (appRouter.routerDelegate.currentConfiguration.uri != location) return;
+      if (!appRouter.canPop()) return;
+      debugPrint('BACK: no popRoute from Android, popping $location');
+      // If popRoute turns up late after all, don't let it pop a second page.
+      DialogBackSuppressor.markDismissed();
+      appRouter.pop();
+    });
   }
 
   bool _isPlayerRoute() {
@@ -652,9 +679,11 @@ class _GlobalShortcutScopeState extends State<_GlobalShortcutScope>
       // key handling of its own, so without it the route pops out from under
       // an open keyboard.
       if (CustomTVTextField.closeTopKeyboard()) {
+        _suppressAndroidPopRoute(key);
         return true;
       }
       if (OverlaySheetController.closeTopSheet()) {
+        _suppressAndroidPopRoute(key);
         return true;
       }
       if (InlineBackInterceptor.handleBack()) {
@@ -671,6 +700,7 @@ class _GlobalShortcutScopeState extends State<_GlobalShortcutScope>
         // system back button (goBack). For other back-like keys (escape, browserBack),
         // we must manually pop in Flutter even on Android.
         if (PlatformDetection.isAndroid && key == LogicalKeyboardKey.goBack) {
+          _popIfAndroidSkipsPopRoute();
           return true;
         }
         WidgetsBinding.instance.addPostFrameCallback((_) {

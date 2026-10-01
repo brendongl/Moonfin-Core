@@ -711,6 +711,7 @@ class LibraryBrowseViewModel extends ChangeNotifier {
         filters: filters.isEmpty ? null : filters,
         seriesStatus: seriesStatus.isEmpty ? null : seriesStatus,
         isFavorite: _favoriteFilter ? true : null,
+        nameStartsWith: canJumpByServerFilter ? _serverLetter : null,
       );
     }
 
@@ -797,6 +798,7 @@ class LibraryBrowseViewModel extends ChangeNotifier {
     List<String>? filters,
     List<String>? seriesStatus,
     bool? isFavorite,
+    String? nameStartsWith,
   }) async {
     try {
       return await _client.itemsApi.getItems(
@@ -817,6 +819,7 @@ class LibraryBrowseViewModel extends ChangeNotifier {
         filters: filters,
         seriesStatus: seriesStatus,
         isFavorite: isFavorite,
+        nameStartsWith: nameStartsWith,
       );
     } on DioException catch (e) {
       final statusCode = e.response?.statusCode ?? 0;
@@ -847,6 +850,7 @@ class LibraryBrowseViewModel extends ChangeNotifier {
         filters: filters,
         seriesStatus: seriesStatus,
         isFavorite: isFavorite,
+        nameStartsWith: nameStartsWith,
         enableTotalRecordCount: false,
       );
     }
@@ -922,6 +926,36 @@ class LibraryBrowseViewModel extends ChangeNotifier {
     if (favoritesOnly || _favoriteFilter == value) return;
     _favoriteFilter = value;
     await _prefs.set(UserPreferences.libraryFavoriteFilter(_prefKey), value);
+    await load();
+  }
+
+  String? _serverLetter;
+
+  /// The letter the server is filtering this list to, when a jump on a big
+  /// library used the server instead of paging to the letter.
+  String? get serverLetter => _serverLetter;
+
+  /// Whether picking a letter can ask the server for that letter's items.
+  /// Only a name sort, A to Z, lines the filtered list up with the bar.
+  bool get canJumpByServerFilter =>
+      _sortBy == LibrarySortBy.name &&
+      _sortDirection == SortDirection.ascending &&
+      !_isArtistTypeBrowse;
+
+  bool get _isArtistTypeBrowse {
+    final types = includeItemTypes;
+    return types != null &&
+        types.length == 1 &&
+        (types.first == 'AlbumArtist' || types.first == 'MusicArtist');
+  }
+
+  /// Reloads the list filtered to names starting with [letter] on the server,
+  /// or unfiltered for null. Paging to a letter in a library of tens of
+  /// thousands of items never got there before the jump gave up.
+  Future<void> setServerLetter(String? letter) async {
+    if (_serverLetter == letter) return;
+    _serverLetter = letter;
+    _letterFilter = letter ?? '';
     await load();
   }
 

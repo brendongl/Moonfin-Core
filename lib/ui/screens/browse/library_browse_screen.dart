@@ -189,7 +189,7 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
       gridContentVersion++;
       cleanupGridFocusNodes(length);
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) restoreGridFocusIfNeeded();
+        if (mounted) restoreGridFocusIfNeeded(onlyIfFocusLost: true);
       });
     }
   }
@@ -348,6 +348,29 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
     // jump checks in after every await and bows out once superseded.
     final generation = ++_letterJumpGeneration;
     bool stillCurrent() => mounted && generation == _letterJumpGeneration;
+
+    // A big library can't be paged to a late letter in time, so ask the
+    // server for that letter instead. '#' sits at the top, so it clears the
+    // filter and goes back to the start.
+    if (_vm.canJumpByServerFilter &&
+        (_vm.hasMore || _vm.serverLetter != null)) {
+      setState(() => _isJumpingToLetter = true);
+      try {
+        await _vm.setServerLetter(letter == '#' ? null : letter);
+        if (!stillCurrent()) return;
+        await WidgetsBinding.instance.endOfFrame;
+        if (!stillCurrent()) return;
+        if (_scrollController.hasClients) _scrollController.jumpTo(0);
+        if (PlatformDetection.isTV && _vm.items.isNotEmpty) {
+          await Future.delayed(const Duration(milliseconds: 150));
+          if (!stillCurrent()) return;
+          getGridItemFocusNode(0).requestFocus();
+        }
+      } finally {
+        if (stillCurrent()) setState(() => _isJumpingToLetter = false);
+      }
+      return;
+    }
 
     _vm.setLetterFilter(letter);
     if (!mounted) return;

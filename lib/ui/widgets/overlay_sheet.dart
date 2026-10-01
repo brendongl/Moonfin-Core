@@ -11,20 +11,30 @@ import 'focus/focus_theme.dart';
 // Tracks dialogs closed by the back key. Android also sends a popRoute
 // MethodChannel event after the key event fires, so we suppress that second
 // event in didPopRoute() to prevent GoRouter from also popping the page.
+//
+// Each mark expires after [window]: some boxes never send the follow-up
+// popRoute, and a mark that lived forever would swallow the next real BACK.
 class DialogBackSuppressor {
   DialogBackSuppressor._();
 
-  static int _count = 0;
+  static const Duration window = Duration(milliseconds: 800);
+  static final List<DateTime> _marks = <DateTime>[];
 
-  static void markDismissed() => _count++;
+  @visibleForTesting
+  static DateTime Function() now = DateTime.now;
+
+  static void markDismissed() => _marks.add(now().add(window));
 
   static bool consume() {
-    if (_count > 0) {
-      _count--;
-      return true;
-    }
-    return false;
+    final current = now();
+    _marks.removeWhere((expiry) => !expiry.isAfter(current));
+    if (_marks.isEmpty) return false;
+    _marks.removeAt(0);
+    return true;
   }
+
+  @visibleForTesting
+  static void reset() => _marks.clear();
 }
 
 class InlineBackInterceptor {
