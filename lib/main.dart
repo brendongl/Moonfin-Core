@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:get_it/get_it.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:server_emby/server_emby.dart' show EmbyMediaServerClient;
+import 'sipflix/sipflix_4k_policy.dart';
 import 'package:moonfin_design/moonfin_design.dart' show LiquidGlassWidgets;
 import 'package:path_provider/path_provider.dart';
 import 'package:playback_core/playback_core.dart';
@@ -324,6 +326,7 @@ Future<void> watchNextBackgroundMain() => watch_next_bg.watchNextBackgroundMain(
 
 void main() async {
   configureHttpOverrides();
+  EmbyMediaServerClient.hideStandalone4k = () => Sipflix4kPolicy.isFragileHevcDecoder;
   final binding = WidgetsFlutterBinding.ensureInitialized();
 
   // Nothing else installs a zone guard, so an error thrown out of an async

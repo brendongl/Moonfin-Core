@@ -17,6 +17,12 @@ import 'api/emby_users_api.dart';
 class EmbyMediaServerClient extends MediaServerClient {
   final Dio _dio;
 
+  static bool Function() hideStandalone4k = () => false;
+
+  static final _listPath = RegExp(
+    r'^/(Items|Users/[^/]+/Items|Users/[^/]+/Items/(Resume|Latest)|Shows/NextUp)$',
+  );
+
   @override
   final DeviceInfo deviceInfo;
 
@@ -42,6 +48,13 @@ class EmbyMediaServerClient extends MediaServerClient {
     _dio.interceptors.add(redirectInterceptor(_dio));
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) {
+        if (options.method == 'GET' &&
+            hideStandalone4k() &&
+            _listPath.hasMatch(options.path) &&
+            !options.queryParameters.containsKey('Ids') &&
+            !options.queryParameters.containsKey('Is4K')) {
+          options.queryParameters['Is4K'] = false;
+        }
         options.headers['Authorization'] = buildServerAuthorizationHeader(
           scheme: 'Emby',
           deviceInfo: deviceInfo,
