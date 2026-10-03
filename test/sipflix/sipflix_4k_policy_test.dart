@@ -70,6 +70,37 @@ void main() {
     });
   });
 
+  group('version choice on a box that cannot play 4K', () {
+    final uhd = _source('uhd', 3840);
+    final hd = _source('hd', 1920);
+    final sd = _source('sd', 1280);
+
+    test('4K versions are hidden when an HD one exists', () {
+      final out = Sipflix4kPolicy.selectableSources([uhd, hd, sd], cannotPlay4k: true);
+      expect(out.map((s) => s['Id']), ['hd', 'sd']);
+    });
+
+    test('a 4K-only title is kept so the refusal still shows', () {
+      final out = Sipflix4kPolicy.selectableSources([uhd], cannotPlay4k: true);
+      expect(out.map((s) => s['Id']), ['uhd']);
+    });
+
+    test('capable boxes see everything', () {
+      final out = Sipflix4kPolicy.selectableSources([uhd, hd], cannotPlay4k: false);
+      expect(out.length, 2);
+    });
+
+    test('default is the widest HD version, never the 4K first entry', () {
+      expect(Sipflix4kPolicy.defaultSource([uhd, sd, hd], cannotPlay4k: true)?['Id'], 'hd');
+      expect(Sipflix4kPolicy.defaultSource([uhd], cannotPlay4k: true)?['Id'], 'uhd');
+    });
+
+    test('capable boxes keep the server order', () {
+      expect(Sipflix4kPolicy.defaultSource([uhd, hd], cannotPlay4k: false)?['Id'], 'uhd');
+      expect(Sipflix4kPolicy.defaultSource([], cannotPlay4k: true), isNull);
+    });
+  });
+
   test('refusals are recognised so they are not reported as faults', () {
     expect(Sipflix4kPolicy.isRefusal(Sipflix4kPolicy.refusalMessage), isTrue);
     expect(

@@ -1,3 +1,4 @@
+import '../../../sipflix/sipflix_4k_policy.dart';
 import 'dart:async';
 import 'dart:ui';
 
@@ -419,7 +420,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen>
         }
 
         if (item.mediaSources.isNotEmpty) {
-          _selectedMediaSourceId = item.mediaSources.first['Id']?.toString();
+          _selectedMediaSourceId = Sipflix4kPolicy.defaultSource(
+            item.mediaSources,
+          )?['Id']?.toString();
         } else {
           _selectedMediaSourceId = null;
         }
@@ -6274,12 +6277,15 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
           onPressed: () => _openSubtitleSelector(context, item),
         ),
       if (isPlayableMedia &&
-          item.mediaSources.length > 1 &&
+          Sipflix4kPolicy.selectableSources(item.mediaSources).length > 1 &&
           shows(DetailButton.version))
         DetailButton.version: _DetailActionButton(
           label: l10n.version,
           icon: Icons.video_file,
-          onPressed: () => _showVersionSelector(context, item.mediaSources),
+          onPressed: () => _showVersionSelector(
+            context,
+            Sipflix4kPolicy.selectableSources(item.mediaSources),
+          ),
           isActive: widget.selectedMediaSourceId != null,
           activeColor: AppColorScheme.accent,
         ),
@@ -9431,7 +9437,7 @@ Map<String, dynamic>? selectedMediaSourceForItem(
     return null;
   }
   if (selectedMediaSourceId == null || selectedMediaSourceId.isEmpty) {
-    return item.mediaSources.first;
+    return Sipflix4kPolicy.defaultSource(item.mediaSources);
   }
   for (final source in item.mediaSources) {
     final id = source['Id']?.toString();
@@ -9439,7 +9445,7 @@ Map<String, dynamic>? selectedMediaSourceForItem(
       return source;
     }
   }
-  return item.mediaSources.first;
+  return Sipflix4kPolicy.defaultSource(item.mediaSources);
 }
 
 List<Map<String, dynamic>> mediaStreamsForItem(

@@ -1,3 +1,4 @@
+import '../../../sipflix/sipflix_4k_policy.dart';
 import 'dart:async';
 import '../../../sipflix/sipflix_sign_in.dart';
 import 'dart:convert';
@@ -1796,9 +1797,9 @@ class _ContentRowsState extends State<_ContentRows>
       return '';
     }
 
-    final mediaSourceId = item.mediaSources.isNotEmpty
-        ? item.mediaSources.first['Id']?.toString()
-        : null;
+    final mediaSourceId = Sipflix4kPolicy.defaultSource(
+      item.mediaSources,
+    )?['Id']?.toString();
     final audioIndex = _getPreferredAudioIndex(item);
     final startTicks = startPosition.inMicroseconds * 10;
     final params = <String, String>{

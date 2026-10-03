@@ -94,6 +94,57 @@ class Sipflix4kPolicy {
     return null;
   }
 
+  /// Whether a single media [source] carries a 4K video stream.
+  static bool isUhdSource(Map source) {
+    final streams = source['MediaStreams'];
+    if (streams is! List) return false;
+    return _hasUhdVideo(
+      streams.whereType<Map>().map((m) => m.cast<String, dynamic>()),
+    );
+  }
+
+  /// The versions this device should be offered. A box that can't play 4K
+  /// never sees the 4K versions of a title, unless 4K is all there is, so the
+  /// refusal message still explains why nothing plays.
+  static List<Map<String, dynamic>> selectableSources(
+    List<Map<String, dynamic>> sources, {
+    bool? cannotPlay4k,
+  }) {
+    if (!(cannotPlay4k ?? isFragileHevcDecoder)) return sources;
+    final hd = sources.where((s) => !isUhdSource(s)).toList();
+    return hd.isEmpty ? sources : hd;
+  }
+
+  /// The version to start on when the viewer hasn't picked one: the widest
+  /// non-4K version on a box that can't play 4K, else the server's first.
+  static Map<String, dynamic>? defaultSource(
+    List<Map<String, dynamic>> sources, {
+    bool? cannotPlay4k,
+  }) {
+    if (sources.isEmpty) return null;
+    final options = selectableSources(sources, cannotPlay4k: cannotPlay4k);
+    if (identical(options, sources)) return sources.first;
+    var best = options.first;
+    var bestWidth = _sourceWidth(best);
+    for (final s in options.skip(1)) {
+      final w = _sourceWidth(s);
+      if (w > bestWidth) {
+        best = s;
+        bestWidth = w;
+      }
+    }
+    return best;
+  }
+
+  static num _sourceWidth(Map source) {
+    final streams = source['MediaStreams'];
+    if (streams is! List) return 0;
+    for (final m in streams.whereType<Map>()) {
+      if (m['Type'] == 'Video' && m['Width'] is num) return m['Width'] as num;
+    }
+    return 0;
+  }
+
   static bool _hasUhdVideo(Iterable<Map<String, dynamic>> streams) {
     for (final stream in streams) {
       if (stream['Type'] != 'Video') continue;
