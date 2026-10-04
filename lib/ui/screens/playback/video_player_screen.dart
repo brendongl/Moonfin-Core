@@ -79,6 +79,7 @@ import '../../../l10n/app_localizations.dart';
 import '../../../playback/media3_player_backend.dart';
 import '../../../playback/tizen_player_backend.dart';
 import 'osd_buttons.dart';
+import 'buffering_overlay_tracker.dart';
 import 'package:video_player/video_player.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
@@ -286,6 +287,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   bool _verticalDragIgnored = false;
   Offset? _doubleTapDownPosition;
   DateTime? _lastSeekTime;
+  // Sipflix: clears the "Loading Stream..." overlay as soon as position is
+  // visibly advancing, instead of waiting for the raw buffering flag, which
+  // can lag real recovery by 30-40s after a mid-play network outage (R3-A).
+  final _bufferingOverlayTracker = BufferingOverlayTracker();
   bool _showSkipForward = false;
   bool _showSkipBackward = false;
   Timer? _skipForwardTimer;
@@ -4272,11 +4277,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   }
 
   Widget _buildBufferingIndicator() {
-    return StreamBuilder<bool>(
-      stream: _state.bufferingStream,
-      initialData: _state.isBuffering,
+    // Sipflix: rebuild on position ticks (same ~250ms cadence as the
+    // buffering flag, native-side `startTicker()`), not just on buffering
+    // flag changes, so a position-advance can clear the overlay promptly
+    // even if the raw flag hasn't flipped yet. See BufferingOverlayTracker.
+    return StreamBuilder<Duration>(
+      stream: _state.positionStream,
+      initialData: _state.position,
       builder: (context, snap) {
-        if (snap.data != true || _isBringupInProgress(_bringupState.phase)) {
+        final rawBuffering = _state.isBuffering;
+        if (!rawBuffering || _isBringupInProgress(_bringupState.phase)) {
+          _bufferingOverlayTracker.reset();
+          return const SizedBox.shrink();
+        }
+        final showOverlay = _bufferingOverlayTracker.shouldShowOverlay(
+          rawBuffering: rawBuffering,
+          position: snap.data ?? _state.position,
+          now: DateTime.now(),
+        );
+        if (!showOverlay) {
           return const SizedBox.shrink();
         }
         final hasTrickplay = _trickplayInfo != null && _trickplayInfo!.isValid;

@@ -7780,20 +7780,41 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
     }
   }
 
+  // Sipflix: EmbyMediaServerClient only adds the Is4K=false fragile-decoder
+  // filter when every type in IncludeItemTypes carries the flag
+  // (Movie/Episode/Video/MusicVideo) — mixing in 'Audio' silently disabled
+  // the filter for the whole query, so a 4K-only movie/episode in a shuffled
+  // folder was handed straight to playback on a fragile-decoder box. Split
+  // into a flag-eligible bucket and the 'Audio' remainder, same pattern as
+  // the Search fix (search_view_model.dart). See
+  // EmbyMediaServerClient._carries4kFlag.
   Future<List<AggregatedItem>> _loadFolderPlayableItemsForShuffle(
     AggregatedItem item, {
     required String fields,
   }) async {
     final client = _clientForItem(item);
     try {
-      final data = await client.itemsApi.getItems(
-        parentId: item.id,
-        recursive: true,
-        includeItemTypes: const ['Episode', 'Movie', 'Video', 'Audio'],
-        sortBy: 'SortName',
-        fields: fields,
-      );
-      return _mapRawItemsForServer(data['Items'], item.serverId);
+      final results = await Future.wait([
+        client.itemsApi.getItems(
+          parentId: item.id,
+          recursive: true,
+          includeItemTypes: const ['Episode', 'Movie', 'Video'],
+          sortBy: 'SortName',
+          fields: fields,
+        ),
+        client.itemsApi.getItems(
+          parentId: item.id,
+          recursive: true,
+          includeItemTypes: const ['Audio'],
+          sortBy: 'SortName',
+          fields: fields,
+        ),
+      ]);
+      final merged = [
+        ...(results[0]['Items'] as List? ?? const []),
+        ...(results[1]['Items'] as List? ?? const []),
+      ];
+      return _mapRawItemsForServer(merged, item.serverId);
     } catch (_) {
       return const [];
     }

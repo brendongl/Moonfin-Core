@@ -103,6 +103,14 @@ class ScreensaverContentService {
     }
   }
 
+  // Sipflix: EmbyMediaServerClient only adds the Is4K=false fragile-decoder
+  // filter when every type in IncludeItemTypes carries the flag
+  // (Movie/Episode/Video/MusicVideo) — mixing in 'Series' silently disabled
+  // the filter for the whole query, so a 4K-only movie's backdrop could be
+  // shown in the ambient screensaver on a fragile-decoder box. Query the
+  // flag-eligible 'Movie' bucket and the 'Series' remainder separately and
+  // merge, same pattern as the Search fix (search_view_model.dart). See
+  // EmbyMediaServerClient._carries4kFlag.
   Future<List<Map<String, dynamic>>> _fetchItems(
     MediaServerClient client, {
     String? parentId,
@@ -112,10 +120,13 @@ class ScreensaverContentService {
     required String maxAge,
     required bool requireRating,
   }) async {
-    Future<List<Map<String, dynamic>>> query(int start) async {
+    Future<List<Map<String, dynamic>>> query(
+      int start,
+      List<String> includeItemTypes,
+    ) async {
       final response = await client.itemsApi.getItems(
         parentId: parentId,
-        includeItemTypes: ['Movie', 'Series'],
+        includeItemTypes: includeItemTypes,
         sortBy: sortBy,
         sortOrder: sortOrder,
         recursive: true,
@@ -130,11 +141,19 @@ class ScreensaverContentService {
       return (response['Items'] as List? ?? []).cast<Map<String, dynamic>>();
     }
 
-    final items = await query(startIndex);
+    Future<List<Map<String, dynamic>>> queryBoth(int start) async {
+      final results = await Future.wait([
+        query(start, const ['Movie']),
+        query(start, const ['Series']),
+      ]);
+      return [...results[0], ...results[1]];
+    }
+
+    final items = await queryBoth(startIndex);
     // A random offset can overshoot a small library and return nothing, so
     // retry from the start to avoid an empty batch.
     if (items.isEmpty && startIndex > 0) {
-      return query(0);
+      return queryBoth(0);
     }
     return items;
   }

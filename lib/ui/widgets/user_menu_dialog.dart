@@ -170,7 +170,11 @@ class _AccountDialogState extends State<_AccountDialog> {
 
     if (!mounted) return;
     Navigator.of(context).pop();
-    context.go(Destinations.serverSelect);
+    // Sipflix: never land on the bare "Select Server" screen — it has no
+    // stored server and (on this build) no Add Server button, i.e. a dead
+    // end. Routing through startup re-runs SipflixServers.injectOrMigrate
+    // and lands on the real sign-in flow for the hardcoded server instead.
+    context.go(Destinations.startup);
   }
 
   Future<void> _signOutAll() async {
@@ -187,7 +191,12 @@ class _AccountDialogState extends State<_AccountDialog> {
 
     if (!mounted) return;
     Navigator.of(context).pop();
-    context.go(Destinations.serverSelect);
+    // Sipflix: Sign Out All deletes every stored server (including the
+    // hardcoded record), so the bare "Select Server" screen would be a true
+    // dead end — no stored server, no Add Server button. Startup re-injects
+    // the hardcoded Sipflix server via SipflixServers.injectOrMigrate and
+    // routes to its sign-in screen.
+    context.go(Destinations.startup);
   }
 
   void _addUser() {
@@ -198,7 +207,10 @@ class _AccountDialogState extends State<_AccountDialog> {
       router.go('${Destinations.server}?serverId=$activeServer');
       return;
     }
-    router.go(Destinations.serverSelect);
+    // Sipflix: no active server to add a user to — go through startup so
+    // the hardcoded server gets (re-)injected rather than landing on the
+    // empty, Add-Server-less "Select Server" screen.
+    router.go(Destinations.startup);
   }
 
   /// Sipflix: the customer build ships only hardcoded servers, so the

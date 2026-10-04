@@ -1943,18 +1943,37 @@ class DownloadService extends ChangeNotifier {
     await downloadItems(tracks, quality: quality);
   }
 
+  // Sipflix: EmbyMediaServerClient only adds the Is4K=false fragile-decoder
+  // filter when every type in IncludeItemTypes carries the flag
+  // (Movie/Episode/Video/MusicVideo) — mixing in 'Audio' silently disabled
+  // the filter for the whole query, so a 4K-only movie/episode inside a
+  // collection was listed as a downloadable item on a fragile-decoder box.
+  // Split into a flag-eligible bucket and the 'Audio' remainder, same
+  // pattern as the Search fix (search_view_model.dart). See
+  // EmbyMediaServerClient._carries4kFlag.
   Future<List<AggregatedItem>> _getAllPlayableItemsForBoxSet(
     String boxSetId,
   ) async {
     try {
-      final data = await _client.itemsApi.getItems(
-        parentId: boxSetId,
-        recursive: true,
-        includeItemTypes: const ['Episode', 'Movie', 'Video', 'Audio'],
-        fields: 'MediaStreams,MediaSources,RunTimeTicks,Trickplay',
-      );
-      final rawItems = data['Items'] as List?;
-      if (rawItems == null) return const [];
+      final results = await Future.wait([
+        _client.itemsApi.getItems(
+          parentId: boxSetId,
+          recursive: true,
+          includeItemTypes: const ['Episode', 'Movie', 'Video'],
+          fields: 'MediaStreams,MediaSources,RunTimeTicks,Trickplay',
+        ),
+        _client.itemsApi.getItems(
+          parentId: boxSetId,
+          recursive: true,
+          includeItemTypes: const ['Audio'],
+          fields: 'MediaStreams,MediaSources,RunTimeTicks,Trickplay',
+        ),
+      ]);
+      final rawItems = [
+        ...(results[0]['Items'] as List? ?? const []),
+        ...(results[1]['Items'] as List? ?? const []),
+      ];
+      if (rawItems.isEmpty) return const [];
       final serverId = _client.baseUrl;
       return rawItems
           .whereType<Map>()
