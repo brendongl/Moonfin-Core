@@ -32,6 +32,7 @@ import 'syncplay/syncplay_manager.dart';
 import 'ui/navigation/app_router.dart';
 import 'ui/navigation/deep_link_navigator.dart';
 import 'ui/navigation/home_refresh_bus.dart';
+import 'ui/navigation/top_route.dart';
 import 'ui/theme/app_theme.dart';
 import 'ui/theme/app_theme_controller.dart';
 import 'sipflix/sipflix_ota_updater.dart';
@@ -619,9 +620,13 @@ class _GlobalShortcutScopeState extends State<_GlobalShortcutScope>
   void _popIfAndroidSkipsPopRoute() {
     final seq = _popRouteSeq;
     final location = appRouter.routerDelegate.currentConfiguration.uri;
+    final topPage =
+        topRoutePageKey(appRouter.routerDelegate.currentConfiguration);
     Timer(const Duration(milliseconds: 700), () {
       if (!mounted || _popRouteSeq != seq) return;
-      if (appRouter.routerDelegate.currentConfiguration.uri != location) return;
+      final config = appRouter.routerDelegate.currentConfiguration;
+      if (config.uri != location || topRoutePageKey(config) != topPage) return;
+      if (isPlayerPath(topRoutePath(config))) return;
       if (!appRouter.canPop()) return;
       debugPrint('BACK: no popRoute from Android, popping $location');
       // If popRoute turns up late after all, don't let it pop a second page.
@@ -630,12 +635,9 @@ class _GlobalShortcutScopeState extends State<_GlobalShortcutScope>
     });
   }
 
-  bool _isPlayerRoute() {
-    final path = appRouter.routerDelegate.currentConfiguration.uri.path;
-    return path.startsWith('/player/') ||
-        path == '/live-tv/player' ||
-        path.startsWith('/game-player/');
-  }
+  bool _isPlayerRoute() =>
+      PlayerRouteObserver.instance.isPlayerActive.value ||
+      isPlayerPath(topRoutePath(appRouter.routerDelegate.currentConfiguration));
 
   bool _isHomeRoute() {
     final path = appRouter.routerDelegate.currentConfiguration.uri.path;
