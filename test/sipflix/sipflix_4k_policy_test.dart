@@ -6,8 +6,9 @@ class _Item {
   final List<Map<String, dynamic>> mediaSources;
 }
 
-Map<String, dynamic> _source(String id, int width) => {
+Map<String, dynamic> _source(String id, int width, [int? size]) => {
       'Id': id,
+      if (size != null) 'Size': size,
       'MediaStreams': [
         {'Type': 'Video', 'Width': width, 'Height': width * 9 ~/ 16},
         {'Type': 'Audio'},
@@ -90,8 +91,29 @@ void main() {
       expect(out.length, 2);
     });
 
-    test('default is the widest HD version, never the 4K first entry', () {
-      expect(Sipflix4kPolicy.defaultSource([uhd, sd, hd], cannotPlay4k: true)?['Id'], 'hd');
+    test('default is the smallest non-4K file, never the 4K first entry', () {
+      final big = _source('big', 1920, 9000);
+      final small = _source('small', 1280, 2000);
+      final mid = _source('mid', 1920, 4000);
+      final huge = _source('uhd', 3840, 1000);
+      expect(
+        Sipflix4kPolicy.defaultSource([huge, big, small, mid], cannotPlay4k: true)?['Id'],
+        'small',
+      );
+    });
+
+    test('missing Size falls back to the first HD version, sized beats unsized', () {
+      expect(Sipflix4kPolicy.defaultSource([uhd, sd, hd], cannotPlay4k: true)?['Id'], 'sd');
+      expect(
+        Sipflix4kPolicy.defaultSource(
+          [uhd, _source('a', 1920), _source('b', 1920, 500)],
+          cannotPlay4k: true,
+        )?['Id'],
+        'b',
+      );
+    });
+
+    test('4K-only stays 4K', () {
       expect(Sipflix4kPolicy.defaultSource([uhd], cannotPlay4k: true)?['Id'], 'uhd');
     });
 

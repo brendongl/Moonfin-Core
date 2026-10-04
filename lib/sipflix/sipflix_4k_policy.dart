@@ -115,8 +115,9 @@ class Sipflix4kPolicy {
     return hd.isEmpty ? sources : hd;
   }
 
-  /// The version to start on when the viewer hasn't picked one: the widest
-  /// non-4K version on a box that can't play 4K, else the server's first.
+  /// The version to start on when the viewer hasn't picked one: the smallest
+  /// non-4K file on a box that can't play 4K (lightest on a weak box and link),
+  /// else the server's first. Versions with no known size lose to any sized one.
   static Map<String, dynamic>? defaultSource(
     List<Map<String, dynamic>> sources, {
     bool? cannotPlay4k,
@@ -124,25 +125,17 @@ class Sipflix4kPolicy {
     if (sources.isEmpty) return null;
     final options = selectableSources(sources, cannotPlay4k: cannotPlay4k);
     if (identical(options, sources)) return sources.first;
-    var best = options.first;
-    var bestWidth = _sourceWidth(best);
-    for (final s in options.skip(1)) {
-      final w = _sourceWidth(s);
-      if (w > bestWidth) {
+    Map<String, dynamic>? best;
+    num bestSize = 0;
+    for (final s in options) {
+      final size = s['Size'];
+      if (size is! num || size <= 0) continue;
+      if (best == null || size < bestSize) {
         best = s;
-        bestWidth = w;
+        bestSize = size;
       }
     }
-    return best;
-  }
-
-  static num _sourceWidth(Map source) {
-    final streams = source['MediaStreams'];
-    if (streams is! List) return 0;
-    for (final m in streams.whereType<Map>()) {
-      if (m['Type'] == 'Video' && m['Width'] is num) return m['Width'] as num;
-    }
-    return 0;
+    return best ?? options.first;
   }
 
   static bool _hasUhdVideo(Iterable<Map<String, dynamic>> streams) {

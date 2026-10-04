@@ -52,7 +52,8 @@ class EmbyMediaServerClient extends MediaServerClient {
             hideStandalone4k() &&
             _listPath.hasMatch(options.path) &&
             !options.queryParameters.containsKey('Ids') &&
-            !options.queryParameters.containsKey('Is4K')) {
+            !options.queryParameters.containsKey('Is4K') &&
+            _carries4kFlag(options.path, options.queryParameters)) {
           options.queryParameters['Is4K'] = false;
         }
         options.headers['Authorization'] = buildServerAuthorizationHeader(
@@ -69,6 +70,21 @@ class EmbyMediaServerClient extends MediaServerClient {
     final id = _userId;
     if (id == null) throw StateError('userId not configured');
     return id;
+  }
+
+  // Emby's Is4K=false matches nothing for Series/BoxSet, so only add it when
+  // the query is limited to types that carry the flag (or is Resume/Latest/NextUp).
+  static bool _carries4kFlag(String path, Map<String, dynamic> query) {
+    if (RegExp(r'/(Resume|Latest)$|^/Shows/NextUp$').hasMatch(path)) return true;
+    final types = query['IncludeItemTypes'];
+    if (types == null) return false;
+    final list = (types is Iterable ? types : types.toString().split(','))
+        .map((t) => t.toString().trim())
+        .where((t) => t.isNotEmpty);
+    if (list.isEmpty) return false;
+    return list.every(
+      (t) => const {'Movie', 'Episode', 'Video', 'MusicVideo'}.contains(t),
+    );
   }
 
   @override

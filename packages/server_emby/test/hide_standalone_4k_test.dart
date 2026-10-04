@@ -36,7 +36,8 @@ void main() {
 
   test('adds Is4K=false on list queries when enabled', () async {
     EmbyMediaServerClient.hideStandalone4k = () => true;
-    await client.itemsApi.getItems(recursive: true, searchTerm: 'x');
+    await client.itemsApi.getItems(
+        recursive: true, searchTerm: 'x', includeItemTypes: ['Movie']);
     await client.itemsApi.getResumeItems();
     expect(seen.length, 2);
     for (final u in seen) {
@@ -53,5 +54,16 @@ void main() {
     EmbyMediaServerClient.hideStandalone4k = () => true;
     await client.itemsApi.getItems(ids: ['1']);
     expect(seen.single.queryParameters.containsKey('Is4K'), isFalse);
+  });
+
+  test('Series, BoxSet and untyped queries are never filtered', () async {
+    EmbyMediaServerClient.hideStandalone4k = () => true;
+    await client.itemsApi.getItems(recursive: true, includeItemTypes: ['Series']);
+    await client.itemsApi.getItems(recursive: true, includeItemTypes: ['Movie', 'Series']);
+    await client.itemsApi.getItems(recursive: true, searchTerm: 'x');
+    expect(seen.length, 3);
+    for (final u in seen) {
+      expect(u.queryParameters.containsKey('Is4K'), isFalse);
+    }
   });
 }
