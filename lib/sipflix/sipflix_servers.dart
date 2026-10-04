@@ -251,7 +251,18 @@ class SipflixServers {
     final existing = store.getServer(serverId);
 
     if (existing == null) {
-      if (store.getServers().isEmpty) {
+      // Sipflix: this used to be `store.getServers().isEmpty`, which also
+      // skipped injection whenever ANY server record existed — including a
+      // non-Sipflix one (e.g. a test box's "Jellyfin" entry). Combined with
+      // Sign Out All deleting every stored server (user_menu_dialog.dart
+      // `_signOutAll`), a box that also had a lingering Jellyfin record was
+      // left with zero Sipflix servers forever: `existing` stays null on
+      // every future launch, but the old `isEmpty` guard never re-added it
+      // because Jellyfin kept `getServers()` non-empty. The real question is
+      // whether a Sipflix server record already exists under some OTHER id
+      // (signed in to Delta/iDuck directly) — only then should re-injecting
+      // the AlphaV2 stub be skipped.
+      if (!store.getServers().any(isSipflixServerRecord)) {
         // Not "AlphaV2" yet: signing in decides the server, and a customer
         // whose account is on Delta should not be told they are joining
         // AlphaV2. Sign-in renames the record to wherever it lands.
