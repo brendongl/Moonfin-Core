@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:dio/dio.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
@@ -1101,6 +1102,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       setState(() {
         _bringupState = state;
       });
+      // Sipflix: a natural end-of-episode autoplay-next (no remote touched)
+      // arrives through the native backend's completion event, not an input
+      // event. On Android TV, marking this widget dirty with setState() alone
+      // was observed to NOT get a frame actually painted — the bring-up
+      // overlay's status text ("Closed previous stream" / "Testing
+      // connection...") stayed invisible behind the still-animating logo for
+      // 2+ minutes until the first remote keypress forced a layout pass
+      // (R1-B finding: Heartland S1E1 -> S1E2 autoplay). Explicitly asking
+      // for a frame here, instead of relying on setState's implicit
+      // scheduling, makes the status text paint without needing input.
+      SchedulerBinding.instance.scheduleFrame();
       _sipflixRefreshScreensaverSuppression();
       _showBringupFailureIfAny(state);
       unawaited(_syncAutoHdrSwitching());
@@ -3971,13 +3983,23 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                             ? 'Playback failed. We’re checking our copy and whether it needs to be reported.'
                             : _playbackReport.result?.message ?? _bringupState.error ?? 'Please try again.',
                         checking: _playbackReport.checking,
-                        onRetry: _playbackReport.checking || _playbackReport.result?.isMissing == true
+                        // Sipflix: a deliberate 4K-this-box-can't-play refusal
+                        // is not a transient fault — retrying or switching CDN
+                        // connection replays the exact same refusal, so only
+                        // "Go back" is offered for it (R1-B finding: "Try
+                        // again"/"Go back" were both dead ends for a 4K-only
+                        // title).
+                        onRetry: _playbackReport.checking ||
+                                _playbackReport.result?.isMissing == true ||
+                                Sipflix4kPolicy.isRefusal(_bringupState.error)
                             ? null : () => unawaited(
                           _manager.restartCurrentStream().catchError((Object _) {}),
                         ),
                         onBack: () => unawaited(_exitPlayback()),
                         onChangeConnection: _sipflixServer == null ||
-                            _playbackReport.checking || _playbackReport.result?.isMissing == true
+                            _playbackReport.checking ||
+                            _playbackReport.result?.isMissing == true ||
+                            Sipflix4kPolicy.isRefusal(_bringupState.error)
                             ? null
                             : _showServerRouteSelector,
                       ),

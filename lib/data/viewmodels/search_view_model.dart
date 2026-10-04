@@ -256,8 +256,18 @@ class SearchViewModel extends ChangeNotifier {
   // and can hit the proxy's 504, while each bucket alone answers in about
   // 2 s. Search the buckets in parallel and keep whatever answers; only fail
   // when every bucket fails.
+  // Sipflix: Movie must stay its own bucket, separate from Series/BoxSet.
+  // EmbyMediaServerClient only adds the Is4K=false fragile-decoder filter
+  // when every type in a query's IncludeItemTypes carries the Is4K flag
+  // (Movie/Episode/Video/MusicVideo) — Is4K=false matches nothing for
+  // Series/BoxSet, so a query mixing them in gets the filter skipped
+  // entirely. The old combined ['Movie','Series','BoxSet'] bucket silently
+  // disabled the filter for Movie too, so a 4K-only movie was fully
+  // searchable (and reachable) on a fragile-decoder box. See
+  // EmbyMediaServerClient._carries4kFlag.
   static const _searchBucketTypes = <List<String>>[
-    ['Movie', 'Series', 'BoxSet'],
+    ['Movie'],
+    ['Series', 'BoxSet'],
     ['Season'],
     ['Episode'],
     [

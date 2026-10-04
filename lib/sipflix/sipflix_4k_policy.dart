@@ -51,15 +51,57 @@ class Sipflix4kPolicy {
       'This is a 4K title and this device can\'t play 4K. Choose the HD '
       'version instead.';
 
+  /// Shown instead of [unsupportedDeviceMessage] when the title has no
+  /// non-4K source at all — "choose the HD version instead" is impossible
+  /// advice for a 4K-only title (R1-B finding: "Barreda" reachable via
+  /// Search, dead-ending on advice the customer can't follow).
+  static const String onlyAvailableIn4kMessage =
+      'This title is only available in 4K, which this box can\'t play.';
+
   /// Whether [message] is one of this policy's deliberate refusals rather
   /// than a playback fault.
   static bool isRefusal(String? message) =>
-      message == refusalMessage || message == unsupportedDeviceMessage;
+      message == refusalMessage ||
+      message == unsupportedDeviceMessage ||
+      message == onlyAvailableIn4kMessage;
+
+  /// Whether [sources] (a title's full, unfiltered media sources) has at
+  /// least one version this fragile-decoder box could actually play.
+  static bool hasPlayableAlternative(List<Map<String, dynamic>> sources) =>
+      sources.any((s) => !isUhdSource(s));
+
+  /// The message to show when a fragile-decoder box can't play the
+  /// requested source: the normal "choose the HD version instead" when one
+  /// exists, or a plain "can't play this at all" message when the title is
+  /// 4K-only and there is nothing else to choose.
+  static String messageForUnsupportedDevice(
+    List<Map<String, dynamic>>? sources,
+  ) {
+    if (sources != null &&
+        sources.isNotEmpty &&
+        !hasPlayableAlternative(sources)) {
+      return onlyAvailableIn4kMessage;
+    }
+    return unsupportedDeviceMessage;
+  }
 
   /// [PlaybackManager.directPlayOnlyUnavailable]: a box on H.264 only can't
   /// direct play 4K HEVC, and trying hands it to the decoder that crashes.
-  static String? unavailableOnThisDevice() =>
-      isFragileHevcDecoder ? unsupportedDeviceMessage : null;
+  /// [item] (duck-typed: anything with a `mediaSources` getter) lets the
+  /// message say "this title is 4K-only" instead of the impossible-to-follow
+  /// "choose the HD version instead" when no HD version exists at all.
+  static String? unavailableOnThisDevice([dynamic item]) {
+    if (!isFragileHevcDecoder) return null;
+    List? rawSources;
+    try {
+      rawSources = item?.mediaSources as List?;
+    } catch (_) {}
+    final sources = rawSources
+        ?.whereType<Map>()
+        .map((m) => m.cast<String, dynamic>())
+        .toList();
+    return messageForUnsupportedDevice(sources);
+  }
 
   /// [PlaybackManager.directPlayOnlyPolicy]: the refusal message for a 4K
   /// source, null for anything else.

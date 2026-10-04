@@ -129,7 +129,62 @@ void main() {
       Sipflix4kPolicy.isRefusal(Sipflix4kPolicy.unsupportedDeviceMessage),
       isTrue,
     );
+    expect(
+      Sipflix4kPolicy.isRefusal(Sipflix4kPolicy.onlyAvailableIn4kMessage),
+      isTrue,
+    );
     expect(Sipflix4kPolicy.isRefusal('Playback failed.'), isFalse);
     expect(Sipflix4kPolicy.isRefusal(null), isFalse);
+  });
+
+  group('messageForUnsupportedDevice (R1-B: "Barreda" 4K-only dead end)', () {
+    final uhd = _source('uhd', 3840);
+    final hd = _source('hd', 1920);
+
+    test('a 4K-only title gets the plain "can\'t play this" message', () {
+      expect(
+        Sipflix4kPolicy.messageForUnsupportedDevice([uhd]),
+        Sipflix4kPolicy.onlyAvailableIn4kMessage,
+      );
+    });
+
+    test(
+      'a title with a real HD alternative keeps the "choose HD" message',
+      () {
+        expect(
+          Sipflix4kPolicy.messageForUnsupportedDevice([uhd, hd]),
+          Sipflix4kPolicy.unsupportedDeviceMessage,
+        );
+      },
+    );
+
+    test('no source list falls back to the normal message', () {
+      expect(
+        Sipflix4kPolicy.messageForUnsupportedDevice(null),
+        Sipflix4kPolicy.unsupportedDeviceMessage,
+      );
+      expect(
+        Sipflix4kPolicy.messageForUnsupportedDevice(const []),
+        Sipflix4kPolicy.unsupportedDeviceMessage,
+      );
+    });
+  });
+
+  group('hasPlayableAlternative', () {
+    test('false when every source is 4K', () {
+      expect(
+        Sipflix4kPolicy.hasPlayableAlternative([_source('uhd', 3840)]),
+        isFalse,
+      );
+    });
+
+    test('true when an HD source exists alongside 4K', () {
+      expect(
+        Sipflix4kPolicy.hasPlayableAlternative(
+          [_source('uhd', 3840), _source('hd', 1920)],
+        ),
+        isTrue,
+      );
+    });
   });
 }

@@ -23,6 +23,7 @@ import '../screens/downloads/downloads_panel.dart';
 import '../screens/settings/settings_side_panel.dart';
 import 'overlay_sheet.dart';
 import '../../sipflix/sipflix_credential_vault.dart';
+import '../../sipflix/sipflix_servers.dart';
 import 'pin_entry_dialog.dart';
 import 'remote_control_dialog.dart';
 import 'settings/settings_panel.dart';
@@ -200,7 +201,24 @@ class _AccountDialogState extends State<_AccountDialog> {
     router.go(Destinations.serverSelect);
   }
 
+  /// Sipflix: the customer build ships only hardcoded servers, so the
+  /// generic "Select Server" destination is the upstream LAN-discovery
+  /// screen ("Discovered Servers") with no D-pad-reachable manual-add and
+  /// no account on it at all. Mirrors the identical guard on
+  /// `ServerScreen._sipflixRouteReplacesServerSelect` — the Switch User
+  /// dialog must not offer a path into that screen that the server detail
+  /// page already hides.
+  bool get _sipflixHidesSelectServer {
+    final activeServerId = _activeServerId;
+    if (activeServerId == null) return false;
+    final server = _serverRepo.getServer(activeServerId);
+    if (server == null) return false;
+    return SipflixServers.hideAddServer &&
+        SipflixServers.isSipflixServerRecord(server);
+  }
+
   void _changeServer() {
+    if (_sipflixHidesSelectServer) return;
     final router = GoRouter.of(context);
     Navigator.of(context).pop();
     router.go(Destinations.serverSelect);
@@ -341,18 +359,27 @@ class _AccountDialogState extends State<_AccountDialog> {
                           focusColor: focusColor,
                         ),
                       )
-                    : _buildPairedActionButtons(
-                        first: _ActionButton(
-                          label: l10n.selectServer,
-                          onPressed: _busy ? null : _changeServer,
-                          focusColor: focusColor,
-                        ),
-                        second: _ActionButton(
-                          label: l10n.signOut,
-                          onPressed: _busy ? null : _signOutCurrent,
-                          focusColor: focusColor,
-                        ),
-                      ),
+                    : (_sipflixHidesSelectServer
+                        ? SizedBox(
+                            width: double.infinity,
+                            child: _ActionButton(
+                              label: l10n.signOut,
+                              onPressed: _busy ? null : _signOutCurrent,
+                              focusColor: focusColor,
+                            ),
+                          )
+                        : _buildPairedActionButtons(
+                            first: _ActionButton(
+                              label: l10n.selectServer,
+                              onPressed: _busy ? null : _changeServer,
+                              focusColor: focusColor,
+                            ),
+                            second: _ActionButton(
+                              label: l10n.signOut,
+                              onPressed: _busy ? null : _signOutCurrent,
+                              focusColor: focusColor,
+                            ),
+                          )),
               ),
               if (_accounts.length > 1) ...[
                 const SizedBox(height: 8),

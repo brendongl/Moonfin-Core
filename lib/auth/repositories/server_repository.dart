@@ -28,8 +28,15 @@ class ServerRepository {
     final stored = _authStore.getServers();
     _servers.clear();
 
-    final seenEndpoints = <String, String>{};
-
+    // Group stored servers by endpoint identity first, instead of deciding
+    // keep/drop as we walk the list. The old pass removed every later
+    // server that collided with an earlier one on the assumption the first
+    // one seen was always the "real" one — but stored-server order isn't a
+    // reliable proxy for "has an account on it", and a wipe that drops the
+    // wrong half of a collision (or, via a bug elsewhere, every member of a
+    // group) deletes real users with no recovery. See
+    // wiki/sipflix/... "Switch User -> Select Server wipes auth store".
+    final groups = <String, List<Server>>{};
     for (final server in stored) {
       final normalizedAddress = normalizeServerBaseUrl(server.address);
       final normalizedServer =
@@ -42,14 +49,48 @@ class ServerRepository {
       }
 
       final endpointKey = _endpointIdentity(normalizedServer.address);
-      final existingServerId = seenEndpoints[endpointKey];
-      if (existingServerId != null && existingServerId != normalizedServer.id) {
-        await _authStore.removeServer(normalizedServer.id);
+      groups.putIfAbsent(endpointKey, () => []).add(normalizedServer);
+    }
+
+    for (final group in groups.values) {
+      if (group.length == 1) {
+        _servers.add(group.first);
         continue;
       }
 
-      seenEndpoints[endpointKey] = normalizedServer.id;
-      _servers.add(normalizedServer);
+      // Multiple stored records resolve to the same endpoint. Prefer a
+      // record that actually has signed-in users over one that doesn't,
+      // rather than whichever happened to be first in storage order.
+      Server? winner;
+      for (final candidate in group) {
+        if (_authStore.getUsers(candidate.id).isNotEmpty) {
+          winner = candidate;
+          break;
+        }
+      }
+      winner ??= group.first;
+      _servers.add(winner);
+
+      for (final loser in group) {
+        if (loser.id == winner.id) continue;
+        if (_authStore.getUsers(loser.id).isNotEmpty) {
+          // Never silently delete an account. If a second duplicate also
+          // has users, keep both rather than destroy either one — a
+          // leftover duplicate server row is a far smaller problem than a
+          // dropped login.
+          _servers.add(loser);
+          continue;
+        }
+        await _authStore.removeServer(loser.id);
+      }
+    }
+
+    // Defensive invariant: deduping must never turn a non-empty stored list
+    // into an empty in-memory one. If it ever would (a bug in the grouping
+    // above, or a future change), fail safe by keeping everything that was
+    // stored instead of wiping the user's accounts.
+    if (stored.isNotEmpty && _servers.isEmpty) {
+      _servers.addAll(stored);
     }
   }
 

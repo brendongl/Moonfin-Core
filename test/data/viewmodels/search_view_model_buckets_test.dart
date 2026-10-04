@@ -93,6 +93,38 @@ void main() {
     );
   });
 
+  test(
+    // R1-B finding: Movie must never share a bucket with Series/BoxSet.
+    // EmbyMediaServerClient only adds the fragile-decoder Is4K=false filter
+    // when every type in a query's includeItemTypes carries the Is4K flag
+    // (Movie/Episode/Video/MusicVideo); mixing 'Series'/'BoxSet' in disables
+    // the filter for Movie too, so a 4K-only movie became fully searchable
+    // on a box that can't play it ("Barreda").
+    'Movie is never bucketed together with Series or BoxSet',
+    () async {
+      final asked = <List<String>>[];
+      when(
+        () => repo.search(
+          any(),
+          includeItemTypes: any(named: 'includeItemTypes'),
+          parentId: any(named: 'parentId'),
+          limit: any(named: 'limit'),
+        ),
+      ).thenAnswer((inv) async {
+        asked.add(
+          List<String>.from(inv.namedArguments[#includeItemTypes] as List),
+        );
+        return const [];
+      });
+
+      await _runSearch(SearchViewModel(repo, client), 'barreda');
+
+      final movieBucket = asked.firstWhere((t) => t.contains('Movie'));
+      expect(movieBucket.contains('Series'), isFalse);
+      expect(movieBucket.contains('BoxSet'), isFalse);
+    },
+  );
+
   test('keeps movie results when the episode search times out', () async {
     answerBuckets((types) async {
       if (types.contains('Episode')) throw _gatewayTimeout();

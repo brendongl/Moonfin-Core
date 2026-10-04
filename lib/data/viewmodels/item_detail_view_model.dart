@@ -1504,16 +1504,37 @@ class ItemDetailViewModel extends ChangeNotifier {
         notifyListeners();
         return;
       }
-      final data = await _client.itemsApi.getItems(
-        personIds: [localId],
-        includeItemTypes: ['Movie', 'Series', 'MusicVideo', 'Episode'],
-        sortBy: 'PremiereDate',
-        sortOrder: 'Descending',
-        recursive: true,
-        limit: 100,
-        fields: 'PrimaryImageAspectRatio,BasicSyncInfo',
-      );
-      final items = (data['Items'] as List?) ?? [];
+      // Sipflix: queried in two homogeneous-type requests, not one mixed
+      // ['Movie','Series','MusicVideo','Episode'] call. EmbyMediaServerClient
+      // only adds the fragile-decoder Is4K=false filter when every type in
+      // the query carries the flag (Movie/Episode/Video/MusicVideo); mixing
+      // 'Series' in disables the filter for the whole request, so a 4K-only
+      // movie in someone's filmography was fully reachable on a box that
+      // can't play it. See EmbyMediaServerClient._carries4kFlag.
+      final filmographyFutures = [
+        _client.itemsApi.getItems(
+          personIds: [localId],
+          includeItemTypes: const ['Movie', 'MusicVideo', 'Episode'],
+          sortBy: 'PremiereDate',
+          sortOrder: 'Descending',
+          recursive: true,
+          limit: 100,
+          fields: 'PrimaryImageAspectRatio,BasicSyncInfo',
+        ),
+        _client.itemsApi.getItems(
+          personIds: [localId],
+          includeItemTypes: const ['Series'],
+          sortBy: 'PremiereDate',
+          sortOrder: 'Descending',
+          recursive: true,
+          limit: 100,
+          fields: 'PrimaryImageAspectRatio,BasicSyncInfo',
+        ),
+      ];
+      final responses = await Future.wait(filmographyFutures);
+      final items = [
+        for (final data in responses) ...(data['Items'] as List? ?? const []),
+      ];
       _filmography = _mapItems(items);
       notifyListeners();
     } catch (_) {}

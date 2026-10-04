@@ -9436,10 +9436,19 @@ Map<String, dynamic>? selectedMediaSourceForItem(
   if (item.mediaSources.isEmpty) {
     return null;
   }
+  // Sipflix: match against the already-filtered list, not the raw
+  // mediaSources — a selectedMediaSourceId that happens to name a 4K
+  // source (a stale/restored selection, a deep link, a server-remembered
+  // "last played source") must never bypass Sipflix4kPolicy on a
+  // fragile-decoder box. Every in-screen writer of
+  // `_selectedMediaSourceId` today already goes through the policy, but
+  // this is the single choke point everything funnels through, so it
+  // must enforce the policy itself rather than trust its callers.
+  final selectable = Sipflix4kPolicy.selectableSources(item.mediaSources);
   if (selectedMediaSourceId == null || selectedMediaSourceId.isEmpty) {
     return Sipflix4kPolicy.defaultSource(item.mediaSources);
   }
-  for (final source in item.mediaSources) {
+  for (final source in selectable) {
     final id = source['Id']?.toString();
     if (id == selectedMediaSourceId) {
       return source;
@@ -9659,6 +9668,23 @@ Future<bool> _shouldForceTranscodeForDolbyVisionQueue(
   String? mediaSourceId,
 }) async {
   if (!(PlatformDetection.isAndroid && PlatformDetection.isTV)) {
+    return false;
+  }
+
+  // Sipflix: a fragile-decoder box can never play a 4K-only title no matter
+  // what the viewer picks here, so skip the Dolby Vision fallback dialog
+  // entirely for one — otherwise the customer answers a jargon-heavy
+  // "Play HDR10 fallback" / "Request transcode" prompt and then hits the
+  // same refusal anyway (R1-B finding: "Barreda", DV + no HD source).
+  // `manager.playItems` still refuses the source itself via
+  // Sipflix4kPolicy.unavailableOnThisDevice, which now gives a message that
+  // matches this ("only available in 4K") instead of the normal
+  // "choose the HD version instead".
+  if (Sipflix4kPolicy.isFragileHevcDecoder &&
+      queue.isNotEmpty &&
+      queue.every(
+        (item) => !Sipflix4kPolicy.hasPlayableAlternative(item.mediaSources),
+      )) {
     return false;
   }
 

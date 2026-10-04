@@ -141,7 +141,9 @@ class PlaybackManager implements AudioOwnable {
   /// Host answer to "can this device direct play a direct-play-only source at
   /// all?" — a non-null message refuses such a source before anything is
   /// requested, so a decoder known to fail on it is never handed the stream.
-  String? Function()? directPlayOnlyUnavailable;
+  /// [item] is the queue item being played, so the host can tailor its
+  /// message to whether an alternative version actually exists.
+  String? Function(dynamic item)? directPlayOnlyUnavailable;
 
   String? _directPlayOnlyMessage(
     dynamic item, [
@@ -1389,7 +1391,7 @@ class PlaybackManager implements AudioOwnable {
     if (directOnly != null) {
       String? unavailable;
       try {
-        unavailable = directPlayOnlyUnavailable?.call();
+        unavailable = directPlayOnlyUnavailable?.call(item);
       } catch (_) {}
       if (unavailable != null) {
         _emitDirectPlayOnlyFailure(unavailable, item, null);
