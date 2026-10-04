@@ -18,6 +18,7 @@ import '../repositories/seerr_repository.dart';
 import '../utils/playlist_utils.dart';
 import '../../preference/seerr_preferences.dart';
 import '../../util/episode_playability.dart';
+import '../../sipflix/sipflix_4k_policy.dart';
 import '../services/plugin_sync_service.dart';
 import 'seerr_media_detail_view_model.dart';
 
@@ -200,6 +201,10 @@ class ItemDetailViewModel extends ChangeNotifier {
 
   /// How many series are asked for their episodes at once during the scan.
   static const _indexScanBatchSize = 8;
+
+  /// How many ids go into one 4K probe. Keeps the query string short enough
+  /// for a 2000-item collection scan.
+  static const _uhdProbeBatchSize = 150;
 
   /// True while the index is being built. The playlist area shows a spinner.
   bool _playlistIndexBuilding = false;
@@ -1038,17 +1043,62 @@ class ItemDetailViewModel extends ChangeNotifier {
       limit: _collectionPageSize,
       fields: 'PrimaryImageAspectRatio,BasicSyncInfo,People',
     );
-    final newItems = _mapItems((data['Items'] as List?) ?? []);
+    final fetched = _mapItems((data['Items'] as List?) ?? []);
     final total = data['TotalRecordCount'] as int?;
     if (total != null) _collectionTotalCount = total;
-    _collectionFetchedCount += newItems.length;
+    // Paging walks the server's unfiltered list, so the cursor counts what was
+    // fetched, not what survived the 4K filter.
+    _collectionFetchedCount += fetched.length;
     // A server that leaves the total out would otherwise strand the grid on its
     // first page, so a full page is taken to mean there is more behind it.
     _collectionHasMore = total != null
         ? _collectionFetchedCount < _collectionTotalCount
-        : newItems.length == _collectionPageSize;
-    _collectionItems = [..._collectionItems, ...newItems];
+        : fetched.length == _collectionPageSize;
+    _collectionItems = [
+      ..._collectionItems,
+      ...await _withoutUnplayable4k(fetched),
+    ];
     notifyListeners();
+  }
+
+  /// Drops the titles this box can't play from a collection's children.
+  ///
+  /// A collection mixes movies with series, and Emby's `Is4K` filter matches
+  /// nothing for a series, so the 4K titles are found with one typed probe over
+  /// the movies present and removed here instead of server-side.
+  Future<List<AggregatedItem>> _withoutUnplayable4k(
+    List<AggregatedItem> items,
+  ) async {
+    if (!Sipflix4kPolicy.isFragileHevcDecoder || items.isEmpty) return items;
+    final movieIds = items
+        .where((i) => i.type == 'Movie')
+        .map((i) => i.id)
+        .toList();
+    if (movieIds.isEmpty) return items;
+    try {
+      final blocked = <String>{};
+      for (var i = 0; i < movieIds.length; i += _uhdProbeBatchSize) {
+        final end = i + _uhdProbeBatchSize;
+        final batch = movieIds.sublist(
+          i,
+          end < movieIds.length ? end : movieIds.length,
+        );
+        final uhd = await _client.itemsApi.getItems(
+          ids: batch,
+          includeItemTypes: const ['Movie'],
+          is4K: true,
+          limit: batch.length,
+        );
+        blocked.addAll(((uhd['Items'] as List?) ?? [])
+            .whereType<Map>()
+            .map((m) => m['Id']?.toString())
+            .whereType<String>());
+      }
+      if (blocked.isEmpty) return items;
+      return items.where((i) => !blocked.contains(i.id)).toList();
+    } catch (_) {
+      return items;
+    }
   }
 
   /// Puts [_flattenedIds] in place, either from a saved order or by scanning
@@ -1104,7 +1154,9 @@ class ItemDetailViewModel extends ChangeNotifier {
         limit: _indexScanLimit,
         fields: 'BasicSyncInfo',
       );
-      final allTopLevel = _mapItems((allData['Items'] as List?) ?? []);
+      final allTopLevel = await _withoutUnplayable4k(
+        _mapItems((allData['Items'] as List?) ?? []),
+      );
 
       final seriesItems = allTopLevel.where((i) => i.type == 'Series').toList();
       final flat = allTopLevel

@@ -66,4 +66,15 @@ void main() {
       expect(u.queryParameters.containsKey('Is4K'), isFalse);
     }
   });
+
+  test('an explicit is4K survives the Ids guard, so a 4K probe works',
+      () async {
+    EmbyMediaServerClient.hideStandalone4k = () => true;
+    await client.itemsApi.getItems(
+      ids: ['1', '2'],
+      includeItemTypes: ['Movie'],
+      is4K: true,
+    );
+    expect(seen.single.queryParameters['Is4K'], 'true');
+  });
 }

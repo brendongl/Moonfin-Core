@@ -11,7 +11,7 @@ moonfin:
   # number means boxes never see the update. Kept well above upstream's
   # numbering so a merge can't overtake a build already on the fleet.
   sipflix_tv_version: 1.0.0
-  sipflix_tv_build_number: 2400040
+  sipflix_tv_build_number: 2400041
 
 environment:
   sdk: ^3.11.0

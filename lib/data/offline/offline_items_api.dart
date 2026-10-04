@@ -294,6 +294,7 @@ class OfflineItemsApi implements ItemsApi {
     List<String>? genreIds,
     List<String>? genres,
     bool? isFavorite,
+    bool? is4K,
     bool? collapseBoxSetItems,
     bool? enableTotalRecordCount,
     String? enableImageTypes,

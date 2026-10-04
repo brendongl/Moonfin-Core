@@ -44,6 +44,7 @@ class _FakeItemsApi implements ItemsApi {
     String? nameLessThan,
     List<String>? genreIds,
     List<String>? genres,
+    bool? is4K,
     bool? isFavorite,
     bool? collapseBoxSetItems,
     bool? enableTotalRecordCount,
