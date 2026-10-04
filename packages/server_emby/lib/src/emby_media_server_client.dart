@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:logger/logger.dart';
 import 'package:server_core/server_core.dart';
 
 import 'api/emby_auth_api.dart';
@@ -16,12 +17,28 @@ import 'api/emby_users_api.dart';
 
 class EmbyMediaServerClient extends MediaServerClient {
   final Dio _dio;
+  final Logger _logger = Logger();
 
   static bool Function() hideStandalone4k = () => false;
 
   static final _listPath = RegExp(
     r'^/(Items|Users/[^/]+/Items|Users/[^/]+/Items/(Resume|Latest)|Shows/NextUp)$',
   );
+
+  // Every list-shaped response that can carry Movie/Episode children. This is
+  // deliberately wider than [_listPath]: it also covers paths Emby's own
+  // Is4K filter can't be applied to at request time (mixed Movie+Series
+  // results with no IncludeItemTypes — Home rows, Favorites, Studio pages,
+  // Collections) and one path [_listPath] doesn't match at all
+  // (Shows/{id}/Episodes), so those get a response-side post-filter instead.
+  static final _postFilterPath = RegExp(
+    r'^/(Items|Users/[^/]+/Items|Users/[^/]+/Items/(Resume|Latest)|'
+    r'Shows/NextUp|Shows/[^/]+/Episodes)$',
+  );
+
+  // How many ids go into one 4K-survivor probe per page. Keeps the query
+  // string bounded even for a large page size.
+  static const int _uhdProbeBatchSize = 150;
 
   @override
   final DeviceInfo deviceInfo;
@@ -63,7 +80,130 @@ class EmbyMediaServerClient extends MediaServerClient {
         );
         handler.next(options);
       },
+      onResponse: (response, handler) async {
+        final path = response.requestOptions.path;
+        final query = response.requestOptions.queryParameters;
+        // Resume/Latest/NextUp silently ignore the Is4K param server-side
+        // (confirmed against Delta: Is4K=true and Is4K=false return the same
+        // Resume items) — unlike a plain typed /Items query, which does
+        // honour it. So those three paths are post-filtered unconditionally;
+        // everywhere else, an Is4K already on the request (added above, or
+        // passed explicitly) means the response is already correctly
+        // scoped and the extra probe would be wasted.
+        final isUnreliableIs4kEndpoint =
+            RegExp(r'/(Resume|Latest)$|^/Shows/NextUp$').hasMatch(path);
+        if (response.requestOptions.method == 'GET' &&
+            hideStandalone4k() &&
+            _postFilterPath.hasMatch(path) &&
+            // The probe itself (and any explicit Ids-based lookup) must
+            // bypass this filter, or every probe would spawn another probe.
+            !query.containsKey('Ids') &&
+            (isUnreliableIs4kEndpoint || !query.containsKey('Is4K'))) {
+          try {
+            await _postFilterUhd(response);
+          } catch (e, st) {
+            // Fail open: an unfilterable page still shows its items rather
+            // than going blank, but gets logged so it's not silent.
+            _logger.w('4K post-filter probe failed, showing items unfiltered',
+                error: e, stackTrace: st);
+          }
+        }
+        handler.next(response);
+      },
     ));
+  }
+
+  /// Drops Movie/Episode items this fragile-decoder box can't play from a
+  /// list-shaped response, in place. Series/BoxSet/Folder/Person/etc. items
+  /// are left untouched — Emby's Is4K filter (and this probe) only means
+  /// anything for the types that carry the flag.
+  ///
+  /// One typed follow-up query per page (`Ids=<page's Movie/Episode ids>&
+  /// Is4K=false`) decides which of those ids have a playable version; this
+  /// is the same probe shape already used for collections (2f2c69f6b).
+  ///
+  /// A hidden 4K-only episode leaves a gap in its season's episode numbers
+  /// rather than being silently renumbered — consistent with the existing
+  /// collections behaviour (2f2c69f6b), which likewise drops items in place.
+  Future<void> _postFilterUhd(Response response) async {
+    final data = response.data;
+    // /Items/Latest returns a bare JSON array; every other matched path
+    // returns {Items: [...], TotalRecordCount: n}.
+    final isBareList = data is List;
+    final rawItems = isBareList
+        ? data
+        : (data is Map ? data['Items'] : null);
+    if (rawItems is! List || rawItems.isEmpty) return;
+
+    final items = rawItems.whereType<Map>().toList();
+    final candidateIds = <String>[];
+    for (final item in items) {
+      final type = item['Type']?.toString();
+      if (type == 'Movie' || type == 'Episode') {
+        final id = item['Id']?.toString();
+        if (id != null) candidateIds.add(id);
+      }
+    }
+    if (candidateIds.isEmpty) return;
+
+    final survivors = <String>{};
+    for (var i = 0; i < candidateIds.length; i += _uhdProbeBatchSize) {
+      final end = i + _uhdProbeBatchSize;
+      final batch = candidateIds.sublist(
+        i,
+        end < candidateIds.length ? end : candidateIds.length,
+      );
+      final probe = await _dio.get(
+        '/Users/${_requireUserId()}/Items',
+        queryParameters: {
+          'Ids': batch.join(','),
+          'IncludeItemTypes': 'Movie,Episode',
+          'Is4K': false,
+          'Fields': '',
+          'Limit': batch.length,
+        },
+      );
+      final probeData = probe.data;
+      final probeItems = probeData is Map ? probeData['Items'] : null;
+      if (probeItems is List) {
+        survivors.addAll(probeItems
+            .whereType<Map>()
+            .map((m) => m['Id']?.toString())
+            .whereType<String>());
+      }
+    }
+
+    final blockedCount = items
+        .where((item) =>
+            (item['Type'] == 'Movie' || item['Type'] == 'Episode') &&
+            !survivors.contains(item['Id']?.toString()))
+        .length;
+    if (blockedCount == 0) return;
+
+    final filtered = rawItems.where((raw) {
+      if (raw is! Map) return true;
+      final type = raw['Type']?.toString();
+      if (type != 'Movie' && type != 'Episode') return true;
+      return survivors.contains(raw['Id']?.toString());
+    }).toList();
+
+    if (isBareList) {
+      response.data = filtered;
+    } else {
+      final map = data as Map;
+      map['Items'] = filtered;
+      // Best-effort: this page's items shrank, so walk the reported total
+      // down by the same amount. It can't be made exact (the server's own
+      // count still includes 4K-only items on pages this probe hasn't seen
+      // yet), but undercounting slightly is harmless — a consumer that
+      // pages until it stops getting full pages, or until it reaches the
+      // (now slightly high) total, still terminates; it just does one extra
+      // page request in the worst case rather than stopping early.
+      final total = map['TotalRecordCount'];
+      if (total is int) {
+        map['TotalRecordCount'] = total - blockedCount;
+      }
+    }
   }
 
   String _requireUserId() {
