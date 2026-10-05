@@ -88,6 +88,11 @@ class _Resolver extends MediaStreamResolver {
 
 class _Service extends PlayerService {
   final stops = <Duration>[];
+
+  /// Called by [onPlaybackProgress] on every progress-report tick, so a
+  /// test can count calls and/or throw to simulate a dead token.
+  void Function()? onProgress;
+
   @override
   Future<void> onPlaybackStop(
     dynamic item,
@@ -95,6 +100,18 @@ class _Service extends PlayerService {
     Duration position,
   ) async {
     stops.add(position);
+  }
+
+  @override
+  Future<void> onPlaybackProgress(
+    dynamic item,
+    StreamResolutionResult resolution,
+    Duration position, {
+    bool isPaused = false,
+    int? audioStreamIndex,
+    int? subtitleStreamIndex,
+  }) async {
+    onProgress?.call();
   }
 
   @override
@@ -282,4 +299,52 @@ void main() {
     expect(retry.namedArguments[#enableDirectStream], isTrue);
     expect(retry.namedArguments[#startTimeTicks], 3000000000);
   });
+
+  // Sipflix swarm R5/R6 bug B2: the 5-second progress-report timer called
+  // onPlaybackProgress without awaiting or catching it, so a dead/revoked
+  // token (401) became an unhandled async error on every tick for the rest
+  // of the session instead of being handled once.
+  test(
+    'a 401 from the progress report never escapes unhandled, and stops the timer',
+    () {
+      fakeAsync((async) {
+        var progressCalls = 0;
+        service.onProgress = () {
+          progressCalls++;
+          // Dio's own DioException.toString() always reads this way.
+          throw Exception(
+            'DioException [bad response]: ... the status code of 401 ...',
+          );
+        };
+
+        unawaited(manager.playItems([a]));
+        async.elapse(const Duration(seconds: 5));
+        // If this ever threw unhandled inside the fakeAsync zone, elapse()
+        // would rethrow it here and fail the test.
+        expect(progressCalls, 1);
+
+        async.elapse(const Duration(seconds: 15));
+        // No further ticks after the 401 — the timer stopped rather than
+        // hammering a token that won't recover on its own.
+        expect(progressCalls, 1);
+      });
+    },
+  );
+
+  test(
+    'a non-401 progress-report failure is left to retry on the next tick',
+    () {
+      fakeAsync((async) {
+        var progressCalls = 0;
+        service.onProgress = () {
+          progressCalls++;
+          throw Exception('Connection reset by peer');
+        };
+
+        unawaited(manager.playItems([a]));
+        async.elapse(const Duration(seconds: 11));
+        expect(progressCalls, 2);
+      });
+    },
+  );
 }

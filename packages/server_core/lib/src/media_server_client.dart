@@ -27,7 +27,23 @@ import 'api/client_log_api.dart';
 import 'api/syncplay_api.dart';
 import 'api/games_api.dart';
 
+/// Recovers from a 401 a server's Dio client received for [client]'s active
+/// session. Returns true when it refreshed [client.accessToken] and the
+/// failed request should be retried once; false when the viewer must sign
+/// in again — by then the implementation is expected to have already torn
+/// the session down and routed to a sign-in screen. See
+/// [UnauthorizedInterceptor].
+typedef UnauthorizedHandler = Future<bool> Function(MediaServerClient client);
+
 abstract class MediaServerClient {
+  /// Sipflix: wired once at app startup (SessionRepository) so every
+  /// server's Dio client funnels a 401 through one recovery path instead of
+  /// each call site inventing its own retry/sign-out handling — which is
+  /// how a raw `DioException` reached the viewer verbatim (Sipflix swarm
+  /// R5/R6 bug B2). Null (e.g. in isolates/tests that never wire it) means
+  /// a 401 is simply reported upward unchanged.
+  static UnauthorizedHandler? onUnauthorized;
+
   ServerType get serverType;
   DeviceInfo get deviceInfo;
 

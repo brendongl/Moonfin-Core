@@ -6,6 +6,7 @@ import 'package:server_core/server_core.dart';
 import '../models/aggregated_item.dart';
 import '../repositories/user_views_repository.dart';
 import '../utils/playlist_utils.dart';
+import '../../util/friendly_error_message.dart';
 
 class BreadcrumbEntry {
   final String id;
@@ -103,7 +104,7 @@ class FolderBrowseViewModel extends ChangeNotifier {
         _state = FolderBrowseState.ready;
       } catch (e) {
         if (_disposed) return;
-        _errorMessage = e.toString();
+        _errorMessage = friendlyErrorMessage(e);
         _state = FolderBrowseState.error;
       }
       _notify();
@@ -160,7 +161,7 @@ class FolderBrowseViewModel extends ChangeNotifier {
       _state = FolderBrowseState.ready;
     } catch (e) {
       if (_disposed) return;
-      _errorMessage = e.toString();
+      _errorMessage = friendlyErrorMessage(e);
       _state = FolderBrowseState.error;
     }
     _notify();

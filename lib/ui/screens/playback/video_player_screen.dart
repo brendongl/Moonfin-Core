@@ -50,6 +50,7 @@ import '../../../util/subtitle_track_logic.dart';
 import '../../../util/auto_hdr_switcher.dart';
 import '../../../util/episode_playability.dart';
 import '../../../util/focus/dpad_keys.dart';
+import '../../../util/friendly_error_message.dart';
 import '../../../util/play_method_label.dart';
 import '../../../util/platform_detection.dart';
 import '../../../util/playback_time_label.dart';
@@ -427,7 +428,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       if (!mounted) {
         return;
       }
-      _showThrottledPlaybackError(error.toString());
+      _showThrottledPlaybackError(friendlyErrorMessage(error));
     }
   }
 

@@ -6,6 +6,7 @@ import '../../preference/preference_constants.dart';
 import '../../preference/user_preferences.dart';
 import '../models/aggregated_item.dart';
 import '../repositories/mdblist_repository.dart';
+import '../../util/friendly_error_message.dart';
 
 enum FavoritesState { loading, ready, error }
 
@@ -152,7 +153,7 @@ class FavoritesViewModel extends ChangeNotifier {
       }
       _state = FavoritesState.ready;
     } catch (e) {
-      _errorMessage = e.toString();
+      _errorMessage = friendlyErrorMessage(e);
       _state = FavoritesState.error;
     }
     notifyListeners();

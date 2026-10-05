@@ -51,4 +51,5 @@ export 'src/network/configure_server_dio.dart';
 export 'src/network/server_user_agent.dart';
 export 'src/network/auth_header.dart';
 export 'src/network/redirect_interceptor.dart';
+export 'src/network/unauthorized_interceptor.dart';
 export 'src/network/server_probe.dart';

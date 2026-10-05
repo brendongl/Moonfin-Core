@@ -11,6 +11,7 @@ import '../repositories/mdblist_repository.dart';
 import '../utils/alphabet_bucket.dart';
 import '../utils/bounded_concurrency.dart';
 import '../utils/playlist_utils.dart';
+import '../../util/friendly_error_message.dart';
 
 enum LibraryBrowseState { loading, ready, error }
 
@@ -470,7 +471,7 @@ class LibraryBrowseViewModel extends ChangeNotifier {
       _state = LibraryBrowseState.ready;
     } catch (e) {
       if (generation != _fetchGeneration) return;
-      _errorMessage = e.toString();
+      _errorMessage = friendlyErrorMessage(e);
       _state = LibraryBrowseState.error;
     }
     notifyListeners();
@@ -551,7 +552,9 @@ class LibraryBrowseViewModel extends ChangeNotifier {
     } catch (e) {
       // A page that failed is a page still owed. Leaving hasMore alone keeps
       // it retriable, and the message stops the grid from reading as complete.
-      if (generation == _fetchGeneration) _pageErrorMessage = e.toString();
+      if (generation == _fetchGeneration) {
+        _pageErrorMessage = friendlyErrorMessage(e);
+      }
     }
 
     _loadingMore = false;

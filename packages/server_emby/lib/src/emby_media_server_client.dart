@@ -62,6 +62,14 @@ class EmbyMediaServerClient extends MediaServerClient {
   String? _userId;
 
   void _setupInterceptors() {
+    _dio.interceptors.add(UnauthorizedInterceptor(
+      _dio,
+      onUnauthorized: () async {
+        final handler = MediaServerClient.onUnauthorized;
+        if (handler == null) return false;
+        return handler(this);
+      },
+    ));
     _dio.interceptors.add(redirectInterceptor(_dio));
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) {

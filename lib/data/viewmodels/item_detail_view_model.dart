@@ -18,6 +18,7 @@ import '../repositories/seerr_repository.dart';
 import '../utils/playlist_utils.dart';
 import '../../preference/seerr_preferences.dart';
 import '../../util/episode_playability.dart';
+import '../../util/friendly_error_message.dart';
 import '../../sipflix/sipflix_4k_policy.dart';
 import '../services/plugin_sync_service.dart';
 import 'seerr_media_detail_view_model.dart';
@@ -623,7 +624,9 @@ class ItemDetailViewModel extends ChangeNotifier {
 
       _loadSecondary();
     } catch (e) {
-      _errorMessage = e is TimeoutException ? loadTimeoutMessage : e.toString();
+      _errorMessage = e is TimeoutException
+          ? loadTimeoutMessage
+          : friendlyErrorMessage(e);
       _state = ItemDetailState.error;
       notifyListeners();
     }

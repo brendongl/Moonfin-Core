@@ -36,11 +36,18 @@ class LoginScreen extends StatefulWidget {
   final String? prefillUsername;
   final bool hasPassword;
 
+  /// Plain-language reason shown as the login error banner before the
+  /// viewer does anything, e.g. after a server-side token revoke forced a
+  /// sign-out (see SessionRepository.handleUnauthorized). Never raw
+  /// exception/stack-trace text.
+  final String? message;
+
   const LoginScreen({
     super.key,
     required this.serverId,
     this.prefillUsername,
     this.hasPassword = true,
+    this.message,
   });
 
   @override
@@ -105,6 +112,9 @@ class _LoginScreenState extends State<LoginScreen> {
     super.initState();
     if (widget.prefillUsername != null) {
       _usernameController.text = widget.prefillUsername!;
+    }
+    if (widget.message != null && widget.message!.trim().isNotEmpty) {
+      _errorMessage = widget.message;
     }
     _setupFocusHandlers();
     _initServer();

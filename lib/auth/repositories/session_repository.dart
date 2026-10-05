@@ -34,6 +34,7 @@ import '../../sipflix/sipflix_credential_vault.dart';
 import '../../sipflix/sipflix_servers.dart';
 import '../../syncplay/syncplay_manager.dart';
 import '../../util/platform_detection.dart';
+import '../../util/server_url.dart';
 import '../store/authentication_preferences.dart';
 import '../store/authentication_store.dart';
 import '../store/credential_store.dart';
@@ -91,7 +92,12 @@ class SessionRepository {
     this._serverRepository,
     this._userRepository,
     this._pluginSyncService,
-  );
+  ) {
+    // Sipflix: every server Dio client funnels a 401 through here instead
+    // of each call site inventing its own retry/sign-out handling — see
+    // [handleUnauthorized] and [UnauthorizedInterceptor]. R5/R6 bug B2.
+    MediaServerClient.onUnauthorized = handleUnauthorized;
+  }
 
   String? get activeServerId => _activeServerId;
   String? get activeUserId => _activeUserId;
@@ -299,22 +305,13 @@ class SessionRepository {
       }
     } on DioException catch (e) {
       if (e.response?.statusCode == 401) {
-        _logger.w('Access token expired or unauthorized. Logging out.');
-        final server = _serverRepository.getServer(serverId);
-        await destroyCurrentSession();
-        // Sipflix: a 401 on a token that worked is how a server says the
-        // account left it (the admin disabled it here after moving it). With
-        // the box's credentials stored, ask every server where it went and
-        // sign in there instead of dropping the customer at a login page.
-        if (server != null &&
-            SipflixServers.isSipflixServerRecord(server) &&
-            await SipflixCredentialVault().read() != null) {
-          appRouter.go('${Destinations.qrLogin}?serverId=$serverId&reprobe=1');
-          return;
-        }
-        appRouter.go(
-          '${Destinations.login}?serverId=$serverId&username=${Uri.encodeComponent(user.name)}',
-        );
+        // handleUnauthorized (wired as MediaServerClient.onUnauthorized) has
+        // already run for this request before it could reach here — tried a
+        // silent re-auth with the box's stored credentials and, on failure,
+        // torn the session down and routed to sign-in/QR-reprobe. Nothing
+        // left to do but stop this sync; repeating that here would double
+        // the sign-out/navigation.
+        _logger.w('Access token expired or unauthorized during post-login sync.');
         return;
       }
     } catch (_) {}
@@ -466,6 +463,104 @@ class SessionRepository {
     _userRepository.setCurrentUser(null);
     _refreshCarBrowseTree(signedIn: false);
     _setState(SessionState.ready);
+  }
+
+  static const _signedOutMessage =
+      "You've been signed out. Please sign in again.";
+
+  /// Server ids currently running [handleUnauthorized], so the sign-out it
+  /// triggers (which itself issues a `logout` call that can also 401) never
+  /// re-enters this for the same server.
+  final Set<String> _unauthorizedRecoveryInFlight = {};
+
+  /// Wired as [MediaServerClient.onUnauthorized]: the one place a 401 from
+  /// any server client is handled, instead of each call site inventing its
+  /// own retry/sign-out (which is how a raw `DioException` reached the
+  /// viewer verbatim — Sipflix swarm R5/R6 bug B2). Tries one silent
+  /// re-auth with the box's stored credentials when the 401 belongs to the
+  /// currently active session; otherwise tears the session down and sends
+  /// the viewer to a plain sign-in screen.
+  Future<bool> handleUnauthorized(MediaServerClient client) async {
+    final serverId = _activeServerId;
+    if (serverId == null || !_isActiveServerClient(client, serverId)) {
+      // A 401 from a client that isn't the active session's (a background
+      // probe, or a session already switched away from under this request)
+      // has no screen to route to and nothing of this session left to
+      // recover — let it surface to its own caller unchanged.
+      return false;
+    }
+    if (!_unauthorizedRecoveryInFlight.add(serverId)) {
+      return false;
+    }
+    try {
+      final vaultCredentials = await SipflixCredentialVault().read();
+      final server = _serverRepository.getServer(serverId);
+
+      if (vaultCredentials != null &&
+          server != null &&
+          SipflixServers.isSipflixServerRecord(server)) {
+        try {
+          final result = await client.authApi.authenticateByName(
+            vaultCredentials.username,
+            vaultCredentials.password,
+          );
+          final accessToken = result['AccessToken'] as String?;
+          final userJson = result['User'] as Map<String, dynamic>?;
+          final userId =
+              userJson?['Id']?.toString() ?? result['UserId']?.toString();
+          if (accessToken != null && userId != null) {
+            client.accessToken = accessToken;
+            client.userId = userId;
+            final existingUser = _authStore.getUser(serverId, userId);
+            if (existingUser != null) {
+              await _authStore.putUser(
+                existingUser.copyWith(accessToken: accessToken),
+              );
+            }
+            _activeUserId = userId;
+            _logger.i('Silently re-authenticated $serverId after a 401.');
+            return true;
+          }
+        } catch (error) {
+          _logger.w(
+            'Silent re-auth after a 401 failed for $serverId: $error',
+          );
+        }
+      }
+
+      await _signOutAfterUnauthorized(
+        serverId,
+        hadStoredCredentials: vaultCredentials != null,
+      );
+      return false;
+    } finally {
+      _unauthorizedRecoveryInFlight.remove(serverId);
+    }
+  }
+
+  bool _isActiveServerClient(MediaServerClient client, String serverId) {
+    final existing = _clientFactory.getClientIfExists(serverId);
+    if (existing == null) return false;
+    return normalizeServerBaseUrl(existing.baseUrl) ==
+        normalizeServerBaseUrl(client.baseUrl);
+  }
+
+  Future<void> _signOutAfterUnauthorized(
+    String serverId, {
+    required bool hadStoredCredentials,
+  }) async {
+    await destroyCurrentSession();
+    if (hadStoredCredentials) {
+      // Sipflix: the same recovery path a server-side account move already
+      // uses (SipflixSignIn.probe) — ask every saved server where this
+      // account went, instead of assuming it's still this one.
+      appRouter.go('${Destinations.qrLogin}?serverId=$serverId&reprobe=1');
+      return;
+    }
+    appRouter.go(
+      '${Destinations.login}?serverId=$serverId&message='
+      '${Uri.encodeComponent(_signedOutMessage)}',
+    );
   }
 
   // Keep car clients (Android Auto / CarPlay) in sync with sign-in changes:

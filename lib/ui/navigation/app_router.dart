@@ -240,10 +240,12 @@ final appRouter = GoRouter(
         final username = state.uri.queryParameters['username'];
         final hasPassword =
             state.uri.queryParameters['hasPassword']?.toLowerCase() != 'false';
+        final message = state.uri.queryParameters['message'];
         return LoginScreen(
           serverId: serverId,
           prefillUsername: username,
           hasPassword: hasPassword,
+          message: message,
         );
       },
     ),

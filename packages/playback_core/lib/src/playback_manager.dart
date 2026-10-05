@@ -2028,7 +2028,16 @@ class PlaybackManager implements AudioOwnable {
       final item = queueService.currentItem;
       final resolution = _currentResolution;
       if (item == null || resolution == null) return;
-      _service?.onPlaybackProgress(
+      // Sipflix swarm R5/R6 bug B2: this call was neither awaited nor
+      // wrapped, so a dead/revoked token (401) became an unhandled async
+      // error every 5 seconds for the rest of the session. It's now always
+      // caught, and a 401 specifically stops the timer outright — the
+      // token won't fix itself on the next tick (UnauthorizedInterceptor /
+      // SessionRepository.handleUnauthorized is already recovering it or
+      // signing the viewer out), so retrying on a timer just spams more of
+      // the same failure. Any other error is left to retry on the next
+      // tick, same as before this fix.
+      final progressFuture = _service?.onPlaybackProgress(
         item,
         resolution,
         state.position,
@@ -2036,12 +2045,30 @@ class PlaybackManager implements AudioOwnable {
         audioStreamIndex: _audioStreamIndex,
         subtitleStreamIndex: _subtitleStreamIndex,
       );
+      if (progressFuture != null) {
+        unawaited(progressFuture.catchError((Object error) {
+          if (_looksLikeUnauthorized(error)) {
+            _stopProgressTimer();
+          }
+        }));
+      }
     });
   }
 
   void _stopProgressTimer() {
     _progressTimer?.cancel();
     _progressTimer = null;
+  }
+
+  /// Dio's `DioException.toString()` always names the HTTP status this way
+  /// (same wording [_bringupFailureEvent] already parses), and
+  /// playback_core deliberately has no dependency on dio to check this more
+  /// directly.
+  bool _looksLikeUnauthorized(Object error) {
+    return RegExp(
+      r'(?:status code of|response code:?)\s*401\b',
+      caseSensitive: false,
+    ).hasMatch(error.toString());
   }
 
   Future<void> resume() async {
