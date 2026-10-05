@@ -69,6 +69,7 @@ import '../../widgets/syncplay/syncplay_player_button.dart';
 import '../../../syncplay/syncplay_manager.dart';
 import '../../../auth/models/server.dart';
 import '../../../auth/repositories/server_repository.dart';
+import '../../../sipflix/sipflix_auto_bitrate_service.dart';
 import '../../../sipflix/sipflix_bitrate_watchdog.dart';
 import '../../../sipflix/sipflix_connection_manager.dart';
 import '../../../sipflix/sipflix_preflight.dart';
@@ -852,20 +853,41 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       _sipflixStallTimer = null;
       if (!mounted || !_state.isBuffering || _bitrateDialogShowing) return;
       if (_bitrateWatchdog.recordAndShouldOffer()) {
-        // Sipflix: on Auto the box adapts itself — customers shouldn't have to
-        // answer a dialog to stop buffering. An explicit cap is the user's own
-        // choice, so that still asks before overriding it.
-        if (_sipflixIsAutoBitrate()) {
-          unawaited(_adaptBitrateAutomatically());
-        } else {
-          unawaited(_showBitrateAdaptationDialog());
-        }
-        // Sipflix: repeated struggling is the cue to offer the check on this
-        // very stream (no-op when the per-play gate is on already, and
-        // self-limits to once a day).
-        unawaited(_offerStreamCheck());
+        unawaited(_sipflixHandleConfirmedStall());
       }
     });
+  }
+
+  /// A confirmed, sustained stall outweighs a cached bandwidth measurement
+  /// that still looks fresh by its TTL (R4-REPRO: a stale cached high figure
+  /// made [_sipflixStallLooksLikeBandwidth] conclude "not bandwidth" and
+  /// never step the ceiling down, even though the stall never stopped — the
+  /// client kept asking the server for a rate the real link couldn't carry).
+  /// So re-measure first, cheaply, before deciding how to react — only on
+  /// the already-struggling path, never on the happy one. 4K ignores the
+  /// bitrate cap entirely (see [Sipflix4kPolicy]/[PlaybackManager.
+  /// currentIsDirectPlayOnly]), so there is nothing to re-probe for it.
+  Future<void> _sipflixHandleConfirmedStall() async {
+    if (!_manager.currentIsDirectPlayOnly) {
+      try {
+        await GetIt.instance<SipflixAutoBitrateService>()
+            .refreshIfStale(force: true)
+            .timeout(const Duration(seconds: 6));
+      } catch (_) {}
+      if (!mounted || !_state.isBuffering || _bitrateDialogShowing) return;
+    }
+    // Sipflix: on Auto the box adapts itself — customers shouldn't have to
+    // answer a dialog to stop buffering. An explicit cap is the user's own
+    // choice, so that still asks before overriding it.
+    if (_sipflixIsAutoBitrate()) {
+      unawaited(_adaptBitrateAutomatically());
+    } else {
+      unawaited(_showBitrateAdaptationDialog());
+    }
+    // Sipflix: repeated struggling is the cue to offer the check on this
+    // very stream (no-op when the per-play gate is on already, and
+    // self-limits to once a day).
+    unawaited(_offerStreamCheck());
   }
 
   /// Offer the connection check for the item that is struggling, and apply the

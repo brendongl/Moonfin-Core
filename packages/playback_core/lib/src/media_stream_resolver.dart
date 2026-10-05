@@ -1,6 +1,26 @@
 import 'stream_resolution_result.dart';
 import 'web_platform.dart';
 
+/// Thrown when a resolved media source names no playable URL at all: the
+/// server said it needs direct play/stream and gave a URL for neither, and
+/// said transcoding was supported but gave no transcoding URL either. Before
+/// this existed, that exact shape silently fell through to the server's raw
+/// `/stream` endpoint mislabeled as [StreamPlayMethod.directPlay] — the item
+/// looked like it was about to direct-play, then failed opaquely once the
+/// backend actually tried to open a URL the server never said was ready.
+class NoPlayableStreamException implements Exception {
+  final String itemId;
+  final String? mediaSourceId;
+
+  const NoPlayableStreamException(this.itemId, this.mediaSourceId);
+
+  @override
+  String toString() =>
+      'No playable stream for item $itemId'
+      '${mediaSourceId == null ? '' : ' (source $mediaSourceId)'}: '
+      'server named no direct-play, direct-stream or transcoding URL.';
+}
+
 abstract class MediaStreamResolver {
   static String extractItemId(dynamic mediaItem) {
     if (mediaItem is Map) return mediaItem['Id'] as String;

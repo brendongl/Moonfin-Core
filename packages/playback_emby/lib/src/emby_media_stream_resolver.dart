@@ -229,9 +229,13 @@ class EmbyMediaStreamResolver implements MediaStreamResolver {
         StreamPlayMethod.transcode,
       );
     }
-    return (
-      _client.playbackApi.getStreamUrl(itemId, mediaSourceId: source.id),
-      StreamPlayMethod.directPlay,
-    );
+    // None of the three matched — most concretely, supportsTranscoding was
+    // true but the server gave no transcodingUrl. This used to fall through
+    // to the server's raw stream endpoint mislabeled as directPlay, which the
+    // player would then open as if the server had said it could serve it
+    // that way, when it explicitly hadn't (R4-H3 §1.5). Throwing here routes
+    // it through the normal resolve-failure path instead of a silent wrong
+    // label.
+    throw NoPlayableStreamException(itemId, source.id);
   }
 }

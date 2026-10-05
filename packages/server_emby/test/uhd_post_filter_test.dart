@@ -224,6 +224,64 @@ void main() {
     expect(probeCallCount, 1);
   });
 
+  test('Favorites (IsFavorite=true) is still post-filtered even though the '
+      'request-time filter already added Is4K=false — fix for the Max29 '
+      'Favorites leak ("Pompeii: Disaster Street" 3549673, findings-FINAL): '
+      'Emby does not reliably honour Is4K once IsFavorite is also on the '
+      'request, so trusting the request-time flag skipped the post-filter '
+      'and let the 4K-only favourite straight through', () async {
+    server.close(force: true);
+    server = await HttpServer.bind('127.0.0.1', 0);
+    server.listen((req) async {
+      final uri = req.uri;
+      if (uri.queryParameters.containsKey('Ids')) {
+        probeCallCount++;
+        req.response
+          ..headers.contentType = ContentType.json
+          ..write(jsonEncode({
+            'Items': [
+              {'Id': 'michael'},
+            ],
+          }))
+          ..close();
+        return;
+      }
+      // The request-time filter (_carries4kFlag) does add Is4K=false here,
+      // since this is a typed Movie favourites query — but the fake server
+      // deliberately ignores it, the way Delta does for IsFavorite queries,
+      // to prove the post-filter still has to catch it.
+      expect(uri.queryParameters['Is4K'], 'false');
+      expect(uri.queryParameters['IsFavorite'], 'true');
+      req.response
+        ..headers.contentType = ContentType.json
+        ..write(jsonEncode({
+          'Items': [
+            {'Id': 'michael', 'Type': 'Movie'},
+            {'Id': 'pompeii-4k', 'Type': 'Movie'},
+          ],
+          'TotalRecordCount': 2,
+        }))
+        ..close();
+    });
+    client = EmbyMediaServerClient(
+      baseUrl: 'http://127.0.0.1:${server.port}',
+      deviceInfo: const DeviceInfo(
+          id: 't', name: 't', appName: 't', appVersion: '1'),
+    )
+      ..accessToken = 'x'
+      ..userId = 'u1';
+
+    final data = await client.itemsApi.getItems(
+      recursive: true,
+      isFavorite: true,
+      includeItemTypes: ['Movie'],
+    );
+    final items = (data['Items'] as List).cast<Map>();
+    expect(items.map((m) => m['Id']), ['michael']);
+    expect(data['TotalRecordCount'], 1);
+    expect(probeCallCount, 1);
+  });
+
   test('disabled on non-fragile devices: no probe, items unchanged',
       () async {
     EmbyMediaServerClient.hideStandalone4k = () => false;

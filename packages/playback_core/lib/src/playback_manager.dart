@@ -157,6 +157,40 @@ class PlaybackManager implements AudioOwnable {
       return null;
     }
   }
+
+  /// The `MediaStreams` of the source [item] is about to be asked for
+  /// ([mediaSourceId], or the item's first/default source), read straight
+  /// off the item payload the caller already has.
+  ///
+  /// Used so the pre-resolve [_directPlayOnlyMessage] call below has real
+  /// data to act on instead of an empty list (R4-H3: a 4K source could slip
+  /// past the pre-resolve check and reach the server as a transcode request
+  /// because that call passed no media streams at all; this mirrors the data
+  /// [Sipflix4kPolicy.directPlayOnly] itself falls back to, so the one
+  /// top-level UHD check it does first also has a chance to fire here).
+  List<Map<String, dynamic>> _knownMediaStreamsForItem(
+    dynamic item,
+    String? mediaSourceId,
+  ) {
+    List? sources;
+    try {
+      sources = item?.mediaSources as List?;
+    } catch (_) {}
+    final candidates = (sources ?? const []).whereType<Map>().toList();
+    if (candidates.isEmpty) return const [];
+    final Map source = mediaSourceId == null
+        ? candidates.first
+        : candidates.firstWhere(
+            (s) => s['Id'] == mediaSourceId,
+            orElse: () => const {},
+          );
+    final streams = source['MediaStreams'];
+    if (streams is! List) return const [];
+    return streams
+        .whereType<Map>()
+        .map((m) => m.cast<String, dynamic>())
+        .toList();
+  }
   DateTime? _playbackStartTime;
   bool _waitingForMedia = false;
   SubtitleRendererMode _subtitleRendererMode = SubtitleRendererMode.native;
@@ -807,6 +841,13 @@ class PlaybackManager implements AudioOwnable {
     if (error is TimeoutException) {
       return <String, dynamic>{'message': resolveTimeoutMessage};
     }
+    if (error is NoPlayableStreamException) {
+      // The server named no usable URL for this source at all (§1.5 /
+      // _resolveStreamUrl's old mislabel bug) — nothing about that is
+      // helpful phrased raw, so route it straight to the generic mapped
+      // message the way an unhelpful native string already does.
+      return const <String, dynamic>{'message': ''};
+    }
     final text = error.toString();
     final status = RegExp(
       r'(?:status code of|response code:?)\s*(\d{3})',
@@ -833,10 +874,20 @@ class PlaybackManager implements AudioOwnable {
     // HTTP status onto a cause the viewer — and whoever they message — can act
     // on. The status is always appended so a screenshot is enough to diagnose.
     final transcoding = resolution?.playMethod == StreamPlayMethod.transcode;
+    // R4-H3 §3: ExoPlayer's generic PlaybackException text ("Unexpected
+    // runtime error", any bare ERROR_CODE_* name) and the resolver's own
+    // raw `Exception: ...` wrapper strings (no media sources, bad error
+    // code, no playable stream — see NoPlayableStreamException above)
+    // matched none of the two original patterns, so they shipped straight
+    // to the viewer verbatim instead of through the mapped messages below.
+    final lowerRaw = rawMessage?.toLowerCase() ?? '';
     final rawIsUnhelpful = rawMessage == null ||
         rawMessage.isEmpty ||
-        rawMessage.toLowerCase().contains('source error') ||
-        rawMessage.toLowerCase().startsWith('response code:');
+        lowerRaw.contains('source error') ||
+        lowerRaw.startsWith('response code:') ||
+        lowerRaw.contains('unexpected runtime error') ||
+        RegExp(r'error_code_\w+', caseSensitive: false).hasMatch(rawMessage) ||
+        rawMessage.startsWith('Exception:');
 
     String? mapped;
     if (httpStatus == 404 || httpStatus == 410) {
@@ -1387,7 +1438,10 @@ class PlaybackManager implements AudioOwnable {
     final StreamResolutionResult resolution;
     // A direct-play-only source never goes through the transcoder, whatever
     // asked for it (a forced-transcode queue, a recovery, a bitrate cap).
-    final directOnly = _directPlayOnlyMessage(item);
+    final directOnly = _directPlayOnlyMessage(
+      item,
+      _knownMediaStreamsForItem(item, _mediaSourceId),
+    );
     if (directOnly != null) {
       String? unavailable;
       try {
@@ -1480,9 +1534,19 @@ class PlaybackManager implements AudioOwnable {
       final refused = directOnly ??
           _directPlayOnlyMessage(item, resolution.mediaStreams);
       if (refused != null) {
+        // Told to stop before the refusal shows: the server was already
+        // asked to run a transcode we'd just discovered is of a banned 4K
+        // source (data was too thin to catch it before this request went
+        // out — see _knownMediaStreamsForItem above), so get it to actually
+        // stop that encode before the viewer is told it's safe to pick
+        // something else, rather than firing both at once.
         final service = _service;
         if (service != null) {
-          unawaited(service.stopTranscoding(resolution).catchError((_) {}));
+          try {
+            await service
+                .stopTranscoding(resolution)
+                .timeout(const Duration(seconds: 5));
+          } catch (_) {}
         }
         _emitDirectPlayOnlyFailure(refused, item, resolution);
         return;

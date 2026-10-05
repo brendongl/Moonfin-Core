@@ -69,6 +69,17 @@ void main() {
     test('an item without sources is not refused', () {
       expect(Sipflix4kPolicy.directPlayOnly(Object(), const [], null), isNull);
     });
+
+    test('a mediaSourceId that matches none of the item\'s sources is '
+        'refused, not waved through (fix: R4-H1/H3 operator rule — 4K must '
+        'never transcode on any device, and data drift must not be the '
+        'loophole)', () {
+      final item = _Item([_source('hd', 1920)]);
+      expect(
+        Sipflix4kPolicy.directPlayOnly(item, const [], 'stale-id'),
+        isNotNull,
+      );
+    });
   });
 
   group('version choice on a box that cannot play 4K', () {

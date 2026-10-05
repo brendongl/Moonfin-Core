@@ -119,6 +119,10 @@ class Sipflix4kPolicy {
       sources = item.mediaSources as List?;
     } catch (_) {}
     final candidates = (sources ?? const []).whereType<Map>().toList();
+    // A thin item with no media-source data at all (e.g. a list-row item
+    // before its detail fetch) can't be judged here either way; the
+    // post-resolve safety net below re-checks the server's own resolved
+    // streams once they exist, so it still catches a real 4K source.
     if (candidates.isEmpty) return null;
     final Map source = mediaSourceId == null
         ? candidates.first
@@ -126,6 +130,11 @@ class Sipflix4kPolicy {
             (s) => s['Id'] == mediaSourceId,
             orElse: () => const {},
           );
+    if (source.isEmpty) {
+      // mediaSourceId was supplied but matches none of this item's known
+      // sources — a stale/drifted id, not proof the selected version is HD.
+      return refusalMessage;
+    }
     final streams = source['MediaStreams'];
     if (streams is List &&
         _hasUhdVideo(

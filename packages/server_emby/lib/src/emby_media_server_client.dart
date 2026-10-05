@@ -90,8 +90,21 @@ class EmbyMediaServerClient extends MediaServerClient {
         // everywhere else, an Is4K already on the request (added above, or
         // passed explicitly) means the response is already correctly
         // scoped and the extra probe would be wasted.
+        // Favorites (IsFavorite=true) is in the same boat: a typed Movie/
+        // Episode favorites query gets Is4K=false added at request time
+        // (via _carries4kFlag above) same as any other typed list, but on
+        // Delta a 4K-only favorited item ("Pompeii: Disaster Street",
+        // 3549673) still came back anyway — Is4K isn't honoured once
+        // IsFavorite is also on the request, the same silent-ignore shape
+        // already known for Resume/Latest/NextUp. Trusting the request-time
+        // Is4K here meant this path skipped the post-filter below entirely
+        // (query already "has" Is4K, so the server was assumed to have done
+        // the job) and the leak went straight through.
+        final isFavoriteQuery = query['IsFavorite'] == true ||
+            query['IsFavorite']?.toString().toLowerCase() == 'true';
         final isUnreliableIs4kEndpoint =
-            RegExp(r'/(Resume|Latest)$|^/Shows/NextUp$').hasMatch(path);
+            RegExp(r'/(Resume|Latest)$|^/Shows/NextUp$').hasMatch(path) ||
+            isFavoriteQuery;
         if (response.requestOptions.method == 'GET' &&
             hideStandalone4k() &&
             _postFilterPath.hasMatch(path) &&

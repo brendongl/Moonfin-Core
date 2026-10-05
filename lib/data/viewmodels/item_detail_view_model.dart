@@ -89,6 +89,21 @@ class ParentCollection {
 class ItemDetailViewModel extends ChangeNotifier {
   static const _episodeOverviewFields = 'Overview,RunTimeTicks,UserData';
 
+  /// Ceiling on the single `getItem()` call [load] makes. Without this, a
+  /// server that accepts the connection and then stalls the body (slow
+  /// DB/mergerfs/ffmpeg) leaves the page on [ItemDetailState.loading]
+  /// forever — the "Still waiting on the server..." text never resolves to
+  /// anything, there's no retry, and the only way out is backing out of the
+  /// screen entirely (R4-H3 S1: "Still waiting on server" + no Emby session
+  /// for 2+ minutes). 20s matches the kind of wait a customer will actually
+  /// sit through before this should become an actionable error.
+  static const _getItemTimeout = Duration(seconds: 20);
+
+  /// Shown when [load]'s `getItem()` call times out — plain, not the raw
+  /// `TimeoutException` text.
+  static const String loadTimeoutMessage =
+      'Still waiting on the server. Try again, or go back.';
+
   final MediaServerClient _client;
   final ItemMutationRepository _mutations;
   final MdbListRepository _mdbListRepository;
@@ -588,7 +603,9 @@ class ItemDetailViewModel extends ChangeNotifier {
           } catch (_) {}
         }
       } else {
-        final data = await _client.itemsApi.getItem(itemId, mediaSourceId: mediaSourceId);
+        final data = await _client.itemsApi
+            .getItem(itemId, mediaSourceId: mediaSourceId)
+            .timeout(_getItemTimeout);
         _item = AggregatedItem(
           id: itemId,
           serverId: _serverId ?? _client.baseUrl,
@@ -606,7 +623,7 @@ class ItemDetailViewModel extends ChangeNotifier {
 
       _loadSecondary();
     } catch (e) {
-      _errorMessage = e.toString();
+      _errorMessage = e is TimeoutException ? loadTimeoutMessage : e.toString();
       _state = ItemDetailState.error;
       notifyListeners();
     }

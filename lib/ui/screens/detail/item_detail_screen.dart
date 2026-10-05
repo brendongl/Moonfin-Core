@@ -584,9 +584,23 @@ class _ItemDetailScreenState extends State<ItemDetailScreen>
               style: const TextStyle(color: Colors.white54),
             ),
             const SizedBox(height: 16),
-            FilledButton(
-              onPressed: _viewModel.load,
-              child: Text(AppLocalizations.of(context).retry),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FilledButton(
+                  onPressed: _viewModel.load,
+                  child: Text(AppLocalizations.of(context).retry),
+                ),
+                const SizedBox(width: 12),
+                OutlinedButton(
+                  onPressed: () {
+                    if (Navigator.of(context).canPop()) {
+                      Navigator.of(context).pop();
+                    }
+                  },
+                  child: const Text('Go back'),
+                ),
+              ],
             ),
           ],
         ),
