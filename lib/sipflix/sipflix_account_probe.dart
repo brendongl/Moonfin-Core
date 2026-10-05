@@ -93,12 +93,27 @@ typedef SipflixLogoutCall = Future<void> Function(
 class SipflixAccountProbe {
   final SipflixAuthCall _auth;
   final SipflixLogoutCall _logout;
+  final Duration _retryDelay;
+
+  /// Sipflix swarm R7 bug B3b: Delta's `AuthenticateByName` intermittently
+  /// 401s a correct password under concurrent login load, then accepts the
+  /// identical credentials moments later. Confirmed server-side (Delta's own
+  /// ActivityLog shows a "Failed Login Attempt" entry immediately followed
+  /// by "Has Authenticated" for the same account, including for a customer
+  /// account doing none of this app's cross-server probing) and
+  /// client-side (an in-app sign-in was rejected while a `curl` with the
+  /// identical credentials against the identical route returned 200 in the
+  /// same minute). One short, bounded retry absorbs that blip without
+  /// masking a real wrong password, which fails the retry too.
+  static const Duration defaultRetryDelay = Duration(milliseconds: 800);
 
   SipflixAccountProbe({
     required SipflixAuthCall auth,
     required SipflixLogoutCall logout,
+    Duration retryDelay = defaultRetryDelay,
   })  : _auth = auth,
-        _logout = logout;
+        _logout = logout,
+        _retryDelay = retryDelay;
 
   /// The live transport: plain Dio with this device's Emby identity, so a
   /// probe shows up as this box and not as a new device.
@@ -170,7 +185,13 @@ class SipflixAccountProbe {
     String? preferredRoute,
   ) async {
     for (final url in routeOrder(def, preferredRoute)) {
-      final r = await _auth(url, username, password);
+      var r = await _auth(url, username, password);
+      if (r.status == 401) {
+        // One retry for a transient 401 (see [defaultRetryDelay] above). A
+        // genuinely wrong password 401s again and falls through unchanged.
+        await Future<void>.delayed(_retryDelay);
+        r = await _auth(url, username, password);
+      }
       final outcome = switch (r.status) {
         200 when r.body?['AccessToken'] is String =>
           SipflixProbeOutcome.accepted,

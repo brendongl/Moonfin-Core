@@ -16,6 +16,11 @@ import 'package:server_core/server_core.dart';
 /// [ItemDetailState.error] within a bounded time, with the plain
 /// [ItemDetailViewModel.loadTimeoutMessage] text, not a raw
 /// `TimeoutException`.
+///
+/// Sipflix swarm R7 bug B6 root-caused Delta's tail latency to a
+/// server-side refresh queue / image I/O contention that can legitimately
+/// exceed the original 20s ceiling, so the timeout was raised to 40s
+/// (`ItemDetailViewModel._getItemTimeout`) — this test elapses past that.
 class _FakeItemsApi implements ItemsApi {
   @override
   Future<Map<String, dynamic>> getItem(
@@ -64,7 +69,7 @@ void main() {
         );
 
         unawaited(vm.load());
-        async.elapse(const Duration(seconds: 21));
+        async.elapse(const Duration(seconds: 41));
 
         expect(vm.state, ItemDetailState.error);
         expect(vm.errorMessage, ItemDetailViewModel.loadTimeoutMessage);

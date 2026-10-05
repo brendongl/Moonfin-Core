@@ -96,9 +96,13 @@ class ItemDetailViewModel extends ChangeNotifier {
   /// forever — the "Still waiting on the server..." text never resolves to
   /// anything, there's no retry, and the only way out is backing out of the
   /// screen entirely (R4-H3 S1: "Still waiting on server" + no Emby session
-  /// for 2+ minutes). 20s matches the kind of wait a customer will actually
-  /// sit through before this should become an actionable error.
-  static const _getItemTimeout = Duration(seconds: 20);
+  /// for 2+ minutes). Originally 20s; Sipflix swarm R7 bug B6 root-caused
+  /// Delta's tail latency to a server-side refresh queue / image I/O
+  /// contention (see findings-R7-B6.md) that can legitimately exceed 20s
+  /// even though this app's request pattern is fine, so the ceiling was
+  /// raised to 40s rather than fixed on the client, which has no refresh
+  /// queue to tune.
+  static const _getItemTimeout = Duration(seconds: 40);
 
   /// Shown when [load]'s `getItem()` call times out — plain, not the raw
   /// `TimeoutException` text.

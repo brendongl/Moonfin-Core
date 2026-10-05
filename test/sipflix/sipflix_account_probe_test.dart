@@ -20,6 +20,9 @@ void main() {
         return (status: status, body: status == 200 ? ok : null);
       },
       logout: (url, token) async => logouts.add(url),
+      // Zero so a 401 fixture's retry (see "transient 401" group below)
+      // doesn't add a real delay to every other test here.
+      retryDelay: Duration.zero,
     );
     return (probe: probe, calls: calls, logouts: logouts);
   }
@@ -78,6 +81,50 @@ void main() {
           preferredRoutes: {'AlphaV2': SipflixServers.directUrl});
       expect(f.calls, contains(SipflixServers.directUrl));
       expect(f.calls, isNot(contains(SipflixServers.cdnUrl)));
+    });
+
+    test('a transient 401 is retried once and then accepted', () async {
+      // Sipflix R7 B3b: Delta answers a correct password with a 401 once in
+      // a while, then 200 on the very next identical attempt. The probe
+      // should absorb that, not report "not recognised".
+      var deltaAttempts = 0;
+      final calls = <String>[];
+      final probe = SipflixAccountProbe(
+        auth: (url, user, pw) async {
+          calls.add(url);
+          if (url == first(d)) {
+            deltaAttempts++;
+            return deltaAttempts == 1
+                ? (status: 401, body: null)
+                : (status: 200, body: ok);
+          }
+          return (status: 401, body: null);
+        },
+        logout: (url, token) async {},
+        retryDelay: Duration.zero,
+      );
+      final results = await probe.probe('max', 'pw');
+      final delta = results.firstWhere((r) => r.server.key == 'emby2');
+      expect(delta.outcome, SipflixProbeOutcome.accepted);
+      expect(calls.where((u) => u == first(d)).length, 2);
+    });
+
+    test('two 401s in a row on the same route is a real rejection', () async {
+      // A genuinely wrong password 401s again on the retry, and the probe
+      // must not keep retrying forever.
+      var deltaAttempts = 0;
+      final probe = SipflixAccountProbe(
+        auth: (url, user, pw) async {
+          if (url == first(d)) deltaAttempts++;
+          return (status: 401, body: null);
+        },
+        logout: (url, token) async {},
+        retryDelay: Duration.zero,
+      );
+      final results = await probe.probe('max', 'pw');
+      final delta = results.firstWhere((r) => r.server.key == 'emby2');
+      expect(delta.outcome, SipflixProbeOutcome.rejected);
+      expect(deltaAttempts, 2);
     });
 
     test('release logs out only the tokens handed to it', () async {
