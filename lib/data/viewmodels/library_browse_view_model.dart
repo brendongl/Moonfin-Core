@@ -806,7 +806,8 @@ class LibraryBrowseViewModel extends ChangeNotifier {
     if (isBookLibrary) {
       recursive = true;
       includeTypes = ['Book', 'Audio', 'AudioBook'];
-      sortBy = 'SortName';
+      // Sipflix fork: book libraries keep the sort the user picked instead of
+      // being forced back to SortName.
     } else if (isFolderyLibrary) {
       recursive = false;
     }

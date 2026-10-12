@@ -17,6 +17,10 @@ Future<UserPreferences> _prefs([Map<String, Object> initial = const {}]) async {
   return UserPreferences(store);
 }
 
+// Sipflix fork: trailer previews default OFF (flaky Allwinner boxes), so the
+// tests that need the switch on turn it on themselves.
+const _trailersOn = <String, Object>{'mediaBarTrailerPreview': true};
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -64,14 +68,14 @@ void main() {
 
   test('trailers stay on where the device can afford them', () async {
     PlatformDetection.setDeviceMemory(largeDevice);
-    final prefs = await _prefs();
+    final prefs = await _prefs(_trailersOn);
 
     expect(prefs.resolveMediaBarTrailerPreview(), isTrue);
   });
 
   test('a held-back device keeps the still image', () async {
     PlatformDetection.setDeviceMemory(smallDevice);
-    final prefs = await _prefs();
+    final prefs = await _prefs(_trailersOn);
 
     // The switch itself is untouched, so turning Performance back to Standard
     // restores trailers without the user hunting for a second setting.
@@ -82,6 +86,7 @@ void main() {
   test('pinning standard gives a small device its trailers back', () async {
     PlatformDetection.setDeviceMemory(smallDevice);
     final prefs = await _prefs({
+      ..._trailersOn,
       'pref_performance_mode': DevicePerformanceMode.standard.name,
     });
 

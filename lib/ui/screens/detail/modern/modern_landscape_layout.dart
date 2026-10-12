@@ -41,11 +41,25 @@ class ModernLandscapeLayout extends StatelessWidget {
     Size size, {
     required bool hasUpNext,
     required bool isBoxSet,
-  }) => hasUpNext
-      ? (isBoxSet
-            ? (size.width * 0.70).clamp(450.0, 950.0)
-            : (size.width * 0.50).clamp(360.0, 680.0))
-      : (size.width * 0.85).clamp(450.0, 1100.0);
+  }) {
+    final width = hasUpNext
+        ? (isBoxSet
+              ? (size.width * 0.70).clamp(450.0, 950.0)
+              : (size.width * 0.50).clamp(360.0, 680.0))
+        : (size.width * 0.85).clamp(450.0, 1100.0);
+    // Sipflix fork: the left navbar is our default, and its 120px gutter plus
+    // the 40px right gutter pushed the hero past the screen edge on narrow
+    // landscape screens (e.g. 960dp TVs). Never hand out more than fits.
+    final available = size.width - leftPaddingFor() - 40;
+    return available > 0 && width > available ? available : width;
+  }
+
+  /// Left gutter of the layout: wider when the navbar sits on the left.
+  static double leftPaddingFor() =>
+      GetIt.instance<UserPreferences>().get(UserPreferences.navbarPosition) ==
+          NavbarPosition.left
+      ? 120.0
+      : 40.0;
 
   @override
   Widget build(BuildContext context) {
@@ -54,8 +68,7 @@ class ModernLandscapeLayout extends StatelessWidget {
     final scale = GetIt.instance<UserPreferences>().get(UserPreferences.desktopUiScale).scaleFactor;
     final heroWidth = heroWidthFor(size, hasUpNext: hasUpNext, isBoxSet: isBoxSet);
 
-    final hasLeftSidebar = GetIt.instance<UserPreferences>().get(UserPreferences.navbarPosition) == NavbarPosition.left;
-    final leftPadding = hasLeftSidebar ? 120.0 : 40.0;
+    final leftPadding = leftPaddingFor();
 
     return Stack(
       fit: StackFit.expand,

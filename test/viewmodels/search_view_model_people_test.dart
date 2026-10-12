@@ -43,13 +43,18 @@ void main() {
         fields: any(named: 'fields'),
         studios: any(named: 'studios'),
       ),
-    ).thenAnswer(
-      (_) async => {
+    ).thenAnswer((inv) async {
+      // Sipflix fork: search runs one request per type bucket, so only answer
+      // each bucket with the items of its types, like a real server.
+      final types = inv.namedArguments[#includeItemTypes] as List<String>?;
+      return {
         'Items': [
-          for (final (id, type) in items) {'Id': id, 'Type': type, 'Name': id},
+          for (final (id, type) in items)
+            if (types == null || types.contains(type))
+              {'Id': id, 'Type': type, 'Name': id},
         ],
-      },
-    );
+      };
+    });
   }
 
   Completer<Map<String, dynamic>> peopleFor(String term) {
@@ -188,7 +193,9 @@ void main() {
 
   test('a library scoped search never asks for people', () {
     fakeAsync((async) {
-      itemsFor('dune', [('b1', 'Book')]);
+      // Sipflix fork: the fake answers each type only to the query that asks
+      // for it, so the audiobook group needs an audiobook of its own.
+      itemsFor('dune', [('b1', 'Book'), ('a1', 'AudioBook')]);
       final vm = SearchViewModel(
         SearchRepository(client),
         client,

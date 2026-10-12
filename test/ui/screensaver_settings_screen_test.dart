@@ -41,7 +41,8 @@ void main() {
       expect(prefs.get(UserPreferences.screensaverLibraryIds), '');
       expect(prefs.get(UserPreferences.screensaverCollectionIds), '');
       expect(prefs.get(UserPreferences.screensaverExcludedGenres), '');
-      expect(prefs.get(UserPreferences.screensaverTimeout), ScreensaverTimeout.m5);
+      // Sipflix fork: the screensaver starts after one minute, not five.
+      expect(prefs.get(UserPreferences.screensaverTimeout), ScreensaverTimeout.m1);
       expect(prefs.get(UserPreferences.screensaverDimming), 30);
       expect(prefs.get(UserPreferences.screensaverMaxAgeRating), 'any');
       expect(prefs.get(UserPreferences.screensaverRequireRating), false);
@@ -209,10 +210,39 @@ void main() {
       prefs = UserPreferences(store);
       GetIt.instance.registerSingleton<PreferenceStore>(store);
       GetIt.instance.registerSingleton<UserPreferences>(prefs);
+      // Sipflix fork: Basic settings mode (the default) keeps only the on/off
+      // switch and the timeout; these tests cover the full Advanced screen.
+      await prefs.set(UserPreferences.sipflixAdvancedSettings, true);
     });
 
     tearDown(() async {
       await GetIt.instance.reset();
+    });
+
+    testWidgets('Sipflix fork: Basic mode shows only the switch and timeout', (tester) async {
+      tester.view.physicalSize = const Size(1920, 1080);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await prefs.set(UserPreferences.sipflixAdvancedSettings, false);
+      await prefs.set(UserPreferences.screensaverEnabled, true);
+      await prefs.set(UserPreferences.screensaverBackdrop, ScreensaverBackdrop.library);
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ScreensaverSettingsScreen(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('In-App Screensaver'), findsOneWidget);
+      expect(find.text('Timeout'), findsOneWidget);
+      expect(find.text('Dimming Level'), findsNothing);
+      expect(find.text('Visual Components'), findsNothing);
+      expect(find.text('Library Content'), findsNothing);
     });
 
     testWidgets('renders only General Settings toggle when inAppScreensaver is disabled', (tester) async {

@@ -297,6 +297,12 @@ void main() {
       ),
     ];
 
+    // Sipflix fork: the guide defaults to Favorites First; this test is
+    // about the upstream number order, so pin it.
+    await GetIt.instance<UserPreferences>().set(
+      UserPreferences.liveTvChannelSortBy,
+      ChannelSortBy.number,
+    );
     await pumpGuide(tester);
     await tester.tap(find.byIcon(Icons.sort));
     await tester.pumpAndSettle();

@@ -10,6 +10,7 @@ import 'package:mocktail/mocktail.dart';
 import 'package:playback_core/playback_core.dart';
 import 'package:moonfin/data/viewmodels/live_tv_guide_view_model.dart';
 import 'package:moonfin/l10n/app_localizations.dart';
+import 'package:moonfin/preference/preference_constants.dart';
 import 'package:moonfin/preference/user_preferences.dart';
 import 'package:moonfin/ui/navigation/destinations.dart';
 import 'package:moonfin/ui/screens/livetv/epg/widgets/epg_filter_rail.dart';
@@ -1040,6 +1041,12 @@ void main() {
               if (i == 5) favoriteChannel else _channelRaw(i),
           ],
         },
+      );
+      // Sipflix fork: the guide defaults to Favorites First; this test is
+      // about the upstream number order, so pin it.
+      await GetIt.instance<UserPreferences>().set(
+        UserPreferences.liveTvChannelSortBy,
+        ChannelSortBy.number,
       );
 
       await pumpGuide(tester);

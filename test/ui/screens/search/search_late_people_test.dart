@@ -98,13 +98,22 @@ class _FakeItemsApi extends Fake implements ItemsApi {
     String? enableImageTypes,
   }) => (people ??= Completer()).future;
 
+  // Sipflix fork: search runs one request per type bucket, so only answer
+  // each bucket with the items of its types, like a real server.
   @override
-  dynamic noSuchMethod(Invocation invocation) => Future.value(const {
-    'Items': [
-      {'Id': 'm1', 'Name': 'Movie One', 'Type': 'Movie'},
-      {'Id': 'f1', 'Name': 'Folder One', 'Type': 'Folder'},
-    ],
-  });
+  dynamic noSuchMethod(Invocation invocation) {
+    final types =
+        invocation.namedArguments[#includeItemTypes] as List<String>?;
+    return Future.value(<String, dynamic>{
+      'Items': [
+        for (final item in const [
+          {'Id': 'm1', 'Name': 'Movie One', 'Type': 'Movie'},
+          {'Id': 'f1', 'Name': 'Folder One', 'Type': 'Folder'},
+        ])
+          if (types == null || types.contains(item['Type'])) item,
+      ],
+    });
+  }
 }
 
 void main() {

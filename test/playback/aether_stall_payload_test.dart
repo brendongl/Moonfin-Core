@@ -213,7 +213,12 @@ void main() {
       await pumpEventQueue();
 
       expect(manager.bringupState.phase, PlaybackBringupPhase.failed);
-      expect(manager.bringupState.error, 'Playback failed.');
+      // Sipflix fork: an unhelpful player error (a stall carries no message)
+      // is mapped to an actionable line instead of the bare fallback.
+      expect(
+        manager.bringupState.error,
+        startsWith('Could not load this video'),
+      );
     });
   });
 }

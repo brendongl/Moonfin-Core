@@ -54,9 +54,11 @@ ImageProvider offlineAwareImageProvider(
 void evictFailedImageCacheEntry(String url, {String? cacheKey}) {
   if (isLocalImagePath(url) || url.isEmpty) return;
   final key = cacheKey ?? url;
-  CachedNetworkImageProvider.defaultCacheManager
-      .removeFile(key)
-      .catchError((_) {});
+  // Best effort and called from error builders, so a cache manager that
+  // throws synchronously must not escape either.
+  Future<void>.sync(
+    () => CachedNetworkImageProvider.defaultCacheManager.removeFile(key),
+  ).catchError((_) {});
 }
 
 /// The one set of rules for how large an image is decoded.

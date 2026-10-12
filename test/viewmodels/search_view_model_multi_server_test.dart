@@ -50,6 +50,17 @@ void main() {
     ],
   };
 
+  // Sipflix fork: search runs one request per type bucket, so the fake server
+  // only answers movies to the bucket that asks for them, like a real one.
+  Future<Map<String, dynamic>> Function(Invocation) moviesFor(
+    List<String> ids,
+  ) => (inv) async {
+    final types = inv.namedArguments[#includeItemTypes] as List<String>?;
+    return types == null || types.contains('Movie')
+        ? movies(ids)
+        : {'Items': <Map<String, dynamic>>[]};
+  };
+
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     final store = PreferenceStore();
@@ -139,9 +150,9 @@ void main() {
 
   test('results come from every signed-in server, taking turns', () async {
     when(() => itemsSearch(itemsApis['a']!))
-        .thenAnswer((_) async => movies(['a1', 'a2']));
+        .thenAnswer(moviesFor(['a1', 'a2']));
     when(() => itemsSearch(itemsApis['b']!))
-        .thenAnswer((_) async => movies(['b1']));
+        .thenAnswer(moviesFor(['b1']));
 
     final vm = await search(across: multiServer);
 
@@ -153,7 +164,7 @@ void main() {
 
   test('a server that fails leaves the others to answer', () async {
     when(() => itemsSearch(itemsApis['a']!))
-        .thenAnswer((_) async => movies(['a1']));
+        .thenAnswer(moviesFor(['a1']));
     when(() => itemsSearch(itemsApis['b']!)).thenThrow(Exception('offline'));
 
     final vm = await search(across: multiServer);
@@ -164,7 +175,7 @@ void main() {
 
   test('with multi-server search off only the active server is searched', () async {
     when(() => itemsSearch(itemsApis['a']!))
-        .thenAnswer((_) async => movies(['a1']));
+        .thenAnswer(moviesFor(['a1']));
 
     final vm = await search();
 
