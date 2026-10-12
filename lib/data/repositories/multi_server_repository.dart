@@ -14,13 +14,14 @@ import '../models/aggregated_item.dart';
 import '../models/aggregated_library.dart';
 import '../models/home_row.dart';
 import '../services/media_server_client_factory.dart';
+import '../utils/blocked_ratings.dart';
 import '../utils/bounded_concurrency.dart';
 import '../utils/genre_browse_utils.dart';
 import '../utils/latest_media_row_normalizer.dart';
-import '../utils/media_deduplication_utils.dart';
 import '../utils/next_up_cutoff.dart';
 import '../utils/next_up_enrichment.dart';
 import '../utils/playlist_utils.dart';
+import 'search_repository.dart';
 import 'user_views_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../../l10n/current_app_localizations.dart';
@@ -55,8 +56,7 @@ class MultiServerRepository {
       'ParentIndexNumber,IndexNumber,Status,ImageTags,BackdropImageTags,'
       'ParentBackdropItemId,ParentBackdropImageTags,ParentThumbItemId,'
       'ParentThumbImageTag,SeriesId,SeriesPrimaryImageTag,'
-      'ParentLogoItemId,ParentLogoImageTag,PrimaryImageTag,'
-      'PrimaryImageAspectRatio,ProviderIds';
+      'ParentLogoItemId,ParentLogoImageTag,PrimaryImageTag,PrimaryImageAspectRatio';
   // Cap image tags to one per type (server returns all by default)
   static const _imageTypes = 'Primary,Backdrop,Thumb,Banner';
   static const _imageTypeLimit = 1;
@@ -64,6 +64,7 @@ class MultiServerRepository {
   static const _maxItems = 100;
   static const _defaultSortBy = 'SortName';
   static const _defaultSortOrder = 'Ascending';
+  static const _studioPageSize = 200;
   static const _genreArtworkConcurrency = 6;
 
   List<ServerUserSession>? _cachedSessions;
@@ -209,7 +210,7 @@ class MultiServerRepository {
       sessions,
       (session) async {
         final response = await session.client.itemsApi.getResumeItems(
-          includeItemTypes: ['Movie', 'Episode'],
+          mediaTypes: 'Video',
           limit: perServer,
           fields: _fields,
           enableImageTypes: _imageTypes,
@@ -221,12 +222,11 @@ class MultiServerRepository {
     );
 
     final all = results.expand((e) => e).toList()..sort(_compareByLastPlayed);
-    final deduplicated = MediaDeduplicationUtils.deduplicateMediaItems(all);
 
     return HomeRow(
       id: 'resume',
       title: _l10n.continueWatching,
-      items: deduplicated.take(limit).toList(),
+      items: all.take(limit).toList(),
       rowType: HomeRowType.resume,
     );
   }
@@ -239,7 +239,7 @@ class MultiServerRepository {
       sessions.map(
         (session) => _withTimeout(() async {
           final response = await session.client.itemsApi.getResumeItems(
-            includeItemTypes: ['Audio'],
+            mediaTypes: 'Audio',
             limit: perServer,
             fields: _fields,
             enableImageTypes: _imageTypes,
@@ -267,7 +267,7 @@ class MultiServerRepository {
     final results = await _gatherPerServer(
       sessions,
       (session) async {
-        final response = await session.client.itemsApi.getNextUp(
+        final request = session.client.itemsApi.getNextUp(
           limit: perServer,
           fields: _fields,
           enableImageTypes: _imageTypes,
@@ -275,22 +275,24 @@ class MultiServerRepository {
           enableResumable: false,
           nextUpDateCutoff: nextUpDateCutoff,
         );
+        final recentlyPlayed = fetchSeriesLastPlayed(session.client);
+        final response = await request;
         final parsed = _parseItems(response, session.server.id);
         return await _enrichNextUpItemsWithSeriesLastPlayed(
           parsed,
           session.client,
+          recentlyPlayed,
         );
       },
       label: 'next up',
     );
 
     final all = results.expand((e) => e).toList()..sort(_compareByLastPlayed);
-    final deduplicated = MediaDeduplicationUtils.deduplicateMediaItems(all);
 
     return HomeRow(
       id: 'nextUp',
       title: _l10n.nextUp,
-      items: deduplicated.take(limit).toList(),
+      items: all.take(limit).toList(),
       rowType: HomeRowType.nextUp,
     );
   }
@@ -344,13 +346,10 @@ class MultiServerRepository {
       _sortAggregatedItems(all, sortBy: sortBy, sortOrder: sortOrder);
     }
 
-    final deduplicated = MediaDeduplicationUtils.deduplicateMediaItems(all);
-    final takenItems = deduplicated.take(limit).toList();
-    final totalCount = _totalAfterDeduplication(
-      serverTotal: _serverRowTotal(sessions, cacheKeyPrefix),
-      fetched: all.length,
-      kept: deduplicated.length,
-    );
+    final takenItems = all.take(limit).toList();
+    final totalCount = sessions.fold<int>(0, (sum, session) {
+      return sum + (_rowTotals['${cacheKeyPrefix}_${session.server.id}'] ?? 0);
+    });
 
     return HomeRow(
       id: cacheKeyPrefix,
@@ -506,6 +505,100 @@ class MultiServerRepository {
     );
   }
 
+  Future<HomeRow> getAggregatedStudios({
+    int limit = _defaultLimit,
+    String sortBy = _defaultSortBy,
+    String sortOrder = _defaultSortOrder,
+    String selectedIds = '',
+    String? title,
+  }) async {
+    const cacheKeyPrefix = 'studios';
+    const rowType = HomeRowType.studios;
+
+    final sessions = await getLoggedInServers();
+    final perServer = (limit * 3).clamp(1, 100);
+
+    final selectedSet = selectedIds
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toSet();
+
+    final results = await Future.wait(
+      sessions.map(
+        (session) => _withTimeout(() async {
+          Future<Map<String, dynamic>> fetchPage(int startIndex, int limit) =>
+              session.client.itemsApi.getStudios(
+                userId: session.client.userId,
+                sortBy: sortBy,
+                sortOrder: sortOrder,
+                recursive: true,
+                startIndex: startIndex,
+                limit: limit,
+                fields: 'ItemCounts,PrimaryImageAspectRatio',
+              );
+
+          if (selectedSet.isEmpty) {
+            final response = await fetchPage(0, perServer);
+            return _parseItems(response, session.server.id);
+          }
+          return _collectStudios(selectedSet, session.server.id, fetchPage);
+        }, label: '$cacheKeyPrefix from ${session.server.name}'),
+      ),
+    );
+
+    final all = _sortAggregatedItems(
+      results.expand((e) => e).toList(growable: false),
+      sortBy: sortBy,
+      sortOrder: sortOrder,
+    );
+
+    // The row arrives complete either way, so the count has to match what it
+    // holds or it will claim a next page that no one can serve.
+    final items = selectedSet.isEmpty ? all.take(limit).toList() : all;
+
+    return HomeRow(
+      id: cacheKeyPrefix,
+      title: title ?? _l10n.studios,
+      items: items,
+      rowType: rowType,
+      totalCount: items.length,
+    );
+  }
+
+  /// Walks one server's studio list a page at a time until every id in
+  /// [wanted] has turned up.
+  ///
+  /// The endpoint has no way to ask for particular studios and a library can
+  /// report well over a thousand of them, so reading the lot to keep a handful
+  /// is a heavy call to make on every home load, once per server. Stopping once
+  /// the selection is accounted for usually means one page.
+  Future<List<AggregatedItem>> _collectStudios(
+    Set<String> wanted,
+    String serverId,
+    Future<Map<String, dynamic>> Function(int startIndex, int limit) fetchPage,
+  ) async {
+    final outstanding = wanted.toSet();
+    final found = <AggregatedItem>[];
+    var startIndex = 0;
+
+    while (outstanding.isNotEmpty) {
+      final response = await fetchPage(startIndex, _studioPageSize);
+      // Paging walks the server's own count. A page that comes back short
+      // because items were filtered out of it is still a full page as far as
+      // the next offset is concerned.
+      final rawCount = (response['Items'] as List?)?.length ?? 0;
+      if (rawCount == 0) break;
+      for (final studio in _parseItems(response, serverId)) {
+        if (outstanding.remove(studio.id)) found.add(studio);
+      }
+      if (rawCount < _studioPageSize) break;
+      startIndex += _studioPageSize;
+    }
+
+    return found;
+  }
+
   Future<(List<AggregatedItem>, int)> loadMore({required HomeRow row}) async {
     if (!row.hasMore || row.items.length >= _maxItems) {
       return (row.items, row.totalCount);
@@ -543,11 +636,14 @@ class MultiServerRepository {
               final sortBy =
                   prefs?.get(UserPreferences.playlistsRowSortBy).apiValue ??
                   _defaultSortBy;
+              final sortOrder =
+                  prefs?.get(UserPreferences.playlistsRowSortOrder).apiValue ??
+                  _defaultSortOrder;
 
               final response = await session.client.itemsApi.getItems(
                 includeItemTypes: const ['Playlist'],
                 sortBy: sortBy,
-                sortOrder: 'Ascending',
+                sortOrder: sortOrder,
                 recursive: true,
                 startIndex: targetStartIndex,
                 limit: _defaultLimit,
@@ -569,11 +665,14 @@ class MultiServerRepository {
               final sortBy =
                   prefs?.get(UserPreferences.audioRowsSortBy).apiValue ??
                   _defaultSortBy;
+              final sortOrder =
+                  prefs?.get(UserPreferences.audioRowsSortOrder).apiValue ??
+                  _defaultSortOrder;
 
               final response = await session.client.itemsApi.getItems(
                 includeItemTypes: const ['Playlist'],
                 sortBy: sortBy,
-                sortOrder: 'Ascending',
+                sortOrder: sortOrder,
                 recursive: true,
                 startIndex: targetStartIndex,
                 limit: _defaultLimit,
@@ -594,11 +693,14 @@ class MultiServerRepository {
               final sortBy =
                   prefs?.get(UserPreferences.audioRowsSortBy).apiValue ??
                   _defaultSortBy;
+              final sortOrder =
+                  prefs?.get(UserPreferences.audioRowsSortOrder).apiValue ??
+                  _defaultSortOrder;
 
               final response = await session.client.itemsApi.getItems(
                 includeItemTypes: const ['MusicArtist'],
                 sortBy: sortBy,
-                sortOrder: 'Ascending',
+                sortOrder: sortOrder,
                 recursive: true,
                 startIndex: startIndex,
                 limit: _defaultLimit,
@@ -615,11 +717,14 @@ class MultiServerRepository {
               final sortBy =
                   prefs?.get(UserPreferences.audioRowsSortBy).apiValue ??
                   _defaultSortBy;
+              final sortOrder =
+                  prefs?.get(UserPreferences.audioRowsSortOrder).apiValue ??
+                  _defaultSortOrder;
 
               final response = await session.client.itemsApi.getItems(
                 includeItemTypes: const ['MusicAlbum'],
                 sortBy: sortBy,
-                sortOrder: 'Ascending',
+                sortOrder: sortOrder,
                 recursive: true,
                 startIndex: startIndex,
                 limit: _defaultLimit,
@@ -636,12 +741,15 @@ class MultiServerRepository {
               final sortBy =
                   prefs?.get(UserPreferences.favoritesRowSortBy).apiValue ??
                   _defaultSortBy;
+              final sortOrder =
+                  prefs?.get(UserPreferences.favoritesRowSortOrder).apiValue ??
+                  _defaultSortOrder;
               _rowOffsets[cacheKey] = startIndex + _defaultLimit;
 
               final response = await session.client.itemsApi.getItems(
                 includeItemTypes: favoriteFilter.itemTypes,
                 sortBy: sortBy,
-                sortOrder: 'Ascending',
+                sortOrder: sortOrder,
                 recursive: true,
                 startIndex: startIndex,
                 limit: _defaultLimit,
@@ -658,12 +766,15 @@ class MultiServerRepository {
               final sortBy =
                   prefs?.get(UserPreferences.collectionsRowSortBy).apiValue ??
                   _defaultSortBy;
+              final sortOrder =
+                  prefs?.get(UserPreferences.collectionsRowSortOrder).apiValue ??
+                  _defaultSortOrder;
               _rowOffsets[cacheKey] = startIndex + _defaultLimit;
 
               final response = await session.client.itemsApi.getItems(
                 includeItemTypes: const ['BoxSet'],
                 sortBy: sortBy,
-                sortOrder: 'Ascending',
+                sortOrder: sortOrder,
                 recursive: true,
                 startIndex: startIndex,
                 limit: _defaultLimit,
@@ -679,6 +790,9 @@ class MultiServerRepository {
               final sortBy =
                   prefs?.get(UserPreferences.genresRowSortBy).apiValue ??
                   _defaultSortBy;
+              final sortOrder =
+                  prefs?.get(UserPreferences.genresRowSortOrder).apiValue ??
+                  _defaultSortOrder;
               final includeItemTypes = prefs
                   ?.get(UserPreferences.genresRowItemFilter)
                   .includeItemTypes;
@@ -692,7 +806,7 @@ class MultiServerRepository {
 
                 final response = await session.client.itemsApi.getGenres(
                   sortBy: sortBy,
-                  sortOrder: 'Ascending',
+                  sortOrder: sortOrder,
                   recursive: true,
                   startIndex: targetStartIndex,
                   limit: _defaultLimit,
@@ -713,7 +827,7 @@ class MultiServerRepository {
                 final response = await session.client.itemsApi.getItems(
                   genreIds: [row.id],
                   sortBy: sortBy,
-                  sortOrder: 'Ascending',
+                  sortOrder: sortOrder,
                   recursive: true,
                   startIndex: startIndex,
                   limit: _defaultLimit,
@@ -788,13 +902,23 @@ class MultiServerRepository {
         final sortBy = row.rowType == HomeRowType.audioPlaylists
             ? (prefs?.get(UserPreferences.audioRowsSortBy).apiValue ?? _defaultSortBy)
             : (prefs?.get(UserPreferences.playlistsRowSortBy).apiValue ?? _defaultSortBy);
+        final sortOrder = row.rowType == HomeRowType.audioPlaylists
+            ? (prefs?.get(UserPreferences.audioRowsSortOrder).apiValue ??
+                  _defaultSortOrder)
+            : (prefs?.get(UserPreferences.playlistsRowSortOrder).apiValue ??
+                  _defaultSortOrder);
         if (sortBy == 'SortName') {
-          uniqueCombined.sort((a, b) => a.name.compareTo(b.name));
+          final ascending = sortOrder == SortDirection.ascending.apiValue;
+          uniqueCombined.sort(
+            (a, b) => ascending
+                ? a.name.compareTo(b.name)
+                : b.name.compareTo(a.name),
+          );
         } else {
           _sortAggregatedItems(
             uniqueCombined,
             sortBy: sortBy,
-            sortOrder: 'Ascending',
+            sortOrder: sortOrder,
           );
         }
       }
@@ -827,11 +951,27 @@ class MultiServerRepository {
                 _defaultSortBy,
           _ => _defaultSortBy,
         };
+        final sortOrder = switch (row.rowType) {
+          HomeRowType.favorites =>
+            prefs?.get(UserPreferences.favoritesRowSortOrder).apiValue ??
+                _defaultSortOrder,
+          HomeRowType.collections =>
+            prefs?.get(UserPreferences.collectionsRowSortOrder).apiValue ??
+                _defaultSortOrder,
+          HomeRowType.genres =>
+            prefs?.get(UserPreferences.genresRowSortOrder).apiValue ??
+                _defaultSortOrder,
+          HomeRowType.audioArtists ||
+          HomeRowType.audioAlbums =>
+            prefs?.get(UserPreferences.audioRowsSortOrder).apiValue ??
+                _defaultSortOrder,
+          _ => _defaultSortOrder,
+        };
 
         sortedCombined = _sortAggregatedItems(
           uniqueCombined,
           sortBy: sortBy,
-          sortOrder: 'Ascending',
+          sortOrder: sortOrder,
         );
       }
     }
@@ -885,13 +1025,10 @@ class MultiServerRepository {
       sortOrder: sortOrder,
     );
 
-    final deduplicated = MediaDeduplicationUtils.deduplicateMediaItems(all);
-    final takenItems = deduplicated.take(limit).toList();
-    final totalCount = _totalAfterDeduplication(
-      serverTotal: _serverRowTotal(sessions, id),
-      fetched: all.length,
-      kept: deduplicated.length,
-    );
+    final takenItems = all.take(limit).toList();
+    final totalCount = sessions.fold<int>(0, (sum, session) {
+      return sum + (_rowTotals['${id}_${session.server.id}'] ?? 0);
+    });
 
     return HomeRow(
       id: id,
@@ -1122,6 +1259,28 @@ class MultiServerRepository {
     return results;
   }
 
+  /// Runs [search] against every signed-in server through that server's own
+  /// client, and tags each result with the server it came from so its artwork
+  /// and details load from there.
+  Future<List<List<AggregatedItem>>> searchEachServer(
+    Future<List<AggregatedItem>> Function(SearchRepository repository) search, {
+    required String label,
+  }) async {
+    final sessions = await getLoggedInServers();
+    return _gatherPerServer(
+      sessions,
+      (session) async => [
+        for (final item in await search(SearchRepository(session.client)))
+          AggregatedItem(
+            id: item.id,
+            serverId: session.server.id,
+            rawData: item.rawData,
+          ),
+      ],
+      label: label,
+    );
+  }
+
   Future<List<AggregatedItem>> _buildBrowsableGenresForSession(
     ServerUserSession session,
     Map<String, dynamic> response, {
@@ -1132,7 +1291,7 @@ class MultiServerRepository {
         .whereType<Map>()
         .map((item) => item.cast<String, dynamic>())
         .where(
-          (genre) => isBrowsableGenreCandidate(
+          (genre) => mayHaveBrowsableItems(
             genre,
             normalizedItemTypes: includeItemTypes,
           ),
@@ -1224,7 +1383,7 @@ class MultiServerRepository {
     String serverId,
   ) {
     final rawItems = response['Items'] as List? ?? [];
-    return rawItems.map((item) {
+    final items = rawItems.map((item) {
       final data = item as Map<String, dynamic>;
       return AggregatedItem(
         id: data['Id']?.toString() ?? '',
@@ -1232,6 +1391,7 @@ class MultiServerRepository {
         rawData: data,
       );
     }).toList();
+    return withoutBlockedItems(items);
   }
 
   List<AggregatedItem> _sortAggregatedItems(
@@ -1309,29 +1469,9 @@ class MultiServerRepository {
     return bDate.compareTo(aDate);
   }
 
-  int _serverRowTotal(List<ServerUserSession> sessions, String rowKey) =>
-      sessions.fold<int>(
-        0,
-        (sum, session) =>
-            sum + (_rowTotals['${rowKey}_${session.server.id}'] ?? 0),
-      );
-
-  /// Each server counts its rows without knowing another holds the same title.
-  /// Only the fetched window can be checked, so this is an upper bound, but it
-  /// stops the row promising more than it has.
-  static int _totalAfterDeduplication({
-    required int serverTotal,
-    required int fetched,
-    required int kept,
-  }) {
-    final removed = fetched - kept;
-    if (removed <= 0) return serverTotal;
-    final adjusted = serverTotal - removed;
-    return adjusted < kept ? kept : adjusted;
-  }
-
   Future<List<AggregatedItem>> _enrichNextUpItemsWithSeriesLastPlayed(
     List<AggregatedItem> items,
     MediaServerClient client,
-  ) => enrichNextUpItemsWithSeriesLastPlayed(items, client);
+    Future<Map<String, String>?> recentlyPlayed,
+  ) => enrichNextUpItemsWithSeriesLastPlayed(items, client, recentlyPlayed);
 }

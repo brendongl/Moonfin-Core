@@ -7,6 +7,8 @@ import '../../../l10n/app_localizations.dart';
 import '../../widgets/settings/settings_section_header.dart';
 import '../../../preference/user_preferences.dart';
 import '../../../sipflix/sipflix_settings_mode.dart';
+import '../../../util/device_performance.dart';
+import '../../../util/platform_detection.dart';
 import '../../widgets/adaptive/adaptive_list_section.dart';
 import '../../widgets/settings/clean_settings_typography.dart';
 import '../../widgets/settings/preference_tiles.dart';
@@ -26,6 +28,14 @@ class LocalPreviewsSettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final advanced = SipflixSettingsMode.advanced;
+    // Sipflix fork: trailer and card previews are off by default and retired
+    // on Android TV boxes, where inline playback competes with the decoder.
+    final previewsRetired =
+        PlatformDetection.isTV && !SipflixSettingsMode.showRetired;
+    // The switch would otherwise read as on while nothing plays, so say why.
+    final heldBack =
+        GetIt.instance<UserPreferences>().resolveDevicePerformanceTier() ==
+        DevicePerformanceTier.reduced;
     return withCleanSettingsTypography(
       context,
       Scaffold(
@@ -35,42 +45,46 @@ class LocalPreviewsSettingsScreen extends StatelessWidget {
             SettingsSectionHeader(l10n.localPreviews),
             adaptiveListSection(
               children: [
-                SwitchPreferenceTile(
-                  preference: UserPreferences.mediaBarTrailerPreview,
-                  title: l10n.trailerPreview,
-                  subtitle: l10n.autoPlayTrailers,
-                  icon: Icons.movie_outlined,
-                  onChanged: _pushSync,
-                ),
-                SwitchPreferenceTile(
-                  preference: UserPreferences.mediaBarTrailerAudio,
-                  title: l10n.trailerAudio,
-                  subtitle: l10n.enableTrailerAudio,
-                  icon: Icons.volume_up,
-                  onChanged: _pushSync,
-                ),
-                if (advanced) ...[
+                if (!previewsRetired) ...[
                   SwitchPreferenceTile(
-                    preference: UserPreferences.mediaBarTrailerCaptions,
-                    title: l10n.trailerCaptions,
-                    subtitle: l10n.trailerCaptionsDescription,
-                    icon: Icons.closed_caption_outlined,
+                    preference: UserPreferences.mediaBarTrailerPreview,
+                    title: l10n.trailerPreview,
+                    subtitle: heldBack
+                        ? l10n.trailerPreviewHeldBack
+                        : l10n.autoPlayTrailers,
+                    icon: Icons.movie_outlined,
                     onChanged: _pushSync,
                   ),
                   SwitchPreferenceTile(
-                    preference: UserPreferences.episodePreviewEnabled,
-                    title: l10n.mediaPreview,
-                    subtitle: l10n.mediaPreviewDescription,
-                    icon: Icons.ondemand_video,
-                    onChanged: _pushSync,
-                  ),
-                  SwitchPreferenceTile(
-                    preference: UserPreferences.previewAudioEnabled,
-                    title: l10n.previewAudio,
-                    subtitle: l10n.enablePreviewAudio,
+                    preference: UserPreferences.mediaBarTrailerAudio,
+                    title: l10n.trailerAudio,
+                    subtitle: l10n.enableTrailerAudio,
                     icon: Icons.volume_up,
                     onChanged: _pushSync,
                   ),
+                  if (advanced) ...[
+                    SwitchPreferenceTile(
+                      preference: UserPreferences.mediaBarTrailerCaptions,
+                      title: l10n.trailerCaptions,
+                      subtitle: l10n.trailerCaptionsDescription,
+                      icon: Icons.closed_caption_outlined,
+                      onChanged: _pushSync,
+                    ),
+                    SwitchPreferenceTile(
+                      preference: UserPreferences.episodePreviewEnabled,
+                      title: l10n.mediaPreview,
+                      subtitle: l10n.mediaPreviewDescription,
+                      icon: Icons.ondemand_video,
+                      onChanged: _pushSync,
+                    ),
+                    SwitchPreferenceTile(
+                      preference: UserPreferences.previewAudioEnabled,
+                      title: l10n.previewAudio,
+                      subtitle: l10n.enablePreviewAudio,
+                      icon: Icons.volume_up,
+                      onChanged: _pushSync,
+                    ),
+                  ],
                 ],
               ],
             ),

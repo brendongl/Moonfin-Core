@@ -37,6 +37,14 @@ class _AudioPreferencesScreenState extends State<_AudioPreferencesScreen> {
         PlatformDetection.isDesktop;
   }
 
+  /// The packer choice only exists on the Media3 engine on Android TV.
+  /// Everywhere else the tile is hidden and the preference is inert.
+  bool get _showPassthroughOutputTile =>
+      PlatformDetection.isAndroid &&
+      PlatformDetection.isTV &&
+      _prefs.get(UserPreferences.playbackEnginePreference) ==
+          PlaybackEnginePreference.media3;
+
   AudioCapabilityProfile get _audioCapabilityProfile =>
       AudioCapabilityProfile.fromMap(
         PlatformDetection.hasAudioCapabilities
@@ -63,28 +71,47 @@ class _AudioPreferencesScreenState extends State<_AudioPreferencesScreen> {
     return values.join(', ');
   }
 
+  // Media3 on Android, AetherEngine on Apple and mpv on Linux and Windows all
+  // decode these on the device, so the list doesn't depend on the engine.
+  static const _locallyDecodedCodecs =
+      'AAC, AC3, EAC3, DTS, DTS-HD, TrueHD, FLAC';
+
+  List<Widget> _buildCodecRows(AppLocalizations l10n) {
+    final transcodeCodecs = DeviceProfileBuilder.transcodeTargetAudioCodecs(
+      fallbackCodec: _prefs.get(UserPreferences.audioFallbackCodec),
+      forAvFoundation: PlatformDetection.isApple || PlatformDetection.isAppleTV,
+    ).map((codec) => codec == 'opus' ? 'Opus' : codec.toUpperCase());
+
+    return <Widget>[
+      _TvSettingsListTile(
+        leading: const Icon(Icons.memory),
+        title: Text(l10n.locallyDecodedCodecs),
+        subtitle: const Text(_locallyDecodedCodecs),
+      ),
+      _TvSettingsListTile(
+        leading: const Icon(Icons.swap_horiz),
+        title: Text(l10n.transcodeTargetCodecs),
+        subtitle: Text(transcodeCodecs.join(', ')),
+      ),
+    ];
+  }
+
   List<Widget> _buildDetectedCapabilities(AppLocalizations l10n) {
-    final hasSnapshot = PlatformDetection.hasAudioCapabilities;
-    if (!hasSnapshot) {
+    if (!AudioCapabilityProbe.isSupported) {
+      return _buildCodecRows(l10n);
+    }
+
+    if (!PlatformDetection.hasAudioCapabilities) {
       return <Widget>[
         _TvSettingsListTile(
           leading: const Icon(Icons.hearing_disabled),
           title: Text(l10n.settingsDetectedAudioCapabilitiesUnavailable),
         ),
+        ..._buildCodecRows(l10n),
       ];
     }
 
     final profile = _audioCapabilityProfile;
-    final decodeCodecs = <String>[
-      'AAC',
-      if (profile.canDecodeAc3) 'AC3',
-      if (profile.canDecodeEac3) 'EAC3',
-      if (profile.canDecodeDts) 'DTS',
-      if (profile.canDecodeDtsHd) 'DTS-HD',
-      if (profile.canDecodeTrueHd) 'TrueHD',
-      if (profile.canDecodeFlac) 'FLAC',
-    ];
-
     final passthroughCodecs = <String>[
       if (profile.canPassthroughAc3) 'AC3',
       if (profile.canPassthroughEac3) 'EAC3',
@@ -105,11 +132,7 @@ class _AudioPreferencesScreenState extends State<_AudioPreferencesScreen> {
         title: Text(l10n.connection),
         subtitle: Text(routeSubtitleParts.join(' • ')),
       ),
-      _TvSettingsListTile(
-        leading: const Icon(Icons.memory),
-        title: Text(l10n.audioTranscodeTarget),
-        subtitle: Text(_joinedOrUnknown(l10n, decodeCodecs)),
-      ),
+      ..._buildCodecRows(l10n),
       _TvSettingsListTile(
         leading: const Icon(Icons.settings_input_hdmi),
         title: Text(l10n.passthrough),
@@ -117,6 +140,17 @@ class _AudioPreferencesScreenState extends State<_AudioPreferencesScreen> {
       ),
     ];
   }
+
+  String _fallbackCodecLabel(AppLocalizations l10n, AudioFallbackCodec codec) =>
+      switch (codec) {
+        AudioFallbackCodec.auto => l10n.settingsAudioFallbackCodecAuto,
+        AudioFallbackCodec.aac => l10n.settingsAudioFallbackCodecAac,
+        AudioFallbackCodec.ac3 => l10n.settingsAudioFallbackCodecAc3,
+        AudioFallbackCodec.eac3 => l10n.settingsAudioFallbackCodecEac3,
+        AudioFallbackCodec.mp3 => l10n.settingsAudioFallbackCodecMp3,
+        AudioFallbackCodec.opus => l10n.settingsAudioFallbackCodecOpus,
+        AudioFallbackCodec.flac => l10n.settingsAudioFallbackCodecFlac,
+      };
 
   String _capabilitySubtitle(
     AppLocalizations l10n, {
@@ -161,7 +195,9 @@ class _AudioPreferencesScreenState extends State<_AudioPreferencesScreen> {
     // Retry like startup detection does: a one-shot query can race audio
     // output enumeration and return a degenerate stereo result.
     final profile = await AudioCapabilityProbe.queryWithRetry();
-    AudioCapabilityProbe.apply(profile);
+    // The user asked for this answer and the snackbar below names it, so it
+    // lands now rather than waiting out the downgrade settle window.
+    AudioCapabilityProbe.apply(profile, immediate: true);
 
     // Auto is right for every sink under never-transcode, so the reset just
     // hands control back to detection.
@@ -188,30 +224,12 @@ class _AudioPreferencesScreenState extends State<_AudioPreferencesScreen> {
         AudioPassthroughMode.manual;
     final capabilities = _audioCapabilityProfile;
 
-    final iso3ToIso1 = {
-      for (final entry in kIso6391To6392.entries) entry.value: entry.key,
+    final languages = supportedLanguageOptions;
+    final defaultAudioLangOptions = {
+      'auto': l10n.autoServerDefault,
+      ...languages,
     };
-
-    final supportedIso3Codes = AppLocalizations.supportedLocales.map((locale) {
-      final lang1 = locale.languageCode;
-      return kIso6391To6392[lang1] ?? lang1;
-    }).toSet();
-
-    final defaultAudioLangOptions = {'auto': l10n.autoServerDefault};
-    final fallbackAudioLangOptions = {'': l10n.none};
-
-    for (final entry in kIso6392Languages.entries) {
-      final code = entry.key;
-      if (!supportedIso3Codes.contains(code)) {
-        continue;
-      }
-      final englishName = entry.value;
-      final iso1 = iso3ToIso1[code];
-      final displayName =
-          (iso1 != null ? kLocaleDisplayNames[iso1] : null) ?? englishName;
-      defaultAudioLangOptions[code] = displayName;
-      fallbackAudioLangOptions[code] = displayName;
-    }
+    final fallbackAudioLangOptions = {'': l10n.none, ...languages};
 
     final advanced = SipflixSettingsMode.advanced;
     return Scaffold(
@@ -271,7 +289,14 @@ class _AudioPreferencesScreenState extends State<_AudioPreferencesScreen> {
                   title: l10n.settingsAudioPassthroughMode,
                   description: l10n.settingsAudioPassthroughModeDescription,
                   icon: Icons.surround_sound,
+                  // The chip has room for the value, not the explanation, so
+                  // that stays on the picker rows.
                   labelOf: (mode) => switch (mode) {
+                    AudioPassthroughMode.disabled => l10n.disabled,
+                    AudioPassthroughMode.auto => l10n.auto,
+                    AudioPassthroughMode.manual => l10n.manual,
+                  },
+                  dialogLabelOf: (mode) => switch (mode) {
                     AudioPassthroughMode.disabled =>
                       l10n.settingsAudioPassthroughModeDisabled,
                     AudioPassthroughMode.auto =>
@@ -282,6 +307,32 @@ class _AudioPreferencesScreenState extends State<_AudioPreferencesScreen> {
                   onChangedValue: (mode) =>
                       _prefs.setAudioPassthroughMode(mode),
                 ),
+                // The IEC option packs IEC 61937 in the app instead of
+                // trusting the platform packer, which is broken on some
+                // devices.
+                if (_showPassthroughOutputTile)
+                  EnumPreferenceTile<AudioPassthroughOutput>(
+                    preference: UserPreferences.audioPassthroughOutput,
+                    title: l10n.settingsAudioPassthroughOutput,
+                    description: _capabilitySubtitle(
+                      l10n,
+                      baseSubtitle:
+                          l10n.settingsAudioPassthroughOutputDescription,
+                      isSupported: capabilities.canIecLow,
+                    ),
+                    icon: Icons.settings_input_hdmi,
+                    labelOf: (output) => switch (output) {
+                      AudioPassthroughOutput.platform => l10n.auto,
+                      AudioPassthroughOutput.iecPacker =>
+                        l10n.settingsAudioPassthroughOutputIecLabel,
+                    },
+                    dialogLabelOf: (output) => switch (output) {
+                      AudioPassthroughOutput.platform =>
+                        l10n.settingsAudioPassthroughOutputPlatform,
+                      AudioPassthroughOutput.iecPacker =>
+                        l10n.settingsAudioPassthroughOutputIec,
+                    },
+                  ),
                 SwitchPreferenceTile(
                   preference: UserPreferences.downmixToStereo,
                   title: l10n.downmixToStereo,
@@ -356,7 +407,7 @@ class _AudioPreferencesScreenState extends State<_AudioPreferencesScreen> {
                   description: l10n.settingsMaxAudioChannelsDescription,
                   icon: Icons.speaker_group,
                   options: <int, String>{
-                    0: l10n.settingsMaxAudioChannelsAuto,
+                    0: l10n.autoDetect,
                     1: l10n.settingsMaxAudioChannelsMono,
                     2: l10n.settingsMaxAudioChannelsStereo,
                     3: l10n.settingsMaxAudioChannels3_0,
@@ -366,39 +417,32 @@ class _AudioPreferencesScreenState extends State<_AudioPreferencesScreen> {
                     7: l10n.settingsMaxAudioChannels6_1,
                     8: l10n.settingsMaxAudioChannels7_1,
                   },
+                  dialogOptions: <int, String>{
+                    0: l10n.settingsMaxAudioChannelsAuto,
+                  },
                 ),
                 EnumPreferenceTile<AudioFallbackCodec>(
                   preference: UserPreferences.audioFallbackCodec,
                   title: l10n.settingsAudioFallbackCodec,
                   description: l10n.settingsAudioFallbackCodecDescription,
                   icon: Icons.hearing,
-                  labelOf: (v) => switch (v) {
-                    AudioFallbackCodec.auto =>
-                      l10n.settingsAudioFallbackCodecAuto,
-                    AudioFallbackCodec.aac =>
-                      l10n.settingsAudioFallbackCodecAac,
-                    AudioFallbackCodec.ac3 =>
-                      l10n.settingsAudioFallbackCodecAc3,
-                    AudioFallbackCodec.eac3 =>
-                      l10n.settingsAudioFallbackCodecEac3,
-                    AudioFallbackCodec.mp3 =>
-                      l10n.settingsAudioFallbackCodecMp3,
-                    AudioFallbackCodec.opus =>
-                      l10n.settingsAudioFallbackCodecOpus,
-                    AudioFallbackCodec.flac =>
-                      l10n.settingsAudioFallbackCodecFlac,
-                  },
+                  labelOf: (v) => v == AudioFallbackCodec.auto
+                      ? l10n.autoDetect
+                      : _fallbackCodecLabel(l10n, v),
+                  dialogLabelOf: (v) => v == AudioFallbackCodec.auto
+                      ? l10n.settingsAudioFallbackCodecAuto
+                      : _fallbackCodecLabel(l10n, v),
                 ),
               ],
             ),
           ],
 
-          if (AudioCapabilityProbe.isSupported && advanced) ...[
+          if (!PlatformDetection.isWeb && advanced) ...[
             _SectionHeader(l10n.settingsDetectedAudioCapabilities),
             adaptiveListSection(
               children: [
                 ..._buildDetectedCapabilities(l10n),
-                _buildRedetectTile(),
+                if (AudioCapabilityProbe.isSupported) _buildRedetectTile(),
               ],
             ),
           ],

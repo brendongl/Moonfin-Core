@@ -8,7 +8,6 @@ import 'package:flutter/services.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:moonfin_design/moonfin_design.dart';
-import 'package:moonfin_native_video/moonfin_native_video.dart';
 import 'package:playback_core/playback_core.dart';
 import 'package:server_core/server_core.dart';
 
@@ -26,11 +25,20 @@ import '../../../util/platform_detection.dart';
 import '../../../util/playback_time_label.dart';
 import '../../widgets/adaptive/sf_symbol.dart';
 import '../../widgets/overlay_sheet.dart';
+import '../../widgets/player_volume_control.dart';
 import '../../widgets/remote_play_to_session_dialog.dart';
 import '../../widgets/playback/audio_quality_badge.dart';
 import '../../widgets/playback/lyrics_view.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../util/error_message.dart';
 import 'audiobook_player_view.dart';
+
+/// First queue index the Up Next panel lists. Tracks that have played drop off
+/// the top, and stepping back to an earlier one brings it into the list again.
+int upNextStartIndex(int queueLength, int currentIndex) {
+  if (queueLength <= 0 || currentIndex <= 0) return 0;
+  return currentIndex >= queueLength ? queueLength - 1 : currentIndex;
+}
 
 class AudioPlayerScreen extends StatefulWidget {
   const AudioPlayerScreen({super.key});
@@ -70,6 +78,9 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
   final _tvLyricScrollController = ScrollController();
   DateTime? _tvBackPopSuppressedUntil;
   Timer? _sleepTimer;
+  Timer? _persistVolumeTimer;
+  double _playerVolume = 100.0;
+  double _volumeBeforeMute = 100.0;
   bool _radioFetchInFlight = false;
   String? _radioSeededItemId;
 
@@ -88,9 +99,12 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
   @override
   void initState() {
     super.initState();
-    _tvQueueFocusIndex = _initialTvQueueFocusIndex();
+    _tvQueueFocusIndex = _queueStartIndex;
     _subs.addAll([
-      _manager.backendChangedStream.listen((_) => _rebuild()),
+      _manager.backendChangedStream.listen((_) {
+        _applyPlayerVolume();
+        _rebuild();
+      }),
       _state.playingStream.listen((_) => _rebuild()),
       _state.positionStream.listen((_) => _rebuild()),
       _state.durationStream.listen((_) => _rebuild()),
@@ -107,8 +121,14 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
         unawaited(_exitPlayback());
       }),
     ]);
-    if (PlatformDetection.useNativeVideoSurface) {
-      unawaited(_activeMedia3Backend?.setVolume(100.0));
+    unawaited(_activeMedia3Backend?.setVolume(100.0));
+    if (PlatformDetection.isDesktop) {
+      _playerVolume = _prefs
+          .get(UserPreferences.playerVolume)
+          .clamp(0.0, 100.0)
+          .toDouble();
+      _volumeBeforeMute = _playerVolume > 0 ? _playerVolume : 100.0;
+      _applyPlayerVolume();
     }
     if (_isWidePlayer) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -217,7 +237,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
       if (_tvPanelIsLyrics) {
         _tvLyricCursor = _currentLyricLineIndex();
       } else {
-        _tvQueueFocusIndex = _initialTvQueueFocusIndex();
+        _tvQueueFocusIndex = _queueStartIndex;
       }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -323,14 +343,8 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
     );
   }
 
-  int _initialTvQueueFocusIndex() {
-    final count = _queue.items.length;
-    if (count <= 0) return 0;
-    final current = _queue.currentIndex;
-    if (current < 0) return 0;
-    if (current >= count) return count - 1;
-    return current;
-  }
+  int get _queueStartIndex =>
+      upNextStartIndex(_queue.length, _queue.currentIndex);
 
   void _syncTvQueueFocusIndex() {
     if (!_isWidePlayer || _tvPanelIsLyrics) return;
@@ -342,7 +356,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
       return;
     }
 
-    final clamped = _tvQueueFocusIndex.clamp(0, count - 1);
+    final clamped = _tvQueueFocusIndex.clamp(_queueStartIndex, count - 1);
     if (clamped != _tvQueueFocusIndex) {
       setState(() => _tvQueueFocusIndex = clamped);
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -361,7 +375,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
       return;
     }
 
-    final clamped = index.clamp(0, count - 1);
+    final clamped = index.clamp(_queueStartIndex, count - 1);
     if (clamped == _tvQueueFocusIndex) return;
 
     setState(() => _tvQueueFocusIndex = clamped);
@@ -370,7 +384,8 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
 
   void _scrollTvQueueIntoView(int index, {bool animate = true}) {
     if (!_queueScrollController.hasClients) return;
-    final targetOffset = (index * 72.0).clamp(
+    final row = index - _queueStartIndex;
+    final targetOffset = (row * 72.0).clamp(
       _queueScrollController.position.minScrollExtent,
       _queueScrollController.position.maxScrollExtent,
     );
@@ -699,9 +714,10 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final detail = describeError(e, AppLocalizations.of(context));
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Could not save playlist: $e')));
+        ).showSnackBar(SnackBar(content: Text('Could not save playlist: $detail')));
       }
     }
   }
@@ -755,6 +771,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
       sub.cancel();
     }
     _sleepTimer?.cancel();
+    _persistVolumeTimer?.cancel();
     _tvOverlayFocus.dispose();
     _queueScrollController.dispose();
     _tvLyricScrollController.dispose();
@@ -846,29 +863,12 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
   @override
   Widget build(BuildContext context) {
     final item = _resolveCurrentItem();
-    final attachMedia3View =
-        PlatformDetection.useNativeVideoSurface && _activeMedia3Backend != null;
+    // Media3 audio plays on a player the native bridge owns, so car and lock
+    // screen playback never wait on this screen mounting a view.
     final isAudiobookRoute = GoRouterState.of(context).uri.queryParameters['isAudiobook'] == 'true';
     final isAudiobook = (item != null && item.isAudiobook) || isAudiobookRoute;
     if (isAudiobook) {
-      if (!attachMedia3View) {
-        return const AudiobookPlayerView();
-      }
-      return const Stack(
-        fit: StackFit.expand,
-        children: [
-          Positioned(
-            left: -2,
-            top: -2,
-            width: 1,
-            height: 1,
-            child: IgnorePointer(
-              child: Media3VideoView(fill: Color(0x00000000)),
-            ),
-          ),
-          AudiobookPlayerView(),
-        ],
-      );
+      return const AudiobookPlayerView();
     }
     final localPoster = _offlinePosterPath();
     final artUrl = item != null && !_manager.isOfflinePlayback
@@ -884,16 +884,6 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
     final content = Stack(
       fit: StackFit.expand,
       children: [
-        if (attachMedia3View)
-          const Positioned(
-            left: -2,
-            top: -2,
-            width: 1,
-            height: 1,
-            child: IgnorePointer(
-              child: Media3VideoView(fill: Color(0x00000000)),
-            ),
-          ),
         Positioned.fill(
           child: AmbientBackground(
             image: ambientImage,
@@ -1234,7 +1224,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
         CastTargetKind.jellyfinSession => l10n.remotePlayback,
       };
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.castActionFailed(label, '$e'))),
+        SnackBar(content: Text(l10n.castActionFailed(label, describeError(e, l10n)))),
       );
     }
   }
@@ -1260,9 +1250,11 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
     } catch (e) {
       if (!mounted) return;
       final l10n = AppLocalizations.of(context);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(l10n.failedToSetCastVolume('$e'))));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(l10n.failedToSetCastVolume(describeError(e, l10n))),
+        ),
+      );
     }
   }
 
@@ -1494,6 +1486,22 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
     );
   }
 
+  void _applyPlayerVolume() {
+    if (!PlatformDetection.isDesktop) return;
+    unawaited(_manager.backend?.setVolume(_playerVolume));
+  }
+
+  void _setPlayerVolume(double volume) {
+    final clamped = volume.clamp(0.0, 100.0).toDouble();
+    if (clamped > 0) _volumeBeforeMute = clamped;
+    setState(() => _playerVolume = clamped);
+    _applyPlayerVolume();
+    _persistVolumeTimer?.cancel();
+    _persistVolumeTimer = Timer(const Duration(milliseconds: 400), () {
+      unawaited(_prefs.set(UserPreferences.playerVolume, _playerVolume));
+    });
+  }
+
   Widget _buildFavoriteRow(AggregatedItem item) {
     final isFav = _getIsFavorite(item);
     return IconButton(
@@ -1549,6 +1557,14 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
                       : const SizedBox.shrink(),
                 ),
               ),
+              if (!PlatformDetection.isTV)
+                PlayerVolumeControl(
+                  volume: _playerVolume / 100.0,
+                  onChanged: (v) => _setPlayerVolume(v * 100.0),
+                  onToggleMute: () => _setPlayerVolume(
+                    _playerVolume > 0 ? 0.0 : _volumeBeforeMute,
+                  ),
+                ),
               if (item != null)
                 _tvFavoriteButton(item)
               else
@@ -1887,6 +1903,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
   Widget _buildQueueList() {
     final items = _queue.items;
     final currentIdx = _queue.currentIndex;
+    final start = upNextStartIndex(items.length, currentIdx);
     final isWide = _isWidePlayer;
     final keyboardFocus = InputModeTracker.showFocusVisuals(context, true);
 
@@ -2000,19 +2017,19 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
       return ListView.builder(
         controller: _queueScrollController,
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.spaceLg),
-        itemCount: items.length,
-        itemBuilder: (context, index) => buildTile(index),
+        itemCount: items.length - start,
+        itemBuilder: (context, row) => buildTile(start + row),
       );
     }
 
     // Mobile / desktop: drag to reorder the queue.
     return ReorderableListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.spaceLg),
-      itemCount: items.length,
-      onReorder: (oldIndex, newIndex) {
-        setState(() => _queue.reorder(oldIndex, newIndex));
+      itemCount: items.length - start,
+      onReorder: (oldRow, newRow) {
+        setState(() => _queue.reorder(start + oldRow, start + newRow));
       },
-      itemBuilder: (context, index) => buildTile(index),
+      itemBuilder: (context, row) => buildTile(start + row),
     );
   }
 }

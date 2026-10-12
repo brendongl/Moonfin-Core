@@ -26,6 +26,7 @@ class _FakePlaybackApi implements PlaybackApi {
     Map<String, dynamic>? requestBody,
     String? userId,
     int? startTimeTicks,
+    bool waitForMediaProbe = false,
   }) async => response;
 
   @override

@@ -72,7 +72,7 @@ void main() {
         async.elapse(const Duration(seconds: 41));
 
         expect(vm.state, ItemDetailState.error);
-        expect(vm.errorMessage, ItemDetailViewModel.loadTimeoutMessage);
+        expect(vm.error.toString(), contains(ItemDetailViewModel.loadTimeoutMessage));
       });
     },
   );

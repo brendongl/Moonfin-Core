@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui';
 
 import '../../widgets/offline_aware_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:moonfin_design/moonfin_design.dart';
@@ -18,8 +20,12 @@ import '../../../data/viewmodels/library_browse_view_model.dart';
 import '../../../preference/preference_constants.dart';
 import '../../../preference/user_preferences.dart';
 import '../../../ui/mixins/focus_state_mixin.dart';
+import '../../../util/accent_folding.dart';
+import '../../../util/artwork_request_size.dart';
+import '../home/home_row_prefetch.dart';
 import '../../../util/focus/dpad_keys.dart';
 import '../../../util/focus/grid_focus_node_mixin.dart';
+import '../../../util/focus/grid_section_target.dart';
 import '../../../util/platform_detection.dart';
 import '../../navigation/destinations.dart';
 import '../../navigation/route_lifecycle_observer.dart';
@@ -33,7 +39,9 @@ import '../../widgets/quick_return_wrapper.dart';
 import '../../widgets/rating_display.dart';
 import '../detail/item_detail_screen.dart';
 import '../../widgets/local_search_field.dart';
+import '../../widgets/skeleton/skeleton_library_grid.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../util/error_message.dart';
 
 Color get _navyBackground => AppColorScheme.background;
 Color get _jellyfinBlue => AppColorScheme.accent;
@@ -66,12 +74,19 @@ const _kChevronScrollStep = 480.0;
 const _kSongRowHeight = 56.0;
 
 /// One line of the grid, across whichever axis it scrolls.
-typedef _GridGeometry = ({
+typedef GridGeometry = ({
   int perLine,
   double lineExtent,
   double lineSpacing,
   double leadingPad,
 });
+
+/// Leading edge of the line holding [index], in the scroll view's own
+/// coordinates.
+double gridLineStart(GridGeometry geometry, int index) =>
+    geometry.leadingPad +
+    (index ~/ geometry.perLine) *
+        (geometry.lineExtent + geometry.lineSpacing);
 
 bool _isCompact(BuildContext context) =>
     !PlatformDetection.isTV &&
@@ -122,7 +137,6 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
   StreamSubscription<String?>? _backgroundSub;
   String? _backdropUrl;
   final Set<String> _localProgressItemIds = const {};
-  ModalRoute<dynamic>? _observedRoute;
   int? _returnFocusGridIndex;
   double? _returnScrollOffset;
 
@@ -152,7 +166,17 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
     _prefs.addListener(_onChanged);
   }
 
+  ModalRoute<dynamic>? _observedRoute;
+
   final _allLetterFocusNode = FocusNode(debugLabel: 'alpha_all_letter');
+
+  @override
+  void didPopNext() {
+    super.didPopNext();
+    unawaited(_vm.syncUserDataIfStale());
+    // Sipflix fork: put focus back on the card that opened the detail page.
+    _restoreFocusAfterPop();
+  }
 
   @override
   void dispose() {
@@ -213,12 +237,14 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
     _hasSubtitlesCache = null;
     final route = ModalRoute.of(context);
     if (route == null || route == _observedRoute) return;
-    if (_observedRoute != null) routeLifecycleObserver.unsubscribe(this);
+    if (_observedRoute != null) {
+      routeLifecycleObserver.unsubscribe(this);
+    }
     _observedRoute = route;
     routeLifecycleObserver.subscribe(this, route);
   }
 
-  /// Runs before the pushed route takes focus, so the grid position the user
+  /// Sipflix fork: runs before the pushed route takes focus, so the grid position the user
   /// left from still reads true here.
   @override
   void didPushNext() {
@@ -235,8 +261,7 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
   /// Puts focus back on the item that opened the detail page. This has to land
   /// in the pop itself: FocusRouteObserver grants focus to the first focusable
   /// one frame later, and traversal scrolls the grid to the top with it.
-  @override
-  void didPopNext() {
+  void _restoreFocusAfterPop() {
     if (PlatformDetection.useMobileUi) return;
     final index = _returnFocusGridIndex;
     final node = index == null ? null : gridItemFocusNodes[index];
@@ -300,25 +325,22 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
     _vm.loadMore();
   }
 
-  /// Geometry from the last grid layout, so a letter jump lands on the line the
-  /// grid really drew instead of one worked out from a second copy of the sums.
-  _GridGeometry? _gridGeometry;
+  /// Geometry from the last grid layout, so a letter jump and a focus scroll
+  /// both land on the line the grid really drew instead of one worked out from
+  /// a second copy of the sums.
+  GridGeometry? _gridGeometry;
 
-  void _scrollToGridRow({
-    required int index,
-    required int crossAxisCount,
-    required double cellHeight,
-    required double mainAxisSpacing,
-    double gridTopPadding = 8.0,
-  }) {
+  void _scrollToGridRow(int index) {
     if (!mounted || !_scrollController.hasClients) return;
-    final row = index ~/ crossAxisCount;
-    final rowTop = gridTopPadding + row * (cellHeight + mainAxisSpacing);
-    final rowBottom = rowTop + cellHeight;
+    final geometry = _gridGeometry;
+    if (geometry == null) return;
+
+    final rowTop = gridLineStart(geometry, index);
+    final rowBottom = rowTop + geometry.lineExtent;
     final position = _scrollController.position;
     final viewportH = position.viewportDimension;
     final current = position.pixels;
-    const topPad = 8.0;
+    final topPad = geometry.leadingPad;
     const bottomPad = 52.0;
     double target = current;
     if (rowTop - topPad < current) {
@@ -396,9 +418,7 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
       } else {
         final geometry = _gridGeometry;
         if (geometry == null) return;
-        final line = targetIndex ~/ geometry.perLine;
-        targetOffset = geometry.leadingPad +
-            line * (geometry.lineExtent + geometry.lineSpacing);
+        targetOffset = gridLineStart(geometry, targetIndex);
       }
 
       // Slivers report maxScrollExtent lazily as children are laid out, so a
@@ -483,6 +503,7 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
             item.id,
             serverId: item.serverId,
             type: item.type,
+            channelId: item.channelId,
           ),
         )
         .then((result) {
@@ -574,15 +595,33 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
     return tags[imageType] as String?;
   }
 
-  String? _imageUrl(AggregatedItem item) {
+  /// See [gridCacheExtentFor].
+  ScrollCacheExtent? _gridScrollCacheExtent({
+    required double cellExtent,
+    required double spacing,
+  }) {
+    final pixels = gridCacheExtentFor(
+      tier: _prefs.resolveDevicePerformanceTier(),
+      cellExtent: cellExtent,
+      spacing: spacing,
+    );
+    return pixels == null ? null : ScrollCacheExtent.pixels(pixels);
+  }
+
+  /// Width to ask the server for, covering [cellWidth] at this display's
+  /// density. See [artworkRequestWidth].
+  int _requestWidthFor(double cellWidth, ArtworkShape shape) =>
+      artworkRequestWidth(
+        cellWidth,
+        MediaQuery.devicePixelRatioOf(context),
+        shape,
+      );
+
+  String? _imageUrl(AggregatedItem item, {double? cellWidth}) {
     final api = _vm.imageApi;
-    final baseCardWidth = _cardWidth();
-    final posterMaxW = baseCardWidth < 260
-        ? 420
-        : (baseCardWidth < 340 ? 560 : 700);
-    final landscapeMaxW = baseCardWidth < 260
-        ? 720
-        : (baseCardWidth < 340 ? 960 : 1200);
+    final width = cellWidth ?? _cardWidth();
+    final posterMaxW = _requestWidthFor(width, ArtworkShape.poster);
+    final landscapeMaxW = _requestWidthFor(width, ArtworkShape.landscape);
 
     final itemThumbTag = _tagForType(item, 'Thumb');
     final itemBannerTag = _tagForType(item, 'Banner');
@@ -686,7 +725,11 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
 
     if (_vm.isPlaylistBrowse) {
       return item.primaryImageTag != null
-          ? api.getPrimaryImageUrl(item.id, maxWidth: posterMaxW)
+          ? api.getPrimaryImageUrl(
+              item.id,
+              maxWidth: posterMaxW,
+              tag: item.primaryImageTag,
+            )
           : null;
     }
 
@@ -955,6 +998,7 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
       memCacheWidth: blurred
           ? BackgroundService.backdropBlurredDecodeWidth
           : BackgroundService.backdropMaxWidth,
+      priority: ImageFetchPriority.high,
       errorWidget: (_, _, _) => const SizedBox.shrink(),
     );
     if (!blurred) return image;
@@ -971,9 +1015,7 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
     );
   }
 
-  bool get _isSongsBrowse =>
-      _vm.includeItemTypes != null &&
-      _vm.includeItemTypes!.contains('Audio');
+  bool get _isSongsBrowse => _vm.isSongsBrowse;
 
   Future<void> _playSongFromIndex(int index) async {
     final manager = GetIt.instance<PlaybackManager>();
@@ -981,6 +1023,13 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
     if (!mounted) return;
     context.push(Destinations.audioPlayer);
   }
+
+  /// What a player shows for a queued track. These go straight into the queue
+  /// rather than onto a grid, so they carry none of the poster and series
+  /// artwork a browse card needs.
+  static const _audioShuffleFields =
+      'Type,UserData,RunTimeTicks,ImageTags,Album,AlbumId,'
+      'AlbumPrimaryImageTag,AlbumArtist,Artists';
 
   Future<void> _shuffleSongsLibrary() async {
     final client = GetIt.instance<MediaServerClientFactory>()
@@ -992,7 +1041,7 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
         recursive: true,
         sortBy: 'Random',
         limit: 300,
-        fields: 'PrimaryImageAspectRatio,SortName,Type,IsFolder,UserData,CommunityRating,OfficialRating,RunTimeTicks,ProductionYear,ProviderIds,ImageTags,BackdropImageTags,ParentBackdropItemId,ParentBackdropImageTags,ParentThumbItemId,ParentThumbImageTag,SeriesId,SeriesPrimaryImageTag,Album,AlbumId,AlbumArtist,Artists',
+        fields: _audioShuffleFields,
       );
       final rawItems = (response['Items'] as List?) ?? [];
       final mapped = rawItems
@@ -1041,7 +1090,6 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
   }
 
   Widget _buildBody() {
-    final spinnerColor = _vm.isBookLibrary ? const Color(0xFFD97706) : _jellyfinBlue;
     final showHorizChevrons =
         _horizontalGridIsScrollable &&
         _vm.state == LibraryBrowseState.ready &&
@@ -1080,15 +1128,20 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
           ),
         Expanded(
           child: switch (_vm.state) {
-            LibraryBrowseState.loading => Center(
-                child: CircularProgressIndicator(color: spinnerColor),
+            LibraryBrowseState.loading => SkeletonLibraryGrid(
+                cardWidth: _cardWidth(),
+                aspectRatio: _gridBaseAspectRatio(),
+                isSongs: _isSongsBrowse,
+                isHorizontal: _vm.scrollDirection == LibraryScrollDirection.horizontal,
               ),
             LibraryBrowseState.error => Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      _vm.errorMessage ?? AppLocalizations.of(context).failedToLoadLibrary,
+                      _vm.isNetworkError
+                          ? AppLocalizations.of(context).unableToConnectToServer
+                          : describeError(_vm.error!, AppLocalizations.of(context)),
                       style: TextStyle(
                         color: _vm.isBookLibrary ? const Color(0xFFF4E6D5) : Colors.white,
                       ),
@@ -1176,7 +1229,7 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
 
   Widget _buildVerticalGrid() {
     final cardWidth = _cardWidth();
-    const spacing = 12.0;
+    final cardFocusExpansion = _prefs.get(UserPreferences.cardFocusExpansion);
     final watchedBehavior = _prefs.get(
       UserPreferences.watchedIndicatorBehavior,
     );
@@ -1187,6 +1240,9 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
         final l10n = AppLocalizations.of(context);
         final isMobile = _isCompact(context);
         final gridPadding = isMobile ? 16.0 : _horizontalPadding;
+        final spacing = cardFocusExpansion && !isMobile
+            ? MediaCard.focusGap(cardWidth)
+            : 12.0;
         final minClamp = _vm.imageType == ImageType.banner
             ? (constraints.maxWidth < 600 ? 1 : 2)
             : 2;
@@ -1203,13 +1259,25 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
             crossAxisCount;
         final ar = _gridBaseAspectRatio();
         final desktopTextScale = MediaQuery.textScalerOf(context).scale(1.0);
-        final textHeight = (_hasSubtitles ? 42.0 : 24.0) * desktopTextScale;
-        final childAspectRatio = cellWidth / (cellWidth / ar + textHeight);
+        final textHeight = (_hasSubtitles ? 50.0 : 26.0) * desktopTextScale;
+        final imageHeight = cellWidth / ar;
+        final cellHeight = imageHeight + textHeight;
+        final childAspectRatio = cellWidth / cellHeight;
+        // Artwork scales upward from the bottomCenter anchor, so reserve the full
+        // upward growth in top padding and row spacing so focused cards clear
+        // the filter header and previous row metadata lines.
+        final upwardGrowth = cardFocusExpansion && !isMobile
+            ? (imageHeight * (MediaCard.focusScale - 1))
+            : 0.0;
+        final baseRowSpacing = 16.0;
+        final rowSpacing = baseRowSpacing + upwardGrowth;
+        final baseTopPadding = 18.0;
+        final topPadding = baseTopPadding + upwardGrowth;
         _gridGeometry = (
           perLine: crossAxisCount,
-          lineExtent: cellWidth / ar + textHeight,
-          lineSpacing: 8,
-          leadingPad: 8,
+          lineExtent: cellHeight,
+          lineSpacing: rowSpacing,
+          leadingPad: topPadding,
         );
 
         final focusColor = _vm.isFilterBrowse
@@ -1231,11 +1299,19 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
 
         if (_vm.isPlaylistBrowse && _vm.groupByType) {
           final groupedMap = _vm.groupedPlaylists;
+          final groupEntries = groupedMap.entries.toList();
+          final sectionLengths = [
+            for (final entry in groupEntries) entry.value.length,
+          ];
           final slivers = <Widget>[];
 
-          groupedMap.forEach((categoryKey, categoryItems) {
+          for (var s = 0; s < groupEntries.length; s++) {
+            final categoryKey = groupEntries[s].key;
+            final categoryItems = groupEntries[s].value;
+
             final categoryTitle = switch (categoryKey) {
               'Video' => l10n.videoPlaylistsSection,
+              'MusicVideo' => l10n.musicVideoPlaylistsSection,
               'Audio' => l10n.audioPlaylistsSection,
               'AudioBook' => l10n.audiobookPlaylistsSection,
               'Book' => l10n.bookPlaylistsSection,
@@ -1261,11 +1337,11 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
 
             slivers.add(
               SliverPadding(
-                padding: EdgeInsets.fromLTRB(gridPadding, 0, gridPadding, 16),
+                padding: EdgeInsets.fromLTRB(gridPadding, topPadding, gridPadding, 16),
                 sliver: SliverGrid(
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: crossAxisCount,
-                    mainAxisSpacing: 8,
+                    mainAxisSpacing: rowSpacing,
                     crossAxisSpacing: spacing,
                     childAspectRatio: childAspectRatio,
                   ),
@@ -1273,6 +1349,31 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
                     (context, index) {
                       final item = categoryItems[index];
                       final itemAspectRatio = _itemAspectRatio(item);
+
+                      GridSectionCell? cell({required bool down}) =>
+                          gridSectionTarget(
+                            sectionLengths: sectionLengths,
+                            crossAxisCount: crossAxisCount,
+                            section: s,
+                            index: index,
+                            down: down,
+                          );
+                      VoidCallback? focusCell(GridSectionCell? target) {
+                        if (target == null) return null;
+                        final cards = groupEntries[target.section].value;
+                        final node = indexInItems[cards[target.index].id];
+                        if (node == null) return null;
+                        return () => getGridItemFocusNode(node).requestFocus();
+                      }
+
+                      final upCell = cell(down: false);
+                      final onTvUp = upCell == null
+                          ? _focusAboveGrid
+                          : focusCell(upCell);
+                      // Nothing below leaves the bottom edge to the pagination
+                      // the card falls through to.
+                      final onTvDown = focusCell(cell(down: true));
+
                       return _buildGridCard(
                         item: item,
                         index: indexInItems[item.id] ?? index,
@@ -1280,12 +1381,13 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
                         sectionCount: categoryItems.length,
                         crossAxisCount: crossAxisCount,
                         cellWidth: cellWidth,
-                        childAspectRatio: childAspectRatio,
                         itemAspectRatio: itemAspectRatio,
                         focusColor: focusColor,
                         isNeon: isNeon,
                         watchedBehavior: watchedBehavior,
                         isMobile: isMobile,
+                        onTvUp: onTvUp,
+                        onTvDown: onTvDown,
                       );
                     },
                     childCount: categoryItems.length,
@@ -1293,7 +1395,7 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
                 ),
               ),
             );
-          });
+          }
 
           if (_vm.loadingMore) {
             slivers.add(
@@ -1312,6 +1414,10 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
 
           return CustomScrollView(
             controller: _scrollController,
+            scrollCacheExtent: _gridScrollCacheExtent(
+              cellExtent: cellHeight,
+              spacing: rowSpacing,
+            ),
             slivers: slivers,
           );
         }
@@ -1321,13 +1427,22 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
 
         final verticalScrollView = CustomScrollView(
           controller: _scrollController,
+          scrollCacheExtent: _gridScrollCacheExtent(
+            cellExtent: cellHeight,
+            spacing: rowSpacing,
+          ),
           slivers: [
             SliverPadding(
-              padding: EdgeInsets.fromLTRB(gridPadding, 8, gridPadding, 16),
+              padding: EdgeInsets.fromLTRB(
+                gridPadding,
+                topPadding,
+                gridPadding,
+                math.max(16.0, upwardGrowth),
+              ),
               sliver: SliverGrid(
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: crossAxisCount,
-                  mainAxisSpacing: 8,
+                  mainAxisSpacing: rowSpacing,
                   crossAxisSpacing: spacing,
                   childAspectRatio: childAspectRatio,
                 ),
@@ -1341,7 +1456,6 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
                     sectionCount: itemsToDisplay.length,
                     crossAxisCount: crossAxisCount,
                     cellWidth: cellWidth,
-                    childAspectRatio: childAspectRatio,
                     itemAspectRatio: itemAspectRatio,
                     focusColor: focusColor,
                     isNeon: isNeon,
@@ -1383,6 +1497,16 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
     );
   }
 
+  /// The alphabet bar sits directly above the grid, so it takes focus from the
+  /// top row, and the header button covers a page that shows no bar.
+  void _focusAboveGrid() {
+    if (_allLetterFocusNode.context != null) {
+      _allLetterFocusNode.requestFocus();
+    } else {
+      _homeButtonFocusNode.requestFocus();
+    }
+  }
+
   /// [index] keys the focus node and is the card's place in the full item list,
   /// so it stays put as more pages arrive. [positionInSection] and
   /// [sectionCount] describe the grid it's drawn in, which is one category once
@@ -1398,7 +1522,6 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
     required int sectionCount,
     required int crossAxisCount,
     required double cellWidth,
-    required double childAspectRatio,
     required double itemAspectRatio,
     required Color focusColor,
     required bool isNeon,
@@ -1406,6 +1529,8 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
     required bool isMobile,
     VoidCallback? onCardFocused,
     bool paginateOnEdge = true,
+    VoidCallback? onTvUp,
+    VoidCallback? onTvDown,
   }) {
     // Section headers throw off the uniform row maths in _scrollToGridRow, so a
     // grouped card asks the viewport to reveal it and needs its own context.
@@ -1415,9 +1540,10 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
 
     Widget card(BuildContext? revealContext) {
       return MediaCard(
+        animeMarkerItemId: item.id,
         title: item.name,
         subtitle: _cardSubtitle(item),
-        imageUrl: _imageUrl(item),
+        imageUrl: _imageUrl(item, cellWidth: cellWidth),
         width: double.infinity,
         aspectRatio: itemAspectRatio,
         isBanner: _vm.imageType == ImageType.banner,
@@ -1438,12 +1564,7 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
                 if (onCardFocused != null) {
                   onCardFocused();
                 } else if (revealContext == null) {
-                  _scrollToGridRow(
-                    index: positionInSection,
-                    crossAxisCount: crossAxisCount,
-                    cellHeight: cellWidth / childAspectRatio,
-                    mainAxisSpacing: 8.0,
-                  );
+                  _scrollToGridRow(positionInSection);
                 } else if (revealContext.mounted) {
                   unawaited(
                     Scrollable.ensureVisible(
@@ -1460,9 +1581,20 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
         onKeyEvent: (_, event) {
           if (PlatformDetection.isTV &&
               event.isActionable &&
-              event.logicalKey.isUpKey &&
-              positionInSection < crossAxisCount) {
-            _homeButtonFocusNode.requestFocus();
+              event.logicalKey.isUpKey) {
+            if (onTvUp != null) {
+              onTvUp();
+              return KeyEventResult.handled;
+            } else if (positionInSection < crossAxisCount) {
+              _homeButtonFocusNode.requestFocus();
+              return KeyEventResult.handled;
+            }
+          }
+          if (PlatformDetection.isTV &&
+              event.isActionable &&
+              event.logicalKey.isDownKey &&
+              onTvDown != null) {
+            onTvDown();
             return KeyEventResult.handled;
           }
           if (PlatformDetection.isTV &&
@@ -1562,7 +1694,6 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
             items: catItems,
             focusIndexOffset: focusOffsets[idx],
             cardWidth: cardWidth,
-            rowCardHeight: rowCardHeight,
             rowContainerHeight: rowContainerHeight,
             gridPadding: gridPadding,
             focusColor: focusColor,
@@ -1581,9 +1712,8 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
     if (_vm.isGrouping) {
       return _buildGroupedHorizontalRows();
     }
-    const spacing = 12.0;
-    final watchedBehavior = _prefs.get(UserPreferences.watchedIndicatorBehavior);
     final cardFocusExpansion = _prefs.get(UserPreferences.cardFocusExpansion);
+    final watchedBehavior = _prefs.get(UserPreferences.watchedIndicatorBehavior);
     final focusColor = Color(_prefs.get(UserPreferences.focusColor).colorValue);
     final isNeon = ThemeRegistry.active.id == ThemeRegistry.neonPulseId;
 
@@ -1598,6 +1728,9 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
         final textHeight = (_hasSubtitles ? 46.0 : 30.0) * desktopTextScale;
 
         final cellWidth = _cardWidth();
+        final spacing = cardFocusExpansion && !isMobile
+            ? MediaCard.focusGap(cellWidth)
+            : 12.0;
         final targetImageHeight = cellWidth / ar;
         final targetCellHeight = targetImageHeight + textHeight;
 
@@ -1640,6 +1773,10 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
             controller: _scrollController,
             scrollDirection: Axis.horizontal,
             physics: const ClampingScrollPhysics(),
+            scrollCacheExtent: _gridScrollCacheExtent(
+              cellExtent: actualCellWidth,
+              spacing: spacing,
+            ),
             slivers: [
               SliverPadding(
                 padding: EdgeInsets.fromLTRB(
@@ -1661,7 +1798,7 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
                       return MediaCard(
                         title: item.name,
                         subtitle: _cardSubtitle(item),
-                        imageUrl: _imageUrl(item),
+                        imageUrl: _imageUrl(item, cellWidth: actualCellWidth),
                         width: double.infinity,
                         aspectRatio: _itemAspectRatio(item),
                         focusColor: focusColor,
@@ -2171,6 +2308,7 @@ class _FocusedItemHud extends StatelessWidget {
                     ratings: ratings,
                     communityRating: item!.communityRating,
                     criticRating: item!.criticRating,
+                    personalRating: item!.personalRating,
                     enableAdditionalRatings: enableAdditionalRatings,
                     enabledRatings: enabledRatings,
                     showLabels: showLabels,
@@ -2417,17 +2555,38 @@ class _FilterSortDialog extends StatefulWidget {
 }
 
 class _FilterSortDialogState extends State<_FilterSortDialog> {
+  /// Only one group stays open at a time and the panel opens on the sort
+  /// group. A library can hold hundreds of tags or years, so the rest sit
+  /// closed as a heading until they are asked for.
+  String? _expandedSection = 'sort';
+
+  /// Shorter lists are quicker to scroll through than to search.
+  static const _searchableMinimum = 10;
+
+  final _headingFocus = <String, FocusNode>{};
+  final _searchController = TextEditingController();
+  final _searchFocus = FocusNode();
+
   @override
   void initState() {
     super.initState();
     widget.vm.addListener(_rebuild);
+    unawaited(widget.vm.ensureFacetValuesLoaded());
   }
 
   @override
   void dispose() {
     widget.vm.removeListener(_rebuild);
+    for (final node in _headingFocus.values) {
+      node.dispose();
+    }
+    _searchController.dispose();
+    _searchFocus.dispose();
     super.dispose();
   }
+
+  FocusNode _headingNode(String key) =>
+      _headingFocus.putIfAbsent(key, FocusNode.new);
 
   void _rebuild() {
     if (mounted) setState(() {});
@@ -2437,8 +2596,6 @@ class _FilterSortDialogState extends State<_FilterSortDialog> {
   Widget build(BuildContext context) {
     final vm = widget.vm;
     final isBookBrowse = vm.isBookLibrary;
-    final isSongsBrowse =
-        vm.includeItemTypes != null && vm.includeItemTypes!.contains('Audio');
     final accent = _jellyfinBlue;
     final l10n = AppLocalizations.of(context);
     final surfaceColor = AppColorScheme.surface.withValues(alpha: 0.92);
@@ -2449,6 +2606,170 @@ class _FilterSortDialogState extends State<_FilterSortDialog> {
       280.0,
       380.0,
     );
+
+    // Every label is read twice, once for its own row and once for the summary
+    // the closed heading carries.
+    String sortLabel(LibrarySortBy option) {
+      if (option == LibrarySortBy.runtime &&
+          (vm.isMusicBrowse || vm.isSongsBrowse)) {
+        return 'Length';
+      }
+      if (option == LibrarySortBy.premiereDate &&
+          (vm.isMusicBrowse || vm.isSongsBrowse)) {
+        return 'Release Date';
+      }
+      return option.displayName;
+    }
+
+    String playedLabel(PlayedStatusFilter status) => switch (status) {
+      PlayedStatusFilter.all => l10n.all,
+      PlayedStatusFilter.watched => isBookBrowse
+          ? l10n.readStatus
+          : l10n.watched,
+      PlayedStatusFilter.unwatched => isBookBrowse
+          ? l10n.unread
+          : l10n.unwatched,
+      PlayedStatusFilter.inProgress => l10n.filterInProgress,
+    };
+
+    String likedLabel(LikedStatusFilter status) => switch (status) {
+      LikedStatusFilter.all => l10n.all,
+      LikedStatusFilter.liked => l10n.like,
+      LikedStatusFilter.disliked => l10n.dislike,
+    };
+
+    String seriesLabel(SeriesStatusFilter status) => switch (status) {
+      SeriesStatusFilter.all => l10n.all,
+      SeriesStatusFilter.continuing => l10n.continuing,
+      SeriesStatusFilter.ended => l10n.ended,
+      SeriesStatusFilter.unreleased => l10n.filterUnreleased,
+    };
+
+    String featureLabel(LibraryFeatureFilter option) => switch (option) {
+      LibraryFeatureFilter.subtitles => l10n.subtitles,
+      LibraryFeatureFilter.trailer => l10n.filterTrailers,
+      LibraryFeatureFilter.extras => l10n.filterExtras,
+      LibraryFeatureFilter.themeSong => l10n.filterThemeSongs,
+      LibraryFeatureFilter.themeVideo => l10n.filterThemeVideos,
+    };
+
+    String qualityLabel(LibraryVideoQualityFilter option) => switch (option) {
+      LibraryVideoQualityFilter.sd => 'SD',
+      LibraryVideoQualityFilter.hd => 'HD',
+      LibraryVideoQualityFilter.uhd => '4K',
+      LibraryVideoQualityFilter.threeD => '3D',
+    };
+
+    String? countSummary(int count) => count > 0 ? '$count' : null;
+
+    String? selectedLibraryName() {
+      final id = vm.libraryFilter;
+      if (id == null) return null;
+      for (final lib in vm.libraries) {
+        if (lib['Id']?.toString() == id) return lib['Name'] as String?;
+      }
+      return null;
+    }
+
+    // The body is a callback, so a closed group builds none of its rows, which
+    // matters for the facets that run to hundreds of values. The key is what
+    // tracks the open group, so a translated title never closes one behind the
+    // user.
+    List<Widget> section({
+      required String key,
+      required String title,
+      required String? summary,
+      required List<Widget> Function() body,
+    }) {
+      final expanded = _expandedSection == key;
+      return [
+        Divider(color: dividerColor),
+        _DialogExpanderTile(
+          label: title,
+          summary: summary,
+          expanded: expanded,
+          focusNode: _headingNode(key),
+          onTap: () {
+            _searchController.clear();
+            setState(() => _expandedSection = expanded ? null : key);
+          },
+          sectionColor: sectionColor,
+          accent: accent,
+        ),
+        if (expanded) ...body(),
+      ];
+    }
+
+    // The tile goes away once its group is empty, so focus moves to the
+    // heading first rather than being left on nothing.
+    Widget clearGroupTile(String key, LibraryFilterGroup group) =>
+        _DialogActionTile(
+          label: l10n.clear,
+          icon: Icons.filter_alt_off,
+          onTap: () {
+            _headingNode(key).requestFocus();
+            unawaited(vm.clearFilterGroup(group));
+          },
+          accent: accent,
+        );
+
+    List<Widget> facetSection({
+      required String key,
+      required String title,
+      required LibraryFilterGroup group,
+      required List<String> values,
+      required Set<String> selected,
+      required Future<void> Function(String) onToggle,
+      Map<String, String> labels = const {},
+    }) {
+      if (values.isEmpty) return const [];
+      return section(
+        key: key,
+        title: title,
+        summary: countSummary(values.where(selected.contains).length),
+        body: () {
+          final query = foldForSearch(_searchController.text.trim());
+          final shown = query.isEmpty
+              ? values
+              : values
+                    .where((v) => foldForSearch(labels[v] ?? v).contains(query))
+                    .toList();
+          return [
+            if (selected.isNotEmpty) clearGroupTile(key, group),
+            if (values.length >= _searchableMinimum)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 4, 24, 8),
+                child: LocalSearchField(
+                  controller: _searchController,
+                  focusNode: _searchFocus,
+                  hint: title,
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
+            for (final value in shown)
+              _DialogCheckboxTile(
+                label: labels[value] ?? value,
+                checked: selected.contains(value),
+                onTap: () => onToggle(value),
+                accent: accent,
+                onSurface: onSurface,
+              ),
+            if (shown.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+                child: Text(
+                  l10n.noResults,
+                  style: TextStyle(fontSize: 15, color: sectionColor),
+                ),
+              ),
+          ];
+        },
+      );
+    }
+
     return Dialog(
       backgroundColor: surfaceColor,
       shape: RoundedRectangleBorder(
@@ -2488,162 +2809,266 @@ class _FilterSortDialogState extends State<_FilterSortDialog> {
               accent: accent,
               onSurface: onSurface,
             ),
-            Divider(color: dividerColor),
-            _sectionHeader(l10n.sortBy, sectionColor),
-            for (final option in () {
-              if (vm.isHomeVideosLibrary || vm.isMixedContentLibrary) {
-                return const [
-                  LibrarySortBy.name,
-                  LibrarySortBy.dateAdded,
-                  LibrarySortBy.random,
-                ];
-              }
-              if (isSongsBrowse) {
-                return const [
-                  LibrarySortBy.name,
-                  LibrarySortBy.dateAdded,
-                  LibrarySortBy.albumArtist,
-                  LibrarySortBy.album,
-                  LibrarySortBy.premiereDate,
-                  LibrarySortBy.runtime,
-                  LibrarySortBy.random,
-                ];
-              }
-              return LibrarySortBy.itemsApiValues.where((o) =>
-                  (!vm.isMusicBrowse ||
-                      (o != LibrarySortBy.rating &&
-                          o != LibrarySortBy.criticRating &&
-                          o != LibrarySortBy.communityRating)) &&
-                  // Group By covers parental rating better than a sort does, so
-                  // the libraries that offer it drop the duplicate.
-                  (!vm.isMovieOrSeriesLibrary || o != LibrarySortBy.rating) &&
-                  (vm.isMusicBrowse ||
-                      (o != LibrarySortBy.albumArtist &&
-                          o != LibrarySortBy.album &&
-                          o != LibrarySortBy.genre)));
-            }())
-              _DialogRadioTile(
-                label: () {
-                  if (option == LibrarySortBy.runtime &&
-                      (vm.isMusicBrowse || isSongsBrowse)) {
-                    return 'Length';
-                  }
-                  if (option == LibrarySortBy.premiereDate &&
-                      (vm.isMusicBrowse || isSongsBrowse)) {
-                    return 'Release Date';
-                  }
-                  return option.displayName;
-                }(),
-                selected: vm.sortBy == option,
-                trailing: vm.sortBy == option
-                    ? Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Icon(
-                          vm.sortDirection == SortDirection.ascending
-                              ? Icons.arrow_upward
-                              : Icons.arrow_downward,
-                          color: accent,
-                          size: 18,
-                        ),
-                      )
-                    : null,
+            ...section(
+              key: 'sort',
+              title: l10n.sortBy,
+              summary: sortLabel(vm.sortBy),
+              body: () => [
+                for (final option in vm.sortOptions)
+                  _DialogRadioTile(
+                    label: sortLabel(option),
+                    selected: vm.sortBy == option,
+                    trailing: vm.sortBy == option
+                        ? Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Icon(
+                              vm.sortDirection == SortDirection.ascending
+                                  ? Icons.arrow_upward
+                                  : Icons.arrow_downward,
+                              color: accent,
+                              size: 18,
+                            ),
+                          )
+                        : null,
+                    onTap: () {
+                      if (vm.sortBy == option) {
+                        vm.toggleSortDirection();
+                      } else {
+                        vm.setSortBy(option);
+                      }
+                    },
+                    accent: accent,
+                    onSurface: onSurface,
+                  ),
+              ],
+            ),
+            if (!vm.favoritesOnly)
+              ...section(
+                key: 'favorites',
+                title: l10n.filters,
+                summary: vm.favoriteFilter ? l10n.favorites : null,
+                body: () => [
+                  _DialogCheckboxTile(
+                    label: l10n.favorites,
+                    checked: vm.favoriteFilter,
+                    onTap: () => vm.setFavoriteFilter(!vm.favoriteFilter),
+                    accent: accent,
+                    onSurface: onSurface,
+                  ),
+                ],
+              ),
+            if (!vm.isMusicBrowse)
+              ...section(
+                key: 'played',
+                title: isBookBrowse ? l10n.readingStatus : l10n.playedStatus,
+                summary: vm.playedFilter == PlayedStatusFilter.all
+                    ? null
+                    : playedLabel(vm.playedFilter),
+                body: () => [
+                  for (final status in PlayedStatusFilter.values)
+                    _DialogRadioTile(
+                      label: playedLabel(status),
+                      selected: vm.playedFilter == status,
+                      onTap: () => vm.setPlayedFilter(status),
+                      accent: accent,
+                      onSurface: onSurface,
+                    ),
+                ],
+              ),
+            ...section(
+              key: 'liked',
+              title: l10n.personalRatingMine,
+              summary: vm.likedFilter == LikedStatusFilter.all
+                  ? null
+                  : likedLabel(vm.likedFilter),
+              body: () => [
+                for (final status in LikedStatusFilter.values)
+                  _DialogRadioTile(
+                    label: likedLabel(status),
+                    selected: vm.likedFilter == status,
+                    onTap: () => vm.setLikedFilter(status),
+                    accent: accent,
+                    onSurface: onSurface,
+                  ),
+              ],
+            ),
+            if (vm.isSeriesLibrary)
+              ...section(
+                key: 'series',
+                title: l10n.seriesStatus,
+                summary: vm.seriesFilter == SeriesStatusFilter.all
+                    ? null
+                    : seriesLabel(vm.seriesFilter),
+                body: () => [
+                  for (final status in SeriesStatusFilter.values)
+                    if (status != SeriesStatusFilter.unreleased ||
+                        vm.supportsUnreleasedSeriesFilter)
+                      _DialogRadioTile(
+                        label: seriesLabel(status),
+                        selected: vm.seriesFilter == status,
+                        onTap: () => vm.setSeriesFilter(status),
+                        accent: accent,
+                        onSurface: onSurface,
+                      ),
+                ],
+              ),
+            if (vm.supportsVideoFilters) ...[
+              ...section(
+                key: 'features',
+                title: l10n.features,
+                summary: countSummary(vm.featureFilters.length),
+                body: () => [
+                  if (vm.featureFilters.isNotEmpty)
+                    clearGroupTile('features', LibraryFilterGroup.features),
+                  for (final option in LibraryFeatureFilter.values)
+                    _DialogCheckboxTile(
+                      label: featureLabel(option),
+                      checked: vm.featureFilters.contains(option),
+                      onTap: () => vm.toggleFeatureFilter(option),
+                      accent: accent,
+                      onSurface: onSurface,
+                    ),
+                ],
+              ),
+              ...section(
+                key: 'quality',
+                title: l10n.quality,
+                summary: countSummary(vm.videoQualityFilters.length),
+                body: () => [
+                  if (vm.videoQualityFilters.isNotEmpty)
+                    clearGroupTile('quality', LibraryFilterGroup.quality),
+                  for (final option in LibraryVideoQualityFilter.values)
+                    if (option != LibraryVideoQualityFilter.uhd ||
+                        vm.supportsUhdFilter)
+                      _DialogCheckboxTile(
+                        label: qualityLabel(option),
+                        checked: vm.videoQualityFilters.contains(option),
+                        onTap: () => vm.toggleVideoQualityFilter(option),
+                        accent: accent,
+                        onSurface: onSurface,
+                      ),
+                ],
+              ),
+              ...section(
+                key: 'source',
+                title: l10n.source,
+                summary: countSummary(vm.videoSourceFilters.length),
+                body: () => [
+                  if (vm.videoSourceFilters.isNotEmpty)
+                    clearGroupTile('source', LibraryFilterGroup.source),
+                  for (final option in LibraryVideoSourceFilter.values)
+                    _DialogCheckboxTile(
+                      label: option.displayName,
+                      checked: vm.videoSourceFilters.contains(option),
+                      onTap: () => vm.toggleVideoSourceFilter(option),
+                      accent: accent,
+                      onSurface: onSurface,
+                    ),
+                ],
+              ),
+            ],
+            ...facetSection(
+              key: 'genres',
+              group: LibraryFilterGroup.genres,
+              title: l10n.genres,
+              values: vm.facetValues.genres,
+              selected: vm.genreFilters,
+              onToggle: vm.toggleGenreFilter,
+            ),
+            ...facetSection(
+              key: 'ratings',
+              group: LibraryFilterGroup.ratings,
+              title: l10n.groupByParentalRating,
+              values: vm.facetValues.officialRatings,
+              selected: vm.officialRatingFilters,
+              onToggle: vm.toggleOfficialRatingFilter,
+            ),
+            ...facetSection(
+              key: 'tags',
+              group: LibraryFilterGroup.tags,
+              title: l10n.tags,
+              values: vm.facetValues.tags,
+              selected: vm.tagFilters,
+              onToggle: vm.toggleTagFilter,
+            ),
+            ...facetSection(
+              key: 'years',
+              group: LibraryFilterGroup.years,
+              title: l10n.years,
+              values: vm.facetValues.years.map((e) => e.toString()).toList(),
+              selected: vm.yearFilters,
+              onToggle: vm.toggleYearFilter,
+            ),
+            ...facetSection(
+              key: 'audio',
+              group: LibraryFilterGroup.audioLanguages,
+              title: l10n.audioLanguage,
+              values: vm.facetValues.audioLanguages
+                  .map((e) => e.value)
+                  .toList(),
+              labels: {
+                for (final e in vm.facetValues.audioLanguages) e.value: e.name,
+              },
+              selected: vm.audioLanguageFilters,
+              onToggle: vm.toggleAudioLanguageFilter,
+            ),
+            ...facetSection(
+              key: 'subtitles',
+              group: LibraryFilterGroup.subtitleLanguages,
+              title: l10n.subtitleLanguage,
+              values: vm.facetValues.subtitleLanguages
+                  .map((e) => e.value)
+                  .toList(),
+              labels: {
+                for (final e in vm.facetValues.subtitleLanguages)
+                  e.value: e.name,
+              },
+              selected: vm.subtitleLanguageFilters,
+              onToggle: vm.toggleSubtitleLanguageFilter,
+            ),
+            if (vm.hasActiveFilters) ...[
+              Divider(color: dividerColor),
+              // Closing hands focus back to the grid. Leaving the dialog open
+              // would drop the remote on a tile that just removed itself.
+              _DialogActionTile(
+                label: l10n.clearFilters,
+                icon: Icons.filter_alt_off,
                 onTap: () {
-                  if (vm.sortBy == option) {
-                    vm.toggleSortDirection();
-                  } else {
-                    vm.setSortBy(option);
-                  }
+                  Navigator.of(context).pop();
+                  vm.clearFilters();
                 },
                 accent: accent,
-                onSurface: onSurface,
-              ),
-            if (!vm.favoritesOnly) ...[
-              Divider(color: dividerColor),
-              _sectionHeader(l10n.filters, sectionColor),
-              _DialogCheckboxTile(
-                label: l10n.favorites,
-                checked: vm.favoriteFilter,
-                onTap: () => vm.setFavoriteFilter(!vm.favoriteFilter),
-                accent: accent,
-                onSurface: onSurface,
               ),
             ],
-            if (!vm.isMusicBrowse) ...[
-              Divider(color: dividerColor),
-              _sectionHeader(
-                isBookBrowse ? l10n.readingStatus : l10n.playedStatus,
-                sectionColor,
+            if (vm.isGenreBrowse && vm.libraries.isNotEmpty)
+              ...section(
+                key: 'library',
+                title: l10n.library,
+                summary: selectedLibraryName(),
+                body: () => [
+                  _DialogRadioTile(
+                    label: l10n.allLibraries,
+                    selected: vm.libraryFilter == null,
+                    onTap: () => vm.setLibraryFilter(null),
+                    accent: accent,
+                    onSurface: onSurface,
+                  ),
+                  for (final lib in vm.libraries)
+                    _DialogRadioTile(
+                      label: lib['Name'] as String? ?? '',
+                      selected: vm.libraryFilter == lib['Id'],
+                      onTap: () =>
+                          vm.setLibraryFilter(lib['Id']?.toString() ?? ''),
+                      accent: accent,
+                      onSurface: onSurface,
+                    ),
+                ],
               ),
-              for (final status in PlayedStatusFilter.values)
-                _DialogRadioTile(
-                  label: switch (status) {
-                    PlayedStatusFilter.all => l10n.all,
-                    PlayedStatusFilter.watched =>
-                      isBookBrowse ? l10n.readStatus : l10n.watched,
-                    PlayedStatusFilter.unwatched =>
-                      isBookBrowse ? l10n.unread : l10n.unwatched,
-                },
-                selected: vm.playedFilter == status,
-                onTap: () => vm.setPlayedFilter(status),
-                accent: accent,
-                onSurface: onSurface,
-              ),
-            ],
-            if (vm.isSeriesLibrary) ...[
-              Divider(color: dividerColor),
-              _sectionHeader(l10n.seriesStatus, sectionColor),
-              for (final status in SeriesStatusFilter.values)
-                _DialogRadioTile(
-                  label: switch (status) {
-                    SeriesStatusFilter.all => l10n.all,
-                    SeriesStatusFilter.continuing => l10n.continuing,
-                    SeriesStatusFilter.ended => l10n.ended,
-                  },
-                  selected: vm.seriesFilter == status,
-                  onTap: () => vm.setSeriesFilter(status),
-                  accent: accent,
-                  onSurface: onSurface,
-                ),
-            ],
-            if (vm.isGenreBrowse && vm.libraries.isNotEmpty) ...[
-              Divider(color: dividerColor),
-              _sectionHeader(l10n.library, sectionColor),
-              _DialogRadioTile(
-                label: l10n.allLibraries,
-                selected: vm.libraryFilter == null,
-                onTap: () => vm.setLibraryFilter(null),
-                accent: accent,
-                onSurface: onSurface,
-              ),
-              for (final lib in vm.libraries)
-                _DialogRadioTile(
-                  label: lib['Name'] as String? ?? '',
-                  selected: vm.libraryFilter == lib['Id'],
-                  onTap: () => vm.setLibraryFilter(lib['Id']?.toString() ?? ''),
-                  accent: accent,
-                  onSurface: onSurface,
-                ),
-            ],
           ],
         ),
       ),
     );
   }
-
-  Widget _sectionHeader(String title, Color sectionColor) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
-      child: Text(
-        title,
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w500,
-          color: sectionColor,
-        ),
-      ),
-    );
-  }
-
 }
 
 class _DialogRadioTile extends StatefulWidget {
@@ -2834,6 +3259,167 @@ class _DialogCheckboxTileState extends State<_DialogCheckboxTile> with FocusStat
   }
 }
 
+class _DialogExpanderTile extends StatefulWidget {
+  final String label;
+  final String? summary;
+  final bool expanded;
+  final FocusNode? focusNode;
+  final VoidCallback onTap;
+  final Color sectionColor;
+  final Color accent;
+
+  const _DialogExpanderTile({
+    required this.label,
+    required this.summary,
+    required this.expanded,
+    this.focusNode,
+    required this.onTap,
+    required this.sectionColor,
+    required this.accent,
+  });
+
+  @override
+  State<_DialogExpanderTile> createState() => _DialogExpanderTileState();
+}
+
+class _DialogExpanderTileState extends State<_DialogExpanderTile>
+    with FocusStateMixin {
+  @override
+  Widget build(BuildContext context) {
+    final showActive = focused || hovered;
+    final color = showActive ? focusColor : widget.sectionColor;
+    final summary = widget.summary;
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setHovered(true),
+      onExit: (_) => setHovered(false),
+      child: Focus(
+        focusNode: widget.focusNode,
+        onFocusChange: (f) => setFocused(f),
+        onKeyEvent: (_, event) {
+          if (isActivateKey(event)) {
+            widget.onTap();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            color: showActive
+                ? focusColor.withValues(alpha: 0.12)
+                : Colors.transparent,
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.label,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: color,
+                    ),
+                  ),
+                ),
+                // A tag or a library name can run long, so the summary takes
+                // a fixed slice and the title keeps the rest.
+                if (summary != null && summary.isNotEmpty)
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 140),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Text(
+                        summary,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.end,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: widget.accent,
+                        ),
+                      ),
+                    ),
+                  ),
+                Icon(
+                  widget.expanded ? Icons.expand_less : Icons.expand_more,
+                  size: 18,
+                  color: color,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DialogActionTile extends StatefulWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  final Color accent;
+
+  const _DialogActionTile({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    required this.accent,
+  });
+
+  @override
+  State<_DialogActionTile> createState() => _DialogActionTileState();
+}
+
+class _DialogActionTileState extends State<_DialogActionTile>
+    with FocusStateMixin {
+  @override
+  Widget build(BuildContext context) {
+    final showActive = focused || hovered;
+    final color = showActive ? focusColor : widget.accent;
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setHovered(true),
+      onExit: (_) => setHovered(false),
+      child: Focus(
+        onFocusChange: (f) => setFocused(f),
+        onKeyEvent: (_, event) {
+          if (isActivateKey(event)) {
+            widget.onTap();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            color: showActive
+                ? focusColor.withValues(alpha: 0.12)
+                : Colors.transparent,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            child: Row(
+              children: [
+                Icon(widget.icon, size: 18, color: color),
+                const SizedBox(width: 12),
+                Text(
+                  widget.label,
+                  style: TextStyle(fontSize: 15, color: color),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _SettingsDialog extends StatefulWidget {
   final LibraryBrowseViewModel vm;
 
@@ -2984,6 +3570,7 @@ class _SettingsDialogState extends State<_SettingsDialog> {
               ),
               for (final typeOption in [
                 ('Video', l10n.playlistTypeVideo),
+                ('MusicVideo', l10n.playlistTypeMusicVideo),
                 ('Audio', l10n.playlistTypeAudio),
                 ('AudioBook', l10n.playlistTypeAudiobook),
                 ('Book', l10n.playlistTypeBook),
@@ -3153,7 +3740,6 @@ class _GroupedCategoryRow extends StatefulWidget {
   /// a distinct index or two rows end up sharing a node.
   final int focusIndexOffset;
   final double cardWidth;
-  final double rowCardHeight;
   final double rowContainerHeight;
   final double gridPadding;
   final Color focusColor;
@@ -3167,7 +3753,6 @@ class _GroupedCategoryRow extends StatefulWidget {
     required int sectionCount,
     required int crossAxisCount,
     required double cellWidth,
-    required double childAspectRatio,
     required double itemAspectRatio,
     required Color focusColor,
     required bool isNeon,
@@ -3183,7 +3768,6 @@ class _GroupedCategoryRow extends StatefulWidget {
     required this.items,
     required this.focusIndexOffset,
     required this.cardWidth,
-    required this.rowCardHeight,
     required this.rowContainerHeight,
     required this.gridPadding,
     required this.focusColor,
@@ -3271,7 +3855,6 @@ class _GroupedCategoryRowState extends State<_GroupedCategoryRow> {
                     sectionCount: widget.items.length,
                     crossAxisCount: widget.items.length,
                     cellWidth: widget.cardWidth,
-                    childAspectRatio: widget.cardWidth / widget.rowCardHeight,
                     itemAspectRatio: itemAspectRatio,
                     focusColor: widget.focusColor,
                     isNeon: widget.isNeon,

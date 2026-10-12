@@ -6,6 +6,7 @@ class _VideoPlaybackScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final prefs = GetIt.instance<UserPreferences>();
     final advanced = SipflixSettingsMode.advanced;
     return Scaffold(
       appBar: buildSettingsAppBar(
@@ -36,6 +37,20 @@ class _VideoPlaybackScreen extends StatelessWidget {
                 },
               ),
               if (advanced) ...[
+                if (PlatformDetection.isIOS)
+                  SwitchPreferenceTile(
+                    preference: UserPreferences.keepVideoClearOfDynamicIsland,
+                    title: l10n.keepVideoClearOfDynamicIsland,
+                    subtitle: l10n.keepVideoClearOfDynamicIslandDescription,
+                    icon: Icons.crop_free,
+                  ),
+                if (letterboxCropSettingVisible())
+                  SwitchPreferenceTile(
+                    preference: UserPreferences.cropBlackBars,
+                    title: l10n.cropBlackBars,
+                    subtitle: l10n.settingsCropBlackBarsDescription,
+                    icon: Icons.crop_16_9_outlined,
+                  ),
                 _TvSettingsListTile(
                   leading: const Icon(Icons.timer_outlined),
                   title: Text(l10n.playbackTimeDisplay),
@@ -43,12 +58,6 @@ class _VideoPlaybackScreen extends StatelessWidget {
                   onTap: () => context.pushSettingsScreen(
                     const _PlaybackTimeLayoutScreen(),
                   ),
-                ),
-                SwitchPreferenceTile(
-                  preference: UserPreferences.trickPlayEnabled,
-                  title: l10n.trickPlay,
-                  subtitle: l10n.showPreviewThumbnailsWhenSeeking,
-                  icon: Icons.image_search,
                 ),
                 if (PlatformDetection.useDesktopUi)
                   EnumPreferenceTile<DesktopScrollWheelAction>(
@@ -58,8 +67,7 @@ class _VideoPlaybackScreen extends StatelessWidget {
                     icon: Icons.mouse_outlined,
                     labelOf: (v) => switch (v) {
                       DesktopScrollWheelAction.off => l10n.scrollWheelActionOff,
-                      DesktopScrollWheelAction.seek =>
-                        l10n.scrollWheelActionSeek,
+                      DesktopScrollWheelAction.seek => l10n.scrollWheelActionSeek,
                       DesktopScrollWheelAction.volume =>
                         l10n.scrollWheelActionVolume,
                     },
@@ -122,13 +130,26 @@ class _VideoPlaybackScreen extends StatelessWidget {
                     60000: l10n.settingsSixtySeconds,
                   },
                 ),
-                if (PlatformDetection.useMobileUi)
+                SwitchPreferenceTile(
+                  preference: UserPreferences.showChapterMarkers,
+                  title: l10n.showChapterMarkers,
+                  subtitle: l10n.showChapterMarkersDescription,
+                  icon: Icons.straighten,
+                ),
+                if (PlatformDetection.useMobileUi) ...[
                   SwitchPreferenceTile(
                     preference: UserPreferences.osdLockEnabled,
                     title: l10n.osdLockButton,
                     subtitle: l10n.osdLockButtonDescription,
                     icon: Icons.lock,
                   ),
+                  SwitchPreferenceTile(
+                    preference: UserPreferences.playerSwipeGestures,
+                    title: l10n.playerSwipeGestures,
+                    subtitle: l10n.playerSwipeGesturesDescription,
+                    icon: Icons.swipe_vertical,
+                  ),
+                ],
                 _TvSettingsListTile(
                   leading: const Icon(Icons.tune),
                   title: Text(l10n.osdButtons),
@@ -139,6 +160,73 @@ class _VideoPlaybackScreen extends StatelessWidget {
               ],
             ],
           ),
+
+          if (advanced) ...[
+            _SectionHeader(l10n.trickPlay),
+            // Only this section reacts to the mode, so the rest of the page is
+            // not rebuilt every time any preference anywhere changes.
+            ListenableBuilder(
+              listenable: prefs,
+              builder: (context, _) {
+                final showsPreviews =
+                    prefs.get(UserPreferences.trickPlayMode) !=
+                    TrickplayMode.disabled;
+                return adaptiveListSection(
+                  children: [
+                    EnumPreferenceTile<TrickplayMode>(
+                      preference: UserPreferences.trickPlayMode,
+                      title: l10n.trickPlay,
+                      description: l10n.showPreviewThumbnailsWhenSeeking,
+                      icon: Icons.image_search,
+                      labelOf: (v) => switch (v) {
+                        TrickplayMode.disabled => l10n.disabled,
+                        TrickplayMode.single => l10n.trickplayDisplayStyleSingle,
+                        TrickplayMode.strip => l10n.trickplayDisplayStyleStrip,
+                        TrickplayMode.full => l10n.trickplayModeFull,
+                      },
+                    ),
+                    // Everything the mode governs sits after the mode itself, so
+                    // turning it on adds rows below the one being used rather
+                    // than shifting it down and taking its focus with it.
+                    if (showsPreviews) ...[
+                      const TrickplaySettingsPreview(),
+                      SliderPreferenceTile(
+                        preference: UserPreferences.trickPlayPreviewScalePercent,
+                        title: l10n.trickplayPreviewScale,
+                        icon: Icons.photo_size_select_large_outlined,
+                        min: 10,
+                        max: 100,
+                        divisions: 18,
+                        labelOf: (v) => l10n.percentValue(v),
+                      ),
+                      SliderPreferenceTile(
+                        preference:
+                            UserPreferences.trickPlayVerticalPositionPercent,
+                        title: l10n.trickplayVerticalOffset,
+                        icon: Icons.height,
+                        min: 0,
+                        max: 100,
+                        divisions: 20,
+                        labelOf: (v) => l10n.percentValue(v),
+                      ),
+                      SwitchPreferenceTile(
+                        preference: UserPreferences.trickPlayFollowScrubPosition,
+                        title: l10n.trickplayFollowScrubPosition,
+                        subtitle: l10n.trickplayFollowScrubPositionSubtitle,
+                        icon: Icons.swipe,
+                      ),
+                      SwitchPreferenceTile(
+                        preference: UserPreferences.trickPlayPauseWhileScrubbing,
+                        title: l10n.trickplayPauseWhileScrubbing,
+                        subtitle: l10n.trickplayPauseWhileScrubbingSubtitle,
+                        icon: Icons.pause_circle_outline,
+                      ),
+                    ],
+                  ],
+                );
+              },
+            ),
+          ],
 
           if (advanced) ...[
             const _SectionHeader('Decoding & Rendering'),
@@ -160,15 +248,12 @@ class _VideoPlaybackScreen extends StatelessWidget {
                     icon: Icons.video_settings,
                     labelOf: (v) => switch (v) {
                       PlaybackEnginePreference.media3 =>
-                        PlatformDetection.isTV
-                            ? l10n.settingsPlaybackEngineMedia3Recommended
-                            : l10n.settingsPlaybackEngineMedia3Legacy,
+                        l10n.settingsPlaybackEngineMedia3Recommended,
                       PlaybackEnginePreference.mpv =>
-                        PlatformDetection.isTV
-                            ? l10n.settingsPlaybackEngineMpvLegacy
-                            : l10n.settingsPlaybackEngineMpvRecommended,
+                        l10n.settingsPlaybackEngineMpvLegacy,
                     },
                   ),
+                if (DisplayHdrProbe.isSupported) const _RedetectDisplayTile(),
                 if (PlatformDetection.isAndroid && PlatformDetection.isTV)
                   EnumPreferenceTile<DolbyVisionFallbackBehavior>(
                     preference: UserPreferences.dolbyVisionFallbackBehavior,
@@ -176,8 +261,7 @@ class _VideoPlaybackScreen extends StatelessWidget {
                     description: l10n.settingsDolbyVisionFallbackDescription,
                     icon: Icons.hdr_strong,
                     labelOf: (v) => switch (v) {
-                      DolbyVisionFallbackBehavior.ask =>
-                        l10n.settingsAskEachTime,
+                      DolbyVisionFallbackBehavior.ask => l10n.settingsAskEachTime,
                       DolbyVisionFallbackBehavior.hdr10Fallback =>
                         l10n.settingsPreferHdr10Fallback,
                       DolbyVisionFallbackBehavior.transcode =>
@@ -236,6 +320,14 @@ class _VideoPlaybackScreen extends StatelessWidget {
                       AutoHdrSwitchingBehavior.always => l10n.always,
                     },
                   ),
+                if (PlatformDetection.supportsNativeHdrWindow)
+                  SwitchPreferenceTile(
+                    preference: UserPreferences.nativeHdrOutput,
+                    title: l10n.nativeHdrOutput,
+                    subtitle: l10n.nativeHdrOutputDescription,
+                    icon: Icons.hdr_on,
+                  ),
+                // Sipflix fork: opt-in connection test before each video.
                 SwitchPreferenceTile(
                   preference: UserPreferences.preflightEnabled,
                   title: 'Stream Preflight',
@@ -292,6 +384,66 @@ class _VideoPlaybackScreen extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// Manual override for the display HDR probe.
+///
+/// Detection only records an SDR panel when it can prove one is attached, so a
+/// TV that never identifies itself over EDID keeps whatever was detected
+/// before. That is the safe way to be wrong, but it needs an escape hatch: the
+/// user knows what their TV is, and their answer beats any heuristic.
+class _RedetectDisplayTile extends StatelessWidget {
+  const _RedetectDisplayTile();
+
+  Future<void> _redetect(BuildContext context) async {
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    // Retried like startup detection, since a one-shot query can land while
+    // the HDMI chain is still negotiating.
+    final snapshot = await DisplayHdrProbe.queryWithRetry();
+    DisplayHdrProbe.apply(snapshot);
+    final formats = PlatformDetection.displayHdrTypesSnapshot;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          formats.isEmpty
+              ? l10n.settingsDisplayNoHdrDetected
+              : l10n.settingsDisplayRedetected(formats.join(', ')),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _markSdr(BuildContext context) async {
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    await DisplayHdrProbe.recordUserAssertedSdr();
+    messenger.showSnackBar(
+      SnackBar(content: Text(l10n.settingsDisplayMarkedSdr)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _TvSettingsListTile(
+          leading: const Icon(Icons.hdr_auto),
+          title: Text(l10n.settingsRedetectDisplay),
+          subtitle: Text(l10n.settingsRedetectDisplayDescription),
+          onTap: () => _redetect(context),
+        ),
+        _TvSettingsListTile(
+          leading: const Icon(Icons.hdr_off),
+          title: Text(l10n.settingsDisplayIsSdr),
+          subtitle: Text(l10n.settingsDisplayIsSdrDescription),
+          onTap: () => _markSdr(context),
+        ),
+      ],
     );
   }
 }

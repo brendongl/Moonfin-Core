@@ -12,13 +12,16 @@ import '../data/database/offline_database.dart';
 import '../data/offline/offline_catalog.dart';
 import '../data/repositories/offline_repository.dart';
 import '../data/services/connectivity_service.dart';
+import '../data/services/crash_report_service.dart';
 import '../data/services/log_service.dart';
 import '../data/services/media_server_client_factory.dart';
 import '../data/services/recent_searches_store.dart';
+import '../data/services/pending_rating_store.dart';
 import '../data/services/storage_path_service.dart';
 import '../platform/web_runtime_config.dart';
 import '../preference/preference_constants.dart';
 import '../preference/user_preferences.dart';
+import '../util/app_beta.dart';
 import '../util/platform_detection.dart';
 import 'modules/app_module.dart';
 import 'modules/auth_module.dart';
@@ -364,11 +367,54 @@ Future<void> migrateAudioPassthroughMode(PreferenceStore store) async {
   await store.setBool(UserPreferences.audioModeMigrated.key, true);
 }
 
-// Minimal DI for background isolates like the Watch Next worker. This must not
-// call registerPlaybackModule: constructing Media3PlayerBackend subscribes to
-// the process-global moonfin/media3_video_events channel and would hijack the
-// foreground engine's event sink, freezing the player OSD mid-playback.
-Future<void> configureBackgroundDependencies() async {
+const _legacyTrickPlayEnabledKey = 'trick_play_enabled';
+
+/// The old on/off switch became the trickPlayMode enum. Only an explicit off
+/// is carried over, since the new default is on.
+Future<void> migrateTrickplayPreferenceConsolidation(
+  PreferenceStore store,
+) async {
+  const migrationKey = 'pref_trickplay_consolidation_v1';
+  if (store.getBool(migrationKey) == true) {
+    return;
+  }
+
+  if (!store.containsKey(UserPreferences.trickPlayMode.key) &&
+      store.getBool(_legacyTrickPlayEnabledKey) == false) {
+    await store.setString(
+      UserPreferences.trickPlayMode.key,
+      TrickplayMode.disabled.name,
+    );
+  }
+
+  await store.setBool(migrationKey, true);
+}
+
+/// The offline downloads storage plus what `setActiveServerClient` needs to
+/// wrap a client around it: shared by the app and the Android auto-download
+/// worker's headless engine, so the two cannot drift.
+void registerOfflineStorage() {
+  final storagePath = StoragePathService();
+  getIt.registerSingleton<StoragePathService>(storagePath);
+  getIt.registerSingleton<OfflineDatabase>(OfflineDatabase(openConnection()));
+  final offlineRepo = OfflineRepository(getIt<OfflineDatabase>());
+  getIt.registerSingleton<OfflineRepository>(offlineRepo);
+  getIt.registerSingleton<OfflineCatalog>(OfflineCatalog(offlineRepo));
+  getIt.registerLazySingleton<PendingRatingStore>(
+    () => PendingRatingStore(getIt<PreferenceStore>()),
+  );
+}
+
+/// Minimal DI for background isolates like the Watch Next worker: what a
+/// headless engine needs to restore a session. With [offline] it also brings
+/// up the downloads storage, enough for `setActiveServerClient` to build a
+/// download service.
+///
+/// This must not call registerPlaybackModule: constructing
+/// Media3PlayerBackend subscribes to the process-global
+/// moonfin/media3_video_events channel and would hijack the foreground
+/// engine's event sink, freezing the player OSD mid-playback.
+Future<void> configureBackgroundDependencies({bool offline = false}) async {
   if (getIt.isRegistered<DeviceInfo>()) return;
 
   final preferenceStore = PreferenceStore();
@@ -387,6 +433,7 @@ Future<void> configureBackgroundDependencies() async {
   );
 
   registerPreferenceModule(preferenceStore);
+  if (offline) registerOfflineStorage();
   registerServerModule();
   registerAuthModule();
   await getIt<AuthenticationStore>().init();
@@ -395,6 +442,7 @@ Future<void> configureBackgroundDependencies() async {
 Future<void> configureDependencies() async {
   final preferenceStore = PreferenceStore();
   await preferenceStore.init();
+  await AppBeta.load();
   final appVersion = await _resolveAppVersion();
   setServerUserAgentVersion(appVersion);
   await _migrateLegacyBitrateCap(preferenceStore);
@@ -402,6 +450,7 @@ Future<void> configureDependencies() async {
   await _migrateAndroidMobileAudioDefaults(preferenceStore);
   await migrateAudioPreferenceSplit(preferenceStore);
   await migrateAudioPassthroughMode(preferenceStore);
+  await migrateTrickplayPreferenceConsolidation(preferenceStore);
 
   var deviceId = preferenceStore.getString('device_id');
   if (deviceId == null) {
@@ -425,16 +474,9 @@ Future<void> configureDependencies() async {
     () => RecentSearchesStore(preferenceStore),
   );
 
-  final storagePath = StoragePathService();
-  getIt.registerSingleton<StoragePathService>(storagePath);
-  getIt.registerSingleton<OfflineDatabase>(OfflineDatabase(openConnection()));
-  final offlineRepo = OfflineRepository(getIt<OfflineDatabase>());
-  getIt.registerSingleton<OfflineRepository>(offlineRepo);
-  await _migrateIosPaths(offlineRepo);
-
-  final offlineCatalog = OfflineCatalog(offlineRepo);
-  getIt.registerSingleton<OfflineCatalog>(offlineCatalog);
-  await offlineCatalog.warm();
+  registerOfflineStorage();
+  await _migrateIosPaths(getIt<OfflineRepository>());
+  await getIt<OfflineCatalog>().warm();
 
   final connectivityService = ConnectivityService();
   connectivityService.initialize();
@@ -451,6 +493,13 @@ Future<void> configureDependencies() async {
       getIt<UserPreferences>(),
       getIt<MediaServerClientFactory>(),
       getIt<DeviceInfo>(),
+    ),
+  );
+
+  getIt.registerSingleton<CrashReportService>(
+    CrashReportService(
+      getIt<UserPreferences>(),
+      getIt<MediaServerClientFactory>(),
     ),
   );
 

@@ -3,6 +3,7 @@ import 'package:logger/logger.dart';
 import 'package:server_core/server_core.dart';
 
 import 'api/emby_auth_api.dart';
+import 'api/emby_client_log_api.dart';
 import 'api/emby_items_api.dart';
 import 'api/emby_playback_api.dart';
 import 'api/emby_image_api.dart';
@@ -14,6 +15,7 @@ import 'api/emby_live_tv_api.dart';
 import 'api/emby_instant_mix_api.dart';
 import 'api/emby_display_preferences_api.dart';
 import 'api/emby_users_api.dart';
+import 'api/emby_trickplay_api.dart';
 
 class EmbyMediaServerClient extends MediaServerClient {
   final Dio _dio;
@@ -49,7 +51,9 @@ class EmbyMediaServerClient extends MediaServerClient {
   }) : _dio = Dio(BaseOptions(
          baseUrl: baseUrl,
          followRedirects: false,
-         connectTimeout: const Duration(seconds: 30),
+         // Only the connect. Waiting for a free slot happens before this
+         // starts, so it can stay short enough to give up on a hung host.
+         connectTimeout: const Duration(seconds: 8),
          receiveTimeout: const Duration(minutes: 3),
        )) {
     _baseUrl = baseUrl;
@@ -60,6 +64,20 @@ class EmbyMediaServerClient extends MediaServerClient {
   late String _baseUrl;
   String? _accessToken;
   String? _userId;
+
+  // Progress goes out every five seconds and would fill the report inside an
+  // hour, so only one answer a minute is kept. A ping that fails still goes
+  // through onError.
+  static const _progressPingLogInterval = 12;
+  int _progressPings = 0;
+
+  bool _isProgressPing(Uri uri) =>
+      uri.path.endsWith('/Sessions/Playing/Progress');
+
+  bool _progressPingIsDue() {
+    _progressPings++;
+    return _progressPings % _progressPingLogInterval == 1;
+  }
 
   void _setupInterceptors() {
     _dio.interceptors.add(UnauthorizedInterceptor(
@@ -86,8 +104,12 @@ class EmbyMediaServerClient extends MediaServerClient {
           deviceInfo: deviceInfo,
           accessToken: _accessToken,
         );
+        if (!_isProgressPing(options.uri)) {
+          ServerLog.network('→ ${options.method} ${options.uri}');
+        }
         handler.next(options);
       },
+      // Sipflix fork: 4K post-filter runs first, then upstream's logging.
       onResponse: (response, handler) async {
         final path = response.requestOptions.path;
         final query = response.requestOptions.queryParameters;
@@ -129,7 +151,22 @@ class EmbyMediaServerClient extends MediaServerClient {
                 error: e, stackTrace: st);
           }
         }
+        final uri = response.requestOptions.uri;
+        if (!_isProgressPing(uri) || _progressPingIsDue()) {
+          ServerLog.network(
+            '← ${response.statusCode} ${response.requestOptions.method} $uri',
+          );
+        }
         handler.next(response);
+      },
+      onError: (error, handler) {
+        ServerLog.network(
+          '✗ ${error.requestOptions.method} ${error.requestOptions.uri} '
+          '(${error.response?.statusCode ?? error.type.name})',
+          level: ServerLogLevel.error,
+          error: error.message ?? error.toString(),
+        );
+        handler.next(error);
       },
     ));
   }
@@ -287,6 +324,10 @@ class EmbyMediaServerClient extends MediaServerClient {
       EmbyImageApi(() => _baseUrl, () => _accessToken);
 
   @override
+  late final TrickplayApi trickplayApi =
+      EmbyTrickplayApi(_dio, () => _baseUrl, () => _accessToken);
+
+  @override
   late final SessionApi sessionApi = EmbySessionApi(_dio);
 
   @override
@@ -311,7 +352,14 @@ class EmbyMediaServerClient extends MediaServerClient {
       EmbyDisplayPreferencesApi(_dio);
 
   @override
-  late final UsersApi usersApi = EmbyUsersApi(_dio, _requireUserId);
+  late final UsersApi usersApi = EmbyUsersApi(
+    _dio,
+    _requireUserId,
+    onConfigurationUpdated: () => userViewsApi.invalidateCache(),
+  );
+
+  @override
+  late final ClientLogApi clientLogApi = EmbyClientLogApi(_dio);
 
   @override
   AdminSystemApi get adminSystemApi =>

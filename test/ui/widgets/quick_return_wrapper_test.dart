@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_it/get_it.dart';
 import 'package:moonfin/l10n/app_localizations.dart';
 import 'package:moonfin/ui/navigation/route_lifecycle_observer.dart';
 import 'package:moonfin/ui/widgets/overlay_sheet.dart';
 import 'package:moonfin/ui/widgets/quick_return_wrapper.dart';
 import 'package:moonfin/util/platform_detection.dart';
+import 'package:moonfin/preference/user_preferences.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:jellyfin_preference/jellyfin_preference.dart';
 
 /// Long enough that there is always somewhere left to scroll.
 Widget _scrollingBody(ScrollController controller, {Axis axis = Axis.vertical}) {
@@ -51,6 +55,14 @@ Future<ScrollController> _pumpWrapper(
 
 void main() {
   tearDown(() => PlatformDetection.setTvMode(false));
+
+  setUp(() async {
+    await GetIt.instance.reset();
+    SharedPreferences.setMockInitialValues({});
+    final store = PreferenceStore();
+    await store.init();
+    GetIt.instance.registerSingleton<UserPreferences>(UserPreferences(store));
+  });
 
   group('on TV', () {
     setUp(() => PlatformDetection.setTvMode(true));
@@ -107,6 +119,42 @@ void main() {
         reason: 'still scrolled, so it takes back again once uncovered',
       );
       await tester.pumpAndSettle();
+    });
+
+    testWidgets('gives Back up once the return has put focus on the top', (
+      tester,
+    ) async {
+      final controller = ScrollController();
+      addTearDown(controller.dispose);
+      final top = FocusNode();
+      addTearDown(top.dispose);
+      await tester.pumpWidget(
+        _app(
+          QuickReturnWrapper(
+            scrollController: controller,
+            topFocusNode: top,
+            child: Column(
+              children: [
+                Focus(focusNode: top, child: const SizedBox(height: 40)),
+                Expanded(child: _scrollingBody(controller)),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      controller.jumpTo(500);
+      await tester.pump();
+      expect(InlineBackInterceptor.handleBack(), isTrue);
+      await tester.pumpAndSettle();
+      expect(top.hasFocus, isTrue);
+
+      // Issue #1686: a return that left the offset past the threshold kept
+      // the handler, so every later Back repeated it instead of leaving.
+      controller.jumpTo(500);
+      await tester.pump();
+      expect(InlineBackInterceptor.handleBack(), isFalse);
     });
 
     testWidgets('leaves nothing registered after disposal', (tester) async {
@@ -201,6 +249,29 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  test('a handler with nothing to do passes Back to the one below it', () {
+    var below = 0;
+    bool closeBelow() {
+      below++;
+      return true;
+    }
+
+    bool nothingLeft() => false;
+
+    InlineBackInterceptor.push(closeBelow);
+    InlineBackInterceptor.push(nothingLeft);
+    addTearDown(() {
+      InlineBackInterceptor.remove(nothingLeft);
+      InlineBackInterceptor.remove(closeBelow);
+    });
+
+    expect(InlineBackInterceptor.handleBack(), isTrue);
+    expect(below, 1);
+
+    InlineBackInterceptor.remove(closeBelow);
+    expect(InlineBackInterceptor.handleBack(), isFalse);
+  });
+
   group('driven by a notifier instead of a controller', () {
     testWidgets('follows the notifier and calls back on return', (
       tester,
@@ -261,6 +332,62 @@ void main() {
 
       expect(InlineBackInterceptor.handleBack(), isTrue);
       expect(returned, 1);
+    });
+
+    testWidgets('does not take the back key on TV when mounted under a modal route', (
+      tester,
+    ) async {
+      PlatformDetection.setTvMode(true);
+      final navKey = GlobalKey<NavigatorState>();
+      final isAtStart = ValueNotifier<bool>(false);
+      addTearDown(isAtStart.dispose);
+      var returned = 0;
+
+      // Pump an app where a dialog is pushed over the home screen.
+      await tester.pumpWidget(
+        _app(
+          Builder(
+            builder: (context) {
+              return Scaffold(
+                body: ElevatedButton(
+                  onPressed: () {
+                    showDialog<void>(
+                      context: context,
+                      builder: (_) => const Text('Dialog'),
+                    );
+                  },
+                  child: const Text('Open'),
+                ),
+              );
+            },
+          ),
+          navigatorKey: navKey,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Open the dialog so route.isCurrent becomes false for the base route.
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+
+      // Mount QuickReturnWrapper into the base route underneath the open dialog.
+      await tester.pumpWidget(
+        _app(
+          Scaffold(
+            body: QuickReturnWrapper(
+              isAtStart: isAtStart,
+              onReturn: () => returned++,
+              child: const SizedBox.expand(),
+            ),
+          ),
+          navigatorKey: navKey,
+        ),
+      );
+      await tester.pump();
+
+      // Since a dialog is on top, QuickReturnWrapper should not register its interceptor.
+      expect(InlineBackInterceptor.handleBack(), isFalse);
+      expect(returned, 0);
     });
   });
 }

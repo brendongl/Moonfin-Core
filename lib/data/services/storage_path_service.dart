@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:get_it/get_it.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../preference/user_preferences.dart';
@@ -87,6 +88,21 @@ class StoragePathService {
     return dir;
   }
 
+  /// Hidden folder inside the offline root where the download engine stages
+  /// in-flight files. Sharing the root's volume makes the completing move a
+  /// rename instead of a cross-volume copy, and keeps staging off the system
+  /// temp dir, which is RAM-backed tmpfs on most Linux distros. Dot-prefixed
+  /// so Android's media scanner ignores it.
+  static const stagingDirName = '.incoming';
+
+  /// The staging directory under the current offline root, created on demand.
+  Future<Directory> getStagingDir() async {
+    final root = await getOfflineRoot();
+    final dir = Directory('${root.path}/$stagingDirName');
+    if (!await dir.exists()) await dir.create(recursive: true);
+    return dir;
+  }
+
   /// Verify an existing (or creatable) directory is actually writable by
   /// writing and deleting a probe file. Returns false on any failure.
   Future<bool> _canWrite(Directory dir) async {
@@ -133,6 +149,24 @@ class StoragePathService {
     }
   }
 
+  /// Whether [path] sits on one of the removable volumes Android reports past
+  /// the built-in one.
+  ///
+  /// The native download engine stages its temp file on internal storage and
+  /// moves it to the destination on completion, and a move across volumes is
+  /// a full copy — a long visible wait at the end of a multi-gigabyte media
+  /// download. Downloads to these volumes stay on the direct-writing legacy
+  /// engine instead.
+  Future<bool> isOnRemovableStorage(String path) async {
+    if (!PlatformDetection.isAndroid) return false;
+    try {
+      final volumes = await getExternalStorageDirectories() ?? const [];
+      return volumes.skip(1).any((volume) => p.isWithin(volume.path, path));
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<File> getDatabaseFile() async {
     final docs = await getApplicationDocumentsDirectory();
     final dbDir = Directory('${docs.path}/Moonfin/DB');
@@ -164,6 +198,20 @@ class StoragePathService {
 
     final root = await getOfflineRoot();
     final dir = Directory('${root.path}/themes');
+    if (!await dir.exists()) await dir.create(recursive: true);
+    return dir;
+  }
+
+  Future<Directory> getMessageCacheDir() async {
+    if (PlatformDetection.isAndroid && _useMediaStore) {
+      final support = await getApplicationSupportDirectory();
+      final dir = Directory('${support.path}/Moonfin/messages');
+      if (!await dir.exists()) await dir.create(recursive: true);
+      return dir;
+    }
+
+    final root = await getOfflineRoot();
+    final dir = Directory('${root.path}/messages');
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir;
   }

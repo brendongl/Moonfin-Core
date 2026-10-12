@@ -104,14 +104,25 @@ class _CustomizationCategoryScreen extends StatelessWidget {
                       const MediaBarSettingsScreen(),
                     ),
                   ),
-                _TvSettingsListTile(
-                  leading: const Icon(Icons.preview),
-                  title: Text(l10n.localPreviews),
-                  subtitle: Text(l10n.localPreviewsDescription),
-                  onTap: () => context.pushSettingsScreen(
-                    const LocalPreviewsSettingsScreen(),
+                if (advanced)
+                  _TvSettingsListTile(
+                    leading: const Icon(Icons.motion_photos_on_outlined),
+                    title: Text(l10n.loadingAnimation),
+                    subtitle: Text(l10n.loadingAnimationDescription),
+                    onTap: () => context.pushSettingsScreen(
+                      const _LoadingAnimationScreen(),
+                    ),
                   ),
-                ),
+                // Sipflix fork: trailer and card previews are retired on TV.
+                if (!PlatformDetection.isTV || SipflixSettingsMode.showRetired)
+                  _TvSettingsListTile(
+                    leading: const Icon(Icons.preview),
+                    title: Text(l10n.localPreviews),
+                    subtitle: Text(l10n.localPreviewsDescription),
+                    onTap: () => context.pushSettingsScreen(
+                      const LocalPreviewsSettingsScreen(),
+                    ),
+                  ),
                 if (advanced)
                   _TvSettingsListTile(
                     leading: const Icon(Icons.auto_awesome),

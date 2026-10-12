@@ -125,6 +125,82 @@ void main() {
       );
       expect(action.kind, SeerrRequestActionKind.requested);
     });
+
+    test('a pending request does not hide a season nobody has asked for', () {
+      final q = _track(
+        status: 2,
+        requests: [_request(status: SeerrRequest.statusPending)],
+      );
+      final action = seerrRequestActionFor(
+        q,
+        _l10n,
+        allowed: true,
+        isTv: true,
+        hasUnrequestedSeasons: true,
+      );
+      expect(action.kind, SeerrRequestActionKind.request);
+      expect(action.label, _l10n.requestMore);
+    });
+
+    test('a pending request with every season spoken for reads requested', () {
+      final q = _track(
+        status: 2,
+        requests: [_request(status: SeerrRequest.statusPending)],
+      );
+      final action = seerrRequestActionFor(
+        q,
+        _l10n,
+        allowed: true,
+        isTv: true,
+        hasUnrequestedSeasons: false,
+      );
+      expect(action.kind, SeerrRequestActionKind.requested);
+    });
+
+    test('a movie has no seasons, so the season rule never applies', () {
+      final q = _track(
+        status: 2,
+        requests: [_request(status: SeerrRequest.statusPending)],
+      );
+      final action = seerrRequestActionFor(
+        q,
+        _l10n,
+        allowed: true,
+        isTv: false,
+        hasUnrequestedSeasons: true,
+      );
+      expect(action.kind, SeerrRequestActionKind.requested);
+    });
+
+    test('the first ask on a series reads request, not request more', () {
+      // Nothing requested and nothing in the library, so every season counts
+      // as one left to ask for.
+      final q = _track(status: 1);
+      final action = seerrRequestActionFor(
+        q,
+        _l10n,
+        allowed: true,
+        isTv: true,
+        hasUnrequestedSeasons: true,
+      );
+      expect(action.kind, SeerrRequestActionKind.request);
+      expect(action.label, _l10n.request);
+    });
+
+    test('a season left to ask for does not reopen an ended series', () {
+      // A season list that came back short is what makes this reachable, and
+      // it must not be enough to reopen a show the server calls complete.
+      final q = _track(status: 5);
+      final action = seerrRequestActionFor(
+        q,
+        _l10n,
+        allowed: true,
+        isTv: true,
+        isContinuing: false,
+        hasUnrequestedSeasons: true,
+      );
+      expect(action.kind, SeerrRequestActionKind.none);
+    });
   });
 
   group('seerrCancelLabelFor', () {

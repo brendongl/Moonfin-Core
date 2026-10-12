@@ -34,13 +34,14 @@ class _ThemeMusicScreen extends StatelessWidget {
                   onChangeEnd: _pushPersonalizationSync,
                 ),
                 if (SipflixSettingsMode.advanced) ...[
-                  SwitchPreferenceTile(
-                    preference: UserPreferences.themeMusicOnHomeRows,
-                    title: l10n.themeMusicOnHomeRows,
-                    subtitle: l10n.playWhenBrowsingHomeScreen,
-                    icon: Icons.queue_music,
-                    onChanged: _pushPersonalizationSync,
-                  ),
+                  if (!PlatformDetection.isMobile)
+                    SwitchPreferenceTile(
+                      preference: UserPreferences.themeMusicOnHomeRows,
+                      title: l10n.themeMusicOnHomeRows,
+                      subtitle: l10n.playWhenBrowsingHomeScreen,
+                      icon: Icons.queue_music,
+                      onChanged: _pushPersonalizationSync,
+                    ),
                   SwitchPreferenceTile(
                     preference: UserPreferences.themeMusicLoop,
                     title: l10n.loopThemeMusic,

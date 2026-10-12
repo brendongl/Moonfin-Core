@@ -71,7 +71,7 @@ class _SipflixDetailLoadingState extends State<SipflixDetailLoading> {
 
     return Center(
       child: PlayerLoadingOverlay(
-        logoSize: widget.logoSize,
+        customSize: widget.logoSize,
         label: slow
             ? 'Still waiting on the server...'
             : 'Loading title details...',

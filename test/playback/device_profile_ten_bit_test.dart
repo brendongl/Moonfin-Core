@@ -31,26 +31,11 @@ bool _hasBitDepthCeiling(Map<String, dynamic> profile, String codec) =>
 // on the Allwinner boxes. Verified against Emby 4.9.5 PlaybackInfo on
 // 2026-08-20: NotEquals emitted no parameter, `VideoBitDepth LessThanEqual 8`
 // emitted `h264-videobitdepth=8`, and 8-bit files direct-played under both.
+// Sipflix fork: since 2.7.0 upstream vetoes 10-bit h264/hevc with a positive
+// VideoProfile allow-list (which does reach the URL), so only AV1 still needs
+// the bit-depth ceiling here.
 void main() {
   group('10-bit veto reaches the server', () {
-    test('h264 without High 10 support carries a bit-depth ceiling', () {
-      final profile = DeviceProfileBuilder.build(
-        supportsAvc: true,
-        supportsAvcHigh10: false,
-        avcMainLevel: 51,
-      );
-      expect(_hasBitDepthCeiling(profile, 'h264'), isTrue);
-    });
-
-    test('hevc without Main 10 support carries a bit-depth ceiling', () {
-      final profile = DeviceProfileBuilder.build(
-        supportsHevc: true,
-        supportsHevcMain10: false,
-        hevcMainLevel: 120,
-      );
-      expect(_hasBitDepthCeiling(profile, 'hevc'), isTrue);
-    });
-
     test('av1 without Main 10 support carries a bit-depth ceiling', () {
       final profile = DeviceProfileBuilder.build(
         supportsAv1: true,
@@ -59,21 +44,6 @@ void main() {
       expect(_hasBitDepthCeiling(profile, 'av1'), isTrue);
     });
 
-    test('the old NotEquals veto is kept alongside it', () {
-      final profile = DeviceProfileBuilder.build(
-        supportsAvc: true,
-        supportsAvcHigh10: false,
-        avcMainLevel: 51,
-      );
-      expect(
-        _conditionsFor(profile, 'h264').any((c) =>
-            c['Property'] == 'VideoProfile' &&
-            c['Condition'] == 'NotEquals' &&
-            c['Value'] == 'high 10'),
-        isTrue,
-        reason: 'still needed for a file whose BitDepth metadata is missing',
-      );
-    });
   });
 
   group('hardware that CAN decode 10-bit is not capped', () {

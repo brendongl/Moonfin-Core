@@ -8,7 +8,7 @@ import '../../playback/car_artwork.dart';
 import '../../util/platform_detection.dart';
 import '../models/aggregated_item.dart';
 import '../models/home_row.dart';
-import 'topshelf_service.dart';
+import 'deep_link_service.dart';
 
 class WatchNextService {
   static const _channel = MethodChannel('org.moonfin.androidtv/watch_next');
@@ -132,7 +132,16 @@ class WatchNextService {
     final imageApi = client.imageApi;
 
     final poster = CarArtwork.instance
-        .wrap(carAuthedImageUrl(client, isEpisode ? _episodePoster(item, imageApi) : _moviePoster(item, imageApi)))
+        .wrap(
+          carAuthedImageUrl(
+            client,
+            isEpisode
+                ? _episodePoster(item, imageApi)
+                : (isSeries
+                      ? _seriesPoster(item, imageApi)
+                      : _moviePoster(item, imageApi)),
+          ),
+        )
         ?.toString();
 
     final resumeMs = item.playbackPositionTicks != null
@@ -163,14 +172,72 @@ class WatchNextService {
     };
   }
 
+  /// A show's card wants the wide 16:9 thumb that carries its title, then its
+  /// poster, and only falls back to fanart that names nothing.
+  ///
+  /// Each tag is asked for against the item it came from, so a show's own tag
+  /// never goes out paired with its parent folder's id.
+  static String? _seriesPoster(AggregatedItem item, ImageApi imageApi) {
+    final thumb = item.thumbImageTag;
+    if (thumb != null && thumb.isNotEmpty) {
+      return imageApi.getThumbImageUrl(item.id, maxWidth: 960, tag: thumb);
+    }
+    final parentThumbId = item.parentThumbItemId;
+    final parentThumb = item.parentThumbImageTag;
+    if (parentThumbId != null && parentThumb != null && parentThumb.isNotEmpty) {
+      return imageApi.getThumbImageUrl(
+        parentThumbId,
+        maxWidth: 960,
+        tag: parentThumb,
+      );
+    }
+    final primary = item.primaryImageTag;
+    if (primary != null && primary.isNotEmpty) {
+      return imageApi.getPrimaryImageUrl(item.id, maxHeight: 720, tag: primary);
+    }
+    final seriesId = item.seriesId;
+    final seriesPrimary = item.seriesPrimaryImageTag;
+    if (seriesId != null && seriesPrimary != null && seriesPrimary.isNotEmpty) {
+      return imageApi.getPrimaryImageUrl(
+        seriesId,
+        maxHeight: 720,
+        tag: seriesPrimary,
+      );
+    }
+    final backdrops = item.backdropImageTags;
+    if (backdrops.isNotEmpty) {
+      return imageApi.getBackdropImageUrl(
+        item.id,
+        maxWidth: 960,
+        tag: backdrops.first,
+      );
+    }
+    final parentBackdropId = item.parentBackdropItemId;
+    final parentBackdrops = item.parentBackdropImageTags;
+    if (parentBackdropId != null && parentBackdrops.isNotEmpty) {
+      return imageApi.getBackdropImageUrl(
+        parentBackdropId,
+        maxWidth: 960,
+        tag: parentBackdrops.first,
+      );
+    }
+    return null;
+  }
+
+  /// The launcher card is 16:9, so a wide image is asked for first and the
+  /// upright poster is only a last resort.
   static String? _moviePoster(AggregatedItem item, ImageApi imageApi) {
-    final tag = item.primaryImageTag;
-    if (tag != null && tag.isNotEmpty) {
-      return imageApi.getPrimaryImageUrl(item.id, maxHeight: 720, tag: tag);
+    final thumb = item.thumbImageTag;
+    if (thumb != null && thumb.isNotEmpty) {
+      return imageApi.getThumbImageUrl(item.id, maxWidth: 960, tag: thumb);
     }
     final backdrops = item.backdropImageTags;
     if (backdrops.isNotEmpty) {
       return imageApi.getBackdropImageUrl(item.id, maxWidth: 960, tag: backdrops.first);
+    }
+    final tag = item.primaryImageTag;
+    if (tag != null && tag.isNotEmpty) {
+      return imageApi.getPrimaryImageUrl(item.id, maxHeight: 720, tag: tag);
     }
     return null;
   }
@@ -199,7 +266,7 @@ class WatchNextService {
       if (url == null) return;
       final uri = Uri.tryParse(url);
       if (uri == null) return;
-      final route = TopShelfService.routeForDeepLink(uri);
+      final route = DeepLinkService.routeForDeepLink(uri);
       if (route != null) onRoute(route);
     }
 

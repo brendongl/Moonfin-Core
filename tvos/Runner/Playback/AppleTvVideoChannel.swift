@@ -21,6 +21,7 @@ final class AppleTvVideoChannel: NSObject, FlutterStreamHandler {
     private var lastSubtitleStyle: [String: Any]?
     private var lastThemeConfig: [String: Any]?
     private var lastPromptStrings: [String: Any]?
+    private var lastTimeSlots: [String: Any]?
     static var lastCommand = "-"
 
     init(messenger: FlutterBinaryMessenger, rootViewController: UIViewController) {
@@ -40,6 +41,23 @@ final class AppleTvVideoChannel: NSObject, FlutterStreamHandler {
                 // the modal is actually on screen before it starts waiting.
                 Task { @MainActor in
                     result(self?.playerVC?.presentStillWatching() ?? false)
+                }
+                return
+            }
+            if call.method == "setVolume" {
+                Task { @MainActor in
+                    guard let player = self?.player else {
+                        result(FlutterError(code: "no_player", message: "No playback session", details: nil))
+                        return
+                    }
+                    let args = call.arguments as? [String: Any]
+                    guard let value = (args?["volume"] as? NSNumber)?.doubleValue, value.isFinite else {
+                        result(FlutterError(code: "invalid_volume", message: "Expected a finite percentage", details: nil))
+                        return
+                    }
+                    Self.lastCommand = call.method
+                    player.setUserVolume(Float(min(max(value, 0), 100) / 100))
+                    result(nil)
                 }
                 return
             }
@@ -73,12 +91,16 @@ final class AppleTvVideoChannel: NSObject, FlutterStreamHandler {
             present(audioOnly: (args["audioOnly"] as? Bool) ?? false)
         case "dismiss":
             dismiss()
+        case "remoteNavigation":
+            if let command = args["command"] as? String {
+                playerVC?.handleRemoteNavigation(command)
+            }
         case "setSource":
             setSource(args)
         case "setEngineLogForwarding":
             setEngineLogForwarding((args["enabled"] as? Bool) == true)
         case "setAllowUntrustedTls":
-            EngineTLS.allowUntrustedCertificates = (args["enabled"] as? Bool) == true
+            EngineTLS.serverTrustEvaluator = EngineTrustPolicy.evaluator(from: args)
         case "setUiMetadata":
             lastMetadata = args
             playerVC?.applyUiMetadata(args)
@@ -104,6 +126,10 @@ final class AppleTvVideoChannel: NSObject, FlutterStreamHandler {
         case "showRemoteSubtitles":
             let results = (args["results"] as? [[String: Any]]) ?? []
             playerVC?.presentRemoteSubtitleResults(results)
+        case "showSubtitleProgress":
+            playerVC?.showSubtitleProgress((args["message"] as? String) ?? "Working\u{2026}")
+        case "hideSubtitleProgress":
+            playerVC?.hideSubtitleProgress(message: args["message"] as? String)
         case "configureSubtitleStyle":
             lastSubtitleStyle = args
             applySubtitleStyle(args)
@@ -113,6 +139,9 @@ final class AppleTvVideoChannel: NSObject, FlutterStreamHandler {
         case "setPromptStrings":
             lastPromptStrings = args
             playerVC?.applyPromptStrings(args)
+        case "setTimeSlots":
+            lastTimeSlots = args
+            playerVC?.applyTimeSlots(args)
         case "play":
             player?.resume()
         case "pause":
@@ -120,25 +149,40 @@ final class AppleTvVideoChannel: NSObject, FlutterStreamHandler {
         case "stop":
             player?.stop()
         case "seek":
-            player?.seek(to: ms(args["positionMs"]))
+            // Through the player screen when it is up, so a seek the app sends
+            // (a remote skip, a segment skip) drops any scrub in progress.
+            if let vc = playerVC {
+                vc.seekFromHost(toSeconds: ms(args["positionMs"]))
+            } else {
+                player?.seek(to: ms(args["positionMs"]))
+            }
+            // State is otherwise only pushed by the 0.25s timer, so until the
+            // next tick Dart still reads the pre-seek position with the player
+            // reported as playing. Anything measuring how far behind we are
+            // takes that sample as real and corrects against a position the
+            // seek has already left. Android emits on the same discontinuity
+            // for the same reason (Media3VideoView.onPositionDiscontinuity).
+            markSeekInFlight()
         case "setSpeed":
             player?.setRate((args["speed"] as? NSNumber)?.floatValue ?? 1.0)
         case "setAudioTrack":
             player?.setAudioTrack((args["index"] as? NSNumber)?.int32Value ?? -1)
         case "setSubtitleTrack":
             let isExternal = (args["isExternalSubtitle"] as? Bool) == true
+            let externalUrl = isExternal ? args["externalSubtitleUrl"] as? String : nil
+            // The player keys its external tracks by the url addExternalSubtitle
+            // built, so a selection takes the same conversion or the lookup misses
+            // and selection falls back to guessing by position.
             player?.selectSubtitleTrack(
                 (args["index"] as? NSNumber)?.int32Value ?? -1,
-                externalUrl: isExternal ? args["externalSubtitleUrl"] as? String : nil
+                externalUrl: externalUrl.flatMap { urlFrom($0)?.absoluteString } ?? externalUrl
             )
         case "addExternalSubtitle":
-            addExternalSubtitle(args["url"])
+            addExternalSubtitle(args)
         case "setClosedCaptionTrack":
             player?.setClosedCaptionTrack((args["id"] as? NSNumber)?.int32Value ?? 0)
         case "disableSubtitleTrack":
             player?.disableSubtitles()
-        case "setVolume":
-            break
         case "setAudioDelay":
             player?.setAudioDelay(ms(args["delayMs"]))
         case "setSubtitleDelay":
@@ -152,12 +196,21 @@ final class AppleTvVideoChannel: NSObject, FlutterStreamHandler {
         ((value as? NSNumber)?.doubleValue ?? 0) / 1000.0
     }
 
+    private func urlFrom(_ string: String) -> URL? {
+        string.hasPrefix("/") ? URL(fileURLWithPath: string) : URL(string: string)
+    }
+
     @discardableResult
-    private func addExternalSubtitle(_ value: Any?) -> Bool {
-        guard let urlString = value as? String, let url = URL(string: urlString) else {
+    private func addExternalSubtitle(_ args: [String: Any]) -> Bool {
+        guard let urlString = args["url"] as? String, let url = urlFrom(urlString) else {
             return false
         }
-        player?.addSubtitle(url: url)
+        // The name and language ride along, or the track lists as a bare entry
+        // and nothing can match it by language.
+        player?.addSubtitle(
+            url: url,
+            title: args["title"] as? String,
+            language: args["language"] as? String)
         return true
     }
 
@@ -251,8 +304,8 @@ final class AppleTvVideoChannel: NSObject, FlutterStreamHandler {
         vc.onSkipSegmentSelect = { [weak self] in
             self?.send(["event": "skipSegment"])
         }
-        vc.onUserSeek = { [weak self] in
-            self?.send(["event": "userSeeked"])
+        vc.onUserSeek = { [weak self] positionMs in
+            self?.send(["event": "userSeeked", "positionMs": positionMs])
         }
         vc.onSearchSubtitles = { [weak self] in
             self?.send(["event": "searchSubtitles"])
@@ -280,6 +333,9 @@ final class AppleTvVideoChannel: NSObject, FlutterStreamHandler {
         }
         if let strings = lastPromptStrings {
             vc.applyPromptStrings(strings)
+        }
+        if let slots = lastTimeSlots {
+            vc.applyTimeSlots(slots)
         }
         playerVC = vc
         rootViewController?.present(vc, animated: false) { [weak self] in
@@ -350,10 +406,16 @@ final class AppleTvVideoChannel: NSObject, FlutterStreamHandler {
                 autoPlay: autoPlay,
                 audioStreamIndex: (args["audioStreamIndex"] as? NSNumber).flatMap {
                     $0.intValue >= 0 ? Int32($0.intValue) : nil
-                }))
+                },
+                dolbyVisionBaseLayerOnly: (args["dolbyVisionBaseLayerOnly"] as? Bool) ?? false,
+                externalSubtitles: AetherPlayerWrapper.externalSubtitleTracks(
+                    from: args["externalSubtitles"])))
         player.setForceSubtitlesDisabledOnStart(
             (args["forceSubtitlesDisabledOnStart"] as? Bool) ?? false)
         player.setReplayGainDb((args["normalizationGainDb"] as? NSNumber)?.doubleValue)
+        if let volume = (args["volume"] as? NSNumber)?.doubleValue, volume.isFinite {
+            player.setUserVolume(Float(min(max(volume, 0), 100) / 100))
+        }
 
         Task {
             let started = Date()
@@ -388,6 +450,26 @@ final class AppleTvVideoChannel: NSObject, FlutterStreamHandler {
         stateTimer = nil
     }
 
+    /// Reports the seek immediately rather than waiting for the next timer
+    /// tick. The engine has not moved its clock yet, so the position is still
+    /// the old one; what matters is that it goes out flagged as buffering, so
+    /// nothing downstream mistakes it for a settled measurement.
+    private func markSeekInFlight() {
+        guard let p = player else { return }
+        send(statePayload(p, isPlaying: false, isBuffering: true))
+    }
+
+    private func statePayload(_ p: AetherPlayerWrapper, isPlaying: Bool, isBuffering: Bool) -> [String: Any] {
+        [
+            "event": "state",
+            "positionMs": Int((p.currentTime * 1000).rounded()),
+            "durationMs": Int((p.duration * 1000).rounded()),
+            "bufferedMs": Int((p.duration * Double(p.bufferProgress) * 1000).rounded()),
+            "isPlaying": isPlaying,
+            "isBuffering": isBuffering,
+        ]
+    }
+
     private func pushState() {
         guard let p = player else { return }
         if p.state != lastLoggedState {
@@ -407,14 +489,7 @@ final class AppleTvVideoChannel: NSObject, FlutterStreamHandler {
             break
         }
 
-        send([
-            "event": "state",
-            "positionMs": Int((p.currentTime * 1000).rounded()),
-            "durationMs": Int((p.duration * 1000).rounded()),
-            "bufferedMs": Int((p.duration * Double(p.bufferProgress) * 1000).rounded()),
-            "isPlaying": isPlaying,
-            "isBuffering": isBuffering,
-        ])
+        send(statePayload(p, isPlaying: isPlaying, isBuffering: isBuffering))
 
         // Captions can turn up part way through a live stream, so a change in
         // either list re-emits tracksChanged.

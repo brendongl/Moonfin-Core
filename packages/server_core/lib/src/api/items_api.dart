@@ -1,3 +1,5 @@
+import '../models/query_filter_models.dart';
+
 abstract class ItemsApi {
   Future<Map<String, dynamic>> getItems({
     bool? serverWide,
@@ -20,7 +22,6 @@ abstract class ItemsApi {
     String? nameLessThan,
     List<String>? genreIds,
     List<String>? genres,
-    bool? is4K,
     bool? isFavorite,
     bool? collapseBoxSetItems,
     bool? enableTotalRecordCount,
@@ -32,6 +33,28 @@ abstract class ItemsApi {
     String? maxOfficialRating,
     bool? hasParentalRating,
     String? anyProviderIdEquals,
+    List<String>? officialRatings,
+    List<int>? years,
+    List<String>? videoTypes,
+    List<String>? audioLanguages,
+    List<String>? subtitleLanguages,
+    bool? hasSubtitles,
+    bool? hasTrailer,
+    bool? hasSpecialFeature,
+    bool? hasThemeSong,
+    bool? hasThemeVideo,
+    bool? isHd,
+    bool? is4K,
+    bool? is3D,
+  });
+
+  /// The values a library actually holds for the facet filters, so the picker
+  /// only offers years, ratings, tags and languages that match something.
+  /// Missing keys come back empty rather than absent, since a server that does
+  /// not know a facet says nothing about it.
+  Future<QueryFilterValues> getQueryFilters({
+    String? parentId,
+    List<String>? includeItemTypes,
   });
 
   Future<Map<String, dynamic>> getPersons({
@@ -49,11 +72,16 @@ abstract class ItemsApi {
     String? fields,
   });
   Future<List<Map<String, dynamic>>> getAncestors(String itemId);
-  Future<Map<String, dynamic>> getSimilarItems(String itemId, {int? limit});
+  Future<Map<String, dynamic>> getSimilarItems(
+    String itemId, {
+    int? limit,
+    String? bypass,
+  });
 
   Future<Map<String, dynamic>> getNextUp({
     String? seriesId,
     String? parentId,
+    int? startIndex,
     int? limit,
     String? fields,
     bool? enableResumable,
@@ -65,6 +93,8 @@ abstract class ItemsApi {
   Future<Map<String, dynamic>> getResumeItems({
     String? parentId,
     List<String>? includeItemTypes,
+    String? mediaTypes,
+    int? startIndex,
     int? limit,
     String? fields,
     String? enableImageTypes,
@@ -93,7 +123,7 @@ abstract class ItemsApi {
     bool recursive = false,
   });
 
-  Future<Map<String, dynamic>> getSeasons(String seriesId);
+  Future<Map<String, dynamic>> getSeasons(String seriesId, {String? fields});
 
   Future<Map<String, dynamic>> getEpisodes(
     String seriesId, {
@@ -156,6 +186,8 @@ abstract class ItemsApi {
 
   Future<void> addToCollection(String collectionId, List<String> itemIds);
 
+  Future<void> removeFromCollection(String collectionId, List<String> itemIds);
+
   Future<void> removeFromPlaylist(String playlistId, List<String> entryIds);
 
   Future<void> movePlaylistItem(
@@ -171,6 +203,18 @@ abstract class ItemsApi {
   Future<void> deletePlaylist(String playlistId);
 
   Future<Map<String, dynamic>> getGenres({
+    String? parentId,
+    String? userId,
+    String? sortBy,
+    String? sortOrder,
+    int? startIndex,
+    int? limit,
+    bool? recursive,
+    String? fields,
+    List<String>? includeItemTypes,
+  });
+
+  Future<Map<String, dynamic>> getStudios({
     String? parentId,
     String? userId,
     String? sortBy,

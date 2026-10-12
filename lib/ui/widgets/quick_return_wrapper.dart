@@ -5,6 +5,7 @@ import 'package:moonfin_design/moonfin_design.dart';
 import '../../l10n/app_localizations.dart';
 import '../../util/platform_detection.dart';
 import '../navigation/route_lifecycle_observer.dart';
+import 'bottom_nav/bottom_navbar.dart';
 import 'overlay_sheet.dart';
 
 const _kScrolledAwayThreshold = 20.0;
@@ -31,6 +32,7 @@ class QuickReturnWrapper extends StatefulWidget {
     this.topFocusNode,
     this.isAtStart,
     this.onReturn,
+    this.hideNavbar = false,
   }) : assert(
          scrollController != null || isAtStart != null,
          'Give it a controller to watch or a notifier telling it where it is.',
@@ -39,6 +41,7 @@ class QuickReturnWrapper extends StatefulWidget {
   final Widget child;
   final ScrollController? scrollController;
   final Axis scrollDirection;
+  final bool hideNavbar;
 
   /// Focused after the scroll finishes, so a remote carries on from the first
   /// card rather than from wherever the old focus scrolled away to.
@@ -79,6 +82,11 @@ class _QuickReturnWrapperState extends State<QuickReturnWrapper>
     if (_observedRoute != null) routeLifecycleObserver.unsubscribe(this);
     _observedRoute = route;
     routeLifecycleObserver.subscribe(this, route);
+    final isCurrent = route.isCurrent;
+    if (isCurrent != _routeIsOnTop) {
+      _routeIsOnTop = isCurrent;
+      _syncInterceptor();
+    }
   }
 
   @override
@@ -123,7 +131,7 @@ class _QuickReturnWrapperState extends State<QuickReturnWrapper>
   void _syncInterceptor() {
     final wanted = PlatformDetection.isTV && _isScrolledAway && _routeIsOnTop;
     if (wanted && !_interceptorRegistered) {
-      InlineBackInterceptor.push(_returnToStart);
+      InlineBackInterceptor.push(_returnFromBack);
       _interceptorRegistered = true;
     } else if (!wanted) {
       _unregisterInterceptor();
@@ -132,8 +140,17 @@ class _QuickReturnWrapperState extends State<QuickReturnWrapper>
 
   void _unregisterInterceptor() {
     if (!_interceptorRegistered) return;
-    InlineBackInterceptor.remove(_returnToStart);
+    InlineBackInterceptor.remove(_returnFromBack);
     _interceptorRegistered = false;
+  }
+
+  /// Focus on [topFocusNode] already means the screen is back at its start, so
+  /// Back leaves from there even if the offset hasn't settled under the
+  /// threshold.
+  bool _returnFromBack() {
+    if (widget.topFocusNode?.hasFocus ?? false) return false;
+    _returnToStart();
+    return true;
   }
 
   void _updateScrollState() {
@@ -175,14 +192,20 @@ class _QuickReturnWrapperState extends State<QuickReturnWrapper>
   Widget build(BuildContext context) {
     if (PlatformDetection.isTV) return widget.child;
 
+    // Only screens that really show the bottom navbar have the scope, and its
+    // height already counts the system inset.
+    final barInset =
+        widget.hideNavbar ? null : BottomNavInsetScope.maybeOf(context);
+
     return Stack(
       fit: StackFit.expand,
       children: [
         widget.child,
         Positioned(
           right: 24,
-          bottom: 24,
+          bottom: barInset != null ? barInset + 12 : 24,
           child: SafeArea(
+            bottom: barInset == null,
             child: AnimatedOpacity(
               opacity: _isScrolledAway ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 200),

@@ -40,6 +40,82 @@ String? _videoProfileCondition(Map<String, dynamic> profile, String codec) {
   return null;
 }
 
+// An excluded profile shows up as a condition asking that the stream not
+// carry it.
+bool _excludesVideoProfile(
+  Map<String, dynamic> profile,
+  String codec,
+  String videoProfile,
+) {
+  final codecProfiles = profile['CodecProfiles'] as List<dynamic>? ?? const [];
+
+  for (final rawProfile in codecProfiles) {
+    final codecProfile = rawProfile as Map<dynamic, dynamic>;
+    if (codecProfile['Type'] != 'Video' || codecProfile['Codec'] != codec) {
+      continue;
+    }
+
+    final conditions = codecProfile['Conditions'] as List<dynamic>? ?? const [];
+    for (final rawCondition in conditions) {
+      final condition = rawCondition as Map<dynamic, dynamic>;
+      if (condition['Property'] != 'VideoProfile') {
+        continue;
+      }
+
+      // Both spellings exclude the profile. Only the allow-list form survives
+      // into the transcode URL, which is why the builder prefers it, but the
+      // negated form is still in use for other codecs.
+      if (condition['Condition'] == 'NotEquals' &&
+          condition['Value'] == videoProfile) {
+        return true;
+      }
+
+      if (condition['Condition'] == 'EqualsAny') {
+        final allowed = (condition['Value'] as String)
+            .split('|')
+            .map((value) => value.trim().toLowerCase())
+            .toSet();
+        if (!allowed.contains(videoProfile.toLowerCase())) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+/// The allow-list a codec's VideoProfile condition carries, in order, or empty
+/// when it carries none. The server encodes against the first entry, so the
+/// order is load bearing.
+List<String> _allowedVideoProfiles(Map<String, dynamic> profile, String codec) {
+  final codecProfiles = profile['CodecProfiles'] as List<dynamic>? ?? const [];
+
+  for (final rawProfile in codecProfiles) {
+    final codecProfile = rawProfile as Map<dynamic, dynamic>;
+    if (codecProfile['Type'] != 'Video' || codecProfile['Codec'] != codec) {
+      continue;
+    }
+
+    final conditions = codecProfile['Conditions'] as List<dynamic>? ?? const [];
+    for (final rawCondition in conditions) {
+      final condition = rawCondition as Map<dynamic, dynamic>;
+      if (condition['Property'] == 'VideoProfile' &&
+          condition['Condition'] == 'EqualsAny') {
+        return (condition['Value'] as String).split('|');
+      }
+    }
+  }
+
+  return const [];
+}
+
+/// The server only serialises positive VideoProfile conditions into the
+/// transcode URL, so a negated veto is silently dropped and the stream gets
+/// copied instead of re-encoded.
+bool _vetoSurvivesToTranscodeUrl(Map<String, dynamic> profile, String codec) =>
+    _allowedVideoProfiles(profile, codec).isNotEmpty;
+
 Set<String> _codecUnsupportedRangeTypes(
   Map<String, dynamic> profile,
   String codec,
@@ -119,6 +195,31 @@ String? _videoAudioChannelsConditionValue(Map<String, dynamic> profile) {
   return null;
 }
 
+// The codec scope of the general channel cap, or null when it applies to every
+// audio codec. The stereo AAC fallback carries its own cap and is skipped.
+String? _videoAudioChannelsConditionCodec(Map<String, dynamic> profile) {
+  final codecProfiles = profile['CodecProfiles'] as List<dynamic>? ?? const [];
+
+  for (final rawProfile in codecProfiles) {
+    final codecProfile = rawProfile as Map<dynamic, dynamic>;
+    if (codecProfile['Type'] != 'VideoAudio' ||
+        codecProfile['Codec'] == 'aac') {
+      continue;
+    }
+
+    final conditions = codecProfile['Conditions'] as List<dynamic>? ?? const [];
+    for (final rawCondition in conditions) {
+      final condition = rawCondition as Map<dynamic, dynamic>;
+      if (condition['Property'] == 'AudioChannels' &&
+          condition['Condition'] == 'LessThanEqual') {
+        return codecProfile['Codec']?.toString();
+      }
+    }
+  }
+
+  return null;
+}
+
 List<String> _transcodingMaxAudioChannels(Map<String, dynamic> profile) {
   final transcodingProfiles =
       profile['TranscodingProfiles'] as List<dynamic>? ?? const [];
@@ -176,6 +277,40 @@ List<String> _videoTranscodingVideoCodecs(Map<String, dynamic> profile) {
         (raw) => (raw as Map<dynamic, dynamic>)['VideoCodec']?.toString() ?? '',
       )
       .toList(growable: false);
+}
+
+({String width, String height})? _resolutionCap(
+  Map<String, dynamic> profile,
+  String codec,
+) {
+  final codecProfiles = profile['CodecProfiles'] as List<dynamic>? ?? const [];
+  for (final rawProfile in codecProfiles) {
+    final codecProfile = rawProfile as Map<dynamic, dynamic>;
+    final codecs = codecProfile['Codec']?.toString().split(',') ?? const [];
+    if (codecProfile['Type'] != 'Video' || !codecs.contains(codec)) {
+      continue;
+    }
+
+    String? width;
+    String? height;
+    final conditions = codecProfile['Conditions'] as List<dynamic>? ?? const [];
+    for (final rawCondition in conditions) {
+      final condition = rawCondition as Map<dynamic, dynamic>;
+      if (condition['Condition'] != 'LessThanEqual') {
+        continue;
+      }
+      if (condition['Property'] == 'Width') {
+        width = condition['Value']?.toString();
+      }
+      if (condition['Property'] == 'Height') {
+        height = condition['Value']?.toString();
+      }
+    }
+    if (width != null && height != null) {
+      return (width: width, height: height);
+    }
+  }
+  return null;
 }
 
 Set<String> _videoDirectPlayVideoCodecs(Map<String, dynamic> profile) {
@@ -258,10 +393,298 @@ AudioCapabilityProfile _capabilityProfile({
   );
 }
 
+// The sample-rate cap as the server reads it, flattened for the assertions.
+Map<String, dynamic>? _sampleRateCap(Map<String, dynamic> profile) {
+  final codecProfiles = profile['CodecProfiles'] as List<dynamic>? ?? const [];
+  for (final rawProfile in codecProfiles) {
+    final codecProfile = rawProfile as Map<dynamic, dynamic>;
+    final conditions = codecProfile['Conditions'] as List<dynamic>? ?? const [];
+    for (final rawCondition in conditions) {
+      final condition = rawCondition as Map<dynamic, dynamic>;
+      if (condition['Property'] == 'AudioSampleRate') {
+        return <String, dynamic>{
+          'type': codecProfile['Type'],
+          'codecs': (codecProfile['Codec'] as String).split(','),
+          'condition': condition['Condition'],
+          'value': condition['Value'],
+        };
+      }
+    }
+  }
+  return null;
+}
+
+// The fewest channels a codec may carry and still direct play, or null when
+// the profile sets no floor for it.
+String? _videoAudioChannelFloor(Map<String, dynamic> profile, String codec) {
+  final codecProfiles = profile['CodecProfiles'] as List<dynamic>? ?? const [];
+
+  for (final rawProfile in codecProfiles) {
+    final codecProfile = rawProfile as Map<dynamic, dynamic>;
+    if (codecProfile['Type'] != 'VideoAudio' ||
+        codecProfile['Codec'] != codec) {
+      continue;
+    }
+
+    final conditions = codecProfile['Conditions'] as List<dynamic>? ?? const [];
+    for (final rawCondition in conditions) {
+      final condition = rawCondition as Map<dynamic, dynamic>;
+      if (condition['Property'] == 'AudioChannels' &&
+          condition['Condition'] == 'GreaterThanEqual') {
+        return condition['Value']?.toString();
+      }
+    }
+  }
+
+  return null;
+}
+
 void main() {
+  group('DeviceProfileBuilder transcode target audio codecs', () {
+    List<String> targets({
+      AudioFallbackCodec fallbackCodec = AudioFallbackCodec.auto,
+      bool forAvFoundation = false,
+    }) => DeviceProfileBuilder.transcodeTargetAudioCodecs(
+      fallbackCodec: fallbackCodec,
+      forAvFoundation: forAvFoundation,
+    );
+
+    test("never offers a codec the server can't encode to", () {
+      for (final forAvFoundation in [false, true]) {
+        final codecs = targets(forAvFoundation: forAvFoundation);
+        for (final codec in ['truehd', 'mlp', 'dca']) {
+          expect(codecs, isNot(contains(codec)), reason: codec);
+        }
+      }
+    });
+
+    test("AVFoundation drops the codecs it can't play out of HLS", () {
+      expect(targets(), containsAll(<String>['dts', 'mp2', 'mp3']));
+      final apple = targets(forAvFoundation: true);
+      for (final codec in ['dts', 'mp2', 'mp3']) {
+        expect(apple, isNot(contains(codec)), reason: codec);
+      }
+    });
+
+    test('the fallback preference leads the list', () {
+      expect(targets(fallbackCodec: AudioFallbackCodec.flac).first, 'flac');
+      expect(targets().first, 'aac');
+    });
+
+    test('lists each codec once', () {
+      final codecs = targets(fallbackCodec: AudioFallbackCodec.eac3);
+      expect(codecs.toSet().length, codecs.length);
+    });
+
+    test('matches what the device profile offers the server', () {
+      for (final forAvFoundation in [false, true]) {
+        final profile = DeviceProfileBuilder.build(
+          universalAudioDecode: true,
+          hlsAudioForAvFoundation: forAvFoundation,
+        );
+        final offered = <String>{
+          for (final entry
+              in (profile['TranscodingProfiles'] as List<dynamic>)
+                  .cast<Map<String, dynamic>>())
+            ...(entry['AudioCodec'] as String).split(','),
+        };
+        expect(
+          targets(forAvFoundation: forAvFoundation).toSet(),
+          offered,
+          reason: 'forAvFoundation=$forAvFoundation',
+        );
+      }
+    });
+  });
+
+  group('DeviceProfileBuilder bridged audio sample rate', () {
+    test('a player that bridges audio caps the codecs it has to re-encode', () {
+      final cap = _sampleRateCap(
+        DeviceProfileBuilder.build(bridgesAudioToEac3: true),
+      );
+
+      expect(cap, isNotNull);
+      expect(cap!['type'], 'VideoAudio');
+      expect(cap['condition'], 'LessThanEqual');
+      expect(cap['value'], '48000');
+      expect(cap['codecs'], contains('truehd'));
+      expect(cap['codecs'], contains('mlp'));
+    });
+
+    test('codecs the container carries untouched are left alone', () {
+      final cap = _sampleRateCap(
+        DeviceProfileBuilder.build(bridgesAudioToEac3: true),
+      );
+
+      // These are stream copied, so their rate never reaches an encoder and
+      // capping them would transcode for nothing.
+      for (final codec in ['aac', 'ac3', 'eac3', 'flac', 'alac', 'opus']) {
+        expect(cap!['codecs'], isNot(contains(codec)), reason: codec);
+      }
+    });
+
+    test('a player that decodes every codec itself gets no cap', () {
+      expect(
+        _sampleRateCap(DeviceProfileBuilder.build(universalAudioDecode: true)),
+        isNull,
+      );
+    });
+  });
+
+  group('DeviceProfileBuilder stereo TrueHD', () {
+    test('a player whose decoder stalls on it asks for surround only', () {
+      expect(
+        _videoAudioChannelFloor(
+          DeviceProfileBuilder.build(playerDecodesStereoTrueHd: false),
+          'truehd',
+        ),
+        '3',
+      );
+    });
+
+    test('a bitstreamed route never decodes, so it keeps stereo', () {
+      expect(
+        _videoAudioChannelFloor(
+          DeviceProfileBuilder.build(
+            playerDecodesStereoTrueHd: false,
+            trueHdPassthroughEnabled: true,
+            audioCapabilityProfile: _capabilityProfile(
+              canPassthroughTrueHd: true,
+            ),
+          ),
+          'truehd',
+        ),
+        isNull,
+      );
+    });
+
+    test('a player that decodes it is left alone', () {
+      expect(
+        _videoAudioChannelFloor(DeviceProfileBuilder.build(), 'truehd'),
+        isNull,
+      );
+    });
+
+    test('surround TrueHD still direct plays either way', () {
+      final profile = DeviceProfileBuilder.build(
+        playerDecodesStereoTrueHd: false,
+      );
+
+      expect(_videoDirectPlayAudioCodecs(profile), contains('truehd'));
+    });
+  });
+
+  group('DeviceProfileBuilder AVC High 10', () {
+    test('a device without a 10 bit AVC decoder transcodes Hi10p, since the '
+        'decoder rejects the format once playback has already started', () {
+      final profile = DeviceProfileBuilder.build(
+        supportsAvc: true,
+        avcMainLevel: 51,
+      );
+
+      expect(_excludesVideoProfile(profile, 'h264', 'high 10'), isTrue);
+    });
+
+    test('a device with one keeps Hi10p direct playable', () {
+      final profile = DeviceProfileBuilder.build(
+        supportsAvc: true,
+        avcMainLevel: 51,
+        supportsAvcHigh10: true,
+        avcHigh10Level: 51,
+      );
+
+      expect(_excludesVideoProfile(profile, 'h264', 'high 10'), isFalse);
+    });
+
+    test('states the Hi10p veto positively so the server cannot stream copy '
+        'the 10 bit bitstream', () {
+      final profile = DeviceProfileBuilder.build(
+        supportsAvc: true,
+        avcMainLevel: 51,
+      );
+
+      expect(_vetoSurvivesToTranscodeUrl(profile, 'h264'), isTrue);
+    });
+
+    test('the 8 bit profiles a High decoder handles stay direct playable', () {
+      final profile = DeviceProfileBuilder.build(
+        supportsAvc: true,
+        avcMainLevel: 51,
+      );
+
+      for (final videoProfile in <String>[
+        'high',
+        'main',
+        'baseline',
+        'constrained baseline',
+        'progressive high',
+        'constrained high',
+      ]) {
+        expect(
+          _excludesVideoProfile(profile, 'h264', videoProfile),
+          isFalse,
+          reason: videoProfile,
+        );
+      }
+    });
+
+    test('the 10 bit and high chroma profiles stay vetoed', () {
+      final profile = DeviceProfileBuilder.build(
+        supportsAvc: true,
+        avcMainLevel: 51,
+      );
+
+      for (final videoProfile in <String>[
+        'high 10',
+        'high 10 intra',
+        'high 4:2:2',
+        'high 4:4:4 predictive',
+      ]) {
+        expect(
+          _excludesVideoProfile(profile, 'h264', videoProfile),
+          isTrue,
+          reason: videoProfile,
+        );
+      }
+    });
+
+    test('high leads the allow list, since the server encodes against the '
+        'first entry and ffmpeg has no two word profiles', () {
+      final profile = DeviceProfileBuilder.build(
+        supportsAvc: true,
+        avcMainLevel: 51,
+      );
+
+      expect(_allowedVideoProfiles(profile, 'h264').first, 'high');
+    });
+  });
+
+  group('DeviceProfileBuilder HEVC Main 10', () {
+    test('a device without a 10 bit HEVC decoder transcodes Main 10', () {
+      final profile = DeviceProfileBuilder.build(
+        supportsHevc: true,
+        hevcMainLevel: 120,
+      );
+
+      expect(_excludesVideoProfile(profile, 'hevc', 'main 10'), isTrue);
+      expect(_vetoSurvivesToTranscodeUrl(profile, 'hevc'), isTrue);
+    });
+
+    test('a device with one keeps Main 10 direct playable', () {
+      final profile = DeviceProfileBuilder.build(
+        supportsHevc: true,
+        hevcMainLevel: 120,
+        supportsHevcMain10: true,
+      );
+
+      expect(_excludesVideoProfile(profile, 'hevc', 'main 10'), isFalse);
+    });
+  });
+
   group('DeviceProfileBuilder HEVC range filtering', () {
     test(
-      'does not exclude DoVi HDR10+ only because profile 8 is unsupported',
+      'does not exclude the profile 8 range types only because profile 8 is '
+      'unsupported',
       () {
         final profile = DeviceProfileBuilder.build(
           supportsHevc: true,
@@ -278,10 +701,23 @@ void main() {
 
         final unsupportedRanges = _codecUnsupportedRangeTypes(profile, 'hevc');
 
-        expect(unsupportedRanges, contains('DOVI_WITH_HDR10'));
+        expect(unsupportedRanges, isNot(contains('DOVI_WITH_HDR10')));
         expect(unsupportedRanges, isNot(contains('DOVI_WITH_HDR10_PLUS')));
       },
     );
+
+    test('an HDR10 device without any DoVi decoder direct plays profile 8.1 '
+        'via the base layer', () {
+      final profile = DeviceProfileBuilder.build(
+        supportsHevc: true,
+        supportsHevcMain10: true,
+        supportsHevcHdr10: true,
+      );
+
+      final unsupportedRanges = _codecUnsupportedRangeTypes(profile, 'hevc');
+
+      expect(unsupportedRanges, isNot(contains('DOVI_WITH_HDR10')));
+    });
 
     test('a device with neither DoVi nor HDR10 excludes both profile 8 range '
         'types, since their base layers render as HDR10', () {
@@ -428,6 +864,86 @@ void main() {
     });
   });
 
+  group('DeviceProfileBuilder AV1 Dolby Vision range filtering', () {
+    test('a base-layer renderer direct plays profile 10.1, including its '
+        'HDR10+ variant, on AV1 HDR10 alone', () {
+      final profile = DeviceProfileBuilder.build(
+        supportsAv1: true,
+        supportsAv1Main10: true,
+        supportsAv1Hdr10: true,
+        supportsAv1Hdr10Plus: false,
+        supportsAv1DolbyVision: false,
+        rendersAv1DoviViaHdr10BaseLayer: true,
+      );
+
+      final unsupportedRanges = _codecUnsupportedRangeTypes(profile, 'av1');
+
+      expect(unsupportedRanges, isNot(contains('DOVI_WITH_HDR10')));
+      expect(unsupportedRanges, isNot(contains('DOVI_WITH_HDR10_PLUS')));
+    });
+
+    test('every other backend keeps the HDR10+ gate on DoVi HDR10+, so an '
+        'HDR10-only client is never offered it', () {
+      final profile = DeviceProfileBuilder.build(
+        supportsAv1: true,
+        supportsAv1Main10: true,
+        supportsAv1Hdr10: true,
+        supportsAv1Hdr10Plus: false,
+        supportsAv1DolbyVision: false,
+      );
+
+      final unsupportedRanges = _codecUnsupportedRangeTypes(profile, 'av1');
+
+      expect(unsupportedRanges, contains('DOVI_WITH_HDR10_PLUS'));
+      // The plain HDR10 variant is unaffected: it never depended on HDR10+.
+      expect(unsupportedRanges, isNot(contains('DOVI_WITH_HDR10')));
+    });
+
+    test('HDR10+ support alone still lifts the gate without the opt-in', () {
+      final profile = DeviceProfileBuilder.build(
+        supportsAv1: true,
+        supportsAv1Main10: true,
+        supportsAv1Hdr10: true,
+        supportsAv1Hdr10Plus: true,
+        supportsAv1DolbyVision: false,
+      );
+
+      final unsupportedRanges = _codecUnsupportedRangeTypes(profile, 'av1');
+
+      expect(unsupportedRanges, isNot(contains('DOVI_WITH_HDR10_PLUS')));
+    });
+
+    test('a client that renders neither AV1 DoVi nor AV1 HDR10 excludes both '
+        'profile 10 range types, opt-in or not', () {
+      final profile = DeviceProfileBuilder.build(
+        supportsAv1: true,
+        supportsAv1Main10: true,
+        supportsAv1Hdr10: false,
+        supportsAv1DolbyVision: false,
+        rendersAv1DoviViaHdr10BaseLayer: true,
+      );
+
+      final unsupportedRanges = _codecUnsupportedRangeTypes(profile, 'av1');
+
+      expect(unsupportedRanges, contains('DOVI_WITH_HDR10'));
+      expect(unsupportedRanges, contains('DOVI_WITH_HDR10_PLUS'));
+    });
+
+    test('an AV1 DoVi decoder keeps every profile 10 range type direct '
+        'playable', () {
+      final profile = DeviceProfileBuilder.build(
+        supportsAv1: true,
+        supportsAv1Main10: true,
+        supportsAv1Hdr10: true,
+        supportsAv1DolbyVision: true,
+      );
+
+      final unsupportedRanges = _codecUnsupportedRangeTypes(profile, 'av1');
+
+      expect(unsupportedRanges, isEmpty);
+    });
+  });
+
   group('DeviceProfileBuilder HLS transcode video codec', () {
     test('transcodes only to h264 when the server was not probed as allowing '
         'HEVC encoding', () {
@@ -504,6 +1020,32 @@ void main() {
       expect(videoProfiles.first['Container'], 'ts');
       expect(videoProfiles.first['VideoCodec'], 'hevc,h264');
     });
+
+    test('mp3 leaves the HLS offer entirely on AVFoundation', () {
+      final profile = DeviceProfileBuilder.build(
+        hevcRequiresFmp4Hls: true,
+        hlsAudioForAvFoundation: true,
+      );
+
+      // Both entries, not just fMP4, because the server unions audio codecs
+      // across the transcoding profiles it matched.
+      for (final entry in _hlsVideoTranscodingProfiles(profile)) {
+        expect(
+          (entry['AudioCodec'] as String).split(','),
+          isNot(contains('mp3')),
+          reason: 'the ${entry['Container']} offer still carries mp3',
+        );
+      }
+    });
+
+    test('engines other than AVFoundation keep mp3 in the HLS offer', () {
+      final profile = DeviceProfileBuilder.build(hevcRequiresFmp4Hls: true);
+
+      final fmp4 = _hlsVideoTranscodingProfiles(
+        profile,
+      ).firstWhere((entry) => entry['Container'] == 'mp4');
+      expect((fmp4['AudioCodec'] as String).split(','), contains('mp3'));
+    });
   });
 
   group('DeviceProfileBuilder subtitle delivery', () {
@@ -535,6 +1077,34 @@ void main() {
       expect(_subtitleMethodsFor(profile, 'vtt'), contains('Embed'));
       expect(_subtitleMethodsFor(profile, 'srt'), contains('Embed'));
     });
+
+    test("PGS isn't offered as a file unless the player reads .sup", () {
+      final profile = DeviceProfileBuilder.build();
+
+      expect(_subtitleMethodsFor(profile, 'pgssub'), {'Embed', 'Encode'});
+    });
+
+    test('a player that reads .sup files is offered PGS as a file', () {
+      final profile = DeviceProfileBuilder.build(
+        supportsExternalPgsSubtitles: true,
+      );
+
+      expect(_subtitleMethodsFor(profile, 'pgssub'), {
+        'Embed',
+        'External',
+        'Encode',
+      });
+      expect(_subtitleMethodsFor(profile, 'pgs'), contains('External'));
+    });
+
+    test('turning PGS direct play off burns every PGS track in', () {
+      final profile = DeviceProfileBuilder.build(
+        pgsDirectPlay: false,
+        supportsExternalPgsSubtitles: true,
+      );
+
+      expect(_subtitleMethodsFor(profile, 'pgssub'), {'Encode'});
+    });
   });
 
   group('DeviceProfileBuilder stereo AAC fallback', () {
@@ -548,6 +1118,47 @@ void main() {
       final profile = DeviceProfileBuilder.build(maxAudioChannels: 6);
 
       expect(_stereoAacFallbackProfile(profile), isNull);
+    });
+  });
+
+  group('DeviceProfileBuilder passthrough channel cap', () {
+    test(
+      'a channel cap below the track still direct plays passthrough audio',
+      () {
+        final profile = DeviceProfileBuilder.build(
+          maxAudioChannels: 6,
+          trueHdPassthroughEnabled: true,
+          dtsCorePassthroughEnabled: true,
+        );
+
+        final codecs = _videoAudioChannelsConditionCodec(profile)!.split(',');
+        expect(codecs, isNot(contains('truehd')));
+        expect(codecs, isNot(contains('mlp')));
+        expect(codecs, isNot(contains('dts')));
+        expect(codecs, isNot(contains('dca')));
+        expect(codecs, contains('aac'));
+        expect(codecs, contains('flac'));
+        expect(_videoDirectPlayAudioCodecs(profile), contains('truehd'));
+      },
+    );
+
+    test('the cap still covers a codec left out of passthrough', () {
+      final profile = DeviceProfileBuilder.build(
+        maxAudioChannels: 6,
+        trueHdPassthroughEnabled: true,
+      );
+
+      final codecs = _videoAudioChannelsConditionCodec(profile)!.split(',');
+      expect(codecs, isNot(contains('truehd')));
+      expect(codecs, contains('ac3'));
+      expect(codecs, contains('eac3'));
+    });
+
+    test('the cap stays unscoped when nothing passes through', () {
+      final profile = DeviceProfileBuilder.build(maxAudioChannels: 6);
+
+      expect(_videoAudioChannelsConditionCodec(profile), isNull);
+      expect(_videoAudioChannelsConditionValue(profile), '6');
     });
   });
 
@@ -708,6 +1319,38 @@ void main() {
   });
 
   group('DeviceProfileBuilder universalAudioDecode', () {
+    test('a player without a TrueHD decoder stops advertising it', () {
+      final profile = DeviceProfileBuilder.build(
+        universalAudioDecode: true,
+        playerDecodesTrueHd: false,
+      );
+
+      final codecs = _videoDirectPlayAudioCodecs(profile);
+      expect(codecs, isNot(contains('truehd')));
+      expect(codecs, isNot(contains('mlp')));
+      expect(
+        codecs,
+        containsAll(<String>['ac3', 'eac3', 'dts', 'flac', 'opus', 'aac']),
+      );
+    });
+
+    test(
+      'a missing TrueHD decoder still withholds it when the probe says the '
+      'platform has one',
+      () {
+        final profile = DeviceProfileBuilder.build(
+          audioCapabilityProfile: _capabilityProfile(canDecodeTrueHd: true),
+          universalAudioDecode: true,
+          playerDecodesTrueHd: false,
+        );
+
+        expect(
+          _videoDirectPlayAudioCodecs(profile),
+          isNot(contains('truehd')),
+        );
+      },
+    );
+
     test(
       'downmix keeps the full codec list and 8ch direct play when the player '
       'decodes everything in software',
@@ -839,6 +1482,45 @@ void main() {
       expect(_videoAudioChannelsConditionValue(profile), '8');
     });
 
+    test(
+      'downmix gets the stereo offer when the player can\'t downmix on its own',
+      () {
+        final profile = DeviceProfileBuilder.build(
+          downmixToStereo: true,
+          universalAudioDecode: true,
+          appliesDownmixToStereo: false,
+        );
+
+        expect(
+          _videoDirectPlayAudioCodecs(profile),
+          equals(<String>{'aac', 'mp2', 'mp3'}),
+        );
+        expect(_stereoAacFallbackProfile(profile), isNotNull);
+        final channels = _transcodingMaxAudioChannels(profile);
+        expect(channels, isNotEmpty);
+        expect(channels, everyElement('2'));
+      },
+    );
+
+    test('a detected 2ch route still direct plays everything when the player '
+        'can\'t downmix on its own', () {
+      final profile = DeviceProfileBuilder.build(
+        audioCapabilityProfile: _capabilityProfile(
+          maxPcmChannels: 2,
+          activeRouteType: AudioRouteType.speaker,
+        ),
+        universalAudioDecode: true,
+        appliesDownmixToStereo: false,
+      );
+
+      expect(
+        _videoDirectPlayAudioCodecs(profile),
+        containsAll(<String>['aac', 'ac3', 'eac3', 'dts', 'truehd', 'flac']),
+      );
+      expect(_stereoAacFallbackProfile(profile), isNull);
+      expect(_transcodingMaxAudioChannels(profile), isEmpty);
+    });
+
     test('an explicit stereo channel cap also caps the transcode target', () {
       final profile = DeviceProfileBuilder.build(
         maxAudioChannels: 2,
@@ -943,17 +1625,25 @@ void main() {
       expect(tsCodecs, contains('aac'));
     });
 
-    test('a player with no DTS decoder keeps DTS off both offers, since the '
-        'server copies any codec it sees listed', () {
-      final profile = DeviceProfileBuilder.build(hlsAudioExcludesDts: true);
+    test('a player on AVFoundation keeps DTS and MP2 off both offers, since '
+        'the server copies any codec it sees listed', () {
+      final profile = DeviceProfileBuilder.build(hlsAudioForAvFoundation: true);
 
       expect(_transcodingAudioCodecList(profile, 'ts'), isNot(contains('dts')));
+      expect(_transcodingAudioCodecList(profile, 'ts'), isNot(contains('mp2')));
       expect(
         _transcodingAudioCodecList(profile, 'mp4'),
         isNot(contains('dts')),
       );
       expect(_transcodingAudioCodecList(profile, 'ts'), contains('aac'));
       expect(_transcodingAudioCodecList(profile, 'mp4'), contains('aac'));
+    });
+
+    test('a player that decodes its own HLS output still offers MP2, so a DVB '
+        'live channel is copied rather than re-encoded', () {
+      final profile = DeviceProfileBuilder.build();
+
+      expect(_transcodingAudioCodecList(profile, 'ts'), contains('mp2'));
     });
   });
 
@@ -1086,10 +1776,8 @@ void main() {
 
     test('caps reporting no AVC advertise no h264 profiles at all, which is '
         'what makes the server unable to pick any encoder', () {
-      // Guards the failure this exists to prevent: with an empty profile set
-      // the request reaches the server as `h264-profile=none`, every encoder
-      // fails the client-profile match, and each transcode segment 500s.
-      // main.dart applies an AVC floor so this state never ships.
+      // Pins the state the AVC floor exists to keep from shipping, since an
+      // empty profile list is what reaches the server as `h264-profile=none`.
       final profile = DeviceProfileBuilder.build(
         supportsAvc: false,
         avcMainLevel: 0,
@@ -1098,10 +1786,61 @@ void main() {
       expect(_h264ApplyProfiles(profile), isEmpty);
     });
   });
+
+  group('DeviceProfileBuilder max resolution', () {
+    const capped = (width: '1920', height: '1080');
+    final backends = <String, Map<String, dynamic> Function()>{
+      'Media3 and mpv': () => DeviceProfileBuilder.build(
+        maxResolution: MaxVideoResolution.res1080p,
+        universalAudioDecode: true,
+      ),
+      'AetherEngine on iOS, macOS and tvOS': () => DeviceProfileBuilder.build(
+        maxResolution: MaxVideoResolution.res1080p,
+        universalAudioDecode: true,
+        appliesDownmixToStereo: false,
+        bridgesAudioToEac3: true,
+        hevcRequiresFmp4Hls: true,
+        hlsAudioForAvFoundation: true,
+      ),
+      'external players': () => DeviceProfileBuilder.build(
+        maxResolution: MaxVideoResolution.res1080p,
+        universalAudioDecode: true,
+        applyKnownDeviceDefects: false,
+        maxResolutionAvcWidth: 4096,
+        maxResolutionAvcHeight: 2160,
+        maxResolutionHevcWidth: 4096,
+        maxResolutionHevcHeight: 2160,
+        maxResolutionAv1Width: 4096,
+        maxResolutionAv1Height: 2160,
+        maxResolutionVc1Width: 4096,
+        maxResolutionVc1Height: 2160,
+      ),
+    };
+
+    for (final MapEntry(key: name, value: build) in backends.entries) {
+      test('caps every direct play codec on $name', () {
+        final profile = build();
+        final codecs = _videoDirectPlayVideoCodecs(profile);
+
+        expect(codecs, contains('vp9'));
+        for (final codec in codecs) {
+          expect(_resolutionCap(profile, codec), capped, reason: codec);
+        }
+      });
+    }
+
+    test('Auto leaves codecs without a probed size uncapped', () {
+      final profile = DeviceProfileBuilder.build();
+
+      for (final codec in const ['mpeg', 'mpeg2video', 'mpeg4', 'vp8', 'vp9']) {
+        expect(_resolutionCap(profile, codec), isNull, reason: codec);
+      }
+    });
+  });
 }
 
-// The VideoProfile values the server reads to decide which encoder profiles the
-// client accepts; these become the `h264-profile=` request parameter.
+// The VideoProfile values the server reads to decide which encoder profiles
+// the client accepts. These become the `h264-profile=` request parameter.
 Set<String> _h264ApplyProfiles(Map<String, dynamic> profile) {
   final codecProfiles = profile['CodecProfiles'] as List<dynamic>? ?? const [];
   final values = <String>{};

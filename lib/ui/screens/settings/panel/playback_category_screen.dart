@@ -83,9 +83,13 @@ class _PlaybackCategoryScreen extends StatelessWidget {
                       const _AutomationQueueScreen(),
                     ),
                   ),
-                  if (!PlatformDetection.isTV && !PlatformDetection.isWeb)
+                  // Sipflix fork: offline downloads are retired on TV boxes.
+                  if (PlatformDetection.supportsOfflineDownloads &&
+                      !PlatformDetection.isWeb &&
+                      (!PlatformDetection.isTV ||
+                          SipflixSettingsMode.showRetired))
                     _TvSettingsListTile(
-                      leading: const Icon(Icons.download),
+                      leading: const Icon(Icons.download_for_offline),
                       title: Text(l10n.settingsOfflineDownloads),
                       subtitle: Text(l10n.settingsOfflineDownloadsSubtitle),
                       onTap: () => context.pushSettingsScreen(

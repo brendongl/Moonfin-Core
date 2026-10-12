@@ -31,6 +31,20 @@ get_multiarch_triplet() {
   esac
 }
 
+get_snap_base() {
+  local release=""
+  if [ -r /etc/os-release ]; then
+    release="$(. /etc/os-release && printf '%s' "${VERSION_ID:-}")"
+  fi
+
+  case "$release" in
+    22.04) printf '%s\n' "core22" ;;
+    24.04) printf '%s\n' "core24" ;;
+    26.04) printf '%s\n' "core26" ;;
+    *) return 1 ;;
+  esac
+}
+
 get_deb_architecture() {
   local machine
   machine="$(uname -m)"
@@ -542,12 +556,13 @@ create_desktop_file() {
 [Desktop Entry]
 Type=Application
 Name=Moonfin
-Exec=moonfin
+Exec=moonfin %U
 Icon=${APP_ID}
 Categories=AudioVideo;Video;
 Comment=Jellyfin & Emby media client
 Terminal=false
 StartupWMClass=${APP_ID}
+MimeType=x-scheme-handler/moonfin;
 EOF
   # AppImage launchers read the version from the embedded desktop entry rather
   # than the filename.
@@ -1055,16 +1070,23 @@ build_snap() {
     return 1
   fi
 
+  local snap_base
+  if ! snap_base="$(get_snap_base)"; then
+    echo "Skipping Snap: no base snap matches this host"
+    echo "  Staged packages don't run on a base built from another release."
+    return 1
+  fi
+
   if command -v snap >/dev/null 2>&1; then
     echo "Waiting for snapd seed to complete..."
     if ! snap wait system seed.loaded >/dev/null 2>&1; then
       echo "Warning: snapd seed wait failed; continuing and letting snapcraft attempt build."
     fi
 
-    if ! snap list core22 >/dev/null 2>&1; then
-      echo "core22 not found. Installing core22 base snap..."
-      if ! retry_with_backoff 3 sudo snap install core22 --channel=latest/stable; then
-        echo "Failed to install core22 after retries."
+    if ! snap list "$snap_base" >/dev/null 2>&1; then
+      echo "$snap_base not found. Installing $snap_base base snap..."
+      if ! retry_with_backoff 3 sudo snap install "$snap_base" --channel=latest/stable; then
+        echo "Failed to install $snap_base after retries."
         return 1
       fi
     fi
@@ -1091,7 +1113,7 @@ description: |
 
 grade: stable
 confinement: strict
-base: core22
+base: ${snap_base}
 icon: ${APP_ID}.png
 
 apps:
@@ -1104,7 +1126,10 @@ apps:
       - opengl
       - pulseaudio
     environment:
-      LD_LIBRARY_PATH: \$SNAP/lib:\$SNAP/lib/${snap_triplet}:\$SNAP/usr/lib/${snap_triplet}
+      # libpulse looks for libpulsecommon under an absolute path that
+      # confinement points at the base snap, which carries no audio libraries,
+      # so the copy packed in here has to be named on the search path.
+      LD_LIBRARY_PATH: \$SNAP/lib:\$SNAP/lib/${snap_triplet}:\$SNAP/usr/lib/${snap_triplet}:\$SNAP/usr/lib/${snap_triplet}/pulseaudio
 
 parts:
   moonfin:
@@ -1133,11 +1158,12 @@ EOF
 [Desktop Entry]
 Type=Application
 Name=Moonfin
-Exec=moonfin
+Exec=moonfin %U
 Icon=\${SNAP}/meta/gui/icon.png
 Categories=AudioVideo;Video;
 Comment=Jellyfin & Emby media client
 Terminal=false
+MimeType=x-scheme-handler/moonfin;
 EOF
 
   cd "$snap_dir"

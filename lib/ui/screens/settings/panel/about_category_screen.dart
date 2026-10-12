@@ -5,7 +5,7 @@ class _AboutCategoryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final appVersion = GetIt.instance<DeviceInfo>().appVersion;
+    final appVersion = AppBeta.label(GetIt.instance<DeviceInfo>().appVersion);
     final l10n = AppLocalizations.of(context);
     final advanced = SipflixSettingsMode.advanced;
     // Sipflix: updates come by OTA, and the issue tracker, Discord and
@@ -75,6 +75,28 @@ class _AboutCategoryScreen extends StatelessWidget {
                   onTap: () => context.pushSettingsScreen(
                     const DiagnosticsSettingsScreen(),
                   ),
+                ),
+              if (PlatformDetection.useDesktopUi)
+                _TvSettingsListTile(
+                  leading: const Icon(Icons.keyboard_outlined),
+                  title: Text(l10n.keyboardShortcutsTitle),
+                  subtitle: Text(l10n.keyboardShortcutsSubtitle),
+                  onTap: () => context.pushSettingsScreen(
+                    const _KeyboardShortcutsScreen(),
+                  ),
+                ),
+              // Sipflix fork: the wizard re-shapes navbar, home rows and the
+              // detail page a box ships with, so it is Advanced only.
+              if (advanced)
+                _TvSettingsListTile(
+                  leading: const Icon(Icons.auto_awesome),
+                  title: Text(l10n.runSetupAgain),
+                  // Asking again on purpose says more than the stored answers
+                  // do, so a deliberate re-run offers every question back.
+                  onTap: () {
+                    GetIt.instance<SetupWizardGate>().beginRerun();
+                    context.navigateTopLevel(Destinations.setup);
+                  },
                 ),
               if (retired)
                 _TvSettingsListTile(

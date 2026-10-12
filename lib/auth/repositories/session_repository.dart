@@ -1,12 +1,28 @@
 import 'dart:async';
 
+import 'package:custom_tv_text_field/custom_tv_text_field.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter/widgets.dart' show AppLifecycleState, WidgetsBinding;
+import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/widgets.dart'
+    show
+        Actions,
+        ActivateIntent,
+        AppLifecycleState,
+        FocusManager,
+        PageRoute,
+        WidgetsBinding;
+
+import '../../l10n/current_app_localizations.dart';
 import '../../ui/navigation/app_router.dart';
 import '../../ui/navigation/destinations.dart';
 import '../../ui/navigation/home_refresh_bus.dart';
+import '../../ui/screensaver/screensaver_controller.dart';
+import '../../ui/widgets/overlay_sheet.dart';
+import '../../ui/widgets/floating_notification.dart';
 
 import 'package:get_it/get_it.dart';
+import 'package:go_router/go_router.dart';
+import 'package:volume_controller/volume_controller.dart';
 import 'package:logger/logger.dart';
 import 'package:playback_core/playback_core.dart';
 import 'package:server_core/server_core.dart';
@@ -14,16 +30,23 @@ import 'package:server_core/server_core.dart';
 import '../../data/models/aggregated_item.dart';
 import '../../data/services/carplay_service.dart';
 import '../../data/services/cast/cast_service.dart';
+import '../../data/services/crash_report_service.dart';
 import '../../data/services/download_notification_service.dart';
+import '../../data/services/topshelf_service.dart';
 import '../../data/services/tv_channels_service.dart';
 import '../../data/services/watch_next_service.dart';
 import '../../data/services/media_server_client_factory.dart';
+import '../../data/services/achievements_service.dart';
 import '../../data/services/plugin_sync_service.dart';
 import '../../data/services/push_messaging_service.dart';
+import '../../data/services/remote_search_session.dart';
+import '../../data/services/server_messages_service.dart';
 import '../../data/services/socket_handler.dart';
+import '../../data/services/user_data_sync.dart';
 import '../../di/modules/app_module.dart';
 import '../../di/modules/playback_module.dart';
 import '../../di/modules/server_module.dart';
+import '../../playback/appletv_backend.dart';
 import '../../playback/audio_handler.dart';
 import '../../playback/headless_session_bootstrap.dart';
 import '../../playback/last_playback_session_store.dart';
@@ -32,8 +55,11 @@ import '../../preference/preference_constants.dart';
 import '../../preference/user_preferences.dart';
 import '../../sipflix/sipflix_credential_vault.dart';
 import '../../sipflix/sipflix_servers.dart';
+import '../../ui/screens/setup/setup_wizard_gate.dart';
 import '../../syncplay/syncplay_manager.dart';
+import '../../util/fullscreen_helper.dart';
 import '../../util/platform_detection.dart';
+import '../../util/focus/gamepad/gamepad_key_synthesizer.dart';
 import '../../util/server_url.dart';
 import '../store/authentication_preferences.dart';
 import '../store/authentication_store.dart';
@@ -45,7 +71,7 @@ import 'user_repository.dart';
 enum SessionState { ready, restoring, switching }
 
 class SessionRepository {
-  static const List<String> _supportedRemoteCommands = [
+  static const List<String> _baseSupportedRemoteCommands = [
     'DisplayMessage',
     'SetVolume',
     'Mute',
@@ -55,7 +81,31 @@ class SessionRepository {
     'SetSubtitleStreamIndex',
     'SetRepeatMode',
     'SetShuffleQueue',
+    'GoHome',
+    'GoToSearch',
+    'SendString',
+    'VolumeUp',
+    'VolumeDown',
   ];
+
+  static const List<String> _navigationRemoteCommands = [
+    'MoveUp',
+    'MoveDown',
+    'MoveLeft',
+    'MoveRight',
+    'Select',
+    'Back',
+  ];
+
+  List<String> get _supportedRemoteCommands => [
+    ..._baseSupportedRemoteCommands,
+    ..._navigationRemoteCommands,
+    // Nothing but a desktop has a window to resize, so anywhere else would be
+    // offering a button that does nothing.
+    if (PlatformDetection.isDesktop) 'ToggleFullscreen',
+  ];
+
+  static const double _volumeStep = 10;
   static const Duration _initialLoginSyncWait = Duration(seconds: 3);
 
   final AuthenticationStore _authStore;
@@ -72,9 +122,12 @@ class SessionRepository {
   String? _activeUserId;
   SessionState _state = SessionState.ready;
   StreamSubscription<ServerWebSocketMessage>? _remoteCommandSubscription;
+  RemoteSearchSession? _remoteSearch;
   StreamSubscription<ServerWebSocketMessage>? _pluginEventSubscription;
+  StreamSubscription<void>? _socketConnectionSubscription;
   double _lastUnmutedVolume = 100;
-  bool _remoteMuted = false;
+  Future<void> _remoteVolumeFlight = Future.value();
+  int _remoteVolumeGeneration = 0;
   bool _hasCheckedWriteAccess = false;
 
   static const Duration _socketIdleGrace = Duration(seconds: 60);
@@ -91,13 +144,21 @@ class SessionRepository {
     this._socketHandler,
     this._serverRepository,
     this._userRepository,
-    this._pluginSyncService,
-  ) {
-    // Sipflix: every server Dio client funnels a 401 through here instead
-    // of each call site inventing its own retry/sign-out handling — see
-    // [handleUnauthorized] and [UnauthorizedInterceptor]. R5/R6 bug B2.
+    this._pluginSyncService, {
+    GoRouter? router,
+  }) : _router = router ?? appRouter {
+    // Sipflix fork: every server Dio client funnels a 401 through here
+    // instead of each call site inventing its own retry/sign-out handling —
+    // see [handleUnauthorized] and [UnauthorizedInterceptor]. R5/R6 bug B2.
     MediaServerClient.onUnauthorized = handleUnauthorized;
   }
+
+  final GoRouter _router;
+
+  String get _remoteRoutePath =>
+      _router.routerDelegate.currentConfiguration.isEmpty
+      ? _router.routeInformationProvider.value.uri.path
+      : _router.state.uri.path;
 
   String? get activeServerId => _activeServerId;
   String? get activeUserId => _activeUserId;
@@ -161,7 +222,11 @@ class SessionRepository {
     }
 
     try {
-      return await switchCurrentSession(serverId: serverId, userId: userId);
+      return await switchCurrentSession(
+        serverId: serverId,
+        userId: userId,
+        validateToken: true,
+      );
     } catch (error) {
       // Secure storage refuses on a machine whose keychain the app cannot
       // reach, and an escape from here leaves the session mid switch forever,
@@ -177,9 +242,19 @@ class SessionRepository {
     required String userId,
     String? username,
     String? password,
+    bool validateToken = false,
   }) async {
     _setState(SessionState.switching);
+    _remoteVolumeGeneration++;
+    _remoteNavigationGeneration++;
+    _remoteSearch?.close();
     _pluginSyncService.resetState();
+    if (GetIt.instance.isRegistered<AchievementsService>()) {
+      GetIt.instance<AchievementsService>().reset();
+    }
+    if (GetIt.instance.isRegistered<ServerMessagesService>()) {
+      GetIt.instance<ServerMessagesService>().clear();
+    }
 
     final server = _serverRepository.getServer(serverId);
     if (server == null) {
@@ -195,10 +270,11 @@ class SessionRepository {
       _setState(SessionState.ready);
       return false;
     }
-    final user = users[userIndex];
-
     final token = await _credentialStore.getToken(serverId);
-    final accessToken = user.accessToken.isNotEmpty ? user.accessToken : token;
+    final storedUser = users[userIndex];
+    final accessToken = storedUser.accessToken.isNotEmpty
+        ? storedUser.accessToken
+        : token;
 
     if (accessToken == null || accessToken.isEmpty) {
       _logger.w(
@@ -217,8 +293,75 @@ class SessionRepository {
     client.accessToken = accessToken;
     client.userId = userId;
 
+    // A stored token can be long dead, and everything past this point fires
+    // authenticated requests in parallel. One rejected probe here keeps a dead
+    // token to a single 401 instead of a burst that trips fail2ban jails.
+    ServerUser? validatedUser;
+    var user = storedUser;
+    if (validateToken) {
+      // Sipflix fork: while the stored token is being validated, the central
+      // 401 hook stands aside so this block alone decides what a rejection
+      // means (no double sign-out / double redirect).
+      _validatingTokenServerId = serverId;
+      try {
+        validatedUser = await client.usersApi.getCurrentUser();
+      } on DioException catch (e) {
+        if (e.response?.statusCode == 401) {
+          // Sipflix fork: a Sipflix box with stored credentials re-signs in
+          // silently, and if that fails asks every Sipflix server where the
+          // account went (an admin move 401s the old token) instead of
+          // dropping the customer at a login page.
+          final vaultCredentials = await SipflixCredentialVault().read();
+          if (vaultCredentials != null &&
+              SipflixServers.isSipflixServerRecord(server) &&
+              await _trySilentReauth(
+                client,
+                serverId,
+                vaultCredentials,
+                expectedUserId: userId,
+              )) {
+            user = _authStore.getUser(serverId, userId) ?? user;
+            try {
+              validatedUser = await client.usersApi.getCurrentUser();
+            } catch (_) {}
+          } else {
+            _logger.w('Stored access token was rejected. Logging out.');
+            // Point the teardown at this session so it removes the right
+            // stored credentials.
+            _activeServerId = serverId;
+            _activeUserId = userId;
+            await destroyCurrentSession(tokenKnownInvalid: true);
+            if (vaultCredentials != null &&
+                SipflixServers.isSipflixServerRecord(server)) {
+              appRouter.go(
+                '${Destinations.qrLogin}?serverId=$serverId&reprobe=1',
+              );
+            } else {
+              appRouter.go(
+                '${Destinations.login}?serverId=$serverId&username=${Uri.encodeComponent(user.name)}',
+              );
+            }
+            return false;
+          }
+        }
+        // Anything else is the server being unreachable, and startup still
+        // has to reach the offline experience.
+      } catch (_) {
+      } finally {
+        _validatingTokenServerId = null;
+      }
+    }
+
     setActiveServerClient(client);
     resetUserScopedSingletons();
+    // Sipflix fork: boxes ship with our own defaults, so 2.7.0's first-run
+    // setup wizard is marked done before the router can redirect to it. A
+    // deliberate re-run from Settings still works.
+    if (GetIt.instance.isRegistered<SetupWizardGate>()) {
+      try {
+        await GetIt.instance<SetupWizardGate>().markComplete(client);
+      } catch (_) {}
+    }
     setActiveStreamResolver(client);
     _cancelSocketIdleTimer();
     // A headless boot has no UI to serve, and car browse, playback, and
@@ -229,7 +372,9 @@ class SessionRepository {
       _socketHandler.connectTo(client);
     }
     _bindRemoteCommandHandling();
+    _bindCapabilityReporting(client);
     _bindPluginEventHandling(client);
+    userDataSync.bindTo(_socketHandler.events, userId: userId);
     _refreshCarBrowseTree(signedIn: true);
 
     _activeServerId = serverId;
@@ -247,6 +392,7 @@ class SessionRepository {
       serverId,
       username,
       password,
+      preFetchedServerUser: validatedUser,
     ).catchError((_) {});
 
     if (shouldPrioritizeInitialSync) {
@@ -270,16 +416,23 @@ class SessionRepository {
     PrivateUser user,
     String serverId,
     String? username,
-    String? password,
-  ) async {
+    String? password, {
+    ServerUser? preFetchedServerUser,
+  }) async {
     await _reportRemoteCapabilities(client);
 
+    // A server is signed in now, so crash reports from earlier runs can go.
     try {
-      final serverUser = await client.usersApi.getCurrentUser();
+      unawaited(GetIt.instance<CrashReportService>().flushPending());
+    } catch (_) {}
+
+    try {
+      final serverUser =
+          preFetchedServerUser ?? await client.usersApi.getCurrentUser();
       final isAdmin = serverUser.policy?.isAdministrator ?? false;
       final canDownload = serverUser.policy?.enableContentDownloading ?? false;
       final canManageSubtitles =
-          serverUser.policy?.enableSubtitleManagement ?? false;
+          serverUser.policy?.canFetchRemoteSubtitles ?? false;
       final canManageCollections =
           serverUser.policy?.enableCollectionManagement ?? false;
 
@@ -316,6 +469,18 @@ class SessionRepository {
       }
     } catch (_) {}
 
+    // The settings entry and the friends button stay hidden until this
+    // answers. It doesn't wait for the settings sync, which on a first
+    // connection can take long enough to leave them hidden on the home screen.
+    if (GetIt.instance.isRegistered<AchievementsService>()) {
+      final achievements = GetIt.instance<AchievementsService>();
+      unawaited(
+        achievements.refreshAvailability(client).then((available) {
+          if (available) achievements.startPolling(client);
+        }),
+      );
+    }
+
     await _pluginSyncService.syncOnLogin(client, serverId: serverId);
 
     // Register the FCM token now that a session exists, and push the current
@@ -331,12 +496,12 @@ class SessionRepository {
       } catch (_) {}
     }
 
-    final seerrAvailable = await _pluginSyncService.configureSeerr(
+    final seerrCameUp = await _pluginSyncService.configureSeerr(
       client,
       username: username ?? user.name,
       password: password,
     );
-    if (seerrAvailable) {
+    if (seerrCameUp) {
       homeRefreshBus.requestNowOrAfterNavigation();
     }
   }
@@ -353,7 +518,12 @@ class SessionRepository {
   /// if it was dropped while backgrounded.
   void onAppResumed() {
     _cancelSocketIdleTimer();
-    if (!_socketSuspended) return;
+    if (!_socketSuspended) {
+      // A socket that dropped while the app sat idle is waiting out its
+      // backoff, and the user is here now, so do not make them wait for it.
+      _socketHandler.retryNow();
+      return;
+    }
     _socketSuspended = false;
     final serverId = _activeServerId;
     if (serverId == null) return;
@@ -361,6 +531,13 @@ class SessionRepository {
     if (client != null) {
       _socketHandler.connectTo(client);
     }
+  }
+
+  /// Called when the device regains a network, so a socket part way through
+  /// its backoff reconnects now rather than at the end of the wait.
+  void onNetworkRegained() {
+    if (_socketSuspended) return;
+    _socketHandler.retryNow();
   }
 
   void _evaluateSocketIdle() {
@@ -410,7 +587,13 @@ class SessionRepository {
     return false;
   }
 
-  Future<void> destroyCurrentSession() async {
+  /// [tokenKnownInvalid] is set when the server has already rejected the
+  /// token. The push unregister and the logout both authenticate with it, so
+  /// sending them would only add 401s to the burst that got us here.
+  Future<void> destroyCurrentSession({bool tokenKnownInvalid = false}) async {
+    _remoteVolumeGeneration++;
+    _remoteNavigationGeneration++;
+    _remoteSearch?.close();
     final serverId = _activeServerId;
     final userId = _activeUserId;
 
@@ -419,7 +602,7 @@ class SessionRepository {
 
     // Drop this device's push registration while the session/token is still
     // live, otherwise the plugin keeps sending closed-app pushes after logout.
-    if (PlatformDetection.isMobile) {
+    if (PlatformDetection.isMobile && !tokenKnownInvalid) {
       try {
         if (GetIt.instance.isRegistered<PushMessagingService>()) {
           await GetIt.instance<PushMessagingService>().unregister();
@@ -428,8 +611,14 @@ class SessionRepository {
     }
 
     _pluginSyncService.resetState();
+    if (GetIt.instance.isRegistered<AchievementsService>()) {
+      GetIt.instance<AchievementsService>().reset();
+    }
+    if (GetIt.instance.isRegistered<ServerMessagesService>()) {
+      GetIt.instance<ServerMessagesService>().clear();
+    }
 
-    if (serverId != null) {
+    if (serverId != null && !tokenKnownInvalid) {
       try {
         final client = _clientFactory.getClientIfExists(serverId);
         await client?.authApi.logout();
@@ -440,6 +629,9 @@ class SessionRepository {
     _remoteCommandSubscription = null;
     _pluginEventSubscription?.cancel();
     _pluginEventSubscription = null;
+    _socketConnectionSubscription?.cancel();
+    _socketConnectionSubscription = null;
+    userDataSync.reset();
     _socketHandler.disconnect();
 
     if (serverId != null) {
@@ -449,6 +641,7 @@ class SessionRepository {
       }
       _clientFactory.removeClient(serverId);
       resetActiveStreamResolver();
+      clearAutoDownloadForSignOut();
     }
 
     await _authPrefs.setLastServerId('');
@@ -473,6 +666,10 @@ class SessionRepository {
   /// re-enters this for the same server.
   final Set<String> _unauthorizedRecoveryInFlight = {};
 
+  /// Set while [switchCurrentSession] validates a stored token, so the
+  /// central 401 hook leaves that rejection to the validation block.
+  String? _validatingTokenServerId;
+
   /// Wired as [MediaServerClient.onUnauthorized]: the one place a 401 from
   /// any server client is handled, instead of each call site inventing its
   /// own retry/sign-out (which is how a raw `DioException` reached the
@@ -489,6 +686,10 @@ class SessionRepository {
       // recover — let it surface to its own caller unchanged.
       return false;
     }
+    if (_validatingTokenServerId != null) {
+      // Startup token validation (switchCurrentSession) owns this 401.
+      return false;
+    }
     if (!_unauthorizedRecoveryInFlight.add(serverId)) {
       return false;
     }
@@ -498,34 +699,9 @@ class SessionRepository {
 
       if (vaultCredentials != null &&
           server != null &&
-          SipflixServers.isSipflixServerRecord(server)) {
-        try {
-          final result = await client.authApi.authenticateByName(
-            vaultCredentials.username,
-            vaultCredentials.password,
-          );
-          final accessToken = result['AccessToken'] as String?;
-          final userJson = result['User'] as Map<String, dynamic>?;
-          final userId =
-              userJson?['Id']?.toString() ?? result['UserId']?.toString();
-          if (accessToken != null && userId != null) {
-            client.accessToken = accessToken;
-            client.userId = userId;
-            final existingUser = _authStore.getUser(serverId, userId);
-            if (existingUser != null) {
-              await _authStore.putUser(
-                existingUser.copyWith(accessToken: accessToken),
-              );
-            }
-            _activeUserId = userId;
-            _logger.i('Silently re-authenticated $serverId after a 401.');
-            return true;
-          }
-        } catch (error) {
-          _logger.w(
-            'Silent re-auth after a 401 failed for $serverId: $error',
-          );
-        }
+          SipflixServers.isSipflixServerRecord(server) &&
+          await _trySilentReauth(client, serverId, vaultCredentials)) {
+        return true;
       }
 
       await _signOutAfterUnauthorized(
@@ -535,6 +711,43 @@ class SessionRepository {
       return false;
     } finally {
       _unauthorizedRecoveryInFlight.remove(serverId);
+    }
+  }
+
+  /// Sipflix fork: one `AuthenticateByName` with the box's stored
+  /// credentials, adopting the new token on [client] and in the auth store.
+  /// When [expectedUserId] is given, a token for a different user is refused.
+  Future<bool> _trySilentReauth(
+    MediaServerClient client,
+    String serverId,
+    ({String username, String password}) credentials, {
+    String? expectedUserId,
+  }) async {
+    try {
+      final result = await client.authApi.authenticateByName(
+        credentials.username,
+        credentials.password,
+      );
+      final accessToken = result['AccessToken'] as String?;
+      final userJson = result['User'] as Map<String, dynamic>?;
+      final userId =
+          userJson?['Id']?.toString() ?? result['UserId']?.toString();
+      if (accessToken == null || userId == null) return false;
+      if (expectedUserId != null && userId != expectedUserId) return false;
+      client.accessToken = accessToken;
+      client.userId = userId;
+      final existingUser = _authStore.getUser(serverId, userId);
+      if (existingUser != null) {
+        await _authStore.putUser(
+          existingUser.copyWith(accessToken: accessToken),
+        );
+      }
+      if (_activeServerId == serverId) _activeUserId = userId;
+      _logger.i('Silently re-authenticated $serverId after a 401.');
+      return true;
+    } catch (error) {
+      _logger.w('Silent re-auth after a 401 failed for $serverId: $error');
+      return false;
     }
   }
 
@@ -549,7 +762,9 @@ class SessionRepository {
     String serverId, {
     required bool hadStoredCredentials,
   }) async {
-    await destroyCurrentSession();
+    // The token is already rejected; logout/push-unregister would only add
+    // more 401s (and could re-enter this hook).
+    await destroyCurrentSession(tokenKnownInvalid: true);
     if (hadStoredCredentials) {
       // Sipflix: the same recovery path a server-side account move already
       // uses (SipflixSignIn.probe) — ask every saved server where this
@@ -578,6 +793,7 @@ class SessionRepository {
         WatchNextService().clear();
         WatchNextService().cancelPeriodicRefresh();
         TvChannelsService().clear();
+        TopShelfService().clear();
       }
       if (GetIt.instance.isRegistered<MoonfinAudioHandler>()) {
         GetIt.instance<MoonfinAudioHandler>().notifyChildrenChanged();
@@ -596,7 +812,22 @@ class SessionRepository {
   void _bindRemoteCommandHandling() {
     _remoteCommandSubscription?.cancel();
     _remoteCommandSubscription = _socketHandler.events.listen(
-      (event) => unawaited(_handleRemoteCommand(event)),
+      (event) => unawaited(
+        _handleRemoteCommand(event).catchError((Object error) {
+          _logger.w('Remote command failed: ${error.runtimeType}');
+        }),
+      ),
+    );
+  }
+
+  /// A server that restarts forgets every session it held, and the one it
+  /// builds for the next request carries no capabilities, which is what makes
+  /// it refuse remote control. Saying them again on each connect is what puts
+  /// the session back in a controllable state.
+  void _bindCapabilityReporting(MediaServerClient client) {
+    _socketConnectionSubscription?.cancel();
+    _socketConnectionSubscription = _socketHandler.connections.listen(
+      (_) => unawaited(_reportRemoteCapabilities(client)),
     );
   }
 
@@ -635,11 +866,36 @@ class SessionRepository {
       case PlaystateMessage():
         await _handlePlaystateMessage(event);
       case GeneralCommandMessage():
-        await _handleGeneralCommandMessage(event);
+        if (const {
+          'setvolume',
+          'volumeup',
+          'volumedown',
+          'mute',
+          'unmute',
+          'togglemute',
+        }.contains(event.name.toLowerCase())) {
+          final generation = _remoteVolumeGeneration;
+          final result = _remoteVolumeFlight.then((_) async {
+            if (generation == _remoteVolumeGeneration) {
+              await _handleGeneralCommandMessage(event);
+            }
+          });
+          // A failed setter shouldn't block the next adjustment.
+          _remoteVolumeFlight = result.catchError((_) {});
+          await result;
+        } else {
+          await _handleGeneralCommandMessage(event);
+        }
       default:
         break;
     }
   }
+
+  /// Lets a test drive a command straight in, so every name a control surface
+  /// sends can be checked against what the receiver does with it.
+  @visibleForTesting
+  Future<void> handleRemoteCommandForTest(ServerWebSocketMessage event) =>
+      _handleRemoteCommand(event);
 
   int? _parseIntArg(Map<String, String> args, String key) {
     final value = args[key];
@@ -650,16 +906,78 @@ class SessionRepository {
   }
 
   Future<void> _setLocalVolume(PlaybackManager manager, double volume) async {
+    final clamped = volume.clamp(0, 100).toDouble();
     final backend = manager.backend;
-    if (backend == null) {
-      return;
+    if (backend == null) return;
+    if (PlatformDetection.isMobile) {
+      // Mobile playback keeps player gain at full and adjusts system volume.
+      await VolumeController.instance.setVolume(clamped / 100);
+      final actual = await VolumeController.instance.getVolume();
+      manager.reportVolumeState(
+        volume: actual * 100,
+        isMuted: actual <= 0,
+        reportImmediately: true,
+      );
+    } else {
+      await backend.setVolume(clamped);
+      manager.reportVolumeState(
+        volume: clamped,
+        isMuted: clamped <= 0,
+        reportImmediately: true,
+      );
     }
-    await backend.setVolume(volume.clamp(0, 100));
+    if (manager.volume > 0) _lastUnmutedVolume = manager.volume;
   }
 
-  double _normalizeVolume(String raw) {
-    final parsed = double.tryParse(raw) ?? 100;
-    if (parsed <= 1) {
+  Future<void> _setRemoteMuted(PlaybackManager manager, bool muted) async {
+    final current = await _currentVolume(manager);
+    if (muted && current > 0) {
+      _lastUnmutedVolume = current;
+      await _setLocalVolume(manager, 0);
+    } else if (!muted && current <= 0) {
+      await _setLocalVolume(manager, _lastUnmutedVolume);
+    }
+  }
+
+  Future<double> _currentVolume(PlaybackManager manager) async =>
+      PlatformDetection.isMobile && manager.backend != null
+      ? await VolumeController.instance.getVolume() * 100
+      : manager.volume;
+
+  void _wakeRemoteScreen() {
+    if (!GetIt.instance.isRegistered<ScreensaverController>()) return;
+    final screensaver = GetIt.instance<ScreensaverController>();
+    screensaver.dismissIfVisible();
+    screensaver.notifyInteraction();
+  }
+
+  final _remoteKeys = GamepadKeySynthesizer.remote();
+  int _remoteNavigationGeneration = 0;
+
+  Future<void> _navigateRemote(String command, GamepadNavKey key) async {
+    final backend = GetIt.instance<PlaybackManager>().backend;
+    if (backend is AppleTvBackend && backend.isPlayerPresented) {
+      // Native playback owns its input, including any menu above the player.
+      await backend.sendRemoteNavigation(command);
+      return;
+    }
+    final handled = _remoteKeys.tap(key);
+    if (!handled && key == GamepadNavKey.select) {
+      // Cupertino's default shortcuts don't map the TV Select key.
+      final context = FocusManager.instance.primaryFocus?.context;
+      if (context != null) Actions.maybeInvoke(context, const ActivateIntent());
+    }
+    if (!handled && key == GamepadNavKey.back) {
+      await _router.routerDelegate.navigatorKey.currentState?.maybePop();
+    }
+  }
+
+  double? _normalizeVolume(String raw) {
+    final parsed = double.tryParse(raw);
+    if (parsed == null || !parsed.isFinite) return null;
+    // Session commands send a percentage, so 1 means 1%. Only a value between
+    // 0 and 1 is read as a fraction.
+    if (parsed > 0 && parsed < 1) {
       return (parsed * 100).clamp(0, 100).toDouble();
     }
     return parsed.clamp(0, 100).toDouble();
@@ -753,6 +1071,8 @@ class SessionRepository {
     int startIndex,
     PlayMessage message,
   ) async {
+    _remoteNavigationGeneration++;
+    _remoteSearch?.close();
     final item = items[startIndex];
     final isLiveTv = _isLiveTvItem(item);
     final allowDirect = isLiveTv
@@ -823,9 +1143,51 @@ class SessionRepository {
         await manager.next();
       case 'previoustrack':
         await manager.previous();
+      case 'playpause':
+        // The backend knows before the state does, so a track still being
+        // brought up reads as paused rather than as already playing.
+        if (manager.backend?.isPlaying ?? manager.state.isPlaying) {
+          await manager.pause();
+        } else {
+          await manager.resume();
+        }
+      case 'rewind':
+        await _remoteSkip(manager, forward: false);
+      case 'fastforward':
+        await _remoteSkip(manager, forward: true);
       default:
         break;
     }
+  }
+
+  /// Moves playback by the same amount this device's own skip buttons use, so
+  /// a jump from a remote lands where a local one would.
+  Future<void> _remoteSkip(
+    PlaybackManager manager, {
+    required bool forward,
+  }) async {
+    final prefs = GetIt.instance<UserPreferences>();
+    final length = Duration(
+      milliseconds: prefs.get(
+        forward
+            ? UserPreferences.skipForwardLength
+            : UserPreferences.skipBackLength,
+      ),
+    );
+    final position = manager.state.position;
+    final target = forward ? position + length : position - length;
+    if (target < Duration.zero) {
+      await manager.seekTo(Duration.zero);
+      return;
+    }
+    // A duration of zero means nothing has reported one yet, and clamping to
+    // it would send every skip back to the start.
+    final duration = manager.state.duration;
+    if (duration > Duration.zero && target > duration) {
+      await manager.seekTo(duration);
+      return;
+    }
+    await manager.seekTo(target);
   }
 
   Future<void> _handleGeneralCommandMessage(
@@ -836,34 +1198,43 @@ class SessionRepository {
       case 'displaymessage':
         final text = message.arguments['Text'];
         if (text != null && text.trim().isNotEmpty) {
-          await GetIt.instance<DownloadNotificationService>().showRemoteMessage(
-            text: text,
-            header: message.arguments['Header'],
-          );
+          await _showRemoteMessage(text, message.arguments['Header']);
         }
       case 'setvolume':
         final raw = message.arguments['Volume'];
         if (raw != null) {
           final volume = _normalizeVolume(raw);
-          await _setLocalVolume(manager, volume);
-          if (volume > 0) {
-            _lastUnmutedVolume = volume;
-            _remoteMuted = false;
-          } else {
-            _remoteMuted = true;
-          }
+          if (volume != null) await _setLocalVolume(manager, volume);
         }
       case 'mute':
-        if (!_remoteMuted) {
-          _remoteMuted = true;
-          await _setLocalVolume(manager, 0);
-        }
+        await _setRemoteMuted(manager, true);
       case 'unmute':
-        _remoteMuted = false;
-        await _setLocalVolume(manager, _lastUnmutedVolume);
+        await _setRemoteMuted(manager, false);
       case 'togglemute':
-        _remoteMuted = !_remoteMuted;
-        await _setLocalVolume(manager, _remoteMuted ? 0 : _lastUnmutedVolume);
+        await _setRemoteMuted(manager, await _currentVolume(manager) > 0);
+      case 'volumeup':
+        final raised = await _currentVolume(manager) + _volumeStep;
+        await _setLocalVolume(manager, raised);
+      case 'volumedown':
+        final lowered = await _currentVolume(manager) - _volumeStep;
+        await _setLocalVolume(manager, lowered);
+      case 'togglefullscreen':
+        await FullscreenHelper.toggle();
+      case 'moveup':
+        await _navigateRemote('moveup', GamepadNavKey.up);
+      case 'movedown':
+        await _navigateRemote('movedown', GamepadNavKey.down);
+      case 'moveleft':
+        await _navigateRemote('moveleft', GamepadNavKey.left);
+      case 'moveright':
+        await _navigateRemote('moveright', GamepadNavKey.right);
+      case 'select':
+        await _navigateRemote('select', GamepadNavKey.select);
+      case 'back':
+        _remoteNavigationGeneration++;
+        // An attached Search ends with its route. Back may only hide a keyboard.
+        if (_remoteSearch?.opening == true) _remoteSearch?.close();
+        await _navigateRemote('back', GamepadNavKey.back);
       case 'setaudiostreamindex':
         final index = _parseIntArg(message.arguments, 'Index');
         if (index != null) {
@@ -889,12 +1260,117 @@ class SessionRepository {
         if (mode != null) {
           await _setShuffleMode(manager, mode);
         }
+      case 'gohome':
+        _wakeRemoteScreen();
+        final generation = ++_remoteNavigationGeneration;
+        _remoteSearch?.close();
+        CustomTVTextField.closeTopKeyboard();
+        _router.routerDelegate.navigatorKey.currentState?.popUntil(
+          (route) => route is PageRoute,
+        );
+        final backend = manager.backend;
+        if (OverlaySheetController.hasOpenSheet) {
+          await OverlaySheetController.closeAllSheets();
+        }
+        if (generation != _remoteNavigationGeneration) return;
+        await manager.stop(userInitiated: false);
+        if (generation != _remoteNavigationGeneration) return;
+        if (backend is AppleTvBackend) await backend.dismissPlayer();
+        if (generation != _remoteNavigationGeneration) return;
+        _router.go(Destinations.home);
+      case 'gotosearch':
+        await _openRemoteSearch(
+          manager,
+          RemoteSearchSession(message.arguments['MoonfinInputId']),
+        );
+      case 'sendstring':
+        final search = _remoteSearch;
+        if (search != null &&
+            !search.opening &&
+            _remoteRoutePath != Destinations.search) {
+          search.close();
+        }
+        if (search != null && search.active) {
+          _wakeRemoteScreen();
+          search.receive(message.arguments);
+        } else if (message.arguments['MoonfinInputId'] == null) {
+          // Another controller's text has no Search to land in yet, so it
+          // opens one. Edits from a phone whose input session ended stay
+          // dropped.
+          final opened = RemoteSearchSession(null)
+            ..receive(message.arguments);
+          await _openRemoteSearch(manager, opened);
+        }
       default:
         break;
     }
   }
 
+  /// Opens Search for [search] once dialogs, the TV keyboard and playback are
+  /// out of the way. A stopped player or an earlier Search is replaced rather
+  /// than kept, so Back skips it. From anywhere else Search is pushed, so Back
+  /// returns to where the viewer was.
+  Future<void> _openRemoteSearch(
+    PlaybackManager manager,
+    RemoteSearchSession search,
+  ) async {
+    _remoteNavigationGeneration++;
+    _remoteSearch?.close();
+    _remoteSearch = search;
+    _wakeRemoteScreen();
+    try {
+      CustomTVTextField.closeTopKeyboard();
+      _router.routerDelegate.navigatorKey.currentState?.popUntil(
+        (route) => route is PageRoute,
+      );
+      if (OverlaySheetController.hasOpenSheet) {
+        await OverlaySheetController.closeAllSheets();
+      }
+      if (!search.active) return;
+      await manager.stop(userInitiated: false);
+      if (!search.active) return;
+      // Native tvOS playback is presented above Flutter's routes.
+      final backend = manager.backend;
+      if (backend is AppleTvBackend) await backend.dismissPlayer();
+      if (!search.active) return;
+      final path = _remoteRoutePath;
+      if (path == Destinations.search || Destinations.isPlayerRoute(path)) {
+        unawaited(_router.pushReplacement(Destinations.search, extra: search));
+      } else {
+        unawaited(_router.push(Destinations.search, extra: search));
+      }
+    } catch (_) {
+      search.close();
+      rethrow;
+    }
+  }
+
+  /// Shows a message another client sent to this one. It takes the system
+  /// notification where the device has them and an in-app banner where it
+  /// doesn't, so a message the sender saw go through always lands somewhere.
+  Future<void> _showRemoteMessage(String text, String? header) async {
+    final delivered = await GetIt.instance<DownloadNotificationService>()
+        .showRemoteMessage(text: text, header: header);
+    if (delivered) return;
+
+    final context = appRouter.routerDelegate.navigatorKey.currentContext;
+    if (context == null || !context.mounted) return;
+    final l10n = currentAppLocalizations();
+    FloatingNotification.show(
+      context,
+      (header != null && header.trim().isNotEmpty)
+          ? header.trim()
+          : l10n.serverMessagesNotificationTitle,
+      text.trim(),
+      null,
+    );
+  }
+
   void dispose() {
+    _remoteVolumeGeneration++;
+    _remoteNavigationGeneration++;
+    _remoteKeys.releaseAll();
+    _remoteSearch?.close();
     _remoteCommandSubscription?.cancel();
     _pluginEventSubscription?.cancel();
     _stateController.close();

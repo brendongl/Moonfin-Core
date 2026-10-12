@@ -1,16 +1,21 @@
 import 'dart:async';
 
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:get_it/get_it.dart';
 import 'package:playback_core/playback_core.dart';
 
 import '../data/services/log_service.dart';
 import '../preference/preference_constants.dart';
 import '../preference/user_preferences.dart';
+import '../util/loggable_url.dart';
 import '../util/platform_detection.dart';
 
 import 'device_profile_builder.dart';
+import 'dolby_vision_av1.dart';
+import 'engine_trust.dart';
 import 'known_defects.dart';
+import 'letterbox_croppers.dart';
 import 'server_transcode_capabilities.dart';
 
 /// Playback backend driving the native AetherEngine wrapper over a method
@@ -26,12 +31,15 @@ class AetherBackend implements PlayerBackend {
     );
     _prefs.addListener(_syncAllowUntrustedTls);
     _syncAllowUntrustedTls();
+    _prefs.addListener(_syncEngineLogForwarding);
+    _syncEngineLogForwarding();
   }
 
   static const _control = MethodChannel('moonfin/ios_aether_control');
   static const _events = EventChannel('moonfin/ios_aether_events');
 
   final UserPreferences _prefs;
+  bool? _engineLogForwarding;
 
   StreamSubscription<dynamic>? _eventSub;
 
@@ -53,8 +61,18 @@ class AetherBackend implements PlayerBackend {
   final _tracksChangedController = StreamController<void>.broadcast();
 
   bool _disposed = false;
-  bool? _allowUntrustedTls;
+  EngineTrust? _trust;
   Timer? _audioDelayDebounce;
+
+  // A torn down session stops pushing state, so the last buffering value the
+  // channel sent stays latched and the player keeps its loading overlay with
+  // nothing left to clear it. This does not resume playback, it turns a silent
+  // hang into a failure the manager can surface.
+  static const _stallTimeoutMs = 30000;
+  Timer? _stallTimer;
+  bool _stallSawPlayback = false;
+  int _stallSinceMs = 0;
+  int _stallLastPositionMs = -1;
 
   final _positionStream = StreamController<Duration>.broadcast();
   final _durationStream = StreamController<Duration>.broadcast();
@@ -63,9 +81,31 @@ class AetherBackend implements PlayerBackend {
   final _bufferingStream = StreamController<bool>.broadcast();
   final _completedStream = StreamController<bool>.broadcast();
   final _errorStream = StreamController<Map<String, dynamic>>.broadcast();
+  final _remoteCommandStream =
+      StreamController<Map<String, dynamic>>.broadcast();
 
   @override
   Stream<Map<String, dynamic>> get errorStream => _errorStream.stream;
+
+  /// Transport presses from the system controls while music plays on the
+  /// engine's own Now Playing session, which audio_service never sees.
+  Stream<Map<String, dynamic>> get remoteCommandStream =>
+      _remoteCommandStream.stream;
+
+  /// Fills that session in. iOS shows it in place of the audio_service entry
+  /// while music plays, so without this the card has no title or artwork.
+  Future<void> setNowPlaying({
+    required String title,
+    required String artist,
+    required String? artworkUrl,
+    required bool hasNext,
+  }) => _invoke<void>('setUiMetadata', {
+    'topTitle': title,
+    'topSubtitle': artist,
+    'logoUrl': artworkUrl ?? '',
+    'hasNext': hasNext,
+    'hasPrevious': true,
+  });
 
   Future<T?> _invoke<T>(String method, [dynamic arguments]) async {
     if (_disposed) return null;
@@ -88,6 +128,7 @@ class AetherBackend implements PlayerBackend {
         _buffer = Duration(milliseconds: _toInt(map['bufferedMs']));
         _isPlaying = _toBool(map['isPlaying']);
         _isBuffering = _toBool(map['isBuffering']);
+        if (_isPlaying) _stallSawPlayback = true;
 
         _positionStream.add(_position);
         _durationStream.add(_duration);
@@ -110,6 +151,14 @@ class AetherBackend implements PlayerBackend {
       case 'completed':
         _completed = _toBool(map['completed']);
         _completedStream.add(_completed);
+      case 'engineLog':
+        _logEngineLine(map['line']);
+      case 'play':
+      case 'pause':
+      case 'seek':
+      case 'next':
+      case 'previous':
+        _remoteCommandStream.add(map.cast<String, dynamic>());
       case 'playerError':
       case 'error':
         _logPlaybackError(map);
@@ -123,14 +172,32 @@ class AetherBackend implements PlayerBackend {
     }
   }
 
+  /// Turns the engine's own logging on alongside diagnostic logging, so a
+  /// report carries what the reader, demuxer and muxer saw rather than only
+  /// the failure they ended on.
+  void _syncEngineLogForwarding() {
+    final enabled = _prefs.get(UserPreferences.diagnosticLoggingEnabled);
+    if (enabled == _engineLogForwarding) return;
+    _engineLogForwarding = enabled;
+    _invoke<void>('setEngineLogForwarding', {'enabled': enabled});
+  }
+
+  void _log(String message, {LogLevel level = LogLevel.debug, Object? error}) {
+    if (!GetIt.instance.isRegistered<LogService>()) return;
+    GetIt.instance<LogService>().playback(message, level: level, error: error);
+  }
+
+  void _logEngineLine(dynamic line) {
+    if (line is! String || line.isEmpty) return;
+    _log(line);
+  }
+
   /// A native failure never reaches the server, so without this the report
   /// from a user whose playback didn't start shows only browsing.
   void _logPlaybackError(Map<dynamic, dynamic> map) {
-    if (!GetIt.instance.isRegistered<LogService>()) return;
-    final kind = map['kind'] ?? 'unknown';
-    final recoverable = map['recoverable'];
-    GetIt.instance<LogService>().playback(
-      'Native player error kind=$kind recoverable=$recoverable',
+    _log(
+      'Native player error kind=${map['kind'] ?? 'unknown'} '
+      'recoverable=${map['recoverable']}',
       level: LogLevel.error,
       error: map['message'],
     );
@@ -142,10 +209,12 @@ class AetherBackend implements PlayerBackend {
   /// every playback. The preference notifies on every change, so the guard
   /// keeps anything but a real change off the channel.
   void _syncAllowUntrustedTls() {
-    final enabled = _prefs.get(UserPreferences.allowSelfSignedCerts);
-    if (enabled == _allowUntrustedTls) return;
-    _allowUntrustedTls = enabled;
-    _invoke<void>('setAllowUntrustedTls', {'enabled': enabled});
+    final trust = EngineTrust.current(
+      _prefs.get(UserPreferences.allowSelfSignedCerts),
+    );
+    if (trust.matches(_trust)) return;
+    _trust = trust;
+    _invoke<void>('setAllowUntrustedTls', trust.toChannelArguments());
   }
 
   int _toInt(dynamic value) {
@@ -167,6 +236,7 @@ class AetherBackend implements PlayerBackend {
     Duration startPosition = Duration.zero,
   }) async {
     final payload = mediaItem is Map ? mediaItem : const <String, dynamic>{};
+    final autoPlay = payload['autoPlay'] != false;
     final url = mediaItem is String
         ? mediaItem
         : payload['url']?.toString() ?? '';
@@ -184,11 +254,12 @@ class AetherBackend implements PlayerBackend {
     _activeSubtitleTrackIndex = null;
     _tracksReadyCompleter = null;
     _embeddedCaptionTracks = const [];
+    _startStallWatchdog();
 
     await _invoke<void>('setSource', {
       'url': url,
       'headers': headers,
-      'autoPlay': true,
+      'autoPlay': autoPlay,
       'startPositionMs': startPosition.inMilliseconds,
       'audioStreamIndex': (payload['audioStreamIndex'] as num?)?.toInt() ?? -1,
       'isLive': payload['isLive'] == true,
@@ -199,6 +270,8 @@ class AetherBackend implements PlayerBackend {
       'forceSubtitlesDisabledOnStart':
           payload['mediaType']?.toString() != 'audio' &&
           _prefs.get(UserPreferences.subtitleMode) == SubtitleMode.none,
+      'dolbyVisionBaseLayerOnly': needsBaseLayerOnlyForDolbyVisionAv1(payload),
+      'externalSubtitles': payload['externalSubtitles'] ?? const [],
     });
   }
 
@@ -212,13 +285,71 @@ class AetherBackend implements PlayerBackend {
     await _invoke<void>('pause');
   }
 
+  // Implements rather than extends, so the interface default is not inherited.
+  @override
+  bool? get playWhenReady => null;
+
+  // No way to re-open a live source in place, so the manager escalates.
+  @override
+  Future<bool> resumeLiveEdge() async => false;
+
   @override
   Future<void> stop() async {
     await _invoke<void>('stop');
+    _stopStallWatchdog();
     if (_isPlaying) {
       _isPlaying = false;
       _playingStream.add(false);
     }
+    // The state timer dies with the session, so a stop taken while buffering
+    // left this latched with nothing to push it back down.
+    if (_isBuffering) {
+      _isBuffering = false;
+      _bufferingStream.add(false);
+    }
+  }
+
+  void _startStallWatchdog() {
+    _stallSawPlayback = false;
+    _stallSinceMs = 0;
+    _stallLastPositionMs = -1;
+    _stallTimer ??= Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => _checkStall(),
+    );
+  }
+
+  void _stopStallWatchdog() {
+    _stallTimer?.cancel();
+    _stallTimer = null;
+  }
+
+  void _checkStall() {
+    // Only a session that reached playback can stall. A slow open is a slow
+    // server, which this must not fail.
+    if (_disposed || !_stallSawPlayback) return;
+    // A backgrounded session is torn down deliberately and reloaded on return.
+    if (!_isBuffering ||
+        WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+      _stallSinceMs = 0;
+      return;
+    }
+
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final positionMs = _position.inMilliseconds;
+    if (_stallSinceMs == 0 || positionMs != _stallLastPositionMs) {
+      _stallSinceMs = nowMs;
+      _stallLastPositionMs = positionMs;
+      return;
+    }
+    if (nowMs - _stallSinceMs < _stallTimeoutMs) return;
+
+    _stopStallWatchdog();
+    _handleEvent(<String, dynamic>{
+      'event': 'playerError',
+      'kind': 'playback_stalled',
+      'recoverable': false,
+    });
   }
 
   @override
@@ -283,6 +414,8 @@ class AetherBackend implements PlayerBackend {
       // Atmos)/FLAC/ALAC are stream-copied intact, and TrueHD/DTS/MP3/Opus/
       // Vorbis/PCM are bridged to EAC3 or FLAC on-device.
       universalAudioDecode: true,
+      appliesDownmixToStereo: false,
+      bridgesAudioToEac3: true,
       maxResolution: maxResolution,
       pgsDirectPlay: _prefs.get(UserPreferences.pgsDirectPlay),
       assDirectPlay: _prefs.get(UserPreferences.assDirectPlay),
@@ -294,7 +427,7 @@ class AetherBackend implements PlayerBackend {
       supportsHevcMain10: PlatformDetection.supportsHevcMain10,
       transcodeHevcAllowed: serverAllowsHevcTranscode(),
       hevcRequiresFmp4Hls: true,
-      hlsAudioExcludesDts: true,
+      hlsAudioForAvFoundation: true,
       hevcMainLevel: PlatformDetection.hevcMainLevel,
       supportsHevcDolbyVision: PlatformDetection.supportsHevcDolbyVision,
       supportsHevcDolbyVisionEl: PlatformDetection.supportsHevcDolbyVisionEl,
@@ -305,6 +438,7 @@ class AetherBackend implements PlayerBackend {
       supportsAv1DolbyVision: PlatformDetection.supportsAv1DolbyVision,
       supportsAv1Hdr10: PlatformDetection.supportsAv1Hdr10,
       supportsAv1Hdr10Plus: PlatformDetection.supportsAv1Hdr10Plus,
+      rendersAv1DoviViaHdr10BaseLayer: true,
       supportsVc1: PlatformDetection.supportsVc1,
       maxResolutionAvcWidth: PlatformDetection.maxResolutionAvcWidth,
       maxResolutionAvcHeight: PlatformDetection.maxResolutionAvcHeight,
@@ -353,6 +487,11 @@ class AetherBackend implements PlayerBackend {
     String? externalSubtitleUrl,
   }) async {
     _activeSubtitleTrackIndex = index;
+    _log(
+      'setSubtitleTrack index=$index external=$isExternalSubtitle '
+      'bitmap=$isBitmapSubtitle codec=${subtitleCodec ?? 'none'} '
+      'url=${externalSubtitleUrl == null ? 'none' : loggableUrl(externalSubtitleUrl)}',
+    );
     await _invoke<void>('setSubtitleTrack', {
       'index': index,
       'isBitmapSubtitle': isBitmapSubtitle,
@@ -365,6 +504,7 @@ class AetherBackend implements PlayerBackend {
   @override
   Future<void> disableSubtitleTrack() async {
     _activeSubtitleTrackIndex = -1;
+    _log('disableSubtitleTrack');
     await _invoke<void>('disableSubtitleTrack');
   }
 
@@ -389,14 +529,22 @@ class AetherBackend implements PlayerBackend {
 
   @override
   Future<void> waitForEmbeddedSubtitleCount(int count) async {
-    final deadline = DateTime.now().add(const Duration(seconds: 6));
+    final started = DateTime.now();
+    final deadline = started.add(const Duration(seconds: 6));
+    var satisfied = false;
     while (DateTime.now().isBefore(deadline)) {
       if (_textTrackCount >= count) {
-        return;
+        satisfied = true;
+        break;
       }
       await waitForTracksReady();
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
+    _log(
+      'waitForEmbeddedSubtitleCount want=$count have=$_textTrackCount '
+      'satisfied=$satisfied '
+      'waited=${DateTime.now().difference(started).inMilliseconds}ms',
+    );
   }
 
   @override
@@ -432,6 +580,10 @@ class AetherBackend implements PlayerBackend {
     String? language,
     String? codec,
   }) async {
+    _log(
+      'addExternalSubtitle ${loggableUrl(url)} title=${title ?? 'none'} '
+      'language=${language ?? 'none'} codec=${codec ?? 'none'}',
+    );
     await _invoke<void>('addExternalSubtitle', {
       'url': url,
       'title': title,
@@ -468,6 +620,12 @@ class AetherBackend implements PlayerBackend {
   bool get supportsRuntimeTrackSelection => true;
 
   @override
+  LetterboxCropper get letterboxCropper => const AetherLetterboxCropper();
+
+  @override
+  bool get supportsLetterboxCrop => letterboxCropper.isSupported;
+
+  @override
   bool get supportsDirectPlayAudioSwitch => false;
 
   @override
@@ -485,6 +643,19 @@ class AetherBackend implements PlayerBackend {
   @override
   bool get demuxesEmbeddedSubtitles => true;
 
+  // Same engine as the Apple TV backend, so a seek costs the same reopen.
+  // Provisional pending a trace of its own.
+  @override
+  Duration get typicalSeekLatency => const Duration(seconds: 4);
+
+  @override
+  Duration get maxSeekLatency => const Duration(seconds: 20);
+
+  // Same AVPlayer rate path as the Apple TV backend, with the same audio
+  // reconfiguration on every write.
+  @override
+  bool get supportsSmoothRateChange => false;
+
   @override
   List<EmbeddedCaptionTrack> get embeddedCaptionTracks =>
       _embeddedCaptionTracks;
@@ -501,7 +672,9 @@ class AetherBackend implements PlayerBackend {
   void dispose() {
     _disposed = true;
     _prefs.removeListener(_syncAllowUntrustedTls);
+    _prefs.removeListener(_syncEngineLogForwarding);
     _audioDelayDebounce?.cancel();
+    _stopStallWatchdog();
     _eventSub?.cancel();
     _positionStream.close();
     _durationStream.close();
@@ -510,6 +683,7 @@ class AetherBackend implements PlayerBackend {
     _bufferingStream.close();
     _completedStream.close();
     _errorStream.close();
+    _remoteCommandStream.close();
     _tracksChangedController.close();
   }
 }

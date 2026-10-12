@@ -10,6 +10,7 @@ JellyfinStreamRoute route({
   bool supportsTranscoding = true,
   bool hasTranscodingUrl = true,
   bool enableDirectPlay = true,
+  bool enableDirectStream = true,
   bool isAudio = false,
   List<String> transcodingReasons = const [],
   int? bitrate,
@@ -23,6 +24,7 @@ JellyfinStreamRoute route({
     supportsTranscoding: supportsTranscoding,
     hasTranscodingUrl: hasTranscodingUrl,
     enableDirectPlay: enableDirectPlay,
+    enableDirectStream: enableDirectStream,
     isAudio: isAudio,
     transcodingReasons: transcodingReasons,
     bitrate: bitrate,
@@ -131,6 +133,21 @@ void main() {
           hasTranscodingUrl: false,
         ),
         JellyfinStreamRoute.terminalDirectPlay,
+      );
+    });
+
+    test('a source the server withholds remuxes before it transcodes', () {
+      // A remux copies the video through, so a server that only refuses direct
+      // play still avoids a re-encode. Reaching the transcode takes losing the
+      // remux too, which is what a server withholds when the objection is the
+      // video codec itself.
+      expect(
+        route(supportsDirectPlay: false),
+        JellyfinStreamRoute.directStream,
+      );
+      expect(
+        route(supportsDirectPlay: false, supportsDirectStream: false),
+        JellyfinStreamRoute.transcode,
       );
     });
   });

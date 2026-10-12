@@ -58,6 +58,15 @@ class _ExternalListsScreenState extends State<_ExternalListsScreen> {
     super.dispose();
   }
 
+  String _mediaTypeBadgeBehaviorLabel(
+    AppLocalizations l10n,
+    MediaTypeBadgeBehavior behavior,
+  ) => switch (behavior) {
+    MediaTypeBadgeBehavior.always => l10n.always,
+    MediaTypeBadgeBehavior.mixedRowsOnly => l10n.mixedRowsOnly,
+    MediaTypeBadgeBehavior.never => l10n.never,
+  };
+
   Future<void> _refreshAllEnabledLists() async {
     final prefs = GetIt.instance<UserPreferences>();
     
@@ -147,8 +156,9 @@ class _ExternalListsScreenState extends State<_ExternalListsScreen> {
         Navigator.of(context, rootNavigator: true).pop();
       }
       if (mounted) {
+        final detail = describeError(e, AppLocalizations.of(context));
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to refresh lists: $e')),
+          SnackBar(content: Text('Failed to refresh lists: $detail')),
         );
       }
     }
@@ -198,6 +208,24 @@ class _ExternalListsScreenState extends State<_ExternalListsScreen> {
                         ),
                       ],
                     ),
+                    const _SectionHeader('External Home Row Display'),
+                    adaptiveListSection(
+                      children: [
+                        EnumPreferenceTile<MediaTypeBadgeBehavior>(
+                          preference: UserPreferences.mediaTypeBadgeBehavior,
+                          title: 'Media type badges',
+                          description:
+                              'Show MOVIE / SERIES labels on external home-row cards',
+                          icon: Icons.info_outline,
+                          labelOf: (behavior) =>
+                              _mediaTypeBadgeBehaviorLabel(l10n, behavior),
+                          onChanged: () {
+                            if (!mounted) return;
+                            setState(() {});
+                          },
+                        ),
+                      ],
+                    ),
                     const _SectionHeader('External Home Row Configurations'),
                     adaptiveListSection(
                       children: [
@@ -206,6 +234,12 @@ class _ExternalListsScreenState extends State<_ExternalListsScreen> {
                           title: const Text('IMDb Lists'),
                           subtitle: const Text('Configure IMDb Top 250, Popular, and other charts.'),
                           onTap: () => context.pushSettingsScreen(const _ImdbListsScreen()),
+                        ),
+                        _TvSettingsListTile(
+                          leading: const Icon(Icons.celebration_outlined),
+                          title: Text(l10n.seasonalRow),
+                          subtitle: Text(l10n.seasonalRowDescription),
+                          onTap: () => context.pushSettingsScreen(const _SeasonalRowScreen()),
                         ),
                         _TvSettingsListTile(
                           leading: const Icon(Icons.trending_up),
@@ -254,6 +288,142 @@ class _ExternalListsScreenState extends State<_ExternalListsScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+class _SeasonalRowScreen extends StatefulWidget {
+  const _SeasonalRowScreen();
+
+  @override
+  State<_SeasonalRowScreen> createState() => _SeasonalRowScreenState();
+}
+
+class _SeasonalRowScreenState extends State<_SeasonalRowScreen> {
+  final _scope = FocusScopeNode(debugLabel: 'SeasonalRowScope');
+  final _firstFocusNode = FocusNode(debugLabel: 'seasonal_row_enabled');
+
+  @override
+  void dispose() {
+    _scope.dispose();
+    _firstFocusNode.dispose();
+    super.dispose();
+  }
+
+  Set<String> _hiddenHolidays(UserPreferences prefs) =>
+      UserPreferences.parseSeasonalRowHiddenHolidays(
+        prefs.get(UserPreferences.seasonalRowHiddenHolidays),
+      );
+
+  Future<void> _toggleHoliday(UserPreferences prefs, String holiday) async {
+    final hidden = _hiddenHolidays(prefs);
+    if (!hidden.remove(holiday)) hidden.add(holiday);
+    await prefs.set(
+      UserPreferences.seasonalRowHiddenHolidays,
+      UserPreferences.seasonalHolidayIds.where(hidden.contains).join(','),
+    );
+    if (mounted) setState(() {});
+  }
+
+  /// Switching the row on puts it right after Continue Watching and Next Up,
+  /// where a holiday row gets noticed. Switching it off keeps its place.
+  void _syncSectionState(bool enabled) {
+    final prefs = GetIt.instance<UserPreferences>();
+    final configs = List<HomeSectionConfig>.from(prefs.homeSectionsConfig);
+    final idx = configs.indexWhere((c) => c.type == HomeSectionType.seasonal);
+    final current = idx >= 0
+        ? configs.removeAt(idx)
+        : const HomeSectionConfig(type: HomeSectionType.seasonal, enabled: false, order: 0);
+
+    var insertAt = idx >= 0 ? idx : configs.length;
+    if (enabled && !current.enabled) {
+      final anchor = configs.lastIndexWhere(
+        (c) => c.isBuiltin &&
+            (c.type == HomeSectionType.resume || c.type == HomeSectionType.nextUp),
+      );
+      insertAt = anchor + 1;
+    }
+    configs.insert(insertAt, current.copyWith(enabled: enabled));
+    for (var i = 0; i < configs.length; i++) {
+      configs[i] = configs[i].copyWith(order: i);
+    }
+    prefs.setHomeSectionsConfig(configs);
+    _pushPersonalizationSync();
+  }
+
+  String _countryLabel(String code, AppLocalizations l10n) => switch (code) {
+        UserPreferences.seasonalRowCountryAuto => l10n.seasonalRowCountryAuto,
+        'US' => l10n.countryUnitedStates,
+        'CA' => l10n.countryCanada,
+        UserPreferences.seasonalRowCountryOther => l10n.seasonalRowCountryOther,
+        _ => code,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final prefs = GetIt.instance<UserPreferences>();
+    final hidden = _hiddenHolidays(prefs);
+
+    return withCleanSettingsTypography(
+      context,
+      RequestInitialFocus(
+        targetNode: PlatformDetection.isTV ? _firstFocusNode : null,
+        child: Scaffold(
+          appBar: buildSettingsAppBar(context, Text(l10n.seasonalRow)),
+          body: FocusScope(
+            node: _scope,
+            autofocus: true,
+            child: ListView(
+              children: [
+                adaptiveListSection(
+                  children: [
+                    SwitchPreferenceTile(
+                      focusNode: _firstFocusNode,
+                      preference: UserPreferences.seasonalRowEnabled,
+                      title: l10n.seasonalRow,
+                      subtitle: l10n.seasonalRowDescription,
+                      icon: Icons.celebration_outlined,
+                      onChangedValue: _syncSectionState,
+                    ),
+                    StringPickerPreferenceTile(
+                      preference: UserPreferences.seasonalRowCountry,
+                      title: l10n.seasonalRowCountry,
+                      icon: Icons.public,
+                      options: {
+                        for (final code in UserPreferences.seasonalRowCountryOptions)
+                          code: _countryLabel(code, l10n),
+                      },
+                    ),
+                  ],
+                ),
+                _SectionHeader(l10n.seasonalRowHolidays),
+                adaptiveListSection(
+                  children: [
+                    for (final holiday in UserPreferences.seasonalHolidayIds)
+                      _TvSettingsListTile(
+                        leading: Icon(
+                          hidden.contains(holiday)
+                              ? Icons.check_box_outline_blank
+                              : Icons.check_box,
+                        ),
+                        title: Text(seasonalHolidayTitle(holiday, l10n)),
+                        onTap: () => _toggleHoliday(prefs, holiday),
+                      ),
+                  ],
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                  child: Text(
+                    l10n.seasonalRowHolidaysHint,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -344,7 +514,12 @@ class _ImdbListsScreenState extends State<_ImdbListsScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to fetch $title from Moonbase: $e')),
+          SnackBar(
+            content: Text(
+              'Failed to fetch $title from Moonbase: '
+              '${describeError(e, AppLocalizations.of(context))}',
+            ),
+          ),
         );
       }
       return false;
@@ -1203,21 +1378,6 @@ class _SeerrListsScreenState extends State<_SeerrListsScreen> {
     if (mounted) setState(() {});
   }
 
-  String _rowLabel(SeerrRowType type, AppLocalizations l10n) => switch (type) {
-    SeerrRowType.recentRequests => l10n.recentRequests,
-    SeerrRowType.yourWatchlist => l10n.yourWatchlist,
-    SeerrRowType.recentlyAdded => l10n.recentlyAdded,
-    SeerrRowType.trending => l10n.trending,
-    SeerrRowType.popularMovies => l10n.popularMovies,
-    SeerrRowType.movieGenres => l10n.movieGenres,
-    SeerrRowType.upcomingMovies => l10n.upcomingMovies,
-    SeerrRowType.studios => l10n.studios,
-    SeerrRowType.popularSeries => l10n.popularSeries,
-    SeerrRowType.seriesGenres => l10n.seriesGenres,
-    SeerrRowType.upcomingSeries => l10n.upcomingSeries,
-    SeerrRowType.networks => l10n.networks,
-  };
-
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -1242,7 +1402,7 @@ class _SeerrListsScreenState extends State<_SeerrListsScreen> {
                     final row = entry.value;
                     return _SeerrRowSwitchTile(
                       focusNode: rowIndex == 0 ? _firstFocusNode : null,
-                      title: _rowLabel(row.type, l10n),
+                      title: localizeSeerrRowTitle(row.type, l10n),
                       value: row.enabled,
                       onChanged: (enabled) {
                         setState(() {
@@ -1837,17 +1997,17 @@ class _AddEditCustomRowDialogState extends State<_AddEditCustomRowDialog> {
 
     try {
       final customService = GetIt.instance<CustomExternalListsService>();
-      final items = await customService.fetchCustomRow(newConfig);
+      final items = await customService.fetchCustomRow(newConfig, throwOnError: true);
       if (items.isEmpty) {
         throw Exception('No results returned.');
       }
     } catch (e) {
+      if (!mounted) return;
       final customService = GetIt.instance<CustomExternalListsService>();
       final url = customService.constructSourceUrl(_source, _type, params);
       setState(() => _isValidating = false);
 
-      final errorString = e.toString()
-          .replaceAll('Exception: ', '')
+      final errorString = describeError(e, AppLocalizations.of(context))
           .replaceAll('Constructed URL: $url. ', '')
           .replaceAll('Constructed URL: $url', '');
 
@@ -1899,6 +2059,7 @@ class _AddEditCustomRowDialogState extends State<_AddEditCustomRowDialog> {
       return;
     }
 
+    if (!mounted) return;
     setState(() => _isValidating = false);
 
     if (isEditing) {

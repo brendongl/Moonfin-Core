@@ -21,6 +21,14 @@ class _LibrariesCategoryScreen extends StatelessWidget {
                 onTap: () =>
                     context.pushSettingsScreen(const LibraryVisibilityScreen()),
               ),
+              if (advanced)
+                _TvSettingsListTile(
+                  leading: const Icon(Icons.swap_vert),
+                  title: Text(l10n.libraryOrder),
+                  subtitle: Text(l10n.libraryOrderSubtitle),
+                  onTap: () =>
+                      context.pushSettingsScreen(const LibraryOrderScreen()),
+                ),
               // Sipflix: a box holds one server.
               if (SipflixSettingsMode.showRetired)
                 SwitchPreferenceTile(
@@ -36,6 +44,28 @@ class _LibrariesCategoryScreen extends StatelessWidget {
                   title: l10n.mergeRecentRowsByType,
                   subtitle: l10n.mergeRecentRowsByTypeDescription,
                   icon: Icons.library_books,
+                  onChanged: _pushPersonalizationSync,
+                ),
+              // Sipflix: no Sipflix server carries books.
+              if (SipflixSettingsMode.showRetired)
+                SwitchPreferenceTile(
+                  preference: UserPreferences.showBookDiscoverTab,
+                  title: l10n.showBookDiscoverTab,
+                  subtitle: l10n.showBookDiscoverTabDescription,
+                  icon: Icons.explore,
+                  onChanged: _pushPersonalizationSync,
+                ),
+              if (advanced)
+                EnumPreferenceTile<RecentlyReleasedSeriesType>(
+                  preference: UserPreferences.recentlyReleasedSeriesType,
+                  title: l10n.recentlyReleasedSeriesType,
+                  description: l10n.recentlyReleasedSeriesTypeDescription,
+                  icon: Icons.ondemand_video,
+                  labelOf: (v) => switch (v) {
+                    RecentlyReleasedSeriesType.series => l10n.series,
+                    RecentlyReleasedSeriesType.season => l10n.season,
+                    RecentlyReleasedSeriesType.episode => l10n.episode,
+                  },
                   onChanged: _pushPersonalizationSync,
                 ),
             ],

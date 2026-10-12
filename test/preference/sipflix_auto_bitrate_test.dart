@@ -111,13 +111,27 @@ void main() {
       expect(prefs.resolveMaxBitrateMbps(now: now), 20);
     });
 
-    test('Auto falls through to the measured cap', () async {
+    // Combined Auto: a speed probe alone never caps the profile (the player
+    // measures per play and lets the source bitrate win for direct play);
+    // only a ceiling learned from real stalls is sent.
+    test('Auto sends no ceiling from a probe alone', () async {
       final prefs = await prefsWith({
         'flutter.pref_max_bitrate': 'auto',
         'flutter.sipflix_measured_bandwidth_mbps': 50.0,
         'flutter.sipflix_measured_bandwidth_at': msAgo(const Duration(minutes: 5)),
       });
-      expect(prefs.resolveMaxBitrateMbps(now: now), 40);
+      expect(prefs.resolveMaxBitrateMbps(now: now), isNull);
+    });
+
+    test('Auto sends a ceiling learned from stalls', () async {
+      final prefs = await prefsWith({
+        'flutter.pref_max_bitrate': 'auto',
+        'flutter.sipflix_measured_bandwidth_mbps': 50.0,
+        'flutter.sipflix_measured_bandwidth_at': msAgo(const Duration(minutes: 5)),
+        'flutter.sipflix_auto_ceiling_mbps': 8,
+        'flutter.sipflix_auto_ceiling_at': msAgo(const Duration(minutes: 1)),
+      });
+      expect(prefs.resolveMaxBitrateMbps(now: now), 8);
     });
   });
 }

@@ -15,6 +15,9 @@ class AudioCapabilityProfile {
     required this.canPassthroughDts,
     required this.canPassthroughDtsHd,
     required this.canPassthroughTrueHd,
+    this.canIecLow = false,
+    this.canIecMid = false,
+    this.canIecHbr = false,
     required this.maxPcmChannels,
     required this.activeRouteType,
     required this.routeSupportsHdAudio,
@@ -32,6 +35,9 @@ class AudioCapabilityProfile {
       canPassthroughDts = false,
       canPassthroughDtsHd = false,
       canPassthroughTrueHd = false,
+      canIecLow = false,
+      canIecMid = false,
+      canIecHbr = false,
       maxPcmChannels = 8,
       activeRouteType = AudioRouteType.other,
       routeSupportsHdAudio = false;
@@ -56,9 +62,28 @@ class AudioCapabilityProfile {
   final bool canPassthroughDtsHd;
   final bool canPassthroughTrueHd;
 
+  // IEC 61937 carrier support for the Media3 app-side packer ("AudioTrack
+  // (IEC)"): stream-rate stereo, 192 kHz stereo, and 192 kHz 8-channel HBR.
+  final bool canIecLow;
+  final bool canIecMid;
+  final bool canIecHbr;
+
   final int maxPcmChannels;
   final AudioRouteType activeRouteType;
   final bool routeSupportsHdAudio;
+
+  bool get _isHdRoute =>
+      activeRouteType == AudioRouteType.hdmi ||
+      activeRouteType == AudioRouteType.earc;
+
+  // Per-codec IEC eligibility: AC3/DTS core ride the low carrier, EAC3 the
+  // mid one, and the HD formats the HBR carrier, which additionally needs a
+  // direct HDMI or eARC hop just like raw HD passthrough.
+  bool get canIecAc3 => canIecLow;
+  bool get canIecEac3 => canIecMid;
+  bool get canIecDts => canIecLow;
+  bool get canIecDtsHd => canIecHbr && _isHdRoute;
+  bool get canIecTrueHd => canIecHbr && _isHdRoute;
 
   bool get hasCompressedPassthroughRoute =>
       canPassthroughAc3 ||
@@ -70,9 +95,32 @@ class AudioCapabilityProfile {
   bool get hasMultichannelCapability {
     if (maxPcmChannels > 2) return true;
     if (!hasCompressedPassthroughRoute) return false;
-    return activeRouteType == AudioRouteType.hdmi ||
-        activeRouteType == AudioRouteType.arc ||
-        activeRouteType == AudioRouteType.earc;
+    return isBitstreamRoute;
+  }
+
+  /// Whether this route carries a bitstream to an external decoder. Leaving
+  /// the class is what a sink vanishing looks like, while moving within it
+  /// shows up in the per-format flags instead.
+  bool get isBitstreamRoute =>
+      activeRouteType == AudioRouteType.hdmi ||
+      activeRouteType == AudioRouteType.arc ||
+      activeRouteType == AudioRouteType.earc;
+
+  /// Whether landing this profile would take a capability away from
+  /// [previous]. Any loss counts, because lowering capabilities makes every
+  /// playback transcode until something raises them again. Per-flag rather
+  /// than the aggregate, since [fromMap] already gates the lossless formats
+  /// by route, so a move from HDMI to ARC shows up here as TrueHD lost.
+  bool isDowngradeFrom(AudioCapabilityProfile previous) {
+    if (previous.isBitstreamRoute && !isBitstreamRoute) return true;
+    if (maxPcmChannels < previous.maxPcmChannels) return true;
+    if (previous.canPassthroughAc3 && !canPassthroughAc3) return true;
+    if (previous.canPassthroughEac3 && !canPassthroughEac3) return true;
+    if (previous.canPassthroughDts && !canPassthroughDts) return true;
+    if (previous.canPassthroughDtsHd && !canPassthroughDtsHd) return true;
+    if (previous.canPassthroughTrueHd && !canPassthroughTrueHd) return true;
+    if (previous.routeSupportsHdAudio && !routeSupportsHdAudio) return true;
+    return false;
   }
 
   factory AudioCapabilityProfile.fromMap(Map<String, dynamic>? values) {
@@ -130,6 +178,11 @@ class AudioCapabilityProfile {
       canPassthroughTrueHd:
           isHdRoute &&
           _readBool(values, 'canPassthroughTrueHd', defaultValue: legacyTrueHd),
+      // Absent keys stay false so a stale capability cache can never turn IEC
+      // eligibility on by accident.
+      canIecLow: _readBool(values, 'canIecLow', defaultValue: false),
+      canIecMid: _readBool(values, 'canIecMid', defaultValue: false),
+      canIecHbr: _readBool(values, 'canIecHbr', defaultValue: false),
       maxPcmChannels: _readInt(values, 'maxPcmChannels', defaultValue: 8),
       activeRouteType: activeRouteType,
       routeSupportsHdAudio: _readBool(
@@ -156,6 +209,9 @@ class AudioCapabilityProfile {
       'canPassthroughDts': canPassthroughDts,
       'canPassthroughDtsHd': canPassthroughDtsHd,
       'canPassthroughTrueHd': canPassthroughTrueHd,
+      'canIecLow': canIecLow,
+      'canIecMid': canIecMid,
+      'canIecHbr': canIecHbr,
       'maxPcmChannels': maxPcmChannels,
       'activeRouteType': activeRouteType.name,
       'routeSupportsHdAudio': routeSupportsHdAudio,

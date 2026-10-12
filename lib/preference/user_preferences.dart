@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 import 'dart:convert';
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:jellyfin_preference/jellyfin_preference.dart';
 import 'package:server_core/server_core.dart' hide ImageType;
@@ -8,8 +9,8 @@ import 'package:server_core/server_core.dart' hide ImageType;
 import '../data/models/aggregated_item.dart';
 import '../data/models/series_track_preference.dart';
 import '../playback/audio_capability_profile.dart';
+import '../util/device_performance.dart';
 import '../util/idiom/app_ui_idiom.dart';
-import '../util/insecure_certificates.dart';
 import '../util/language_matching.dart';
 import '../util/platform_detection.dart';
 import 'home_section_config.dart';
@@ -25,6 +26,7 @@ class UserPreferences extends ChangeNotifier {
   static const mediaBarModeBookshelf = 'bookshelf';
   static const mediaBarModeGallery = 'gallery';
   static const mediaBarModeBanner = 'banner';
+  static const mediaBarModeAya = 'aya';
   static const mediaBarModeOff = 'off';
   static const mediaBarModeValues = <String>{
     mediaBarModeMoonfin,
@@ -32,8 +34,78 @@ class UserPreferences extends ChangeNotifier {
     mediaBarModeBookshelf,
     mediaBarModeGallery,
     mediaBarModeBanner,
+    mediaBarModeAya,
     mediaBarModeOff,
   };
+
+  static const seasonalNone = 'none';
+  static const seasonalSnow = 'snow';
+  static const seasonalFireworks = 'fireworks';
+  static const seasonalConfetti = 'confetti';
+  static const seasonalLeaves = 'leaves';
+  static const seasonalChristmas = 'christmas';
+  static const seasonalPetals = 'petals';
+  static const seasonalFireflies = 'fireflies';
+  static const seasonalHalloween = 'halloween';
+  static const seasonalSurpriseValues = <String>{
+    seasonalNone,
+    seasonalSnow,
+    seasonalFireworks,
+    seasonalConfetti,
+    seasonalLeaves,
+    seasonalChristmas,
+    seasonalPetals,
+    seasonalFireflies,
+    seasonalHalloween,
+  };
+
+  // The original Android TV client and older Smart-TV builds sync these names.
+  static const _legacySeasonalSurprise = <String, String>{
+    'winter': seasonalSnow,
+    'fall': seasonalLeaves,
+    'spring': seasonalPetals,
+    'summer': seasonalFireflies,
+  };
+
+  static const seasonalDensityLight = 'light';
+  static const seasonalDensityNormal = 'normal';
+  static const seasonalDensityHeavy = 'heavy';
+  static const seasonalDensityValues = <String>{
+    seasonalDensityLight,
+    seasonalDensityNormal,
+    seasonalDensityHeavy,
+  };
+
+  // The seasonal row follows the viewer's country. Automatic reads it from the device, and
+  // the list only names the countries Moonbase tells apart.
+  static const seasonalRowCountryAuto = 'auto';
+  static const seasonalRowCountryOther = 'other';
+  static const seasonalRowCountryOptions = <String>[
+    seasonalRowCountryAuto,
+    'US',
+    'CA',
+    seasonalRowCountryOther,
+  ];
+
+  /// The holidays Moonbase can build the row for, in the order it tries them.
+  static const seasonalHolidayIds = <String>[
+    'newYear',
+    'valentines',
+    'easter',
+    'pride',
+    'halloween',
+    'thanksgiving',
+    'christmas',
+    'lunarNewYear',
+    'diwali',
+  ];
+
+  // Where the bar draws its titles from. Every source still passes through the
+  // library, collection, content type and genre filters, and still picks its
+  // slides at random out of what comes back.
+  static const mediaBarSourceRandom = 'random';
+  static const mediaBarSourceRecentlyAdded = 'recentlyAdded';
+  static const mediaBarSourceRecentlyReleased = 'recentlyReleased';
 
   final PreferenceStore _store;
 
@@ -45,14 +117,7 @@ class UserPreferences extends ChangeNotifier {
     _migrateSeerrRowsVisibility();
     _enforceMediaQueuingAlwaysOn();
     _seedClockFormatFromSystem();
-    _syncInsecureCertificateFlag();
-  }
-
-  // Prime the native bad-certificate override with the stored opt-in so the
-  // choice survives restarts. The toggle keeps [gAllowSelfSignedCertificates]
-  // in sync while the app runs; this covers the value at launch.
-  void _syncInsecureCertificateFlag() {
-    gAllowSelfSignedCertificates = get(allowSelfSignedCerts);
+    _migrateScreensaverPreferences();
   }
 
   // Carry over the pre-rename jellyseerr* preference keys to their seerr* names.
@@ -174,6 +239,43 @@ class UserPreferences extends ChangeNotifier {
     }
   }
 
+  // These are stored per server, and _adoptNewlyScopedPreferences has already
+  // moved them under the active scope and dropped the bare key by the time this
+  // runs. Reading the bare key would find nothing, and writing it would land
+  // where nothing reads.
+  void _migrateScreensaverPreferences() {
+    final mode = getEffectivePreference(screensaverMode);
+    final clockMode = getEffectivePreference(screensaverClockMode);
+    final backdrop = getEffectivePreference(screensaverBackdrop);
+    final component = getEffectivePreference(screensaverComponent);
+    final movement = getEffectivePreference(screensaverMovement);
+
+    if (_store.containsKey(mode.key) && !_store.containsKey(backdrop.key)) {
+      final legacyMode = _store.get(mode);
+      if (legacyMode == ScreensaverMode.logo) {
+        _store.set(backdrop, ScreensaverBackdrop.black);
+        _store.set(component, ScreensaverComponent.moonfinLogo);
+        _store.set(movement, ScreensaverMovement.fast);
+      } else if (legacyMode == ScreensaverMode.library) {
+        _store.set(backdrop, ScreensaverBackdrop.library);
+      }
+    }
+    if (_store.containsKey(clockMode.key) &&
+        !_store.containsKey(movement.key)) {
+      final legacyClock = _store.get(clockMode);
+      if (legacyClock == ScreensaverClockMode.bouncing) {
+        _store.set(component, ScreensaverComponent.clock);
+        _store.set(movement, ScreensaverMovement.fast);
+      } else if (legacyClock == ScreensaverClockMode.staticCorner) {
+        _store.set(component, ScreensaverComponent.clock);
+        _store.set(movement, ScreensaverMovement.staticCorner);
+      } else if (legacyClock == ScreensaverClockMode.off) {
+        _store.set(component, ScreensaverComponent.none);
+        _store.set(movement, ScreensaverMovement.fast);
+      }
+    }
+  }
+
   // On first run, default the 12h/24h clock to the device's locale so users in
   // 24h regions aren't stuck on 12h. Runs once; an explicit choice is kept.
   void _seedClockFormatFromSystem() {
@@ -239,6 +341,11 @@ class UserPreferences extends ChangeNotifier {
   }
 
   static final Set<String> _scopedPreferenceKeys = {
+    // Per account but never synced: the result of this device's last
+    // subscription check, and whether that account has already been told
+    // the device is too full to keep downloading.
+    'auto_download_last_run',
+    'auto_download_storage_notice_shown',
     // Newly synced settings. Anything that goes to the server profile has to be stored
     // per server and user, or one server's value is read back on the next.
     'all_genres_image_type',
@@ -249,13 +356,27 @@ class UserPreferences extends ChangeNotifier {
     'detailButtonOrderDesktop',
     'detailButtonOrderMobile',
     'detailButtonOrderTv',
+    'detailButtonsMaxVisible',
+    'detailMetadataOrderDesktop',
+    'detailMetadataOrderMobile',
+    'detailMetadataOrderTv',
     'download_default_quality',
+    'auto_download_enabled',
+    'auto_download_keep_unwatched',
+    'auto_download_delete_after_hours',
+    'auto_download_background_refresh',
     'download_report_as_activity',
     'download_storage_limit_mb',
     'download_wifi_only',
     'hiddenDetailButtonsDesktop',
     'hiddenDetailButtonsMobile',
     'hiddenDetailButtonsTv',
+    'hiddenDetailMetadataDesktop',
+    'hiddenDetailMetadataMobile',
+    'hiddenDetailMetadataTv',
+    'hiddenDetailSectionsDesktop',
+    'hiddenDetailSectionsMobile',
+    'hiddenDetailSectionsTv',
     'hiddenOsdButtonsDesktop',
     'hiddenOsdButtonsMobile',
     'hiddenOsdButtonsTv',
@@ -266,6 +387,7 @@ class UserPreferences extends ChangeNotifier {
     'imdb_top_250_tv_shows_enabled',
     'imdb_top_english_movies_enabled',
     'live_tv_channel_sort_by',
+    'live_tv_last_channel_id',
     'music_playback_time_display',
     'osdButtonOrderDesktop',
     'osdButtonOrderMobile',
@@ -278,9 +400,13 @@ class UserPreferences extends ChangeNotifier {
     'playback_time_below_center',
     'playback_time_below_left',
     'playback_time_below_right',
+    'playerSwipeGestures',
     'player_zoom_mode',
     'pref_audio_rows_sort_by',
+    'pref_audio_rows_sort_order',
+    'pref_crash_reports_enabled',
     'pref_diagnostic_logging_enabled',
+    'pref_display_studios_rows',
     'pref_epg_mobile_view',
     'pref_favorites_view_style',
     'pref_group_items_into_collections',
@@ -291,16 +417,30 @@ class UserPreferences extends ChangeNotifier {
     'pref_max_video_resolution',
     'pref_playlists_row_show_episodes',
     'pref_playlists_row_sort_by',
+    'pref_playlists_row_sort_order',
     'pref_recommendations_apply_parental_rating_cap',
     'pref_resume_last_queue_on_play',
+    'pref_screensaver_backdrop',
     'pref_screensaver_clock_mode',
+    'pref_screensaver_collection_ids',
+    'pref_screensaver_component',
+    'pref_screensaver_content_type',
     'pref_screensaver_dimming',
     'pref_screensaver_enabled',
+    'pref_screensaver_excluded_genres',
+    'pref_screensaver_library_ids',
     'pref_screensaver_max_age_rating',
     'pref_screensaver_mode',
+    'pref_screensaver_movement',
+    'pref_screensaver_position',
     'pref_screensaver_require_rating',
+    'pref_screensaver_size',
     'pref_screensaver_timeout',
+    'pref_studios_row_selected_ids',
+    'pref_studios_row_sort_by',
+    'pref_studios_row_sort_order',
     'pref_syncplay_enabled',
+    'showChapterMarkers',
     'showDescriptionOnPause',
     'since_you_watched_1_enabled',
     'since_you_watched_2_enabled',
@@ -330,6 +470,10 @@ class UserPreferences extends ChangeNotifier {
     'pref_detail_screen_style',
     'pref_detail_expanded_tabs',
     'pref_detail_show_technical_details',
+    'pref_detail_trailers_external',
+    'pref_hide_details_media_description',
+    'pref_detail_use_series_thumbnails',
+    'pref_hide_home_media_description',
     'pref_display_audio_rows',
     'pref_display_since_you_watched_rows',
     'pref_since_you_watched_source',
@@ -356,11 +500,16 @@ class UserPreferences extends ChangeNotifier {
     'pref_language_override',
     'pref_media_segment_countdown',
     'pref_media_segment_auto_hide',
+    'pref_desktop_scroll_sensitivity',
     'pref_desktop_ui_scale',
     'poster_size_library',
     'poster_size_playlist',
     'pref_home_rows_fullscreen',
     'pref_show_seerr_button',
+    'pref_show_seerr_availability_badges',
+    'pref_show_server_messages_button',
+    'pref_show_friends_button',
+    'pref_show_book_discover_tab',
     'pref_show_media_details_on_library_page',
     'pref_use_detailed_sub_headings',
     'pref_hide_backdrops_in_libraries',
@@ -382,6 +531,13 @@ class UserPreferences extends ChangeNotifier {
     'subtitles_text_size',
     'subtitles_offset_position',
     'subtitles_default_to_none',
+    'subtitles_hdr_separate',
+    'subtitles_hdr_background_color',
+    'subtitles_hdr_text_weight',
+    'subtitles_hdr_text_color',
+    'subtitles_hdr_text_stroke_color',
+    'subtitles_hdr_text_size',
+    'subtitles_hdr_offset_position',
     'subtitles_use_embedded_styles',
     'subtitles_use_embedded_font_sizes',
     'prefer_sdh_subtitles',
@@ -389,26 +545,39 @@ class UserPreferences extends ChangeNotifier {
     'pref_custom_theme_id',
     'pref_glass_quality',
     'pref_oled_mode',
+    'pref_kids_mode',
+    // The other half of parental controls, kept beside Kids Mode because the
+    // two get set together and have the same reason to be scoped.
+    'blocked_ratings',
+    'blocked_series_ids',
     'pref_navbar_position',
+    'pref_bottom_navbar_style',
+    'pref_bottom_navbar_tabs',
     'focus_color',
     'pref_watched_indicator_behavior',
     'pref_card_focus_expansion',
     'pref_home_rows_style',
     'pref_modern_home_rows_padding',
     'pref_classic_home_rows_padding',
+    'pref_modern_cards_my_media',
     'poster_size',
     'pref_display_favorites_rows',
     'pref_display_collections_rows',
     'pref_display_genres_rows',
     'pref_favorites_row_sort_by',
+    'pref_favorites_row_sort_order',
     'pref_collections_row_show_episodes',
     'pref_collections_row_sort_by',
+    'pref_collections_row_sort_order',
     'pref_genres_row_sort_by',
+    'pref_genres_row_sort_order',
     'pref_genres_row_item_filter',
     'pref_show_shuffle_button',
     'pref_show_genres_button',
     'pref_show_favorites_button',
+    'pref_show_live_tv_button',
     'pref_show_syncplay_button',
+    'pref_show_downloads_button',
     'pref_show_libraries_in_toolbar',
     'pref_navbar_always_expanded',
     'pref_shuffle_content_type',
@@ -418,9 +587,14 @@ class UserPreferences extends ChangeNotifier {
     'pref_merge_recent_rows_by_type',
     'enable_folder_view',
     'seasonal_surprise',
+    'seasonal_density',
+    'seasonal_row_enabled',
+    'seasonal_row_country',
+    'seasonal_row_hidden_holidays',
     'mediaBarEnabled',
     'mediaBarMode',
     'mediaBarContentType',
+    'mediaBarSourceType',
     'mediaBarItemCount',
     'mediaBarOverlayOpacity',
     'mediaBarOverlayColor',
@@ -443,6 +617,7 @@ class UserPreferences extends ChangeNotifier {
     'homeRowsUniversalOverride',
     'homeRowsUniversalImageType',
     'pref_enable_series_thumbnails',
+    'pref_media_type_badge_behavior',
     'pref_show_backdrop',
     'detailsBackgroundBlurAmount',
     'browsingBackgroundBlurAmount',
@@ -451,8 +626,10 @@ class UserPreferences extends ChangeNotifier {
     'showRatingLabels',
     'showRatingBadges',
     'enableEpisodeRatings',
+    'pref_personal_rating_style',
     'tmdbApiKey',
     'seerrBlockNsfw',
+    'seerrShowMissingCollectionItems',
     'enabledRatings',
     'home_sections_config',
     'pref_audio_display_latest',
@@ -489,6 +666,12 @@ class UserPreferences extends ChangeNotifier {
     'last_radarr_calendar_fetch_time',
     'last_sonarr_calendar_fetch_time',
     'merge_radarr_sonarr_calendars',
+    'recently_released_series_type',
+    'loading_animation_image',
+    'loading_animation_size',
+    'loading_animation_position',
+    'loading_animation_speed',
+    'show_loading_animation_text',
   };
 
   bool _isScopedPreference<T>(Preference<T> pref) {
@@ -604,6 +787,20 @@ class UserPreferences extends ChangeNotifier {
       get(enableEpisodeRatings) &&
       isRatingSourceEnabled('tmdb');
 
+  /// What this device can afford, taking the user's choice over the probe.
+  DevicePerformanceTier resolveDevicePerformanceTier() =>
+      resolveDevicePerformanceTierFor(
+        get(performanceMode),
+        PlatformDetection.deviceMemory,
+      );
+
+  /// Whether a media bar trailer may play here. A device on the reduced tier
+  /// keeps the still image, because the decoder is what takes it down.
+  bool resolveMediaBarTrailerPreview() => inlinePreviewAllowed(
+    userEnabled: get(mediaBarTrailerPreview),
+    tier: resolveDevicePerformanceTier(),
+  );
+
   AudioFallbackCodec resolveAudioFallbackCodec() => get(audioFallbackCodec);
 
   int resolveMaxAudioChannels() => get(maxAudioChannels);
@@ -632,20 +829,36 @@ class UserPreferences extends ChangeNotifier {
         )
       : const AudioCapabilityProfile.optimistic();
 
+  /// Whether the IEC app packer is the active output path: the preference is
+  /// set, the engine is Media3, and this is Android TV. The single choke
+  /// point that keeps every other engine and platform untouched.
+  bool get media3IecPackerSelected =>
+      get(audioPassthroughOutput) == AudioPassthroughOutput.iecPacker &&
+      get(playbackEnginePreference) == PlaybackEnginePreference.media3 &&
+      PlatformDetection.isAndroid &&
+      PlatformDetection.isTV;
+
   // Mode-aware passthrough resolution. Disabled bitstreams nothing, auto
   // follows the detected hardware capability, and manual follows the stored
   // toggles. Callers may pass a profile they already built, and when omitted
-  // the live detected profile is used.
+  // the live detected profile is used. Under the IEC packer the capability
+  // predicate is the codec's IEC carrier eligibility instead of the raw
+  // passthrough encoding, so auto mode and the advertised server profile
+  // follow what the IEC path can actually carry.
   bool _resolvePassthrough(
     Preference<bool> pref,
     bool Function(AudioCapabilityProfile) capabilityOf,
+    bool Function(AudioCapabilityProfile) iecCapabilityOf,
     AudioCapabilityProfile? profile,
   ) {
     switch (get(audioPassthroughMode)) {
       case AudioPassthroughMode.disabled:
         return false;
       case AudioPassthroughMode.auto:
-        return capabilityOf(profile ?? detectedAudioCapabilities);
+        final capabilities = profile ?? detectedAudioCapabilities;
+        return media3IecPackerSelected
+            ? iecCapabilityOf(capabilities)
+            : capabilityOf(capabilities);
       case AudioPassthroughMode.manual:
         return get(pref);
     }
@@ -655,6 +868,7 @@ class UserPreferences extends ChangeNotifier {
       _resolvePassthrough(
         ac3PassthroughEnabled,
         (p) => p.canPassthroughAc3,
+        (p) => p.canIecAc3,
         profile,
       );
 
@@ -662,6 +876,7 @@ class UserPreferences extends ChangeNotifier {
       _resolvePassthrough(
         eac3PassthroughEnabled,
         (p) => p.canPassthroughEac3,
+        (p) => p.canIecEac3,
         profile,
       );
 
@@ -669,6 +884,7 @@ class UserPreferences extends ChangeNotifier {
       _resolvePassthrough(
         dtsCorePassthroughEnabled,
         (p) => p.canPassthroughDts,
+        (p) => p.canIecDts,
         profile,
       );
 
@@ -679,6 +895,7 @@ class UserPreferences extends ChangeNotifier {
       _resolvePassthrough(
         dtsHdPassthroughEnabled,
         (p) => p.canPassthroughDtsHd,
+        (p) => p.canIecDtsHd,
         profile,
       );
 
@@ -686,6 +903,7 @@ class UserPreferences extends ChangeNotifier {
       _resolvePassthrough(
         trueHdPassthroughEnabled,
         (p) => p.canPassthroughTrueHd,
+        (p) => p.canIecTrueHd,
         profile,
       );
 
@@ -792,6 +1010,45 @@ class UserPreferences extends ChangeNotifier {
     return mediaBarModeMoonfin;
   }
 
+  /// The effect a synced or stored value stands for, or null when this client doesn't know
+  /// the value, so a sync can leave the local choice alone.
+  static String? parseSeasonalSurprise(String? value) {
+    final normalized = (value ?? '').trim().toLowerCase();
+    if (seasonalSurpriseValues.contains(normalized)) return normalized;
+    return _legacySeasonalSurprise[normalized];
+  }
+
+  static String normalizeSeasonalSurprise(String? value) =>
+      parseSeasonalSurprise(value) ?? seasonalNone;
+
+  static String? parseSeasonalDensity(String? value) {
+    final normalized = (value ?? '').trim().toLowerCase();
+    return seasonalDensityValues.contains(normalized) ? normalized : null;
+  }
+
+  static String normalizeSeasonalDensity(String? value) =>
+      parseSeasonalDensity(value) ?? seasonalDensityNormal;
+
+  /// Automatic, Other, or an ISO alpha-2 code upper-cased. Anything else is unknown.
+  static String? parseSeasonalRowCountry(String? value) {
+    final lower = (value ?? '').trim().toLowerCase();
+    if (lower == seasonalRowCountryAuto || lower == seasonalRowCountryOther) {
+      return lower;
+    }
+    return parseCountryCode(value);
+  }
+
+  /// [value] upper-cased when it is a two letter country code, else null.
+  static String? parseCountryCode(String? value) {
+    final trimmed = (value ?? '').trim();
+    final isCode = trimmed.length == 2 &&
+        trimmed.codeUnits.every((c) => (c >= 65 && c <= 90) || (c >= 97 && c <= 122));
+    return isCode ? trimmed.toUpperCase() : null;
+  }
+
+  static Set<String> parseSeasonalRowHiddenHolidays(String value) =>
+      value.split(',').map((h) => h.trim()).where((h) => h.isNotEmpty).toSet();
+
   static bool isMediaBarModeEnabled(String? mode) {
     return normalizeMediaBarMode(mode) != mediaBarModeOff;
   }
@@ -858,6 +1115,18 @@ class UserPreferences extends ChangeNotifier {
     defaultValue: 30,
   );
 
+  static final modernCardsOnMyMediaRow = Preference<bool>(
+    key: 'pref_modern_cards_my_media',
+    defaultValue: true,
+  );
+
+  /// How far a mouse wheel notch scrolls, as a percentage of what the platform
+  /// reports.
+  static final desktopScrollSensitivity = Preference(
+    key: 'pref_desktop_scroll_sensitivity',
+    defaultValue: 100,
+  );
+
   static final desktopUiScale = EnumPreference(
     key: 'pref_desktop_ui_scale',
     defaultValue: DesktopUiScale.medium,
@@ -882,9 +1151,21 @@ class UserPreferences extends ChangeNotifier {
     defaultValue: true,
   );
 
+  /// Enables Android's experimental libretro hardware-rendering path.
+  static final useHardwareRendering = Preference(
+    key: 'pref_use_hardware_rendering',
+    defaultValue: true,
+  );
+
   static final seriesThumbnailsEnabled = Preference(
     key: 'pref_enable_series_thumbnails',
     defaultValue: false,
+  );
+
+  static final mediaTypeBadgeBehavior = EnumPreference(
+    key: 'pref_media_type_badge_behavior',
+    defaultValue: MediaTypeBadgeBehavior.always,
+    values: MediaTypeBadgeBehavior.values,
   );
 
   static final homeRowInfoOverlay = Preference(
@@ -910,6 +1191,11 @@ class UserPreferences extends ChangeNotifier {
 
   static final displayGenresRows = Preference(
     key: 'pref_display_genres_rows',
+    defaultValue: false,
+  );
+
+  static final displayStudiosRows = Preference(
+    key: 'pref_display_studios_rows',
     defaultValue: false,
   );
 
@@ -1013,10 +1299,22 @@ class UserPreferences extends ChangeNotifier {
     values: LibrarySortBy.values,
   );
 
+  static final favoritesRowSortOrder = EnumPreference(
+    key: 'pref_favorites_row_sort_order',
+    defaultValue: SortDirection.ascending,
+    values: SortDirection.values,
+  );
+
   static final collectionsRowSortBy = EnumPreference(
     key: 'pref_collections_row_sort_by',
     defaultValue: LibrarySortBy.playlistOrder,
     values: LibrarySortBy.values,
+  );
+
+  static final collectionsRowSortOrder = EnumPreference(
+    key: 'pref_collections_row_sort_order',
+    defaultValue: SortDirection.ascending,
+    values: SortDirection.values,
   );
 
   static final collectionsRowShowEpisodes = Preference(
@@ -1030,10 +1328,22 @@ class UserPreferences extends ChangeNotifier {
     values: LibrarySortBy.values,
   );
 
+  static final genresRowSortOrder = EnumPreference(
+    key: 'pref_genres_row_sort_order',
+    defaultValue: SortDirection.ascending,
+    values: SortDirection.values,
+  );
+
   static final playlistsRowSortBy = EnumPreference(
     key: 'pref_playlists_row_sort_by',
     defaultValue: LibrarySortBy.playlistOrder,
     values: LibrarySortBy.values,
+  );
+
+  static final playlistsRowSortOrder = EnumPreference(
+    key: 'pref_playlists_row_sort_order',
+    defaultValue: SortDirection.ascending,
+    values: SortDirection.values,
   );
 
   static final playlistsRowShowEpisodes = Preference(
@@ -1045,6 +1355,29 @@ class UserPreferences extends ChangeNotifier {
     key: 'pref_audio_rows_sort_by',
     defaultValue: LibrarySortBy.name,
     values: LibrarySortBy.values,
+  );
+
+  static final audioRowsSortOrder = EnumPreference(
+    key: 'pref_audio_rows_sort_order',
+    defaultValue: SortDirection.ascending,
+    values: SortDirection.values,
+  );
+
+  static final studiosRowSortBy = EnumPreference(
+    key: 'pref_studios_row_sort_by',
+    defaultValue: LibrarySortBy.name,
+    values: LibrarySortBy.values,
+  );
+
+  static final studiosRowSortOrder = EnumPreference(
+    key: 'pref_studios_row_sort_order',
+    defaultValue: SortDirection.ascending,
+    values: SortDirection.values,
+  );
+
+  static final studiosRowSelectedIds = Preference<String>(
+    key: 'pref_studios_row_selected_ids',
+    defaultValue: '',
   );
 
   static final genresRowItemFilter = EnumPreference(
@@ -1085,6 +1418,35 @@ class UserPreferences extends ChangeNotifier {
         PlatformDetection.isAppleTV,
   );
 
+  /// Whether a game controller drives the app UI. Games take the pad for
+  /// themselves either way. Belongs to the device rather than the account,
+  /// like [useExternalPlayer], so it's neither synced nor stored per server.
+  ///
+  /// On by default on Apple TV. Off there routes controller input to the
+  /// GameController profiles instead of the responder chain, which takes the
+  /// arrow presses third party remotes send along with it.
+  static final gamepadNavigationEnabled = Preference(
+    key: 'pref_gamepad_navigation_enabled',
+    defaultValue: PlatformDetection.isAppleTV,
+  );
+
+  /// How far a Siri Remote touchpad swipe moves focus on Apple TV. Belongs to
+  /// the device, since it tunes a physical remote, so it isn't synced.
+  static final siriRemoteSwipeSensitivity = EnumPreference(
+    key: 'pref_siri_remote_swipe_sensitivity',
+    defaultValue: SiriRemoteSwipeSensitivity.medium,
+    values: SiriRemoteSwipeSensitivity.values,
+  );
+
+  /// What the Apple TV Top Shelf shows above the app icon. The shelf is on the
+  /// Apple TV home screen whoever is signed in, so this belongs to the device
+  /// and is neither synced nor scoped to an account.
+  static final topShelfContent = EnumPreference(
+    key: 'pref_top_shelf_content',
+    defaultValue: TopShelfContent.latestMedia,
+    values: TopShelfContent.values,
+  );
+
   static final visualTheme = EnumPreference(
     key: 'app_theme_id',
     defaultValue: PlatformDetection.isApple || PlatformDetection.isAppleTV
@@ -1099,10 +1461,27 @@ class UserPreferences extends ChangeNotifier {
     values: InterfaceStyle.values,
   );
 
+  static final interfaceLayout = EnumPreference(
+    key: 'pref_interface_layout',
+    defaultValue: InterfaceLayout.automatic,
+    values: InterfaceLayout.values,
+  );
+
   static final glassQuality = EnumPreference(
     key: 'pref_glass_quality',
     defaultValue: GlassQualityMode.auto,
     values: GlassQualityMode.values,
+  );
+
+  /// How much this device is asked to spend on decoded images and inline
+  /// video. Auto on every platform: the variation belongs in the resolver, not
+  /// in the default. Deliberately neither scoped nor synced, because it is a
+  /// fact about this device rather than about the account, and because the
+  /// tier has to resolve before sign-in makes a scoped key readable.
+  static final performanceMode = EnumPreference(
+    key: 'pref_performance_mode',
+    defaultValue: DevicePerformanceMode.auto,
+    values: DevicePerformanceMode.values,
   );
 
   /// Deepens chrome toward pure black and enriches artwork, on top of the
@@ -1113,6 +1492,14 @@ class UserPreferences extends ChangeNotifier {
     values: OledMode.values,
   );
 
+  /// Strips the app back to what a child needs and locks the way out behind a
+  /// PIN. Scoped but deliberately not synced, so a parent handing over the TV
+  /// doesn't put their phone in Kids Mode too.
+  static final kidsModeEnabled = Preference(
+    key: 'pref_kids_mode',
+    defaultValue: false,
+  );
+
   /// Settled quality of the adaptive glass renderer from the last session.
   /// Seeds GlassAdaptiveScope's initialQuality so repeat launches skip the
   /// warm-up benchmark. [GlassSettledQuality.unset] means benchmark again.
@@ -1120,6 +1507,33 @@ class UserPreferences extends ChangeNotifier {
     key: 'pref_glass_settled_quality',
     defaultValue: GlassSettledQuality.unset,
     values: GlassSettledQuality.values,
+  );
+
+  /// Animation speed for page navigation transitions.
+  static final pageTransitionSpeed = EnumPreference(
+    key: 'pref_page_transition_speed',
+    defaultValue: PageTransitionSpeed.medium,
+    values: PageTransitionSpeed.values,
+  );
+
+  /// Animation speed for focus movement and row scrolling.
+  static final navigationAnimationSpeed = EnumPreference(
+    key: 'pref_navigation_animation_speed',
+    defaultValue: NavigationAnimationSpeed.medium,
+    values: NavigationAnimationSpeed.values,
+  );
+
+  /// Animation speed for Modern card focus expansion transitions.
+  static final modernCardTransitionSpeed = EnumPreference(
+    key: 'pref_modern_card_transition_speed',
+    defaultValue: ModernCardTransitionSpeed.medium,
+    values: ModernCardTransitionSpeed.values,
+  );
+
+  /// When on, delays Modern card expansion during rapid navigation until focus settles.
+  static final delayCardExpansionOnRapidScroll = Preference(
+    key: 'pref_delay_card_expansion_on_rapid_scroll',
+    defaultValue: false,
   );
 
   /// Structural style for the media detail screen. Stored per server and user,
@@ -1150,6 +1564,33 @@ class UserPreferences extends ChangeNotifier {
     defaultValue: true,
   );
 
+  /// When on, the details screen hands remote trailers to the system, the
+  /// YouTube app on TV or the browser elsewhere, instead of the in-app
+  /// player. Local trailers are server files only this app can stream, so
+  /// they always play in-app. Stored per server like [detailScreenStyle].
+  static final detailTrailersExternal = Preference(
+    key: 'pref_detail_trailers_external',
+    defaultValue: false,
+  );
+
+  /// When on, media description paragraph on the details page is hidden.
+  static final hideDetailsMediaDescription = Preference(
+    key: 'pref_hide_details_media_description',
+    defaultValue: false,
+  );
+
+  /// When on, thumbnails on Classic details page are replaced with series thumbnail.
+  static final detailUseSeriesThumbnails = Preference(
+    key: 'pref_detail_use_series_thumbnails',
+    defaultValue: false,
+  );
+
+  /// When on, media description paragraph on the Home screen is hidden.
+  static final hideHomeMediaDescription = Preference(
+    key: 'pref_hide_home_media_description',
+    defaultValue: false,
+  );
+
   /// Algorithm source for the similar items recommendation system. Stored per server and
   /// user, because it syncs to that server's profile.
   static final recommendationSystemSource = EnumPreference(
@@ -1163,6 +1604,59 @@ class UserPreferences extends ChangeNotifier {
     key: 'pref_recommendations_apply_parental_rating_cap',
     defaultValue: true,
   );
+
+  /// The style to build, once Kids Mode has had its say. Read this and the
+  /// other effective getters rather than the preferences above anywhere the
+  /// details screen is being put together.
+  ///
+  /// Applied on read rather than by rewriting the saved values, so turning
+  /// Kids Mode off gives the user their own screen back untouched. That also
+  /// keeps the mode out of the sync payload, since the profile push reads the
+  /// raw preference and would otherwise carry a forced value to the parent's
+  /// other devices.
+  DetailScreenStyle get effectiveDetailScreenStyle => get(kidsModeEnabled)
+      ? DetailScreenStyle.minimalist
+      : get(detailScreenStyle);
+
+  bool get effectiveDetailExpandedTabs =>
+      get(kidsModeEnabled) ? false : get(detailExpandedTabs);
+
+  bool get effectiveDetailShowTechnicalDetails =>
+      get(kidsModeEnabled) ? false : get(detailShowTechnicalDetails);
+
+  /// Handing a trailer to the browser or the YouTube app is a way out of the
+  /// app, which is the one thing Kids Mode exists to close.
+  bool get effectiveDetailTrailersExternal =>
+      get(kidsModeEnabled) ? false : get(detailTrailersExternal);
+
+  /// True means hidden. The preference is named for hiding, so Kids Mode
+  /// forces it on rather than off to leave the description out.
+  bool get effectiveHideDetailsMediaDescription =>
+      get(kidsModeEnabled) ? true : get(hideDetailsMediaDescription);
+
+  bool get effectiveDetailUseSeriesThumbnails =>
+      get(kidsModeEnabled) ? false : get(detailUseSeriesThumbnails);
+
+  /// Kids Mode lands on the Minimalist screen, where a score means little
+  /// to a child and the row carries outside branding.
+  bool get effectiveShowDetailRatings => !get(kidsModeEnabled);
+
+  /// Kids Mode shows the two as one row whatever the account chose for itself.
+  /// Apart they read as two separate places to carry on from, which is a
+  /// distinction that means nothing to a child.
+  bool get effectiveMergeContinueWatchingNextUp =>
+      get(kidsModeEnabled) || get(mergeContinueWatchingNextUp);
+
+  /// The online source is an outside catalog no parental rating reaches, so
+  /// Kids Mode keeps recommendations inside the server's own library.
+  RecommendationSystemSource get effectiveRecommendationSystemSource =>
+      get(kidsModeEnabled)
+      ? RecommendationSystemSource.local
+      : get(recommendationSystemSource);
+
+  bool get effectiveRecommendationsApplyParentalRatingCap => get(kidsModeEnabled)
+      ? true
+      : get(recommendationsApplyParentalRatingCap);
 
   /// Default mobile view for the Live TV guide (Now/Next list vs compact grid).
   static final epgMobileView = EnumPreference(
@@ -1211,6 +1705,16 @@ class UserPreferences extends ChangeNotifier {
     defaultValue: true,
   );
 
+  static final showLiveTvButton = Preference(
+    key: 'pref_show_live_tv_button',
+    defaultValue: false,
+  );
+
+  static final showDownloadsButton = Preference(
+    key: 'pref_show_downloads_button',
+    defaultValue: true,
+  );
+
   static final showAlphabeticalFilters = Preference(
     key: 'pref_show_alphabetical_filters',
     defaultValue: false,
@@ -1236,6 +1740,39 @@ class UserPreferences extends ChangeNotifier {
     defaultValue: true,
   );
 
+  static final showSeerrAvailabilityBadges = Preference(
+    key: 'pref_show_seerr_availability_badges',
+    defaultValue: true,
+  );
+
+  /// Off by default. An admin who wants it on for everyone can set it in the
+  /// Moonbase default settings.
+  static final showServerMessagesButton = Preference(
+    key: 'pref_show_server_messages_button',
+    defaultValue: false,
+  );
+
+  /// Off by default. Friends and chat stay reachable from the achievements
+  /// screen, so this only adds a shortcut for people who use them.
+  static final showFriendsButton = Preference(
+    key: 'pref_show_friends_button',
+    defaultValue: false,
+  );
+
+  /// On by default, since a chat banner over a film is rarely wanted. Kept on
+  /// the device rather than in the plugin, whose own setting defaults to off.
+  static final muteChatBannersDuringPlayback = Preference(
+    key: 'pref_mute_chat_banners_during_playback',
+    defaultValue: true,
+  );
+
+  /// On by default, so a server without Moonbase keeps the tab. An admin can
+  /// set a different default in the Moonbase default settings.
+  static final showBookDiscoverTab = Preference(
+    key: 'pref_show_book_discover_tab',
+    defaultValue: true,
+  );
+
   static final adminDrawerOrder = Preference(
     key: 'pref_admin_drawer_order',
     defaultValue: '',
@@ -1245,6 +1782,21 @@ class UserPreferences extends ChangeNotifier {
     key: 'pref_navbar_position',
     defaultValue: NavbarPosition.left,
     values: NavbarPosition.values,
+  );
+
+  // Anyone on the bottom navbar before these styles has nothing stored here,
+  // so they land on Dock. That's the whole migration.
+  static final bottomNavbarStyle = EnumPreference(
+    key: 'pref_bottom_navbar_style',
+    defaultValue: BottomNavbarStyle.dock,
+    values: BottomNavbarStyle.values,
+  );
+
+  /// Comma separated [BottomNavTab] names pinned between Home and You. Empty
+  /// means automatic, resolved from the nav button toggles.
+  static final bottomNavbarTabs = Preference(
+    key: 'pref_bottom_navbar_tabs',
+    defaultValue: '',
   );
 
   static final shuffleContentType = Preference(
@@ -1268,6 +1820,13 @@ class UserPreferences extends ChangeNotifier {
   static final diagnosticLoggingEnabled = Preference(
     key: 'pref_diagnostic_logging_enabled',
     defaultValue: false,
+  );
+
+  /// Gates uploading crash reports to the server. Capture itself always runs
+  /// and stays on the device.
+  static final crashReportsEnabled = Preference(
+    key: 'pref_crash_reports_enabled',
+    defaultValue: true,
   );
 
   static final enableFolderView = Preference(
@@ -1424,10 +1983,16 @@ class UserPreferences extends ChangeNotifier {
   }
 
   /// The bitrate ceiling to advertise in the device profile, in Mbps, or null
-  /// for "no ceiling". An explicit user choice always wins; 'auto' resolves to
-  /// the measured link speed (see [autoBitrateCapMbps]).
+  /// for "no ceiling".
+  ///
+  /// Sipflix fork, combined Auto: an explicit user choice always wins. On
+  /// 'auto' only a ceiling learned from real stalls ([autoCeilingMbps]) is
+  /// sent, since that is evidence the link can't carry more and it may cap
+  /// below the source. Otherwise this is null, so PlaybackManager measures the
+  /// link itself (AutoBitrateService) and lets the source's own bitrate win
+  /// for direct play: a speed probe alone never forces a transcode.
   int? resolveMaxBitrateMbps({DateTime? now}) =>
-      int.tryParse(get(maxBitrate)) ?? autoBitrateCapMbps(now: now);
+      int.tryParse(get(maxBitrate)) ?? autoCeilingMbps(now: now);
 
   static final maxVideoResolution = EnumPreference(
     key: 'pref_max_video_resolution',
@@ -1498,6 +2063,56 @@ class UserPreferences extends ChangeNotifier {
     defaultValue: true,
   );
 
+  static final screensaverBackdrop = EnumPreference(
+    key: 'pref_screensaver_backdrop',
+    defaultValue: ScreensaverBackdrop.library,
+    values: ScreensaverBackdrop.values,
+  );
+
+  static final screensaverComponent = EnumPreference(
+    key: 'pref_screensaver_component',
+    defaultValue: ScreensaverComponent.moonfinLogo,
+    values: ScreensaverComponent.values,
+  );
+
+  static final screensaverMovement = EnumPreference(
+    key: 'pref_screensaver_movement',
+    defaultValue: ScreensaverMovement.moderate,
+    values: ScreensaverMovement.values,
+  );
+
+  static final screensaverPosition = EnumPreference(
+    key: 'pref_screensaver_position',
+    defaultValue: ScreensaverPosition.middle,
+    values: ScreensaverPosition.values,
+  );
+
+  static final screensaverSize = EnumPreference(
+    key: 'pref_screensaver_size',
+    defaultValue: ScreensaverSize.medium,
+    values: ScreensaverSize.values,
+  );
+
+  static final screensaverContentType = Preference(
+    key: 'pref_screensaver_content_type',
+    defaultValue: 'both',
+  );
+
+  static final screensaverLibraryIds = Preference(
+    key: 'pref_screensaver_library_ids',
+    defaultValue: '',
+  );
+
+  static final screensaverCollectionIds = Preference(
+    key: 'pref_screensaver_collection_ids',
+    defaultValue: '',
+  );
+
+  static final screensaverExcludedGenres = Preference(
+    key: 'pref_screensaver_excluded_genres',
+    defaultValue: '',
+  );
+
   static final screensaverMode = EnumPreference(
     key: 'pref_screensaver_mode',
     defaultValue: ScreensaverMode.logo,
@@ -1512,7 +2127,7 @@ class UserPreferences extends ChangeNotifier {
 
   static final screensaverDimming = Preference(
     key: 'pref_screensaver_dimming',
-    defaultValue: 0,
+    defaultValue: 30,
   );
 
   static final screensaverClockMode = EnumPreference(
@@ -1553,6 +2168,14 @@ class UserPreferences extends ChangeNotifier {
     values: AutoHdrSwitchingBehavior.values,
   );
 
+  /// Sends HDR video to the display untouched, by giving mpv its own D3D11
+  /// window instead of the shared 8-bit texture. Windows only, and only
+  /// engaged when the display is already in HDR mode and the content is HDR.
+  static final nativeHdrOutput = Preference(
+    key: 'native_hdr_output',
+    defaultValue: false,
+  );
+
   static final preferExoPlayerFfmpeg = Preference(
     key: 'exoplayer_prefer_ffmpeg',
     defaultValue: !(PlatformDetection.isAndroid && PlatformDetection.isTV),
@@ -1589,14 +2212,50 @@ class UserPreferences extends ChangeNotifier {
     values: ZoomMode.values,
   );
 
+  /// Off by default: it costs picture width, and only video wide enough to
+  /// reach the housing gains anything.
+  static final keepVideoClearOfDynamicIsland = Preference(
+    key: 'pref_video_clear_of_dynamic_island',
+    defaultValue: false,
+  );
+
+  /// One-shot encoded-letterbox crop. libmpv on Linux/Windows; Media3
+  /// (and libmpv if selected) on Android phone and TV. Hidden on iOS,
+  /// macOS, web, and tvOS.
+  static final cropBlackBars = Preference(
+    key: 'crop_black_bars',
+    defaultValue: false,
+  );
+
   static final desktopScrollWheelAction = EnumPreference(
     key: 'desktop_scroll_wheel_action',
     defaultValue: DesktopScrollWheelAction.volume,
     values: DesktopScrollWheelAction.values,
   );
 
-  static final trickPlayEnabled = Preference(
-    key: 'trick_play_enabled',
+  static final trickPlayMode = EnumPreference(
+    key: 'trickplay_mode',
+    defaultValue: TrickplayMode.single,
+    values: TrickplayMode.values,
+  );
+
+  static final trickPlayPreviewScalePercent = Preference<int>(
+    key: 'trickplay_preview_scale_percent',
+    defaultValue: 30,
+  );
+
+  static final trickPlayVerticalPositionPercent = Preference<int>(
+    key: 'trickplay_vertical_position_percent',
+    defaultValue: 0,
+  );
+
+  static final trickPlayFollowScrubPosition = Preference<bool>(
+    key: 'trickplay_follow_scrub_position',
+    defaultValue: true,
+  );
+
+  static final trickPlayPauseWhileScrubbing = Preference<bool>(
+    key: 'trickplay_pause_while_scrubbing',
     defaultValue: true,
   );
 
@@ -1669,6 +2328,14 @@ class UserPreferences extends ChangeNotifier {
     key: 'pref_audio_passthrough_mode',
     defaultValue: AudioPassthroughMode.auto,
     values: AudioPassthroughMode.values,
+  );
+
+  /// How bitstreams reach the AudioTrack on the Media3 engine, see
+  /// [AudioPassthroughOutput].
+  static final audioPassthroughOutput = EnumPreference(
+    key: 'pref_audio_passthrough_output',
+    defaultValue: AudioPassthroughOutput.platform,
+    values: AudioPassthroughOutput.values,
   );
 
   static final downmixToStereo = Preference(
@@ -1747,7 +2414,7 @@ class UserPreferences extends ChangeNotifier {
 
   static final playbackEnginePreference = EnumPreference(
     key: 'playback_engine_preference',
-    defaultValue: PlatformDetection.isAndroid && PlatformDetection.isTV
+    defaultValue: PlatformDetection.isAndroid
         ? PlaybackEnginePreference.media3
         : PlaybackEnginePreference.mpv,
     values: PlaybackEnginePreference.values,
@@ -1821,6 +2488,43 @@ class UserPreferences extends ChangeNotifier {
     defaultValue: 0.04,
   );
 
+  /// A second appearance used only while HDR reaches the screen, defaulting to
+  /// grey text since white reads far brighter in HDR than in SDR.
+  static final subtitlesHdrSeparate = Preference(
+    key: 'subtitles_hdr_separate',
+    defaultValue: false,
+  );
+
+  static final subtitlesHdrBackgroundColor = Preference(
+    key: 'subtitles_hdr_background_color',
+    defaultValue: 0x00000000,
+  );
+
+  static final subtitlesHdrTextWeight = Preference(
+    key: 'subtitles_hdr_text_weight',
+    defaultValue: 400,
+  );
+
+  static final subtitlesHdrTextColor = Preference(
+    key: 'subtitles_hdr_text_color',
+    defaultValue: 0xFF808080,
+  );
+
+  static final subtitlesHdrTextStrokeColor = Preference(
+    key: 'subtitles_hdr_text_stroke_color',
+    defaultValue: 0xFF000000,
+  );
+
+  static final subtitlesHdrTextSize = Preference(
+    key: 'subtitles_hdr_text_size',
+    defaultValue: 20.0,
+  );
+
+  static final subtitlesHdrOffsetPosition = Preference(
+    key: 'subtitles_hdr_offset_position',
+    defaultValue: 0.04,
+  );
+
   static final subtitleMode = EnumPreference(
     key: 'pref_subtitle_mode',
     defaultValue: SubtitleMode.flagged,
@@ -1866,7 +2570,7 @@ class UserPreferences extends ChangeNotifier {
 
   static final mediaSegmentAutoHide = EnumPreference(
     key: 'pref_media_segment_auto_hide',
-    defaultValue: MediaSegmentAutoHide.s5,
+    defaultValue: MediaSegmentAutoHide.off,
     values: MediaSegmentAutoHide.values,
   );
 
@@ -1925,6 +2629,14 @@ class UserPreferences extends ChangeNotifier {
     key: 'osdLockEnabled',
     defaultValue: false,
   );
+  static final showChapterMarkers = Preference(
+    key: 'showChapterMarkers',
+    defaultValue: false,
+  );
+  static final playerSwipeGestures = Preference(
+    key: 'playerSwipeGestures',
+    defaultValue: true,
+  );
   static final detailButtonOrderTv = Preference(
     key: 'detailButtonOrderTv',
     defaultValue: '',
@@ -1961,6 +2673,46 @@ class UserPreferences extends ChangeNotifier {
     key: 'hiddenDetailButtonsDesktop',
     defaultValue: '',
   );
+  static final detailButtonsMaxVisible = Preference(
+    key: 'detailButtonsMaxVisible',
+    defaultValue: 0,
+  );
+  static final detailMetadataOrderTv = Preference(
+    key: 'detailMetadataOrderTv',
+    defaultValue: '',
+  );
+  static final detailMetadataOrderMobile = Preference(
+    key: 'detailMetadataOrderMobile',
+    defaultValue: '',
+  );
+  static final detailMetadataOrderDesktop = Preference(
+    key: 'detailMetadataOrderDesktop',
+    defaultValue: '',
+  );
+  static final hiddenDetailMetadataTv = Preference(
+    key: 'hiddenDetailMetadataTv',
+    defaultValue: '',
+  );
+  static final hiddenDetailMetadataMobile = Preference(
+    key: 'hiddenDetailMetadataMobile',
+    defaultValue: '',
+  );
+  static final hiddenDetailMetadataDesktop = Preference(
+    key: 'hiddenDetailMetadataDesktop',
+    defaultValue: '',
+  );
+  static final hiddenDetailSectionsTv = Preference(
+    key: 'hiddenDetailSectionsTv',
+    defaultValue: '',
+  );
+  static final hiddenDetailSectionsMobile = Preference(
+    key: 'hiddenDetailSectionsMobile',
+    defaultValue: '',
+  );
+  static final hiddenDetailSectionsDesktop = Preference(
+    key: 'hiddenDetailSectionsDesktop',
+    defaultValue: '',
+  );
   static final hiddenOsdButtonsTv = Preference(
     key: 'hiddenOsdButtonsTv',
     defaultValue: '',
@@ -1988,6 +2740,11 @@ class UserPreferences extends ChangeNotifier {
   static final mediaBarContentType = Preference(
     key: 'mediaBarContentType',
     defaultValue: 'both',
+  );
+
+  static final mediaBarSourceType = Preference(
+    key: 'mediaBarSourceType',
+    defaultValue: mediaBarSourceRandom,
   );
 
   static final mediaBarItemCount = Preference(
@@ -2087,8 +2844,6 @@ class UserPreferences extends ChangeNotifier {
 
   static ImageType _defaultHomeRowImageType(HomeSectionType sectionType) {
     return switch (sectionType) {
-      HomeSectionType.resume ||
-      HomeSectionType.nextUp ||
       HomeSectionType.libraryTilesSmall => ImageType.thumb,
       _ => ImageType.poster,
     };
@@ -2118,6 +2873,12 @@ class UserPreferences extends ChangeNotifier {
     defaultValue: true,
   );
 
+  static final personalRatingStyle = EnumPreference(
+    key: 'pref_personal_rating_style',
+    values: PersonalRatingStyle.values,
+    defaultValue: PersonalRatingStyle.thumbs,
+  );
+
   static final tmdbApiKey = Preference(key: 'tmdbApiKey', defaultValue: '');
 
   static final showRatingLabels = Preference(
@@ -2135,8 +2896,24 @@ class UserPreferences extends ChangeNotifier {
     defaultValue: 'stars,imdb,tmdb,tomatoes,metacritic',
   );
 
+  /// Content ratings the viewer has blocked, as an upper cased CSV. Blocked
+  /// means hidden from every list and refused on open and on play, not just
+  /// filtered out of the home rows. Scoped but deliberately not synced: a
+  /// parent locking down the child's TV hasn't asked for their own phone to be
+  /// locked down too.
   static final blockedParentalRatings = Preference(
     key: 'blocked_ratings',
+    defaultValue: '',
+  );
+
+  /// Series last seen carrying a blocked rating, as a CSV of ids.
+  ///
+  /// An episode usually carries no rating while its series does, so the gate
+  /// looks the series up. A refusal a dropped connection can undo isn't a
+  /// refusal, so a series that was once blocked stays blocked until a lookup
+  /// succeeds and says otherwise.
+  static final blockedSeriesIds = Preference(
+    key: 'blocked_series_ids',
     defaultValue: '',
   );
 
@@ -2300,6 +3077,12 @@ class UserPreferences extends ChangeNotifier {
     defaultValue: false,
   );
 
+  static final recentlyReleasedSeriesType = EnumPreference(
+    key: 'recently_released_series_type',
+    defaultValue: RecentlyReleasedSeriesType.series,
+    values: RecentlyReleasedSeriesType.values,
+  );
+
   List<HomeSectionConfig> get homeSectionsConfig {
     final json = get(homeSectionsJson);
     return HomeSectionConfig.fromJsonString(json);
@@ -2308,23 +3091,80 @@ class UserPreferences extends ChangeNotifier {
   Future<void> setHomeSectionsConfig(List<HomeSectionConfig> configs) =>
       set(homeSectionsJson, HomeSectionConfig.toJsonString(configs));
 
-  List<HomeSectionType> get activeHomeSections {
-    final enabled = homeSectionsConfig.where((c) => c.enabled).toList()
-      ..sort((a, b) => a.order.compareTo(b.order));
-    return enabled
-        .where((c) => c.isBuiltin && c.type != HomeSectionType.none)
-        .map((c) => c.type)
-        .toList();
-  }
+  List<HomeSectionType> get activeHomeSections => activeHomeSectionConfigs
+      .where((c) => c.isBuiltin && c.type != HomeSectionType.none)
+      .map((c) => c.type)
+      .toList();
 
   /// Ordered list of all enabled section configs (builtin + plugin dynamic).
   /// Built-in `none` entries are filtered out.
   List<HomeSectionConfig> get activeHomeSectionConfigs {
     final enabled = homeSectionsConfig.where((c) => c.enabled).toList()
       ..sort((a, b) => a.order.compareTo(b.order));
-    return enabled
-        .where((c) => c.isPluginDynamic || c.type != HomeSectionType.none)
+    return _forKidsMode(
+      enabled
+          .where((c) => c.isPluginDynamic || c.type != HomeSectionType.none)
+          .toList(),
+    );
+  }
+
+  /// The only rows Kids Mode leaves standing: the way into the libraries, what
+  /// arrived in them lately, and what is part way through being watched.
+  ///
+  /// My Media rather than its small variant, since artwork is what a child
+  /// picks a library by.
+  ///
+  /// An allow list rather than a block list, so a row added later stays hidden
+  /// until someone decides a child should see it. Everything else pulls from
+  /// somewhere this mode can't vouch for, whether that's a request queue or an
+  /// outside catalog no parental rating reaches.
+  ///
+  /// Carrying on with something is worth the caveat it brings: these two read
+  /// the account's own history, so anything an adult started on the same
+  /// account turns up here too. Blocked ratings are what hold that back, and
+  /// they're set apart from this mode.
+  static const _kidsModeAllowedSections = <HomeSectionType>{
+    HomeSectionType.libraryTilesSmall,
+    HomeSectionType.latestMedia,
+    HomeSectionType.resume,
+    HomeSectionType.nextUp,
+  };
+
+  /// Applied on read rather than by rewriting the saved config, so turning
+  /// Kids Mode off gives the user their own layout back untouched.
+  List<HomeSectionConfig> _forKidsMode(List<HomeSectionConfig> configs) {
+    if (!get(kidsModeEnabled)) return configs;
+
+    // Plugin rows go too. A plugin renders whatever it was handed, which is
+    // not something this mode is in any position to vouch for.
+    final kept = configs
+        .where(
+          (c) =>
+              !c.isPluginDynamic && _kidsModeAllowedSections.contains(c.type),
+        )
         .toList();
+
+    // Kids Mode drops the libraries entry from the navbar, so My Media has to
+    // be on the home screen or there's no way into a library at all. It leads
+    // rather than sitting wherever the account had it, since everything else
+    // here is something to carry on with and the way in belongs above those.
+    final libraries = kept
+        .where((c) => c.type == HomeSectionType.libraryTilesSmall)
+        .toList();
+    final rest = kept
+        .where((c) => c.type != HomeSectionType.libraryTilesSmall)
+        .toList();
+    return [
+      if (libraries.isEmpty)
+        const HomeSectionConfig(
+          type: HomeSectionType.libraryTilesSmall,
+          enabled: true,
+          order: -1,
+        )
+      else
+        ...libraries,
+      ...rest,
+    ];
   }
 
   static final themeMusicEnabled = Preference(
@@ -2411,6 +3251,23 @@ class UserPreferences extends ChangeNotifier {
         defaultValue: false,
       );
 
+  /// How far through the first-run setup this server and user have been taken.
+  ///
+  /// A version rather than a flag, so a release that adds a step can show only
+  /// the new one instead of asking everything again. Kept per server and user
+  /// because a second server is a fresh set of libraries worth arranging, and
+  /// kept out of the synced fields so a new device asks rather than inheriting
+  /// somebody else's answer.
+  static Preference<int> setupWizardVersionForServer(String serverKey) =>
+      Preference(
+        key: 'pref_setup_wizard_version_$serverKey',
+        defaultValue: 0,
+      );
+
+  /// Bumped only when a release adds a step that earns its place. Everything
+  /// already answered stays answered.
+  static const setupWizardVersion = 1;
+
   static final confirmExit = Preference(
     key: 'confirm_exit',
     defaultValue: true,
@@ -2429,7 +3286,57 @@ class UserPreferences extends ChangeNotifier {
 
   static final seasonalSurprise = Preference(
     key: 'seasonal_surprise',
-    defaultValue: 'none',
+    defaultValue: seasonalNone,
+  );
+
+  static final seasonalDensity = Preference(
+    key: 'seasonal_density',
+    defaultValue: seasonalDensityNormal,
+  );
+
+  static final seasonalRowEnabled = Preference(
+    key: 'seasonal_row_enabled',
+    defaultValue: false,
+  );
+
+  static final seasonalRowCountry = Preference(
+    key: 'seasonal_row_country',
+    defaultValue: seasonalRowCountryAuto,
+  );
+
+  /// Holiday ids the viewer switched off, comma separated.
+  static final seasonalRowHiddenHolidays = Preference(
+    key: 'seasonal_row_hidden_holidays',
+    defaultValue: '',
+  );
+
+  static final loadingAnimationImage = EnumPreference(
+    key: 'loading_animation_image',
+    defaultValue: LoadingAnimationImage.moonfinLogo,
+    values: LoadingAnimationImage.values,
+  );
+
+  static final loadingAnimationSize = EnumPreference(
+    key: 'loading_animation_size',
+    defaultValue: LoadingAnimationSize.medium,
+    values: LoadingAnimationSize.values,
+  );
+
+  static final loadingAnimationPosition = EnumPreference(
+    key: 'loading_animation_position',
+    defaultValue: LoadingAnimationPosition.middle,
+    values: LoadingAnimationPosition.values,
+  );
+
+  static final loadingAnimationSpeed = EnumPreference(
+    key: 'loading_animation_speed',
+    defaultValue: LoadingAnimationSpeed.fast,
+    values: LoadingAnimationSpeed.values,
+  );
+
+  static final showLoadingAnimationText = Preference(
+    key: 'show_loading_animation_text',
+    defaultValue: true,
   );
 
   static final autoLoginUserBehavior = EnumPreference(
@@ -2462,17 +3369,17 @@ class UserPreferences extends ChangeNotifier {
     key: 'pref_always_authenticate',
     defaultValue: false,
   );
-  static final userPinHash = Preference(key: 'user_pin_hash', defaultValue: '');
-
-  static final userPinEnabled = Preference(
-    key: 'user_pin_enabled',
-    defaultValue: false,
-  );
-
   static final liveTvChannelSortBy = EnumPreference(
     key: 'live_tv_channel_sort_by',
     defaultValue: ChannelSortBy.favoritesFirst,
     values: ChannelSortBy.values,
+  );
+
+  /// Last Live TV channel watched on this server/account. Channel IDs are
+  /// scoped to the active server and user, so this preference is scoped too.
+  static final liveTvLastChannelId = Preference(
+    key: 'live_tv_last_channel_id',
+    defaultValue: '',
   );
 
   static EnumPreference<LibrarySortBy> librarySortBy(String libraryId) =>
@@ -2497,6 +3404,14 @@ class UserPreferences extends ChangeNotifier {
     values: PlayedStatusFilter.values,
   );
 
+  static EnumPreference<LikedStatusFilter> libraryLikedFilter(
+    String libraryId,
+  ) => EnumPreference(
+    key: 'library_liked_filter_$libraryId',
+    defaultValue: LikedStatusFilter.all,
+    values: LikedStatusFilter.values,
+  );
+
   static EnumPreference<SeriesStatusFilter> librarySeriesFilter(
     String libraryId,
   ) => EnumPreference(
@@ -2507,6 +3422,63 @@ class UserPreferences extends ChangeNotifier {
 
   static Preference<bool> libraryFavoriteFilter(String libraryId) =>
       Preference(key: 'library_fav_filter_$libraryId', defaultValue: false);
+
+  /// The multi choice filters, each held as the selected enum names or the
+  /// selected facet values so a library reopens the way it was left.
+  static Preference<List<String>> libraryFeatureFilters(String libraryId) =>
+      Preference(
+        key: 'library_feature_filters_$libraryId',
+        defaultValue: const [],
+      );
+
+  static Preference<List<String>> libraryVideoQualityFilters(
+    String libraryId,
+  ) => Preference(
+    key: 'library_video_quality_filters_$libraryId',
+    defaultValue: const [],
+  );
+
+  static Preference<List<String>> libraryVideoSourceFilters(String libraryId) =>
+      Preference(
+        key: 'library_video_source_filters_$libraryId',
+        defaultValue: const [],
+      );
+
+  static Preference<List<String>> libraryGenreFilters(String libraryId) =>
+      Preference(
+        key: 'library_genre_filters_$libraryId',
+        defaultValue: const [],
+      );
+
+  static Preference<List<String>> libraryOfficialRatingFilters(
+    String libraryId,
+  ) => Preference(
+    key: 'library_official_rating_filters_$libraryId',
+    defaultValue: const [],
+  );
+
+  static Preference<List<String>> libraryTagFilters(String libraryId) =>
+      Preference(key: 'library_tag_filters_$libraryId', defaultValue: const []);
+
+  static Preference<List<String>> libraryYearFilters(String libraryId) =>
+      Preference(
+        key: 'library_year_filters_$libraryId',
+        defaultValue: const [],
+      );
+
+  static Preference<List<String>> libraryAudioLanguageFilters(
+    String libraryId,
+  ) => Preference(
+    key: 'library_audio_language_filters_$libraryId',
+    defaultValue: const [],
+  );
+
+  static Preference<List<String>> librarySubtitleLanguageFilters(
+    String libraryId,
+  ) => Preference(
+    key: 'library_subtitle_language_filters_$libraryId',
+    defaultValue: const [],
+  );
 
   static EnumPreference<ImageType> libraryImageType(String libraryId) =>
       EnumPreference(
@@ -2558,6 +3530,11 @@ class UserPreferences extends ChangeNotifier {
     defaultValue: false,
   );
 
+  static final seerrShowMissingCollectionItems = Preference(
+    key: 'seerrShowMissingCollectionItems',
+    defaultValue: true,
+  );
+
   static final defaultDownloadQuality = Preference(
     key: 'download_default_quality',
     defaultValue: 'original',
@@ -2565,6 +3542,60 @@ class UserPreferences extends ChangeNotifier {
 
   static final downloadWifiOnly = Preference(
     key: 'download_wifi_only',
+    defaultValue: false,
+  );
+
+  /// Master switch for auto-download subscriptions. Off pauses every
+  /// subscription without forgetting it.
+  static final autoDownloadEnabled = Preference(
+    key: 'auto_download_enabled',
+    defaultValue: true,
+  );
+
+  /// How many unwatched episodes a subscription keeps downloaded or in
+  /// flight at once. 0 means no cap.
+  static final autoDownloadKeepUnwatched = Preference(
+    key: 'auto_download_keep_unwatched',
+    defaultValue: 3,
+  );
+
+  /// Hours after an auto-downloaded episode was watched before it is
+  /// deleted: 0 right away, -1 never.
+  static final autoDownloadDeleteAfterHours = Preference(
+    key: 'auto_download_delete_after_hours',
+    defaultValue: -1,
+  );
+
+  /// Let the OS wake the app in the background to run subscription checks
+  /// (iOS Background App Refresh).
+  static final autoDownloadBackgroundRefresh = Preference(
+    key: 'auto_download_background_refresh',
+    defaultValue: true,
+  );
+
+  /// JSON summary of the most recent subscription check, for the settings
+  /// screen. Written by AutoDownloadService.
+  static final autoDownloadLastRun = Preference(
+    key: 'auto_download_last_run',
+    defaultValue: '',
+  );
+
+  /// Whether the "not enough storage" notice is out: set when a check
+  /// first holds episodes back, cleared by a check that fits everything,
+  /// so a full phone is announced once rather than every few hours.
+  /// Written by AutoDownloadService.
+  static final autoDownloadStorageNoticeShown = Preference(
+    key: 'auto_download_storage_notice_shown',
+    defaultValue: false,
+  );
+
+  // Android TV only: the detail page keeps its download, delete, and
+  // download-all actions hidden until the user opts in from
+  // Settings -> Playback -> Offline Downloads. Other platforms offer
+  // downloads unconditionally, and nothing about existing downloads or the
+  // management screens is gated by this.
+  static final tvOfflineDownloads = Preference(
+    key: 'tv_offline_downloads',
     defaultValue: false,
   );
 
@@ -2585,6 +3616,12 @@ class UserPreferences extends ChangeNotifier {
     key: 'download_concurrent_count',
     defaultValue: 2,
   );
+
+  /// The user's download concurrency, clamped to the supported range. The
+  /// app-level scheduler and the native engine's holding queue must both use
+  /// this single resolver so their limits can never drift apart.
+  int get effectiveDownloadConcurrentCount =>
+      get(downloadConcurrentCount).clamp(1, 8).toInt();
 
   static final reportDownloadsAsActivity = Preference(
     key: 'download_report_as_activity',
@@ -2623,6 +3660,11 @@ class UserPreferences extends ChangeNotifier {
 
   static final windowFullscreen = Preference(
     key: 'window_fullscreen',
+    defaultValue: false,
+  );
+
+  static final windowMaximized = Preference(
+    key: 'window_maximized',
     defaultValue: false,
   );
 

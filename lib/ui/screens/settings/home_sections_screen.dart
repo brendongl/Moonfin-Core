@@ -23,7 +23,7 @@ import '../../../util/platform_detection.dart';
 import '../../navigation/route_lifecycle_observer.dart';
 import '../../widgets/overlay_sheet.dart';
 import '../../widgets/poster_size_settings_dialog.dart';
-import '../../widgets/playback/player_loading_overlay.dart';
+import '../../widgets/skeleton/skeleton_shimmer.dart';
 import '../../widgets/settings/clean_settings_typography.dart';
 import '../../widgets/settings/preference_tiles.dart';
 import '../../../l10n/app_localizations.dart';
@@ -147,7 +147,7 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
             tasks.add(() async {
               try {
                 final response = await client.itemsApi.getResumeItems(
-                  includeItemTypes: const ['Audio'],
+                  mediaTypes: 'Audio',
                   limit: 1,
                 );
                 final items = response['Items'] as List? ?? [];
@@ -229,6 +229,19 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
                   recursive: true,
                   limit: 1,
                   includeItemTypes: includeItemTypes,
+                );
+                final total = response['TotalRecordCount'] as int? ?? 0;
+                setEmpty(stableId, total == 0);
+              } catch (_) {}
+            }());
+            break;
+          case HomeSectionType.studios:
+            tasks.add(() async {
+              try {
+                final response = await client.itemsApi.getStudios(
+                  userId: userId,
+                  recursive: true,
+                  limit: 1,
                 );
                 final total = response['TotalRecordCount'] as int? ?? 0;
                 setEmpty(stableId, total == 0);
@@ -475,6 +488,9 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
     if (section.type == HomeSectionType.genres) {
       return 4;
     }
+    if (section.type == HomeSectionType.studios) {
+      return 4;
+    }
     if (section.type == HomeSectionType.playlists) {
       return 5;
     }
@@ -657,6 +673,10 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
     final hiddenByTmdb =
         _isTmdbSectionType(section.type) &&
         (!showTmdbRows || !_isTmdbRowEnabled(section.type));
+    final hiddenBySeasonal =
+        section.type == HomeSectionType.seasonal &&
+        (!GetIt.instance<PluginSyncService>().pluginAvailable ||
+            !_prefs.get(UserPreferences.seasonalRowEnabled));
 
     final showAudioRows = _prefs.get(UserPreferences.displayAudioRows);
     final hiddenByAudio = !showAudioRows && _isAudioSectionType(section.type);
@@ -684,6 +704,7 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
         hiddenBySeerr ||
         hiddenByImdb ||
         hiddenByTmdb ||
+        hiddenBySeasonal ||
         hiddenByAudio ||
         hiddenBySinceYouWatched ||
         hiddenByRewatch;
@@ -721,10 +742,9 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
     _sections = all.where((s) => s.type != HomeSectionType.mediaBar).toList()
       ..sort((a, b) => a.order.compareTo(b.order));
     for (var i = 0; i < _sections.length; i++) {
-      if (_isImdbSectionType(_sections[i].type)) {
-        _sections[i] = _sections[i].copyWith(
-          enabled: _isImdbRowEnabled(_sections[i].type),
-        );
+      final toggle = _toggleAuthoritativeEnabled(_sections[i].type);
+      if (toggle != null) {
+        _sections[i] = _sections[i].copyWith(enabled: toggle);
       }
     }
     final addedBuiltins = _ensureBuiltinSectionsPresent();
@@ -774,14 +794,25 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
     if (!mounted) return;
     var changed = false;
     for (var i = 0; i < _sections.length; i++) {
-      if (!_isImdbSectionType(_sections[i].type)) continue;
-      final enabled = _isImdbRowEnabled(_sections[i].type);
+      final enabled = _toggleAuthoritativeEnabled(_sections[i].type);
+      if (enabled == null) continue;
       if (_sections[i].enabled != enabled) {
         _sections[i] = _sections[i].copyWith(enabled: enabled);
         changed = true;
       }
     }
     if (changed) setState(() {});
+  }
+
+  /// The rows whose own toggle outranks the saved layout: the IMDb rows and the
+  /// seasonal row, both switched on from the External Lists screen. Null for
+  /// every other type.
+  bool? _toggleAuthoritativeEnabled(HomeSectionType type) {
+    if (_isImdbSectionType(type)) return _isImdbRowEnabled(type);
+    if (type == HomeSectionType.seasonal) {
+      return _prefs.get(UserPreferences.seasonalRowEnabled);
+    }
+    return null;
   }
 
   bool _ensureBuiltinSectionsPresent() {
@@ -801,7 +832,7 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
       _addSection(
         HomeSectionConfig(
           type: type,
-          enabled: _isImdbSectionType(type) ? _isImdbRowEnabled(type) : false,
+          enabled: _toggleAuthoritativeEnabled(type) ?? false,
           order: nextOrder++,
         ),
       );
@@ -1323,6 +1354,7 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
         HomeSectionType.imdbTopEnglishMovies =>
           UserPreferences.imdbTopEnglishMoviesEnabled,
         HomeSectionType.rewatch => UserPreferences.displayRewatchRow,
+        HomeSectionType.seasonal => UserPreferences.seasonalRowEnabled,
         HomeSectionType.sinceYouWatched1 =>
           UserPreferences.sinceYouWatched1Enabled,
         HomeSectionType.sinceYouWatched2 =>
@@ -1626,7 +1658,9 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
           'Favorite ${FavoriteTypeFilter.audio.displayName}',
         HomeSectionType.collections => l10n.collections,
         HomeSectionType.genres => l10n.genres,
+        HomeSectionType.studios => l10n.studios,
         HomeSectionType.liveTv => l10n.liveTV,
+        HomeSectionType.seerrShortcuts => l10n.seerrShortcutsRow,
         HomeSectionType.seerrRecentRequests => l10n.recentRequests,
         HomeSectionType.seerrWatchlist => l10n.yourWatchlist,
         HomeSectionType.seerrRecentlyAdded => l10n.recentlyAdded,
@@ -1666,6 +1700,7 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
         HomeSectionType.sinceYouWatched4 => 'Since You Watched Row 4',
         HomeSectionType.sinceYouWatched5 => 'Since You Watched Row 5',
         HomeSectionType.rewatch => 'Rewatch',
+        HomeSectionType.seasonal => l10n.seasonalRow,
         HomeSectionType.none => l10n.none,
       };
 
@@ -1697,10 +1732,11 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
 
   Widget _buildLoadingOverlay(BuildContext context) {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return Positioned.fill(
       child: AnimatedOpacity(
         opacity: _isLoading ? 1.0 : 0.0,
-        duration: const Duration(milliseconds: 300),
+        duration: const Duration(milliseconds: 250),
         curve: Curves.easeInOut,
         onEnd: () {
           if (!_isLoading && mounted) {
@@ -1710,9 +1746,111 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
           }
         },
         child: Container(
-          color: theme.colorScheme.surface,
-          alignment: Alignment.center,
-          child: const PlayerLoadingOverlay(logoSize: 80, labelSpacing: 20),
+          color: theme.scaffoldBackgroundColor,
+          child: SkeletonShimmer(
+            child: ListView(
+              physics: const NeverScrollableScrollPhysics(),
+              padding: const EdgeInsets.only(top: 8, bottom: 32),
+              children: [
+                if (widget.showGeneralOptions)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerLow.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Column(
+                        children: const [
+                          Row(
+                            children: [
+                              SkeletonBox(width: 24, height: 24, borderRadius: BorderRadius.all(Radius.circular(6))),
+                              SizedBox(width: 16),
+                              Expanded(
+                                child: SkeletonBox(width: 180, height: 16, borderRadius: BorderRadius.all(Radius.circular(4))),
+                              ),
+                              SkeletonBox(width: 44, height: 24, borderRadius: BorderRadius.all(Radius.circular(12))),
+                            ],
+                          ),
+                          SizedBox(height: 16),
+                          Row(
+                            children: [
+                              SkeletonBox(width: 24, height: 24, borderRadius: BorderRadius.all(Radius.circular(6))),
+                              SizedBox(width: 16),
+                              Expanded(
+                                child: SkeletonBox(width: 160, height: 16, borderRadius: BorderRadius.all(Radius.circular(4))),
+                              ),
+                              SkeletonBox(width: 44, height: 24, borderRadius: BorderRadius.all(Radius.circular(12))),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                for (int i = 0; i < 9; i++)
+                  Padding(
+                    padding: _kHomeSectionTileOuterPadding,
+                    child: Container(
+                      height: 64,
+                      padding: _kHomeSectionTileContentPadding,
+                      decoration: _homeSectionTileDecoration(
+                        context,
+                        focused: false,
+                      ),
+                      child: Row(
+                        children: [
+                          const SkeletonBox(
+                            width: 32,
+                            height: 32,
+                            borderRadius: BorderRadius.all(Radius.circular(8)),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                SkeletonBox(
+                                  width: 120.0 + ((i * 17) % 80),
+                                  height: 15,
+                                  borderRadius: const BorderRadius.all(Radius.circular(4)),
+                                ),
+                                if (i % 3 != 0) ...[
+                                  const SizedBox(height: 6),
+                                  SkeletonBox(
+                                    width: 80.0 + ((i * 13) % 50),
+                                    height: 11,
+                                    borderRadius: const BorderRadius.all(Radius.circular(4)),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SkeletonBox(
+                            width: 28,
+                            height: 28,
+                            borderRadius: BorderRadius.all(Radius.circular(14)),
+                          ),
+                          const SizedBox(width: 8),
+                          const SkeletonBox(
+                            width: 28,
+                            height: 28,
+                            borderRadius: BorderRadius.all(Radius.circular(14)),
+                          ),
+                          const SizedBox(width: 12),
+                          const SkeletonBox(
+                            width: 44,
+                            height: 24,
+                            borderRadius: BorderRadius.all(Radius.circular(12)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -1788,6 +1926,20 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
             _pushSyncSettings();
           },
         ),
+        if (_prefs.get(UserPreferences.homeRowsStyle) == HomeRowsStyle.v2) ...[
+          const Divider(),
+          SwitchListTile.adaptive(
+            secondary: const Icon(Icons.photo_library_outlined),
+            title: Text(l10n.modernCardsOnMyMediaRow),
+            subtitle: Text(l10n.modernCardsOnMyMediaRowDescription),
+            value: _prefs.get(UserPreferences.modernCardsOnMyMediaRow),
+            onChanged: (value) async {
+              await _prefs.set(UserPreferences.modernCardsOnMyMediaRow, value);
+              setState(() {});
+              _pushSyncSettings();
+            },
+          ),
+        ],
         const Divider(),
         SwitchListTile.adaptive(
           secondary: const Icon(Icons.merge_type),
@@ -1817,6 +1969,9 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
           SliverToBoxAdapter(child: _buildHeader(l10n)),
         ReorderableAnimatedListImpl<HomeSectionConfig>(
           items: items,
+          dragStartDelay: PlatformDetection.useMobileUi
+              ? const Duration(milliseconds: 500)
+              : Duration.zero,
           scrollDirection: Axis.vertical,
           buildDefaultDragHandles: true,
           // Comparing the enabled state and turning off swap detection makes a
@@ -2288,6 +2443,9 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
               ),
             );
           },
+        ),
+        SliverToBoxAdapter(
+          child: SizedBox(height: 16 + MediaQuery.paddingOf(context).bottom),
         ),
       ],
     );
@@ -2870,6 +3028,11 @@ class _HomeSectionTileState extends State<_HomeSectionTile> {
             child: Material(
               type: MaterialType.transparency,
               child: ListTile(
+                // The select key handled this alone, so a pointer could reach
+                // a row but never turn it on.
+                onTap: widget.isEmpty
+                    ? null
+                    : () => widget.onToggle(!widget.enabled),
                 focusColor: Colors.transparent,
                 hoverColor: Colors.transparent,
                 contentPadding: _kHomeSectionTileContentPadding,

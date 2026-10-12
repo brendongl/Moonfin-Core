@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:ui';
 
+import 'package:moonfin/ui/widgets/top_toolbar.dart';
+
 import 'offline_aware_image.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -35,6 +37,7 @@ import '../../util/overlay_color_palette.dart';
 import '../../util/overview_text.dart';
 import '../../util/platform_detection.dart';
 import '../../l10n/app_localizations.dart';
+import '../util/error_message.dart';
 import '../../playback/appletv_preview_player.dart';
 import '../../playback/html_video_backend_profile.dart';
 import '../../playback/inline_preview_engine.dart';
@@ -43,6 +46,7 @@ import 'bounded_network_image.dart';
 import 'fullscreen_backdrop_switcher.dart';
 import 'navigation_layout.dart';
 import 'mediabar/bookshelf_layout.dart';
+import 'mediabar/aya_media_bar.dart';
 import 'mediabar/gallery_coverflow.dart';
 import 'mediabar/gallery_layout.dart';
 import 'mediabar/media_bar_status_focus.dart';
@@ -58,6 +62,28 @@ List<Shadow> get _textShadows => [
 ];
 
 class MediaBar extends StatefulWidget {
+  /// The decode width of the backdrop layer, shared by the widget and every
+  /// precache of a neighbouring slide. Built from the screen rather than the
+  /// layer's own constraints so a precache issued before the layer exists
+  /// still lands on the key the layer will look up.
+  static int backdropDecodeWidth(BuildContext context) =>
+      ArtworkDecode.widthFor(
+        MediaQuery.sizeOf(context).width,
+        MediaQuery.devicePixelRatioOf(context),
+        minWidth: 640,
+        maxWidth: 1280,
+      );
+
+  /// The widest logo box any layout paints. A precache at this width is the
+  /// desktop layout's exact key and, for the narrower mobile boxes, still
+  /// warms the disk cache so the slide change only decodes.
+  static const logoBoxWidth = 280.0;
+
+  static int logoDecodeWidth(BuildContext context) => ArtworkDecode.widthFor(
+    logoBoxWidth,
+    MediaQuery.devicePixelRatioOf(context),
+  );
+
   final MediaBarViewModel viewModel;
   final UserPreferences prefs;
   final bool externallyPaused;
@@ -110,6 +136,7 @@ class _MediaBarState extends State<MediaBar>
   final _sponsorBlockService = SponsorBlockService();
   final _sponsorBlockSession = SponsorBlockSkipSession();
   bool _isHomeRouteActive = true;
+  bool _isHomeRouteTopmost = true;
 
   Timer? _autoAdvanceTimer;
   bool _isPaused = false;
@@ -222,10 +249,8 @@ class _MediaBarState extends State<MediaBar>
       _onMedia3BackendEvent,
       onError: (_) {},
     );
-    _isHomeRouteActive = _isHomePath(
-      appRouter.routerDelegate.currentConfiguration.uri.path,
-    );
-    appRouter.routerDelegate.addListener(_onRouteChanged);
+    _isHomeRouteActive = _isHomeRouteCurrent();
+    appRouter.routerDelegate.addListener(_syncHomeRouteActive);
     PlayerRouteObserver.instance.isPlayerActive
         .addListener(_onPlayerRouteChanged);
     widget.viewModel.addListener(_onStateChanged);
@@ -268,6 +293,15 @@ class _MediaBarState extends State<MediaBar>
   @override
   Future<void> onAudioRevoked(RevokeReason reason) async {
     _cancelTrailerPreview();
+    // The native preview player's stop only pauses, so its decode pipeline
+    // and frame pump stay resident. Fine across an ambient handoff, but main
+    // playback is about to build its own pipeline, so release the player
+    // outright. A new one is created per trailer anyway.
+    if (PlatformDetection.useApplePreviewPlayer &&
+        reason != RevokeReason.ambientHandoff) {
+      await _disposeTrailerPlayer();
+      return;
+    }
     try {
       await _trailerPlayer?.stop();
     } catch (_) {}
@@ -304,16 +338,29 @@ class _MediaBarState extends State<MediaBar>
     widget.prefs.removeListener(_onPrefsChanged);
     _screensaverController.visible.removeListener(_onScreensaverVisibleChanged);
     WidgetsBinding.instance.removeObserver(this);
-    appRouter.routerDelegate.removeListener(_onRouteChanged);
+    appRouter.routerDelegate.removeListener(_syncHomeRouteActive);
     PlayerRouteObserver.instance.isPlayerActive
         .removeListener(_onPlayerRouteChanged);
     super.dispose();
   }
 
-  // Re-evaluate the persistent Media3 view's mount condition when a player
-  // route is pushed or popped.
+  // Re-evaluate the persistent Media3 view's mount condition, and stop any
+  // trailer the new route now covers. Main playback already cancels through
+  // the audio arbiter, but a player route with no audio of its own, like the
+  // photo viewer, does not.
+  //
+  // The trailer player is freed outright rather than just stopped. A stopped
+  // mpv instance keeps its render texture resident behind the full screen
+  // player, and this widget is never disposed while a player route merely
+  // sits on top of home, so nothing else would ever let go of it. The next
+  // trailer builds a fresh player on demand.
   void _onPlayerRouteChanged() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    if (PlayerRouteObserver.instance.isPlayerActive.value) {
+      _cancelTrailerPreview(rebuild: false);
+      unawaited(_disposeTrailerPlayer());
+    }
+    setState(() {});
   }
 
   bool _isHomePath(String path) {
@@ -322,14 +369,20 @@ class _MediaBarState extends State<MediaBar>
   }
 
   bool _isHomeRouteCurrent() {
-    return _isHomePath(appRouter.routerDelegate.currentConfiguration.uri.path);
+    return _isHomeRouteTopmost &&
+        _isHomePath(appRouter.routerDelegate.currentConfiguration.uri.path);
   }
 
   /// Whether a trailer may play right now. Re-checked after every await in the
   /// reveal pipeline so a leave-event aborts the reveal even before
   /// _cancelTrailerPreview() runs.
+  ///
+  /// The player route check stays separate from _isHomeRouteCurrent because a
+  /// pushed route leaves the router's reported uri on the home path, so that
+  /// check still reads as current while a player sits on top. Pausing then
+  /// clears _mainPlaybackActive and a trailer would start behind the player.
   bool _trailerShouldBeActive() {
-    // Sipflix: media-bar trailer/preview autoplay STRIPPED. Trailers play HEVC
+    // Sipflix fork: media-bar trailer/preview autoplay STRIPPED. Trailers play HEVC
     // (YouTube/remote/local) that the weak Allwinner boxes cannot decode — the
     // HEVC hardware decoder (OMX.allwinner.video.decoder.hevc) hangs and can
     // freeze the whole box (system_server watchdog / full black-screen). This is
@@ -355,7 +408,7 @@ class _MediaBarState extends State<MediaBar>
   /// view mount mid-session and black-screen the next item.
   bool get _shouldMountPersistentMedia3View =>
       _useMedia3TrailerEngine() &&
-      widget.prefs.get(UserPreferences.mediaBarTrailerPreview) &&
+      widget.prefs.resolveMediaBarTrailerPreview() &&
       !_mainPlaybackActive &&
       !PlayerRouteObserver.instance.isPlayerActive.value;
 
@@ -391,6 +444,15 @@ class _MediaBarState extends State<MediaBar>
     }
     // Re-evaluate the persistent Media3 view's mount condition.
     if (mounted) setState(() {});
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final topmost = ModalRoute.isCurrentOf(context) ?? true;
+    if (topmost == _isHomeRouteTopmost) return;
+    _isHomeRouteTopmost = topmost;
+    _syncHomeRouteActive();
   }
 
   @override
@@ -527,13 +589,20 @@ class _MediaBarState extends State<MediaBar>
     return mode == UserPreferences.mediaBarModeMakd;
   }
 
+  bool _isAyaMobileMode() {
+    if (!PlatformDetection.useMobileUi) return false;
+    final mode = UserPreferences.normalizeMediaBarMode(
+      widget.prefs.get(UserPreferences.mediaBarMode),
+    );
+    return mode == UserPreferences.mediaBarModeAya;
+  }
+
   void _prefetchAllInBackground(
     List<MediaBarSlideItem> items,
     int centerIndex,
   ) {
     if (!mounted || items.isEmpty) return;
     final dpr = MediaQuery.devicePixelRatioOf(context);
-    final screenWidth = MediaQuery.sizeOf(context).width;
 
     // Calculate dimensions matching layout constraints exactly to maximize memory cache hits.
     final isMobile = PlatformDetection.useMobileUi;
@@ -541,7 +610,8 @@ class _MediaBarState extends State<MediaBar>
     final activeBookHeight = contentHeight * 0.84;
     final activeBookWidth = activeBookHeight * 0.72;
     final posterCacheW = (activeBookWidth * 0.88 * dpr).round().clamp(150, 400);
-    final backdropCacheW = (screenWidth * dpr).round().clamp(640, 1280);
+    final backdropCacheW = MediaBar.backdropDecodeWidth(context);
+    final logoCacheW = MediaBar.logoDecodeWidth(context);
 
     final warmIndices = <int>{
       centerIndex,
@@ -574,18 +644,15 @@ class _MediaBarState extends State<MediaBar>
           if (isBookshelf) {
             if (item.posterUrl != null) {
               await precacheImage(
-                ResizeImage(
-                  offlineAwareImageProvider(item.posterUrl!),
-                  width: posterCacheW,
-                ),
+                ArtworkDecode.provider(item.posterUrl!, width: posterCacheW),
                 context,
               );
             }
           } else {
             if (item.backdropUrl != null) {
               await precacheImage(
-                ResizeImage(
-                  offlineAwareImageProvider(item.backdropUrl!),
+                ArtworkDecode.provider(
+                  item.backdropUrl!,
                   width: backdropCacheW,
                 ),
                 context,
@@ -594,7 +661,7 @@ class _MediaBarState extends State<MediaBar>
             }
             if (item.logoUrl != null) {
               await precacheImage(
-                offlineAwareImageProvider(item.logoUrl!),
+                ArtworkDecode.provider(item.logoUrl!, width: logoCacheW),
                 context,
               );
             }
@@ -608,7 +675,7 @@ class _MediaBarState extends State<MediaBar>
     if (!mounted) return;
     setState(() {});
 
-    if (_isMakdMobileMode()) {
+    if (_isMakdMobileMode() || _isAyaMobileMode()) {
       _cancelTrailerPreview();
       return;
     }
@@ -622,9 +689,7 @@ class _MediaBarState extends State<MediaBar>
       unawaited(_disposeTrailerPlayer());
     }
 
-    final trailerPreviewEnabled = widget.prefs.get(
-      UserPreferences.mediaBarTrailerPreview,
-    );
+    final trailerPreviewEnabled = widget.prefs.resolveMediaBarTrailerPreview();
 
     final hardwareDecodingEnabled = widget.prefs.get(
       UserPreferences.hardwareDecoding,
@@ -660,7 +725,7 @@ class _MediaBarState extends State<MediaBar>
     }
   }
 
-  void _onRouteChanged() {
+  void _syncHomeRouteActive() {
     final isHome = _isHomeRouteCurrent();
     if (_isHomeRouteActive == isHome) return;
 
@@ -716,6 +781,39 @@ class _MediaBarState extends State<MediaBar>
     }
   }
 
+  List<Widget> _buildNavArrows(
+    BuildContext context,
+    int itemCount, {
+    double nextRightInset = 0,
+  }) {
+    final isRtl = Directionality.of(context) == TextDirection.rtl;
+    final prevArrow = _NavArrow(
+      icon: Icons.chevron_left,
+      onTap: _currentIndex > 0 ? () => _goToPage(_currentIndex - 1) : null,
+    );
+    final nextArrow = _NavArrow(
+      icon: Icons.chevron_right,
+      onTap: () => _goToPage((_currentIndex + 1) % itemCount),
+    );
+    final leftArrow = isRtl ? nextArrow : prevArrow;
+    final rightArrow = isRtl ? prevArrow : nextArrow;
+    return [
+      if (!_hideLeftNavArrowForSidebar)
+        Positioned(
+          left: 0,
+          top: 0,
+          bottom: 0,
+          child: Center(child: leftArrow),
+        ),
+      Positioned(
+        right: nextRightInset,
+        top: 0,
+        bottom: 0,
+        child: Center(child: rightArrow),
+      ),
+    ];
+  }
+
   void _onPageChanged(int index) {
     setState(() => _currentIndex = index);
     _syncMakdBackdropWithCurrentSlide();
@@ -739,7 +837,6 @@ class _MediaBarState extends State<MediaBar>
   void _prefetchAround(List<MediaBarSlideItem> items, int centerIndex) {
     if (!mounted || items.isEmpty) return;
     final dpr = MediaQuery.devicePixelRatioOf(context);
-    final screenWidth = MediaQuery.sizeOf(context).width;
 
     // Calculate dimensions matching layout constraints exactly to maximize memory cache hits.
     final isMobile = PlatformDetection.useMobileUi;
@@ -747,7 +844,8 @@ class _MediaBarState extends State<MediaBar>
     final activeBookHeight = contentHeight * 0.84;
     final activeBookWidth = activeBookHeight * 0.72;
     final posterCacheW = (activeBookWidth * 0.88 * dpr).round().clamp(150, 400);
-    final backdropCacheW = (screenWidth * dpr).round().clamp(640, 1280);
+    final backdropCacheW = MediaBar.backdropDecodeWidth(context);
+    final logoCacheW = MediaBar.logoDecodeWidth(context);
 
     final isBookshelf = _isBookshelfMode();
 
@@ -765,26 +863,23 @@ class _MediaBarState extends State<MediaBar>
         if (isBookshelf) {
           if (item.posterUrl != null) {
             precacheImage(
-              ResizeImage(
-                offlineAwareImageProvider(item.posterUrl!),
-                width: posterCacheW,
-              ),
+              ArtworkDecode.provider(item.posterUrl!, width: posterCacheW),
               context,
             );
           }
         } else {
           if (item.backdropUrl != null) {
             precacheImage(
-              ResizeImage(
-                offlineAwareImageProvider(item.backdropUrl!),
-                width: backdropCacheW,
-              ),
+              ArtworkDecode.provider(item.backdropUrl!, width: backdropCacheW),
               context,
             );
           }
 
           if (item.logoUrl != null) {
-            precacheImage(offlineAwareImageProvider(item.logoUrl!), context);
+            precacheImage(
+              ArtworkDecode.provider(item.logoUrl!, width: logoCacheW),
+              context,
+            );
           }
         }
       }
@@ -820,17 +915,20 @@ class _MediaBarState extends State<MediaBar>
   }
 
   void _scheduleTrailerPreview(MediaBarSlideItem item) {
-    if (_isMakdMobileMode() || _isBookshelfMode()) {
+    if (_isMakdMobileMode() || _isBookshelfMode() || _isAyaMobileMode()) {
       _cancelTrailerPreview();
       return;
     }
-    if (!widget.prefs.get(UserPreferences.mediaBarTrailerPreview)) {
+    if (!widget.prefs.resolveMediaBarTrailerPreview()) {
       return;
     }
     if (!_isHomeRouteActive) {
       return;
     }
     if (_mainPlaybackActive) {
+      return;
+    }
+    if (PlayerRouteObserver.instance.isPlayerActive.value) {
       return;
     }
     if (_screensaverController.visible.value) {
@@ -859,7 +957,7 @@ class _MediaBarState extends State<MediaBar>
     });
     _trailerRevealTimer = Timer(_previewRevealDelay, () async {
       if (!mounted || resolveId != _trailerResolveId) return;
-      if (!widget.prefs.get(UserPreferences.mediaBarTrailerPreview)) return;
+      if (!widget.prefs.resolveMediaBarTrailerPreview()) return;
       _trailerRevealArmed = true;
       await _tryRevealPreparedTrailer(item, resolveId);
     });
@@ -935,6 +1033,7 @@ class _MediaBarState extends State<MediaBar>
     final client = _clientForServer(item.serverId);
     String? streamUrl;
     bool useYouTubeHeaders = false;
+    String? youTubeAudioLanguage;
     String? youTubeVideoId;
     String? sponsorBlockVideoId;
     StreamResolutionResult? localRes;
@@ -993,11 +1092,13 @@ class _MediaBarState extends State<MediaBar>
             break;
           }
           if (!webOnly) {
-            streamUrl = await YouTubeStreamResolver.resolveFromUrl(
+            final stream = await YouTubeStreamResolver.resolveFromUrl(
               url,
             ).timeout(_trailerResolveTimeout, onTimeout: () => null);
+            streamUrl = stream?.url;
             if (streamUrl != null) {
               useYouTubeHeaders = true;
+              youTubeAudioLanguage = stream?.audioLanguage;
             }
           }
         } else if (!webOnly) {
@@ -1069,6 +1170,7 @@ class _MediaBarState extends State<MediaBar>
           'url': streamUrl,
           'mediaType': localRes?.mediaType ?? 'video',
           'preview': true,
+          'preferredAudioLanguage': ?youTubeAudioLanguage,
           if (localHeaders.isNotEmpty) 'headers': localHeaders,
           if (localRes?.container != null) 'container': localRes!.container,
           if (localRes?.videoRangeType != null)
@@ -1087,6 +1189,7 @@ class _MediaBarState extends State<MediaBar>
               streamUrl,
               headers: localHeaders.isNotEmpty ? localHeaders : null,
               volume: 0,
+              audioLanguage: youTubeAudioLanguage,
             )
             .timeout(_openTimeout);
         if (resolveId != _trailerResolveId || !_trailerShouldBeActive()) {
@@ -1103,6 +1206,10 @@ class _MediaBarState extends State<MediaBar>
         final media = localHeaders.isNotEmpty
             ? Media(streamUrl, httpHeaders: localHeaders)
             : Media(streamUrl);
+        await YouTubeStreamResolver.preferAudioLanguage(
+          player,
+          youTubeAudioLanguage,
+        );
         await player.open(media).timeout(_openTimeout);
         if (resolveId != _trailerResolveId || !_trailerShouldBeActive()) {
           await player.stop();
@@ -1780,6 +1887,7 @@ class _MediaBarState extends State<MediaBar>
     final useMakdStyle = mode == UserPreferences.mediaBarModeMakd;
     final useBookshelfStyle = mode == UserPreferences.mediaBarModeBookshelf;
     final useGalleryStyle = mode == UserPreferences.mediaBarModeGallery;
+    final useAyaStyle = mode == UserPreferences.mediaBarModeAya;
 
     return switch (state) {
       MediaBarLoading() => _wrapStatusFocus(
@@ -1791,11 +1899,11 @@ class _MediaBarState extends State<MediaBar>
           ),
         ),
       MediaBarDisabled() => const SizedBox.shrink(),
-      MediaBarError(message: final message) => _wrapStatusFocus(
+      MediaBarError(:final error) => _wrapStatusFocus(
           _buildStatusPanel(
             context,
             title: l10n.mediaBarError,
-            detail: message,
+            detail: describeError(error, l10n),
             showRetry: true,
           ),
           onSelect: () => widget.viewModel.load(context: context, force: true),
@@ -1803,13 +1911,15 @@ class _MediaBarState extends State<MediaBar>
       MediaBarReady(items: final items) =>
         items.isEmpty
             ? const SizedBox.shrink()
-            : (useGalleryStyle
-                  ? _buildGallerySlideshow(context, items)
-                  : (useBookshelfStyle
-                        ? _buildBookshelfSlideshow(context, items)
-                        : (useMakdStyle
-                              ? _buildMakdSlideshow(context, items)
-                              : _buildSlideshow(context, items)))),
+            : (useAyaStyle
+                  ? _buildAyaSlideshow(context, items)
+                  : (useGalleryStyle
+                        ? _buildGallerySlideshow(context, items)
+                        : (useBookshelfStyle
+                              ? _buildBookshelfSlideshow(context, items)
+                              : (useMakdStyle
+                                    ? _buildMakdSlideshow(context, items)
+                                    : _buildSlideshow(context, items))))),
     };
   }
 
@@ -1948,11 +2058,21 @@ class _MediaBarState extends State<MediaBar>
                     ),
                   ),
                   ..._buildVideoOverlays(allowPersistentMedia3: true),
-                  if(!_isTrailerPlaying) // no gradient when trailer playing
-                    _GradientOverlay(
-                      color: overlayColor,
-                      opacity: overlayOpacity,
-                    ),
+                  // The gradient gives way to a playing trailer, and a trailer
+                  // that stops and restarts flips that within a frame or two.
+                  // Switching it outright flashes the bottom of the screen, so
+                  // the alpha fades instead, which hides a flip that short and
+                  // turns a real one into a transition.
+                  TweenAnimationBuilder<double>(
+                    tween: Tween<double>(end: _isTrailerPlaying ? 0.0 : 1.0),
+                    duration: const Duration(milliseconds: 250),
+                    builder: (_, shown, _) => shown <= 0.0
+                        ? const SizedBox.shrink()
+                        : _GradientOverlay(
+                            color: overlayColor,
+                            opacity: overlayOpacity * shown,
+                          ),
+                  ),
                   if (items.length > 1 && !_isTrailerPlaying)
                     Positioned(
                       bottom: 8,
@@ -1973,7 +2093,7 @@ class _MediaBarState extends State<MediaBar>
                         duration: const Duration(milliseconds: 300),
                         child: SizedBox(
                           key: ValueKey('logo_${currentItem.itemId}'),
-                          width: 280,
+                          width: MediaBar.logoBoxWidth,
                           height: 120,
                           child: _buildLogoWithShadow(
                             currentItem.logoUrl,
@@ -2055,34 +2175,8 @@ class _MediaBarState extends State<MediaBar>
                         ),
                       ),
                     ),
-                  if (items.length > 1 && !PlatformDetection.useMobileUi) ...[
-                    if (!_hideLeftNavArrowForSidebar)
-                      Positioned(
-                        left: 0,
-                        top: 0,
-                        bottom: 0,
-                        child: Center(
-                          child: _NavArrow(
-                            icon: Icons.chevron_left,
-                            onTap: _currentIndex > 0
-                                ? () => _goToPage(_currentIndex - 1)
-                                : null,
-                          ),
-                        ),
-                      ),
-                    Positioned(
-                      right: 0,
-                      top: 0,
-                      bottom: 0,
-                      child: Center(
-                        child: _NavArrow(
-                          icon: Icons.chevron_right,
-                          onTap: () =>
-                              _goToPage((_currentIndex + 1) % items.length),
-                        ),
-                      ),
-                    ),
-                  ],
+                  if (items.length > 1 && !PlatformDetection.useMobileUi)
+                    ..._buildNavArrows(context, items.length),
                 ],
               ),
             ),
@@ -2168,50 +2262,58 @@ class _MediaBarState extends State<MediaBar>
                     ),
                   if (!isMobile)
                     ..._buildVideoOverlays(allowPersistentMedia3: true),
-                  if (!isMobile && !_isTrailerPlaying) // no gradient when trailer playing
+                  // Both gradients give way to a playing trailer together, and
+                  // they fade for the same reason the other layout's does.
+                  if (!isMobile)
                     Positioned.fill(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.centerLeft,
-                            end: Alignment.centerRight,
-                            colors: [
-                              overlayColor.withValues(
-                                alpha: overlayOpacity * 0.78,
-                              ),
-                              overlayColor.withValues(
-                                alpha: overlayOpacity * 0.46,
-                              ),
-                              overlayColor.withValues(
-                                alpha: overlayOpacity * 0.06,
-                              ),
-                            ],
-                            stops: const [0.0, 0.46, 1.0],
-                          ),
+                      child: TweenAnimationBuilder<double>(
+                        tween: Tween<double>(
+                          end: _isTrailerPlaying ? 0.0 : 1.0,
                         ),
-                      ),
-                    ),
-                  if (!isMobile && !_isTrailerPlaying) // no gradient when trailer playing
-                    Positioned.fill(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              overlayColor.withValues(
-                                alpha: overlayOpacity * 0.12,
+                        duration: const Duration(milliseconds: 250),
+                        builder: (_, shown, _) => shown <= 0.0
+                            ? const SizedBox.shrink()
+                            : DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.centerLeft,
+                                    end: Alignment.centerRight,
+                                    colors: [
+                                      overlayColor.withValues(
+                                        alpha: overlayOpacity * shown * 0.78,
+                                      ),
+                                      overlayColor.withValues(
+                                        alpha: overlayOpacity * shown * 0.46,
+                                      ),
+                                      overlayColor.withValues(
+                                        alpha: overlayOpacity * shown * 0.06,
+                                      ),
+                                    ],
+                                    stops: const [0.0, 0.46, 1.0],
+                                  ),
+                                ),
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                      colors: [
+                                        overlayColor.withValues(
+                                          alpha: overlayOpacity * shown * 0.12,
+                                        ),
+                                        overlayColor.withValues(
+                                          alpha: overlayOpacity * shown * 0.28,
+                                        ),
+                                        overlayColor.withValues(
+                                          alpha: overlayOpacity * shown * 0.78,
+                                        ),
+                                      ],
+                                      stops: const [0.0, 0.48, 1.0],
+                                    ),
+                                  ),
+                                  child: const SizedBox.expand(),
+                                ),
                               ),
-                              overlayColor.withValues(
-                                alpha: overlayOpacity * 0.28,
-                              ),
-                              overlayColor.withValues(
-                                alpha: overlayOpacity * 0.78,
-                              ),
-                            ],
-                            stops: const [0.0, 0.48, 1.0],
-                          ),
-                        ),
                       ),
                     ),
                   if (currentItem != null)
@@ -2362,34 +2464,12 @@ class _MediaBarState extends State<MediaBar>
                           ),
                   if (items.length > 1 &&
                       !PlatformDetection.useMobileUi &&
-                      !_isTrailerPlaying) ...[
-                    if (!_hideLeftNavArrowForSidebar)
-                      Positioned(
-                        left: 0,
-                        top: 0,
-                        bottom: 0,
-                        child: Center(
-                          child: _NavArrow(
-                            icon: Icons.chevron_left,
-                            onTap: _currentIndex > 0
-                                ? () => _goToPage(_currentIndex - 1)
-                                : null,
-                          ),
-                        ),
-                      ),
-                    Positioned(
-                      right: 44,
-                      top: 0,
-                      bottom: 0,
-                      child: Center(
-                        child: _NavArrow(
-                          icon: Icons.chevron_right,
-                          onTap: () =>
-                              _goToPage((_currentIndex + 1) % items.length),
-                        ),
-                      ),
+                      !_isTrailerPlaying)
+                    ..._buildNavArrows(
+                      context,
+                      items.length,
+                      nextRightInset: 44,
                     ),
-                  ],
                 ],
               ),
             ),
@@ -2564,6 +2644,135 @@ class _MediaBarState extends State<MediaBar>
     );
   }
 
+  EdgeInsets _ayaMediaBarInsets() {
+    final navbarIsTop =
+        widget.prefs.get(UserPreferences.navbarPosition) == NavbarPosition.top;
+
+    final isMobile = PlatformDetection.useMobileUi;
+    final isTvTopNavbar = navbarIsTop && PlatformDetection.isTV && !isMobile;
+    final hasDesktopSidebar = !navbarIsTop && !isMobile;
+
+    final safePadding = MediaQuery.paddingOf(context);
+
+    const contentPadding = 32.0;
+    const mobileHorizontalPadding = 16.0;
+    const mobileBottomPadding = 16.0;
+    const tvTopNavbarHorizontalInset = 48.0;
+    const desktopSidebarInset = 56.0;
+    const desktopToolbarVerticalPadding = 10.0;
+
+    if (isMobile) {
+      final topInset =
+          safePadding.top +
+          (navbarIsTop ? TopToolbar.heightFor(context) + 12.0 : 16.0);
+
+      return EdgeInsets.fromLTRB(
+        mobileHorizontalPadding + safePadding.left,
+        topInset,
+        mobileHorizontalPadding + safePadding.right,
+        mobileBottomPadding,
+      );
+    }
+
+    final leftInset = isTvTopNavbar
+        ? tvTopNavbarHorizontalInset + contentPadding
+        : hasDesktopSidebar
+        ? desktopSidebarInset + contentPadding
+        : contentPadding;
+
+    final rightInset = isTvTopNavbar
+        ? tvTopNavbarHorizontalInset + contentPadding
+        : contentPadding;
+
+    final topInset = navbarIsTop
+        ? safePadding.top +
+              TopToolbar.heightFor(context) -
+              desktopToolbarVerticalPadding +
+              contentPadding
+        : contentPadding;
+
+    return EdgeInsets.fromLTRB(leftInset, topInset, rightInset, contentPadding);
+  }
+
+  Widget _buildAyaSlideshow(
+    BuildContext context,
+    List<MediaBarSlideItem> items,
+  ) {
+    final clampedIndex = _currentIndex.clamp(0, items.length - 1);
+
+    if (clampedIndex != _currentIndex) {
+      _currentIndex = clampedIndex;
+    }
+
+    final trailerOverlays = _buildVideoOverlays(allowPersistentMedia3: true);
+
+    return MouseRegion(
+      onEnter: (_) => _setPaused(true),
+      onExit: (_) => _setPaused(false),
+      child: Focus(
+        focusNode: widget.focusNode,
+        autofocus: widget.focusNode == null && PlatformDetection.useLeanbackUi,
+        skipTraversal: true,
+        onFocusChange: (focused) {
+          _handleFocusChange(focused);
+
+          if (!focused) {
+            return;
+          }
+
+          final backdropUrl = items[clampedIndex].backdropUrl;
+
+          if (backdropUrl == null || backdropUrl.isEmpty) {
+            return;
+          }
+
+          _backgroundService.setBackgroundUrl(
+            backdropUrl,
+            context: BlurContext.browsing,
+          );
+        },
+        onKeyEvent: (node, event) => _handleKeyEvent(event, items),
+        child: GestureDetector(
+          onTap: () => _navigateToItem(context, items),
+          onLongPress: () => _navigateToItemAndPlay(context, items),
+          onHorizontalDragEnd: PlatformDetection.useMobileUi
+              ? (details) {
+                  final velocity = details.primaryVelocity ?? 0;
+
+                  if (velocity < -300 && _currentIndex < items.length - 1) {
+                    _goToPage(_currentIndex + 1);
+                  } else if (velocity > 300 && _currentIndex > 0) {
+                    _goToPage(_currentIndex - 1);
+                  }
+                }
+              : null,
+          child: AyaMediaBar(
+            items: items,
+            activeIndex: clampedIndex,
+            height: widget.height,
+            padding: _ayaMediaBarInsets(),
+            focusExpansionEnabled: widget.prefs.get(
+              UserPreferences.cardFocusExpansion,
+            ),
+            trailerOverlay: trailerOverlays.isEmpty
+                ? null
+                : Stack(fit: StackFit.expand, children: trailerOverlays),
+            onAmbientArtworkChanged: (artworkUrl) {
+              if (artworkUrl == null || artworkUrl.isEmpty) {
+                return;
+              }
+
+              _backgroundService.setBackgroundUrl(
+                artworkUrl,
+                context: BlurContext.browsing,
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
   void _selectGalleryIndex(int index) {
     final items = widget.viewModel.items;
     if (index < 0 || index >= items.length) return;
@@ -2647,21 +2856,27 @@ class _MediaBarState extends State<MediaBar>
 
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
 
-    if (key == LogicalKeyboardKey.arrowLeft) {
-      if (_currentIndex > 0) {
-        _goToPage(_currentIndex - 1);
-      } else if (widget.onNavigateLeft != null) {
-        widget.onNavigateLeft!();
-      }
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.arrowRight) {
-      if (_isBookshelfMode()) {
-        if (_currentIndex < items.length - 1) {
-          _goToPage(_currentIndex + 1);
+    if (key == LogicalKeyboardKey.arrowLeft ||
+        key == LogicalKeyboardKey.arrowRight) {
+      final isRtl = Directionality.of(context) == TextDirection.rtl;
+      final isPhysicalLeftKey = key == LogicalKeyboardKey.arrowLeft;
+      final advances = isPhysicalLeftKey == isRtl;
+      final beforeIndex = _currentIndex;
+      if (advances) {
+        if (_isBookshelfMode()) {
+          if (_currentIndex < items.length - 1) {
+            _goToPage(_currentIndex + 1);
+          }
+        } else {
+          _goToPage((_currentIndex + 1) % items.length);
         }
-      } else {
-        _goToPage((_currentIndex + 1) % items.length);
+      } else if (_currentIndex > 0) {
+        _goToPage(_currentIndex - 1);
+      }
+      if (_currentIndex == beforeIndex &&
+          isPhysicalLeftKey &&
+          widget.onNavigateLeft != null) {
+        widget.onNavigateLeft!();
       }
       return KeyEventResult.handled;
     }
@@ -2837,6 +3052,7 @@ class _MediaBarState extends State<MediaBar>
       fit: BoxFit.contain,
       alignment: Alignment.centerLeft,
       fadeInDuration: Duration.zero,
+      priority: ImageFetchPriority.high,
       errorWidget: (_, _, _) => _buildLogoFallback(title),
     );
     return Stack(
@@ -2890,8 +3106,8 @@ class _BackdropLayer extends StatelessWidget {
         imageBuilder: (imageUrl) {
           final Widget image = BoundedNetworkImage(
             imageUrl: imageUrl,
-            minWidth: 640,
-            maxWidth: 1280,
+            memCacheWidth: MediaBar.backdropDecodeWidth(context),
+            priority: ImageFetchPriority.high,
             errorBuilder: (_, _, _) =>
                 ColoredBox(color: AppColorScheme.background),
           );

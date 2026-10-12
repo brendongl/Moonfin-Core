@@ -25,7 +25,6 @@ body:
         - macOS
         - Windows
         - Linux
-        - Tizen
     validations:
       required: true
 
@@ -43,6 +42,17 @@ body:
     attributes:
       label: Device model
       description: "e.g. Pixel 8, iPhone 15, MacBook Air M2, etc."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: server_type
+    attributes:
+      label: Server
+      description: The media server Moonfin is signed in to
+      options:
+        - Jellyfin
+        - Emby
     validations:
       required: true
 

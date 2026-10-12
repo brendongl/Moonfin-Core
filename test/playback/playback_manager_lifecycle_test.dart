@@ -97,8 +97,9 @@ class _Service extends PlayerService {
   Future<void> onPlaybackStop(
     dynamic item,
     StreamResolutionResult resolution,
-    Duration position,
-  ) async {
+    Duration position, {
+    bool releaseLiveStream = true,
+  }) async {
     stops.add(position);
   }
 
@@ -110,6 +111,8 @@ class _Service extends PlayerService {
     bool isPaused = false,
     int? audioStreamIndex,
     int? subtitleStreamIndex,
+    int? volumeLevel,
+    bool? isMuted,
   }) async {
     onProgress?.call();
   }

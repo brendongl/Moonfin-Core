@@ -15,24 +15,34 @@ import 'package:path_provider/path_provider.dart';
 import 'package:server_core/server_core.dart' hide ImageType;
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../data/services/achievements_service.dart';
+import '../../../data/services/auto_download_service.dart';
 import '../../../data/services/plugin_sync_service.dart';
 import '../../../data/services/custom_external_lists_service.dart';
+import '../../../data/services/topshelf_service.dart';
+import '../../../data/models/media_segment.dart';
+import '../../../data/utils/media_segment_actions.dart';
 import '../../../data/repositories/seerr_repository.dart';
 import '../../../di/providers.dart';
 import '../../../util/idiom/app_ui_idiom.dart';
 import '../../../util/insecure_certificates.dart';
 import '../../../platform/web_runtime_config.dart';
+import '../../../playback/display_hdr_probe.dart';
 import '../../../util/focus/dpad_keys.dart';
+import '../../../util/focus/gamepad/gamepad_navigation_scope.dart';
 import '../../../util/language_codes.dart';
 import '../../../util/locale_names.dart';
+import '../../util/home_row_title_localizer.dart';
 import '../../../util/overlay_color_palette.dart';
 import '../../../util/game_cores.dart';
 import '../../../util/platform_detection.dart';
 import '../../../util/playback_time_label.dart';
 import '../../../util/tv_image_cache_stub.dart'
     if (dart.library.io) '../../../util/tv_image_cache_io.dart';
+import '../../../util/app_beta.dart';
 import '../../../util/app_distribution.dart';
-import '../../../util/app_exit.dart';
+import '../../../util/pin_code_util.dart';
+import '../../widgets/pin_entry_dialog.dart';
 import '../../widgets/app_update_dialog.dart';
 
 import '../../../auth/store/authentication_preferences.dart';
@@ -45,27 +55,37 @@ import '../../../sipflix/sipflix_servers.dart';
 import '../../../sipflix/sipflix_settings_mode.dart';
 import '../../../sipflix/sipflix_sign_in.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../util/error_message.dart';
 import '../../../playback/audio_capability_profile.dart';
 import '../../../playback/audio_capability_probe.dart';
+import '../../../playback/device_profile_builder.dart';
 import '../../../playback/external_player_service.dart';
+import '../../../playback/letterbox_croppers.dart';
+import '../../../preference/bottom_nav_tabs.dart';
 import '../../../preference/preference_constants.dart';
 import '../../../preference/user_preferences.dart';
 import '../../../preference/home_section_config.dart';
 import '../../../preference/seerr_preferences.dart';
 import '../../../preference/seerr_row_config.dart';
 import '../../navigation/destinations.dart';
+import '../setup/setup_wizard_gate.dart';
 import '../../widgets/adaptive/adaptive_dialog.dart';
 import '../../widgets/adaptive/adaptive_list_section.dart';
+import '../../widgets/keyboard_shortcuts/keyboard_shortcut_reference.dart';
 import '../../widgets/overlay_sheet.dart';
 import '../../widgets/playback/playback_time_row.dart';
+import '../../widgets/playback/player_loading_overlay.dart';
+import '../../widgets/playback/loading_animation_widget.dart';
 import '../../widgets/settings/preference_binding.dart';
 import '../../widgets/settings/clean_settings_typography.dart';
 import '../../widgets/settings/button_layout_list.dart';
 import '../../widgets/settings/preference_tiles.dart';
 import '../../widgets/settings/settings_panel.dart';
 import '../../widgets/settings/settings_section_header.dart';
+import '../../widgets/bottom_nav/bottom_nav_destinations.dart';
 import '../../widgets/navigation_layout.dart';
 import '../../widgets/support_dialog.dart';
+import '../../widgets/trickplay_settings_preview.dart';
 import '../../widgets/focus/request_initial_focus.dart';
 import '../home/home_view_model.dart';
 import 'appearance_theme_screen.dart';
@@ -77,7 +97,9 @@ import 'home_sections_screen.dart';
 import 'home_row_toggles_screen.dart';
 import 'home_rows_image_type_screen.dart';
 import 'emulator_cores_screen.dart';
+import 'achievements_screen.dart';
 import 'downloaded_games_screen.dart';
+import 'library_order_screen.dart';
 import 'library_settings_screen.dart';
 import 'media_bar_settings_screen.dart';
 import 'screensaver_settings_screen.dart';
@@ -90,6 +112,8 @@ import 'seerr_config_screen.dart';
 import 'settings_app_bar.dart';
 import 'subtitle_customization_screen.dart';
 import 'subtitle_settings_screen.dart';
+import '../../../preference/detail_metadata_layout.dart';
+import '../../../preference/detail_section_layout.dart';
 import '../detail/detail_buttons.dart';
 import '../playback/osd_buttons.dart';
 import '../syncplay/syncplay_screen.dart';
@@ -102,21 +126,26 @@ part 'panel/customization_category_screen.dart';
 part 'panel/general_style_screen.dart';
 part 'panel/details_screen_settings_screen.dart';
 part 'panel/navigation_category_screen.dart';
+part 'panel/bottom_nav_tabs_screen.dart';
 part 'panel/home_screen_category_screen.dart';
 part 'panel/libraries_category_screen.dart';
 part 'panel/seasonal_effects_screen.dart';
 part 'panel/theme_music_screen.dart';
+part 'panel/loading_animation_screen.dart';
 part 'panel/integrations_screen.dart';
 part 'panel/external_lists_screen.dart';
 part 'panel/plugin_screen.dart';
 part 'panel/metadata_ratings_screen.dart';
 part 'panel/about_category_screen.dart';
 part 'panel/licenses_screen.dart';
+part 'panel/keyboard_shortcuts_screen.dart';
 part 'panel/playback_category_screen.dart';
 part 'panel/video_playback_screen.dart';
 part 'panel/playback_time_layout_screen.dart';
 part 'panel/osd_buttons_screen.dart';
 part 'panel/detail_buttons_screen.dart';
+part 'panel/detail_metadata_screen.dart';
+part 'panel/detail_sections_screen.dart';
 part 'panel/audio_preferences_screen.dart';
 part 'panel/automation_queue_screen.dart';
 part 'panel/advanced_options_screen.dart';
@@ -172,6 +201,31 @@ class _SettingsSidePanelState extends ConsumerState<SettingsSidePanel> {
         SnackBar(content: Text(l10n.adminCouldNotOpenUrl('$uri'))),
       );
     }
+  }
+
+  /// Turns Kids Mode off once the PIN checks out. The PIN is the whole
+  /// boundary, so a missing one leaves the mode on rather than opening it up.
+  Future<void> _exitKidsMode(BuildContext context) async {
+    final prefs = GetIt.instance<UserPreferences>();
+    final userId = GetIt.instance<SessionRepository>().activeUserId ?? '';
+    final pin = PinCodeUtil.kidsMode(GetIt.instance<PreferenceStore>(), userId);
+
+    if (pin.isPinEnabled) {
+      final verified = await PinEntryDialog.show(
+        context,
+        mode: PinEntryMode.verify,
+        onVerify: pin.verifyPin,
+        onFailedAttempt: pin.registerFailedAttempt,
+        lockoutRemaining: () => pin.lockoutRemaining,
+      );
+      if (!verified) return;
+    }
+
+    await prefs.set(UserPreferences.kidsModeEnabled, false);
+    // The PIN belonged to this stretch of the mode. Clearing it means the next
+    // time Kids Mode goes on, someone picks a code for it rather than a
+    // forgotten one still quietly being the way out.
+    await pin.removePin();
   }
 
   void _closeSettingsPanel() {
@@ -253,82 +307,100 @@ class _SettingsSidePanelState extends ConsumerState<SettingsSidePanel> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final showAdmin = !PlatformDetection.isTV && ref.watch(isAdminProvider);
+    final kidsMode = ref.watch(kidsModeProvider);
+    final showAdmin =
+        !kidsMode && !PlatformDetection.isTV && ref.watch(isAdminProvider);
     final enablePanelAutofocus = !PlatformDetection.useMobileUi;
-    final entries = <_PanelEntry>[
-      if (showAdmin)
-        _PanelEntry(
-          icon: Icons.admin_panel_settings,
-          title: l10n.administration,
-          subtitle: l10n.settingsAdministrationSubtitle,
-          focusNode: enablePanelAutofocus ? _firstFocusNode : null,
-          onTap: () {
-            _closeSettingsPanel();
-            context.navigateTopLevel(Destinations.admin);
-          },
-        ),
-      _PanelEntry(
-        icon: Icons.lock,
-        title: l10n.settingsAccountSecurity,
-        subtitle: SipflixSettingsMode.label(
-          l10n.settingsAccountSecuritySubtitle,
-          'PIN code, language and parental controls',
-        ),
-        focusNode: (!showAdmin && enablePanelAutofocus)
-            ? _firstFocusNode
-            : null,
-        onTap: () =>
-            context.pushSettingsScreen(const _AuthenticationCategoryScreen()),
-      ),
-      _PanelEntry(
-        icon: Icons.palette,
-        title: l10n.settingsPersonalization,
-        subtitle: SipflixSettingsMode.label(
-          l10n.settingsPersonalizationSubtitle,
-          'Clock, screensaver, home rows and libraries',
-        ),
-        onTap: () =>
-            context.pushSettingsScreen(const _CustomizationCategoryScreen()),
-      ),
-      _PanelEntry(
-        icon: Icons.play_circle,
-        title: SipflixSettingsMode.label(
-          l10n.settingsPlaybackSyncplay,
-          l10n.playback,
-        ),
-        subtitle: SipflixSettingsMode.label(
-          l10n.settingsPlaybackSyncplaySubtitle,
-          'Picture, sound, subtitles and autoplay',
-        ),
-        onTap: () =>
-            context.pushSettingsScreen(const _PlaybackCategoryScreen()),
-      ),
-      // Sipflix: everything under Integrations needs the Moonbase plugin,
-      // which no Sipflix server runs. Rating looks moved to Personalization.
-      if (SipflixSettingsMode.showRetired)
-        _PanelEntry(
-          icon: Icons.hub,
-          title: l10n.integrations,
-          subtitle: l10n.settingsIntegrationsSubtitle,
-          onTap: () => context.pushSettingsScreen(const _IntegrationsScreen()),
-        ),
-      if (_showThemeEditorEntry)
-        _PanelEntry(
-          icon: Icons.brush,
-          title: l10n.themeEditor,
-          subtitle: l10n.themeEditorSubtitle,
-          onTap: () => unawaited(_openThemeEditor()),
-        ),
-      _PanelEntry(
-        icon: Icons.info_outline,
-        title: l10n.aboutTitle,
-        subtitle: SipflixSettingsMode.label(
-          l10n.settingsAboutSubtitle,
-          'App version',
-        ),
-        onTap: () => context.pushSettingsScreen(const _AboutCategoryScreen()),
-      ),
-    ];
+    // Kids Mode leaves one entry standing. Hiding settings outright would
+    // leave no way back, and a hidden gesture is worse than an obvious tile.
+    final entries = kidsMode
+        ? <_PanelEntry>[
+            _PanelEntry(
+              icon: Icons.lock_open,
+              title: l10n.kidsModeExit,
+              subtitle: l10n.kidsModeExitSubtitle,
+              focusNode: enablePanelAutofocus ? _firstFocusNode : null,
+              onTap: () => unawaited(_exitKidsMode(context)),
+            ),
+          ]
+        : <_PanelEntry>[
+            if (showAdmin)
+              _PanelEntry(
+                icon: Icons.admin_panel_settings,
+                title: l10n.administration,
+                subtitle: l10n.settingsAdministrationSubtitle,
+                focusNode: enablePanelAutofocus ? _firstFocusNode : null,
+                onTap: () {
+                  _closeSettingsPanel();
+                  context.navigateTopLevel(Destinations.admin);
+                },
+              ),
+            _PanelEntry(
+              icon: Icons.lock,
+              title: l10n.settingsAccountSecurity,
+              subtitle: SipflixSettingsMode.label(
+                l10n.settingsAccountSecuritySubtitle,
+                'PIN code, language and parental controls',
+              ),
+              focusNode: (!showAdmin && enablePanelAutofocus)
+                  ? _firstFocusNode
+                  : null,
+              onTap: () => context.pushSettingsScreen(
+                const _AuthenticationCategoryScreen(),
+              ),
+            ),
+            _PanelEntry(
+              icon: Icons.palette,
+              title: l10n.settingsPersonalization,
+              subtitle: SipflixSettingsMode.label(
+                l10n.settingsPersonalizationSubtitle,
+                'Clock, screensaver, home rows and libraries',
+              ),
+              onTap: () => context.pushSettingsScreen(
+                const _CustomizationCategoryScreen(),
+              ),
+            ),
+            _PanelEntry(
+              icon: Icons.play_circle,
+              title: SipflixSettingsMode.label(
+                l10n.settingsPlaybackSyncplay,
+                l10n.playback,
+              ),
+              subtitle: SipflixSettingsMode.label(
+                l10n.settingsPlaybackSyncplaySubtitle,
+                'Picture, sound, subtitles and autoplay',
+              ),
+              onTap: () =>
+                  context.pushSettingsScreen(const _PlaybackCategoryScreen()),
+            ),
+            // Sipflix: everything under Integrations needs the Moonbase plugin,
+            // which no Sipflix server runs. Rating looks moved to Personalization.
+            if (SipflixSettingsMode.showRetired)
+              _PanelEntry(
+                icon: Icons.hub,
+                title: l10n.integrations,
+                subtitle: l10n.settingsIntegrationsSubtitle,
+                onTap: () =>
+                    context.pushSettingsScreen(const _IntegrationsScreen()),
+              ),
+            if (_showThemeEditorEntry)
+              _PanelEntry(
+                icon: Icons.brush,
+                title: l10n.themeEditor,
+                subtitle: l10n.themeEditorSubtitle,
+                onTap: () => unawaited(_openThemeEditor()),
+              ),
+            _PanelEntry(
+              icon: Icons.info_outline,
+              title: l10n.aboutTitle,
+              subtitle: SipflixSettingsMode.label(
+                l10n.settingsAboutSubtitle,
+                'App version',
+              ),
+              onTap: () =>
+                  context.pushSettingsScreen(const _AboutCategoryScreen()),
+            ),
+          ];
 
     return Scaffold(
       appBar: AppBar(
@@ -354,7 +426,7 @@ class _SettingsSidePanelState extends ConsumerState<SettingsSidePanel> {
             ),
           ),
           Expanded(
-            child: _query.isEmpty
+            child: (_query.isEmpty || kidsMode)
                 ? ListView(
                     children: [
                       adaptiveListSection(
@@ -363,19 +435,22 @@ class _SettingsSidePanelState extends ConsumerState<SettingsSidePanel> {
                             _PanelEntryTile(entry: entry),
                         ],
                       ),
-                      adaptiveListSection(
-                        children: [
-                          SwitchPreferenceTile(
-                            preference: UserPreferences.sipflixAdvancedSettings,
-                            title: 'Advanced mode',
-                            subtitle:
-                                'Show every setting. Leave off unless '
-                                'support asks you to change something.',
-                            icon: Icons.tune,
-                            onChangedValue: (_) => setState(() {}),
-                          ),
-                        ],
-                      ),
+                      // Sipflix fork: Kids Mode keeps only its exit tile.
+                      if (!kidsMode)
+                        adaptiveListSection(
+                          children: [
+                            SwitchPreferenceTile(
+                              preference:
+                                  UserPreferences.sipflixAdvancedSettings,
+                              title: 'Advanced mode',
+                              subtitle:
+                                  'Show every setting. Leave off unless '
+                                  'support asks you to change something.',
+                              icon: Icons.tune,
+                              onChangedValue: (_) => setState(() {}),
+                            ),
+                          ],
+                        ),
                     ],
                   )
                 : _buildSearchResults(context, l10n, showAdmin),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:moonfin_design/moonfin_design.dart';
 
 import '../../../../widgets/focus/focusable_wrapper.dart';
+import '../../../../widgets/media_badge.dart';
 import '../../../../widgets/seerr/seerr_status_dot.dart';
 
 /// Glassy season card with a subtle background image, title, episode count and a
@@ -33,6 +34,16 @@ class SeasonCard extends StatelessWidget {
   /// Seerr's status for this season, when Seerr has one.
   final int? seerrStatus;
 
+  /// Optional pill drawn over the top-left of the poster, used for the season's
+  /// subbed/dubbed.
+  final Widget? badge;
+
+  /// Whether this season is fully watched.
+  final bool isPlayed;
+
+  /// Count of unplayed episodes in this season, if partially watched or unwatched.
+  final int? unplayedCount;
+
   const SeasonCard({
     super.key,
     required this.title,
@@ -49,6 +60,9 @@ class SeasonCard extends StatelessWidget {
     this.height,
     this.autoScroll = false,
     this.seerrStatus,
+    this.badge,
+    this.isPlayed = false,
+    this.unplayedCount,
   });
 
   @override
@@ -109,6 +123,27 @@ class SeasonCard extends StatelessWidget {
                   left: 6,
                   child: SeerrStatusDot(status: seerrStatus, size: 18),
                 ),
+              // Top left, dropped below the Seerr dot when there is one so the two stack
+              // rather than overlap. The watched badges sit top right, so the two
+              // never collide.
+              if (badge != null)
+                Positioned(
+                  top: SeerrMediaStatus.hasDot(seerrStatus) ? 30 : 6,
+                  left: 6,
+                  child: badge!,
+                ),
+              if (isPlayed)
+                Positioned(
+                  top: 6,
+                  right: 6,
+                  child: MediaWatchedBadge(size: 22),
+                )
+              else if (unplayedCount != null && unplayedCount! > 0)
+                Positioned(
+                  top: 6,
+                  right: 6,
+                  child: MediaUnplayedBadge(count: unplayedCount!),
+                ),
               Positioned(
                 left: 8,
                 right: 8,
@@ -156,7 +191,9 @@ class SeasonCard extends StatelessWidget {
                               ThemeRegistry.active.borders.focusBorder.copyWith(
                                 color: isNeon
                                     ? const Color(0xFF00FFFF)
-                                    : Colors.cyan.withValues(alpha: 0.7),
+                                    : AppColorScheme.accent.withValues(
+                                        alpha: 0.7,
+                                      ),
                                 width: 1.5,
                               ),
                             )

@@ -1,3 +1,5 @@
+// Sipflix fork: upstream removed this util in 2.7.0 (b2c7d2f81); kept for the
+// single-server Continue Watching dedup in row_data_source.dart.
 import '../models/aggregated_item.dart';
 
 /// Collapses the same title arriving from more than one library or server into

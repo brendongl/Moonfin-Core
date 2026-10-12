@@ -5,8 +5,8 @@ import 'package:server_core/server_core.dart';
 
 import '../models/aggregated_item.dart';
 import '../repositories/user_views_repository.dart';
+import '../utils/blocked_ratings.dart';
 import '../utils/playlist_utils.dart';
-import '../../util/friendly_error_message.dart';
 
 class BreadcrumbEntry {
   final String id;
@@ -50,8 +50,8 @@ class FolderBrowseViewModel extends ChangeNotifier {
 
   bool _loadingMore = false;
 
-  String _errorMessage = '';
-  String get errorMessage => _errorMessage;
+  Object? _error;
+  Object? get error => _error;
 
   final List<BreadcrumbEntry> _breadcrumbs = [];
   List<BreadcrumbEntry> get breadcrumbs => List.unmodifiable(_breadcrumbs);
@@ -104,7 +104,7 @@ class FolderBrowseViewModel extends ChangeNotifier {
         _state = FolderBrowseState.ready;
       } catch (e) {
         if (_disposed) return;
-        _errorMessage = friendlyErrorMessage(e);
+        _error = e;
         _state = FolderBrowseState.error;
       }
       _notify();
@@ -161,7 +161,7 @@ class FolderBrowseViewModel extends ChangeNotifier {
       _state = FolderBrowseState.ready;
     } catch (e) {
       if (_disposed) return;
-      _errorMessage = friendlyErrorMessage(e);
+      _error = e;
       _state = FolderBrowseState.error;
     }
     _notify();
@@ -189,6 +189,7 @@ class FolderBrowseViewModel extends ChangeNotifier {
   Future<List<AggregatedItem>> _filterItemsForFolder(
     List<AggregatedItem> items,
   ) async {
+    items = withoutBlockedItems(items);
     final isPlaylistRoot = _rootCollectionType == 'playlists';
     if (!isPlaylistRoot) return items;
 

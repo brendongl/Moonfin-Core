@@ -271,6 +271,16 @@ class HomeSectionConfig {
       order: 20,
     ),
     HomeSectionConfig(
+      type: HomeSectionType.studios,
+      enabled: false,
+      order: 21,
+    ),
+    HomeSectionConfig(
+      type: HomeSectionType.seerrShortcuts,
+      enabled: false,
+      order: 22,
+    ),
+    HomeSectionConfig(
       type: HomeSectionType.seerrRecentRequests,
       enabled: false,
       order: 21,
@@ -372,6 +382,11 @@ class HomeSectionConfig {
       type: HomeSectionType.rewatch,
       enabled: false,
       order: 45,
+    ),
+    HomeSectionConfig(
+      type: HomeSectionType.seasonal,
+      enabled: false,
+      order: 46,
     ),
   ];
 

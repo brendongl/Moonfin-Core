@@ -140,15 +140,15 @@ void main() {
     expect(series, contains('sh'));
   });
 
-  test('shows a plain message when every search fails', () async {
+  test('ends in an error when every search fails', () async {
     answerBuckets((_) async => throw _gatewayTimeout());
 
     final vm = SearchViewModel(repo, client);
     await _runSearch(vm, 'slow horses');
 
     expect(vm.state, SearchState.error);
-    expect(vm.errorMessage, isNot(contains('DioException')));
-    expect(vm.errorMessage, contains("Couldn't reach the server"));
+    // The screen turns this into plain text through describeError.
+    expect(vm.error, isA<DioException>());
   });
 
   group('a part that stalls', () {
@@ -178,14 +178,14 @@ void main() {
       expect(vm.results.expand((g) => g.items).map((i) => i.id), contains('sh'));
     });
 
-    test('ends in the plain message when nothing answers', () async {
+    test('ends in a timeout error when nothing answers', () async {
       answerBuckets((_) => Completer<List<AggregatedItem>>().future);
 
       final vm = SearchViewModel(repo, client);
       await _runSearch(vm, 'slow horses').timeout(const Duration(seconds: 5));
 
       expect(vm.state, SearchState.error);
-      expect(vm.errorMessage, contains("Couldn't reach the server"));
+      expect(vm.error, isA<TimeoutException>());
     });
   });
 }

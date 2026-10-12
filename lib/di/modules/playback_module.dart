@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:get_it/get_it.dart';
 import 'package:playback_core/playback_core.dart';
 import 'package:playback_jellyfin/playback_jellyfin.dart';
@@ -11,6 +12,8 @@ import '../../data/services/audiobook_bookmarks_service.dart';
 import '../../data/services/audiobook_notes_service.dart';
 import '../../data/services/audiobook_resume_service.dart';
 import '../../data/services/connectivity_service.dart';
+import '../../data/services/log_service.dart';
+import '../../data/services/blocked_content_gate.dart';
 import '../../data/services/media_server_client_factory.dart';
 import '../../data/services/offline_playback_tracker.dart';
 import '../../playback/local_aware_player_service.dart';
@@ -30,7 +33,6 @@ import '../../playback/auto_bitrate_service.dart';
 import '../../playback/aether_backend.dart';
 import '../../playback/media_kit_player_backend.dart';
 import '../../playback/media3_player_backend.dart';
-import '../../playback/tizen_player_backend.dart';
 import '../../playback/offline_stream_resolver.dart';
 import '../../playback/playback_profile_diagnostics.dart';
 import '../../playback/sleep_timer_controller.dart';
@@ -50,9 +52,9 @@ const _nextSeasonEpisodeFields =
     'Type,UserData,SeriesName,ParentIndexNumber,IndexNumber,SeriesId,SeasonId,'
     'MediaSources,MediaStreams,RunTimeTicks,Chapters';
 
-bool _isDolbyVisionResolution(StreamResolutionResult resolution) {
+bool _needsDolbyVisionFallback(StreamResolutionResult resolution) {
   for (final stream in resolution.mediaStreams) {
-    if (HdrStreamCapability.isDolbyVisionVideoStream(stream)) {
+    if (HdrStreamCapability.needsDolbyVisionFallback(stream)) {
       return true;
     }
   }
@@ -70,6 +72,52 @@ bool _shouldUseHtmlVideoBackend(StreamResolutionResult resolution) {
   }
 
   return true;
+}
+
+/// Why this client refuses to direct play [resolution], or null when it does
+/// not. Named rather than boolean because a client-side refusal leaves the
+/// server's transcodingReasons empty, and a report with no reason at all was
+/// what made a display probe failure so hard to recognize.
+@visibleForTesting
+String? dolbyVisionTranscodeReason(
+  StreamResolutionResult resolution,
+  UserPreferences prefs,
+) {
+  if (!(PlatformDetection.isAndroid && PlatformDetection.isTV)) {
+    return null;
+  }
+
+  // A local resolution is never swapped for a server stream.
+  if (resolution.isLocalMedia) {
+    return null;
+  }
+
+  if (_hasUnsupportedDolbyVisionProfile(resolution)) {
+    return 'dolbyVisionProfileNotDirectPlayable';
+  }
+
+  if (!_needsDolbyVisionFallback(resolution)) {
+    return null;
+  }
+
+  if (PlatformDetection.supportsDolbyVision) {
+    return null;
+  }
+
+  if (!PlatformDetection.supportsAnyHdr) {
+    return 'displayReportsNoHdr';
+  }
+
+  final selected = prefs.get(UserPreferences.dolbyVisionFallbackBehavior);
+  if (selected == DolbyVisionFallbackBehavior.transcode) {
+    return 'dolbyVisionFallbackPreferenceTranscode';
+  }
+  if (selected == DolbyVisionFallbackBehavior.hdr10Fallback &&
+      !PlatformDetection.supportsHdr10) {
+    return 'displayLacksHdr10ForFallback';
+  }
+
+  return null;
 }
 
 bool _hasUnsupportedDolbyVisionProfile(StreamResolutionResult resolution) {
@@ -278,14 +326,10 @@ void registerPlaybackModule() {
 
   MediaKitPlayerBackend? backend;
   Media3PlayerBackend? media3Backend;
-  TizenPlayerBackend? tizenBackend;
   AppleTvBackend? appleTvBackend;
   AetherBackend? iosBackend;
 
-  if (PlatformDetection.isTizen) {
-    tizenBackend = TizenPlayerBackend(prefs);
-    _getIt.registerSingleton<TizenPlayerBackend>(tizenBackend);
-  } else if (PlatformDetection.isAppleTV) {
+  if (PlatformDetection.isAppleTV) {
     appleTvBackend = AppleTvBackend(prefs);
     _getIt.registerSingleton<AppleTvBackend>(appleTvBackend);
   } else if (PlatformDetection.isIOS || PlatformDetection.isMacOS) {
@@ -296,9 +340,13 @@ void registerPlaybackModule() {
     _getIt.registerSingleton<AetherBackend>(iosBackend);
   } else {
     backend = MediaKitPlayerBackend(prefs);
-    media3Backend = Media3PlayerBackend(prefs);
     _getIt.registerSingleton<MediaKitPlayerBackend>(backend);
-    _getIt.registerSingleton<Media3PlayerBackend>(media3Backend);
+    // The constructor subscribes to moonfin/media3_video_events, which only
+    // Android implements, so building this anywhere else raises on its own.
+    if (PlatformDetection.isAndroid) {
+      media3Backend = Media3PlayerBackend(prefs);
+      _getIt.registerSingleton<Media3PlayerBackend>(media3Backend);
+    }
   }
 
   HtmlVideoBackend? htmlBackend;
@@ -308,13 +356,10 @@ void registerPlaybackModule() {
   }
 
   final useMedia3ByDefault =
-      !PlatformDetection.isTizen &&
       PlatformDetection.isAndroid &&
       prefs.get(UserPreferences.playbackEnginePreference) ==
           PlaybackEnginePreference.media3;
-  final PlayerBackend initialBackend = PlatformDetection.isTizen
-      ? tizenBackend!
-      : PlatformDetection.isAppleTV
+  final PlayerBackend initialBackend = PlatformDetection.isAppleTV
       ? appleTvBackend!
       : (PlatformDetection.isIOS || PlatformDetection.isMacOS)
       ? iosBackend!
@@ -324,6 +369,29 @@ void registerPlaybackModule() {
   _getIt.registerSingleton<PlayerBackend>(initialBackend);
 
   final manager = PlaybackManager();
+  // A launch that hangs goes quiet in the network log, since the stall sits
+  // between requests. The bringup phases bracket every stage of a start, so
+  // the last phase in a report names the stage that never finished.
+  var lastBringupPhase = PlaybackBringupPhase.idle;
+  manager.bringupStateStream.listen((state) {
+    if (state.phase == lastBringupPhase) return;
+    lastBringupPhase = state.phase;
+    if (state.phase == PlaybackBringupPhase.idle) return;
+    final log = _getIt<LogService>();
+    final detail = [
+      ?state.backend,
+      if (state.itemId != null) 'item ${state.itemId}',
+      ?state.playMethod,
+      if (state.error != null) 'error ${state.error}',
+    ].join(', ');
+    log.log(
+      LogCategory.playback,
+      'Bringup: ${state.phase.name}${detail.isEmpty ? '' : ' ($detail)'}',
+      level: state.phase == PlaybackBringupPhase.failed
+          ? LogLevel.warning
+          : LogLevel.debug,
+    );
+  });
   manager.autoBitrateProvider = AutoBitrateService(
     _getIt<MediaServerClientFactory>(),
   ).measuredBpsForActiveServer;
@@ -384,11 +452,6 @@ void registerPlaybackModule() {
 
   manager.setBackend(initialBackend);
   manager.setBackendSelector((resolution, currentBackend) {
-    if (PlatformDetection.isTizen) {
-      if (currentBackend is TizenPlayerBackend) return currentBackend;
-      return _getIt<TizenPlayerBackend>();
-    }
-
     if (PlatformDetection.isAppleTV) {
       if (currentBackend is AppleTvBackend) return currentBackend;
       return _getIt<AppleTvBackend>();
@@ -427,37 +490,9 @@ void registerPlaybackModule() {
     if (currentBackend is MediaKitPlayerBackend) return currentBackend;
     return _getIt<MediaKitPlayerBackend>();
   });
-  manager.setTranscodeSelector((resolution) {
-    if (!(PlatformDetection.isAndroid && PlatformDetection.isTV)) {
-      return false;
-    }
-
-    if (_hasUnsupportedDolbyVisionProfile(resolution)) {
-      return true;
-    }
-
-    if (!_isDolbyVisionResolution(resolution)) {
-      return false;
-    }
-
-    if (PlatformDetection.supportsDolbyVision) {
-      return false;
-    }
-
-    if (!PlatformDetection.supportsAnyHdr) {
-      return true;
-    }
-
-    final selected = prefs.get(UserPreferences.dolbyVisionFallbackBehavior);
-    if (selected == DolbyVisionFallbackBehavior.transcode) {
-      return true;
-    }
-    if (selected == DolbyVisionFallbackBehavior.hdr10Fallback) {
-      return !PlatformDetection.supportsHdr10;
-    }
-
-    return false;
-  });
+  manager.setTranscodeSelector(
+    (resolution) => dolbyVisionTranscodeReason(resolution, prefs),
+  );
   manager.setStartPositionAdjuster((_, startPosition) {
     final prefs = _getIt<UserPreferences>();
     final raw = prefs.get(UserPreferences.resumeSubtractDuration);
@@ -467,6 +502,9 @@ void registerPlaybackModule() {
     if (startPosition <= rewind) return Duration.zero;
     return startPosition - rewind;
   });
+  manager.setDiagnosticLogger(
+    (message) => _getIt<LogService>().log(LogCategory.playback, message),
+  );
   manager.setPlaybackDecisionLogger((context) {
     final audioCapabilityProfile = prefs.detectedAudioCapabilities;
 
@@ -480,7 +518,7 @@ void registerPlaybackModule() {
     PlaybackProfileDiagnostics.instance.logPlaybackDecision(
       context: context,
       audioCapabilityProfile: audioCapabilityProfile,
-      media3Capabilities: PlatformDetection.hasAudioCapabilities
+      deviceAudioCapabilities: PlatformDetection.hasAudioCapabilities
           ? PlatformDetection.audioCapabilitiesSnapshot
           : const <String, dynamic>{},
       audioSpdifCodecs: audioSpdifCodecs,
@@ -499,8 +537,21 @@ void registerPlaybackModule() {
       },
     );
   });
+  manager.setContentRefusal(
+    queueFilter: (item) {
+      if (item is! AggregatedItem) return false;
+      if (!_getIt.isRegistered<BlockedContentGate>()) return false;
+      return _getIt<BlockedContentGate>().isBlockedNow(item);
+    },
+    playRefusal: (item) async {
+      if (item is! AggregatedItem) return false;
+      if (!_getIt.isRegistered<BlockedContentGate>()) return false;
+      return _getIt<BlockedContentGate>().isBlocked(item);
+    },
+  );
+
   manager.setExternalPlaybackDecider((items) {
-    if (!(PlatformDetection.isAndroid && PlatformDetection.isTV)) {
+    if (!PlatformDetection.isAndroid) {
       return false;
     }
 

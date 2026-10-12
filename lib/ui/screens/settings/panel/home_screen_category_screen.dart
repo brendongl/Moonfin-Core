@@ -26,10 +26,12 @@ class _HomeScreenCategoryScreenState extends State<_HomeScreenCategoryScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final rowsStyle = _prefs.get(UserPreferences.homeRowsStyle);
+    final isMobileUi = PlatformDetection.useMobileUi;
     final isFullScreenRows =
-        !PlatformDetection.useMobileUi &&
+        !isMobileUi &&
         _prefs.get(UserPreferences.fullScreenRows);
     final isInfoOverlayOn =
+        !isMobileUi &&
         rowsStyle == HomeRowsStyle.v1 &&
         _prefs.get(UserPreferences.homeRowInfoOverlay);
     final isPaddingEnabled = !isFullScreenRows && !isInfoOverlayOn;
@@ -55,6 +57,62 @@ class _HomeScreenCategoryScreenState extends State<_HomeScreenCategoryScreen> {
                     setState(() {});
                   },
                 ),
+                if (rowsStyle == HomeRowsStyle.v2)
+                  SwitchPreferenceTile(
+                    preference: UserPreferences.modernCardsOnMyMediaRow,
+                    title: l10n.modernCardsOnMyMediaRow,
+                    subtitle: l10n.modernCardsOnMyMediaRowDescription,
+                    icon: Icons.photo_library_outlined,
+                    onChanged: () {
+                      _pushPersonalizationSync();
+                      _reloadHomeRows();
+                      if (!mounted) return;
+                      setState(() {});
+                    },
+                  ),
+                EnumPreferenceTile<PosterSize>(
+                  preference: UserPreferences.posterSize,
+                  title: l10n.cardSize,
+                  icon: Icons.photo_size_select_large,
+                  labelOf: (v) => switch (v) {
+                    PosterSize.small => l10n.small,
+                    PosterSize.medium => l10n.medium,
+                    PosterSize.large => l10n.large,
+                    PosterSize.extraLarge => l10n.extraLarge,
+                  },
+                  onChanged: _pushPersonalizationSync,
+                ),
+                SliderPreferenceTile(
+                  preference: rowsStyle == HomeRowsStyle.v2
+                      ? UserPreferences.modernHomeRowsPadding
+                      : UserPreferences.classicHomeRowsPadding,
+                  title: l10n.homeRowsPadding,
+                  description: l10n.homeRowsPaddingDescription,
+                  icon: Icons.unfold_more,
+                  min: rowsStyle == HomeRowsStyle.v2 ? 360 : 10,
+                  max: rowsStyle == HomeRowsStyle.v2 ? 560 : 130,
+                  divisions: rowsStyle == HomeRowsStyle.v2 ? 10 : 6,
+                  enabled: isPaddingEnabled,
+                  onChangeEnd: _pushPersonalizationSync,
+                ),
+                if (!PlatformDetection.useMobileUi)
+                  SwitchPreferenceTile(
+                    preference: UserPreferences.fullScreenRows,
+                    title: l10n.fullScreenRows,
+                    subtitle: l10n.fullScreenRowsDescription,
+                    icon: Icons.image_aspect_ratio,
+                    onChanged: () {
+                      _pushPersonalizationSync();
+                      if (!mounted) return;
+                      setState(() {});
+                    },
+                  ),
+              ],
+            ),
+
+            _SectionHeader(l10n.continueWatchingAndNextUpHeader),
+            adaptiveListSection(
+              children: [
                 SwitchPreferenceTile(
                   preference: UserPreferences.mergeContinueWatchingNextUp,
                   title: l10n.mergeContinueWatchingAndNextUp,
@@ -80,6 +138,12 @@ class _HomeScreenCategoryScreenState extends State<_HomeScreenCategoryScreen> {
                     _reloadHomeRows();
                   },
                 ),
+              ],
+            ),
+
+            _SectionHeader(l10n.mediaDetailsAndSpoilers),
+            adaptiveListSection(
+              children: [
                 SwitchPreferenceTile(
                   preference: UserPreferences.seriesThumbnailsEnabled,
                   title: l10n.seriesThumbnails,
@@ -87,19 +151,7 @@ class _HomeScreenCategoryScreenState extends State<_HomeScreenCategoryScreen> {
                   icon: Icons.image_aspect_ratio,
                   onChanged: _pushPersonalizationSync,
                 ),
-                if (!PlatformDetection.useMobileUi)
-                  SwitchPreferenceTile(
-                    preference: UserPreferences.fullScreenRows,
-                    title: l10n.fullScreenRows,
-                    subtitle: l10n.fullScreenRowsDescription,
-                    icon: Icons.image_aspect_ratio,
-                    onChanged: () {
-                      _pushPersonalizationSync();
-                      if (!mounted) return;
-                      setState(() {});
-                    },
-                  ),
-                if (rowsStyle == HomeRowsStyle.v1)
+                if (rowsStyle == HomeRowsStyle.v1 && !isMobileUi)
                   SwitchPreferenceTile(
                     preference: UserPreferences.homeRowInfoOverlay,
                     title: l10n.homeRowInfoOverlay,
@@ -111,29 +163,11 @@ class _HomeScreenCategoryScreenState extends State<_HomeScreenCategoryScreen> {
                       setState(() {});
                     },
                   ),
-                SliderPreferenceTile(
-                  preference: rowsStyle == HomeRowsStyle.v2
-                      ? UserPreferences.modernHomeRowsPadding
-                      : UserPreferences.classicHomeRowsPadding,
-                  title: l10n.homeRowsPadding,
-                  description: l10n.homeRowsPaddingDescription,
-                  icon: Icons.unfold_more,
-                  min: rowsStyle == HomeRowsStyle.v2 ? 360 : 10,
-                  max: rowsStyle == HomeRowsStyle.v2 ? 560 : 130,
-                  divisions: rowsStyle == HomeRowsStyle.v2 ? 10 : 6,
-                  enabled: isPaddingEnabled,
-                  onChangeEnd: _pushPersonalizationSync,
-                ),
-                EnumPreferenceTile<PosterSize>(
-                  preference: UserPreferences.posterSize,
-                  title: l10n.cardSize,
-                  icon: Icons.photo_size_select_large,
-                  labelOf: (v) => switch (v) {
-                    PosterSize.small => l10n.small,
-                    PosterSize.medium => l10n.medium,
-                    PosterSize.large => l10n.large,
-                    PosterSize.extraLarge => l10n.extraLarge,
-                  },
+                SwitchPreferenceTile(
+                  preference: UserPreferences.hideHomeMediaDescription,
+                  title: l10n.hideHomeMediaDescription,
+                  subtitle: l10n.hideHomeMediaDescriptionSubtitle,
+                  icon: Icons.description_outlined,
                   onChanged: _pushPersonalizationSync,
                 ),
               ],
@@ -182,6 +216,25 @@ class _HomeScreenCategoryScreenState extends State<_HomeScreenCategoryScreen> {
                 ),
             ],
           ),
+
+          if (PlatformDetection.isAppleTV) ...[
+            _SectionHeader(l10n.appleTvHomeScreen),
+            adaptiveListSection(
+              children: [
+                EnumPreferenceTile<TopShelfContent>(
+                  preference: UserPreferences.topShelfContent,
+                  title: l10n.topShelf,
+                  description: l10n.topShelfDescription,
+                  icon: Icons.tv,
+                  labelOf: (v) => switch (v) {
+                    TopShelfContent.latestMedia => l10n.topShelfLatestMedia,
+                    TopShelfContent.appBanner => l10n.topShelfAppBanner,
+                  },
+                  onChanged: TopShelfService().refresh,
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 32),
         ],
       ),

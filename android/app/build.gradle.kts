@@ -82,6 +82,17 @@ android {
         val baseAppId = "com.sipflix.moonfin"
         // Sipflix fork: launcher label. Flavors append " Beta" to this.
         val baseAppName = "Sipflix Moonfin"
+        // Optional application-id suffix for on-device testing, set through the
+        // environment so an unset build is byte-identical to before:
+        //   MOONFIN_TEST_ID_SUFFIX=.hwtest flutter build apk --flavor androidTv --debug
+        //
+        // Why this exists: a debug-signed test build cannot install over a
+        // release-signed build of the same flavor, and uninstalling to make room
+        // deletes that package's data directory - which holds the cartridge
+        // saves (SRAM/EEPROM). Those are stored locally and are NOT backed up to
+        // the server, so an uninstall can lose real game progress. A distinct id
+        // installs alongside instead and touches nothing.
+        val testIdSuffix = System.getenv("MOONFIN_TEST_ID_SUFFIX").orEmpty()
         val mobileAbis = listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         val tvAbis = listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         create("mobile") {
@@ -102,11 +113,12 @@ android {
         }
         create("androidTv") {
             dimension = "device"
-            applicationId = baseAppId
+            applicationId = baseAppId + testIdSuffix
             versionCode = androidTvVersionCode
             versionName = androidTvVersionName
             ndk { abiFilters += tvAbis }
-            manifestPlaceholders["appName"] = baseAppName
+            manifestPlaceholders["appName"] =
+                if (testIdSuffix.isEmpty()) baseAppName else "$baseAppName Test"
             // Impeller off on TV: the GLES fallback stutters on TV-box GPUs.
             manifestPlaceholders["enableImpeller"] = "false"
         }
@@ -171,6 +183,8 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
     implementation("com.google.android.gms:play-services-cast-framework:22.0.0")
     implementation("eu.simonbinder:sqlite3-native-library:3.52.0")
     implementation("androidx.tvprovider:tvprovider:1.1.0")

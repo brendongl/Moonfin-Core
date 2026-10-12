@@ -70,6 +70,8 @@ class LocalAwarePlayerService implements PlayerService {
     bool isPaused = false,
     int? audioStreamIndex,
     int? subtitleStreamIndex,
+    int? volumeLevel,
+    bool? isMuted,
   }) async {
     if (!resolution.isLocalMedia) {
       return _inner.onPlaybackProgress(
@@ -79,6 +81,8 @@ class LocalAwarePlayerService implements PlayerService {
         isPaused: isPaused,
         audioStreamIndex: audioStreamIndex,
         subtitleStreamIndex: subtitleStreamIndex,
+        volumeLevel: volumeLevel,
+        isMuted: isMuted,
       );
     }
     await _recordLocal(mediaItem, position.inMicroseconds * 10);
@@ -90,6 +94,8 @@ class LocalAwarePlayerService implements PlayerService {
         isPaused: isPaused,
         audioStreamIndex: audioStreamIndex,
         subtitleStreamIndex: subtitleStreamIndex,
+        volumeLevel: volumeLevel,
+        isMuted: isMuted,
       ),
     );
   }
@@ -98,14 +104,25 @@ class LocalAwarePlayerService implements PlayerService {
   Future<void> onPlaybackStop(
     dynamic mediaItem,
     StreamResolutionResult resolution,
-    Duration position,
-  ) async {
+    Duration position, {
+    bool releaseLiveStream = true,
+  }) async {
     if (!resolution.isLocalMedia) {
-      return _inner.onPlaybackStop(mediaItem, resolution, position);
+      return _inner.onPlaybackStop(
+        mediaItem,
+        resolution,
+        position,
+        releaseLiveStream: releaseLiveStream,
+      );
     }
     await _recordLocal(mediaItem, position.inMicroseconds * 10);
     await _forward(
-      () => _inner.onPlaybackStop(mediaItem, resolution, position),
+      () => _inner.onPlaybackStop(
+        mediaItem,
+        resolution,
+        position,
+        releaseLiveStream: releaseLiveStream,
+      ),
     );
   }
 
