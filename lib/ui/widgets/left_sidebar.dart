@@ -129,6 +129,11 @@ class _LeftSidebarState extends State<LeftSidebar> with RouteAware {
     _currentTime = ValueNotifier<String>('');
     _focusNavbarCallback = () {
       if (!mounted || _homeFocusNode.context == null) return;
+      // Sipflix fork: a deliberate LEFT into the rail is never the stray
+      // post-navigation focus the skip flag guards against. A flag left set
+      // by a screen that refocused its content would otherwise bounce the
+      // first LEFT after BACK straight back out.
+      _skipExpandOnNextFocusFromNavigation = false;
       // Expand the rail directly instead of relying on the focus listener,
       // whose expansion can be blocked right after this sidebar mounts.
       if (!_isMobile && !_isExpanded) {
