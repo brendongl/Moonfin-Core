@@ -3656,6 +3656,20 @@ class _HeaderSection extends StatelessWidget {
     final isCollection = item.type == 'BoxSet';
     final seerrStatus = seerrItemStatus(viewModel);
     final isNeon = ThemeRegistry.active.id == ThemeRegistry.neonPulseId;
+    // Sipflix fork: also the logo's fallback, so a logo that fails or is slow
+    // never leaves the header without a title.
+    final titleText = Text(
+      item.name,
+      style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+        color: isNeon ? AppColorScheme.accent : AppColorScheme.onBackground,
+        fontWeight: FontWeight.bold,
+        shadows: _textShadows,
+        fontSize: isMobile ? 24 : null,
+      ),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      textAlign: isMobile ? TextAlign.center : null,
+    );
 
     final infoColumn = Column(
       crossAxisAlignment: isMobile
@@ -3718,6 +3732,7 @@ class _HeaderSection extends StatelessWidget {
                       ),
                       maxHeight: 56,
                       maxWidth: 240,
+                      fallback: titleText,
                     ),
                   )
                 : LogoView(
@@ -3728,23 +3743,11 @@ class _HeaderSection extends StatelessWidget {
                     ),
                     maxHeight: 80,
                     maxWidth: 350,
+                    fallback: titleText,
                   ),
           )
         else
-          Text(
-            item.name,
-            style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-              color: isNeon
-                  ? AppColorScheme.accent
-                  : AppColorScheme.onBackground,
-              fontWeight: FontWeight.bold,
-              shadows: _textShadows,
-              fontSize: isMobile ? 24 : null,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            textAlign: isMobile ? TextAlign.center : null,
-          ),
+          titleText,
         const SizedBox(height: 8),
         DetailMetadataRow(
           item: item,

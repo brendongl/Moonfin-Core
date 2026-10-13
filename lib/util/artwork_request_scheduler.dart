@@ -54,6 +54,14 @@ class ArtworkRequestScheduler {
 
   int _running = 0;
   int _batch = 0;
+
+  /// Sipflix fork: whether the last admission was one that aged past
+  /// [maxWait]. Aged requests take every other slot rather than all of them.
+  /// A queued fetch can't be cancelled when its cell scrolls away, so on a
+  /// slow box a fast scroll through a big grid leaves hundreds waiting, and
+  /// once they all pass the ceiling the queue turned first come first served
+  /// and the cells on screen waited behind every one of them.
+  bool _lastWasAged = false;
   DateTime? _lastEnqueue;
 
   /// Batches keyed by id, each a first-in first-out queue. The last key is
@@ -145,7 +153,9 @@ class ArtworkRequestScheduler {
       queue.remove(waiter);
       if (queue.isEmpty) batches.remove(waiter.batch);
     }
-    _waiting.remove(waiter.url);
+    // Sipflix fork: two requests can share a URL, and admitting one must not
+    // drop the other's entry.
+    if (identical(_waiting[waiter.url], waiter)) _waiting.remove(waiter.url);
   }
 
   void _admit() {
@@ -166,8 +176,13 @@ class ArtworkRequestScheduler {
       // Batch ids climb with time, so the first key is the oldest request in
       // this lane and the last the newest.
       final oldest = batches[batches.firstKey()]!.first;
-      if (now.difference(oldest.enqueuedAt) >= maxWait) return oldest;
-      return batches[batches.lastKey()]!.first;
+      final newest = batches[batches.lastKey()]!.first;
+      if (!_lastWasAged && now.difference(oldest.enqueuedAt) >= maxWait) {
+        _lastWasAged = true;
+        return oldest;
+      }
+      _lastWasAged = false;
+      return newest;
     }
     return null;
   }

@@ -226,4 +226,49 @@ void main() {
       expect(seen?.batch, 1);
     });
   });
+
+  test('a stale backlog takes only every other slot from the screen', () {
+    // Sipflix fork: a fast scroll on a slow box leaves a backlog nobody can
+    // cancel. Once it all ages past the ceiling, the cells on screen must
+    // still get a share instead of waiting behind every stale one.
+    run((async, s) {
+      want(s, 'in-flight');
+      async.flushMicrotasks();
+      for (var i = 0; i < 6; i++) {
+        want(s, 'stale-$i');
+        async.elapse(const Duration(milliseconds: 20));
+      }
+      async.elapse(const Duration(seconds: 6));
+      want(s, 'visible-a');
+      async.elapse(const Duration(milliseconds: 20));
+      want(s, 'visible-b');
+      async.flushMicrotasks();
+      for (var i = 0; i < 4; i++) {
+        s.release();
+        async.flushMicrotasks();
+      }
+      expect(order, [
+        'in-flight',
+        'stale-0',
+        'visible-b',
+        'stale-1',
+        'visible-a',
+      ]);
+    });
+  });
+
+  test('two requests for one url are both admitted', () {
+    run((async, s) {
+      want(s, 'in-flight');
+      want(s, 'same');
+      want(s, 'same');
+      async.flushMicrotasks();
+      s.release();
+      async.flushMicrotasks();
+      s.release();
+      async.flushMicrotasks();
+      expect(order, ['in-flight', 'same', 'same']);
+      expect(s.queueDepth, 0);
+    });
+  });
 }

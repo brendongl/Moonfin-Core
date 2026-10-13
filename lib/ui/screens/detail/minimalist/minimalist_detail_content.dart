@@ -225,6 +225,12 @@ class _MinimalistDetailContentState extends State<MinimalistDetailContent> {
         ? math.min(160.0, MediaQuery.sizeOf(context).height * 0.21)
         : 110.0;
 
+    final titleMark = Text(
+      isEpisodeOrSeason ? (item.seriesName ?? item.name) : item.name,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: _titleStyle(landscape),
+    );
     final Widget showMark;
     if (logoTag != null && logoId != null && logoId.isNotEmpty) {
       showMark = LogoView(
@@ -235,14 +241,11 @@ class _MinimalistDetailContentState extends State<MinimalistDetailContent> {
         ),
         maxWidth: maxWidth,
         maxHeight: maxHeight,
+        // Sipflix fork: the title stands in for a failed or slow logo.
+        fallback: titleMark,
       );
     } else {
-      showMark = Text(
-        isEpisodeOrSeason ? (item.seriesName ?? item.name) : item.name,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: _titleStyle(landscape),
-      );
+      showMark = titleMark;
     }
 
     if (!isEpisode) {

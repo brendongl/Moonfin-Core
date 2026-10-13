@@ -737,6 +737,8 @@ class _SpotlightDetailContentState extends State<SpotlightDetailContent> {
         ),
         maxHeight: (_landscape ? 90 : 64) * logoScaleFactor,
         maxWidth: (_landscape ? 360 : 260) * logoScaleFactor,
+        // Sipflix fork: the title stands in for a failed or slow logo.
+        fallback: titleText,
       );
     }
     return titleText;

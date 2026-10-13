@@ -1359,7 +1359,8 @@ class _ShuffleOverlayState extends State<_ShuffleOverlay> {
     return Align(
       alignment: Alignment.centerLeft,
       child: Text(
-        item?.name ?? l10n.noItemsFound,
+        // Sipflix fork: nothing to name yet while a shuffle is loading.
+        item?.name ?? (_loading ? '' : l10n.noItemsFound),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
@@ -1407,7 +1408,8 @@ class _ShuffleOverlayState extends State<_ShuffleOverlay> {
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    l10n.noItemsFound,
+                    // Sipflix fork: "No items found" only once loading ends.
+                    _loading ? l10n.loadingShuffle : l10n.noItemsFound,
                     style: TextStyle(
                       color: AppColorScheme.onSurface.withValues(alpha: 0.72),
                     ),

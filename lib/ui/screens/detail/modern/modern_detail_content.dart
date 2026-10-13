@@ -4403,6 +4403,19 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
                           .getLogoImageUrl(logoId, maxWidth: 350, tag: logoTag),
                       maxHeight: itemLogoHeight,
                       maxWidth: itemLogoWidth,
+                      // Sipflix fork: the title stands in for a failed logo.
+                      fallback: Text(
+                        item.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: (_landscape
+                                ? textTheme.displaySmall
+                                : textTheme.headlineMedium)
+                            ?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: _titleColor,
+                            ),
+                      ),
                     ),
                     ..._versionBadge(item, selectedSource, textTheme),
                   ],
@@ -5234,6 +5247,16 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
                             .getLogoImageUrl(logoId, maxWidth: 350, tag: logoTag),
                         maxHeight: 75 * logoScaleFactor,
                         maxWidth: 300 * logoScaleFactor,
+                        // Sipflix fork: the title stands in for a failed logo.
+                        fallback: Text(
+                          item.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.displaySmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: _titleColor,
+                          ),
+                        ),
                       ),
                       ..._versionBadge(item, selectedSource, textTheme),
                     ],

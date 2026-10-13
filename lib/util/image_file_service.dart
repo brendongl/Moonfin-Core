@@ -27,6 +27,12 @@ const _stallTimeout = Duration(seconds: 20);
 /// newest batch first. A slot is taken at admission and given back however
 /// the fetch ends, a body abandoned partway or never read included, so
 /// dart:io never holds more than the scheduler admits.
+///
+/// dart:io hands a connection back to its pool only once the body has been
+/// read, and the cache manager never reads the body of a status it rejects,
+/// so those bodies are read here. So is an answer that lands after the header
+/// timeout gave up on it. Left unread, each one would hold a connection for
+/// good.
 class BoundedImageFileService extends FileService {
   BoundedImageFileService(
     this._client, {
@@ -97,17 +103,45 @@ class BoundedImageFileService extends FileService {
     ArtworkTiming? timing,
     void Function() release,
   ) async {
-    final request = http.Request('GET', Uri.parse(url));
+    // Sipflix fork: the request is abortable, so a server that accepts the
+    // connection and never answers can't keep it. Abandoning only the await
+    // left the request with dart:io, holding a pooled connection until the
+    // peer gave up, and four of those wedged every image on a Max29.
+    final abort = Completer<void>();
+    final request = http.AbortableRequest(
+      'GET',
+      Uri.parse(url),
+      abortTrigger: abort.future,
+    );
     if (headers != null) request.headers.addAll(headers);
-    final response = await _client.send(request).timeout(headerTimeout);
+    final pending = _client.send(request);
+    final http.StreamedResponse response;
+    try {
+      response = await pending.timeout(headerTimeout);
+    } on TimeoutException {
+      abort.complete();
+      // An answer that still lands is read and dropped, or it holds its
+      // connection for good.
+      unawaited(pending.then(_discard, onError: (Object _) {}));
+      rethrow;
+    }
     timing?.headers(response.statusCode);
     if (response.statusCode != 200 && response.statusCode != 202) {
-      // Not modified carries no body, and the cache manager reads no body
-      // on any other status either, so the record closes and the slot goes
-      // back here or it never would.
+      // The cache manager reads the status and the headers of these and
+      // never the body, so the body is read here and a twin with an empty
+      // one goes back. The record closes and the slot returns once the
+      // connection is free again.
+      await _discard(response);
       ArtworkTimings.finish(timing);
       release();
-      return _StallBoundedResponse(HttpGetResponse(response), stallTimeout);
+      return HttpGetResponse(
+        http.StreamedResponse(
+          const Stream<List<int>>.empty(),
+          response.statusCode,
+          contentLength: 0,
+          headers: response.headers,
+        ),
+      );
     }
     return _StallBoundedResponse(
       HttpGetResponse(response),
@@ -115,6 +149,37 @@ class BoundedImageFileService extends FileService {
       timing,
       release,
     );
+  }
+
+  /// Reads a body to its end without keeping any of it. Past [stallTimeout]
+  /// the read is cancelled instead, which drops the connection and frees the
+  /// line the same way. Never throws.
+  Future<void> _discard(http.StreamedResponse response) {
+    final done = Completer<void>();
+    Timer? ceiling;
+    void finish() {
+      if (done.isCompleted) return;
+      ceiling?.cancel();
+      done.complete();
+    }
+
+    final StreamSubscription<List<int>> subscription;
+    try {
+      subscription = response.stream.listen(
+        null,
+        onError: (Object _) => finish(),
+        onDone: finish,
+        cancelOnError: true,
+      );
+    } catch (_) {
+      finish();
+      return done.future;
+    }
+    ceiling = Timer(stallTimeout, () {
+      unawaited(subscription.cancel().catchError((Object _) {}));
+      finish();
+    });
+    return done.future;
   }
 }
 
@@ -132,7 +197,7 @@ class _StallBoundedResponse implements FileServiceResponse {
     // process. The cache manager drops a response without reading it when it
     // throws on the headers, and the stall budget is already the longest a
     // live transfer may go quiet, so past that the slot is better back.
-    if (_onFinished != null) _unread = Timer(_stall, _finish);
+    if (_onFinished != null) _unread = Timer(_stall, _dropUnread);
   }
 
   final FileServiceResponse _inner;
@@ -143,6 +208,23 @@ class _StallBoundedResponse implements FileServiceResponse {
   Timer? _unread;
   Stream<List<int>>? _content;
   bool _finished = false;
+  bool _dropped = false;
+
+  /// Sipflix fork: a body nobody read by the stall ceiling is cancelled, not
+  /// just released. Giving back only the slot left the body unread, and
+  /// dart:io keeps that connection out of its pool until the body is read.
+  void _dropUnread() {
+    _dropped = true;
+    try {
+      unawaited(
+        _inner.content
+            .listen(null, onError: (Object _) {})
+            .cancel()
+            .catchError((Object _) {}),
+      );
+    } catch (_) {}
+    _finish(TimeoutException('artwork body never read', _stall));
+  }
 
   void _finish([Object? error]) {
     if (_finished) return;
@@ -155,7 +237,9 @@ class _StallBoundedResponse implements FileServiceResponse {
   }
 
   @override
-  Stream<List<int>> get content => _content ??= _boundedContent();
+  Stream<List<int>> get content => _content ??= _dropped
+      ? Stream<List<int>>.error(TimeoutException('artwork body dropped'))
+      : _boundedContent();
 
   Stream<List<int>> _boundedContent() {
     final source = _inner.content.timeout(_stall);
@@ -174,6 +258,15 @@ class _StallBoundedResponse implements FileServiceResponse {
           onError: (Object error, StackTrace stack) {
             _finish(error);
             controller.addError(error, stack);
+            // Sipflix fork: a stall reports and stops. Stream.timeout keeps
+            // the source open after it reports, so without the cancel a
+            // reader that ignores the error leaves the connection held.
+            unawaited(
+              Future<void>.sync(() => subscription?.cancel())
+                  .catchError((Object _) {}),
+            );
+            subscription = null;
+            unawaited(controller.close());
           },
           onDone: () {
             _finish();

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 import 'package:moonfin/util/artwork_request_scheduler.dart';
 import 'package:moonfin/util/image_fetch_priority.dart';
 import 'package:moonfin/util/image_file_service.dart';
@@ -286,21 +287,16 @@ void main() {
 
       for (final name in ['first', 'high', 'normal', 'low']) {
         answer('/$name');
-        await drain(
-          await switch (name) {
-            'first' => first,
-            'high' => high,
-            'normal' => normal,
-            _ => low,
-          },
-        );
+        await drain(await switch (name) {
+          'first' => first,
+          'high' => high,
+          'normal' => normal,
+          _ => low,
+        });
         await settle();
       }
       expect(arrived, ['/first', '/high', '/normal', '/low']);
-      expect(
-        held.keys.where((k) => k == '/high' || k == '/low'),
-        isEmpty,
-      );
+      expect(held.keys.where((k) => k == '/high' || k == '/low'), isEmpty);
     });
 
     test('the header timeout starts at admission, not at enqueue', () async {
@@ -448,5 +444,192 @@ void main() {
       answer('/newer');
       await drain(await newer);
     });
+
+    /// One connection, so a response left unread shows up as the next
+    /// request never arriving rather than as a second connection opening.
+    BoundedImageFileService oneLine({
+      Duration headerTimeout = const Duration(seconds: 20),
+      Duration stallTimeout = const Duration(seconds: 20),
+    }) => BoundedImageFileService(
+      IOClient(HttpClient()..maxConnectionsPerHost = 1),
+      concurrentFetches: 4096,
+      headerTimeout: headerTimeout,
+      stallTimeout: stallTimeout,
+      scheduler: ArtworkRequestScheduler(slots: 1),
+    );
+
+    test('an error answer with a body frees its connection', () async {
+      final service = oneLine();
+      final failing = service.get('${base()}/missing');
+      await settle();
+      final request = held.remove('/missing')!;
+      request.response
+        ..statusCode = HttpStatus.notFound
+        ..headers.contentType = ContentType.json
+        ..headers.set(HttpHeaders.etagHeader, '"gone"')
+        ..write('{"title":"Not Found","status":404}');
+      await request.response.close();
+      final response = await failing;
+      expect(response.statusCode, HttpStatus.notFound);
+      expect(response.eTag, '"gone"');
+      // The cache manager throws on the status and never reads the body.
+      final next = service.get('${base()}/after-missing');
+      await settle();
+      expect(arrived, ['/missing', '/after-missing']);
+      answer('/after-missing');
+      await drain(await next);
+    });
+
+    test(
+      'an answer that lands after the header timeout frees its connection',
+      () async {
+        final service = oneLine(
+          headerTimeout: const Duration(milliseconds: 100),
+        );
+        await expectLater(
+          service.get('${base()}/late'),
+          throwsA(isA<TimeoutException>()),
+        );
+        answer('/late');
+        await settle();
+        final next = service.get('${base()}/after-late');
+        await settle();
+        expect(arrived, ['/late', '/after-late']);
+        answer('/after-late');
+        await drain(await next);
+      },
+    );
+
+    test(
+      'an error body that never ends is dropped at the stall ceiling',
+      () async {
+        final service = oneLine(
+          stallTimeout: const Duration(milliseconds: 100),
+        );
+        final failing = service.get('${base()}/broken');
+        await settle();
+        final response = held.remove('/broken')!.response
+          ..statusCode = HttpStatus.internalServerError
+          ..bufferOutput = false
+          ..headers.contentType = ContentType.text;
+        response.add(List<int>.filled(8, 0x41));
+        await response.flush();
+        final stopwatch = Stopwatch()..start();
+        final failed = await failing;
+        expect(failed.statusCode, HttpStatus.internalServerError);
+        expect(stopwatch.elapsed, lessThan(const Duration(seconds: 1)));
+        final next = service.get('${base()}/after-broken');
+        await settle();
+        expect(arrived, ['/broken', '/after-broken']);
+        answer('/after-broken');
+        await drain(await next);
+      },
+    );
+
+    // Sipflix fork, Max29 gauntlet 2026-10-13: artwork stopped loading app
+    // wide with four sockets to the server left in CLOSE_WAIT. Each test runs
+    // on as few connections as the shipped client so a single leaked one
+    // shows up as the next image never arriving.
+    BoundedImageFileService pooled({
+      int lines = imageRequestSlots,
+      Duration headerTimeout = const Duration(seconds: 20),
+      Duration stallTimeout = const Duration(seconds: 20),
+    }) => BoundedImageFileService(
+      IOClient(HttpClient()..maxConnectionsPerHost = lines),
+      concurrentFetches: 4096,
+      headerTimeout: headerTimeout,
+      stallTimeout: stallTimeout,
+      scheduler: ArtworkRequestScheduler(slots: lines),
+    );
+
+    test('many error answers with bodies still let a good one load', () async {
+      final service = pooled();
+      for (var i = 0; i < imageRequestSlots * 3; i++) {
+        final failing = service.get('${base()}/missing$i');
+        await settle();
+        final request = held.remove('/missing$i')!;
+        request.response
+          ..statusCode = i.isEven ? HttpStatus.notFound : 500
+          ..headers.contentType = ContentType.json
+          ..write('{"title":"Not Found","detail":"${'x' * 2048}"}');
+        await request.response.close();
+        expect((await failing).statusCode, isNot(HttpStatus.ok));
+      }
+      final good = service.get('${base()}/good');
+      await settle();
+      expect(arrived.last, '/good');
+      answer('/good');
+      final response = await good;
+      expect(response.statusCode, HttpStatus.ok);
+      await drain(response);
+    });
+
+    test('a server that never answers does not keep the connection', () async {
+      final service = pooled(
+        lines: 1,
+        headerTimeout: const Duration(milliseconds: 100),
+      );
+      for (var i = 0; i < 3; i++) {
+        await expectLater(
+          service.get('${base()}/hang$i'),
+          throwsA(isA<TimeoutException>()),
+        );
+        await settle();
+      }
+      // Never answered: only the abort can have freed the one connection.
+      final next = service.get('${base()}/after-hang');
+      await settle();
+      expect(arrived, ['/hang0', '/hang1', '/hang2', '/after-hang']);
+      answer('/after-hang');
+      await drain(await next);
+    });
+
+    test('a good body nobody reads gives its connection back', () async {
+      final service = pooled(
+        lines: 1,
+        stallTimeout: const Duration(milliseconds: 100),
+      );
+      final pending = service.get('${base()}/unread');
+      await settle();
+      final response = held.remove('/unread')!.response
+        ..bufferOutput = false
+        ..headers.contentType = ContentType('image', 'jpeg')
+        ..contentLength = 64 * 1024;
+      response.add(List<int>.filled(1024, 0x41));
+      await response.flush();
+      final dropped = await pending;
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      // Read too late, it fails rather than hangs.
+      await expectLater(dropped.content, emitsError(anything));
+
+      final next = service.get('${base()}/after-unread');
+      await settle();
+      expect(arrived, ['/unread', '/after-unread']);
+      answer('/after-unread');
+      await drain(await next);
+    });
+
+    test(
+      'a stalled body frees its connection even if the error is ignored',
+      () async {
+        final service = pooled(
+          lines: 1,
+          stallTimeout: const Duration(milliseconds: 100),
+        );
+        final pending = service.get('${base()}/stall');
+        await settle();
+        await openBody('/stall');
+        final errors = <Object>[];
+        (await pending).content.listen((_) {}, onError: errors.add);
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+        expect(errors, isNotEmpty);
+
+        final next = service.get('${base()}/after-stall');
+        await settle();
+        expect(arrived, ['/stall', '/after-stall']);
+        answer('/after-stall');
+        await drain(await next);
+      },
+    );
   });
 }
