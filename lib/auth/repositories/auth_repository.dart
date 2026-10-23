@@ -91,13 +91,15 @@ class AuthRepository {
     required MediaServerClient client,
     required String serverId,
     required String fallbackName,
+    bool activate = true,
   }) {
-    _stateController.add(const Authenticating());
+    if (activate) _stateController.add(const Authenticating());
     return _handleAuthResult(
       result: result,
       client: client,
       serverId: serverId,
       fallbackName: fallbackName,
+      activate: activate,
     );
   }
 
@@ -106,6 +108,7 @@ class AuthRepository {
     required MediaServerClient client,
     required String serverId,
     required String fallbackName,
+    bool activate = true,
   }) async {
     final accessToken = result['AccessToken'] as String?;
     final userJson = result['User'] as Map<String, dynamic>?;
@@ -124,7 +127,7 @@ class AuthRepository {
 
     if (accessToken == null || userId == null) {
       const state = ApiClientError(error: 'Invalid auth response');
-      _stateController.add(state);
+      if (activate) _stateController.add(state);
       return state;
     }
 
@@ -145,12 +148,14 @@ class AuthRepository {
     );
 
     await _authStore.putUser(user);
-    await _authPrefs.setLastServerId(serverId);
-    await _authPrefs.setLastUserId(userId);
-    _userRepository.setCurrentUser(user);
+    if (activate) {
+      await _authPrefs.setLastServerId(serverId);
+      await _authPrefs.setLastUserId(userId);
+      _userRepository.setCurrentUser(user);
+    }
 
     final state = Authenticated(userId: userId, serverId: serverId);
-    _stateController.add(state);
+    if (activate) _stateController.add(state);
     return state;
   }
 

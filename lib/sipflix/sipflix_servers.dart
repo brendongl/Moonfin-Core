@@ -11,10 +11,14 @@ import 'sipflix_4k_policy.dart';
 /// between them never changes the account, login, or content — only the
 /// network path.
 class SipflixRouteDef {
-  final String id;     // stable key, e.g. 'cdn1' / 'direct'
-  final String label;  // shown on the Server Page toggle, e.g. 'CDN 1'
+  final String id; // stable key, e.g. 'cdn1' / 'direct'
+  final String label; // shown on the Server Page toggle, e.g. 'CDN 1'
   final String url;
-  const SipflixRouteDef({required this.id, required this.label, required this.url});
+  const SipflixRouteDef({
+    required this.id,
+    required this.label,
+    required this.url,
+  });
 }
 
 /// One Sipflix Emby server: its customer-facing name, the id of the record the
@@ -34,6 +38,7 @@ class SipflixServerDef {
   /// Emby's own server Id, as `/System/Info/Public` reports it.
   final String embyServerId;
   final String version;
+  final ServerType serverType;
   final List<SipflixRouteDef> routes;
 
   const SipflixServerDef({
@@ -42,6 +47,7 @@ class SipflixServerDef {
     required this.recordId,
     required this.embyServerId,
     required this.version,
+    this.serverType = ServerType.emby,
     required this.routes,
   });
 
@@ -51,14 +57,14 @@ class SipflixServerDef {
   String get reportKey => key.toLowerCase();
 
   Server toRecord({String? address}) => Server(
-        id: recordId,
-        name: name,
-        address: address ?? defaultRoute.url,
-        version: version,
-        serverType: ServerType.emby,
-        setupCompleted: true,
-        dateAdded: DateTime.now(),
-      );
+    id: recordId,
+    name: name,
+    address: address ?? defaultRoute.url,
+    version: version,
+    serverType: serverType,
+    setupCompleted: true,
+    dateAdded: DateTime.now(),
+  );
 }
 
 /// Sipflix: the hardcoded Emby servers. A box is signed in to exactly one of
@@ -131,9 +137,15 @@ class SipflixServers {
     version: '4.9.5.0',
     routes: [
       SipflixRouteDef(
-          id: 'direct', label: 'Direct', url: 'https://emby2.n2.d-crypt.io'),
+        id: 'direct',
+        label: 'Direct',
+        url: 'https://emby2.n2.d-crypt.io',
+      ),
       SipflixRouteDef(
-          id: 'cdn2', label: 'CDN 2', url: 'https://emby.cdn2.d-crypt.io'),
+        id: 'cdn2',
+        label: 'CDN 2',
+        url: 'https://emby.cdn2.d-crypt.io',
+      ),
     ],
   );
 
@@ -145,14 +157,37 @@ class SipflixServers {
     version: '4.9.3.0',
     routes: [
       SipflixRouteDef(
-          id: 'cdn', label: 'CDN', url: 'https://34335.brr.savethecdn.com'),
+        id: 'cdn',
+        label: 'CDN',
+        url: 'https://34335.brr.savethecdn.com',
+      ),
       SipflixRouteDef(
-          id: 'direct', label: 'Direct', url: 'http://95.216.4.149:42418'),
+        id: 'direct',
+        label: 'Direct',
+        url: 'http://95.216.4.149:42418',
+      ),
+    ],
+  );
+
+  /// Silo exposes the Jellyfin API. Its record id must not collide with Delta.
+  static const SipflixServerDef dumb = SipflixServerDef(
+    key: 'dumb',
+    name: 'Sipflix DUMB',
+    recordId: '51901ff1-a001-4000-8000-000000000004',
+    embyServerId: 'b2d9e6c9-1237-5add-a687-5dae547ece33',
+    version: '12.1.0',
+    serverType: ServerType.jellyfin,
+    routes: [
+      SipflixRouteDef(
+        id: 'direct',
+        label: 'Direct',
+        url: 'https://s.sipflix.net',
+      ),
     ],
   );
 
   /// Every server, in the order a picker lists them.
-  static const List<SipflixServerDef> all = [alphaV2, delta, iDuck];
+  static const List<SipflixServerDef> all = [alphaV2, delta, iDuck, dumb];
 
   /// The most routes any one server has. Sizes budgets that scale with it.
   static int get maxRouteCount =>
@@ -240,7 +275,7 @@ class SipflixServers {
   /// iDuck get route switching and playback reports too.
   static bool isSipflixServerRef(String ref) => defForRef(ref) != null;
 
-/// Inject the hardcoded server on first launch, and (exactly once) repoint any
+  /// Inject the hardcoded server on first launch, and (exactly once) repoint any
   /// pre-CDN install to the CDN 1 default. The one-time flag is critical now that
   /// the route toggle exists: after the migration runs we must NEVER auto-change
   /// the address again, or a user who selects Direct would be bounced back to
@@ -277,12 +312,12 @@ class SipflixServers {
 
     // Single-server builds named the record "Sipflix". Show the real name
     // once an account is on it.
-    if (existing.name != alphaV2.name &&
-        store.getUsers(serverId).isNotEmpty) {
+    if (existing.name != alphaV2.name && store.getUsers(serverId).isNotEmpty) {
       await store.putServer(existing.copyWith(name: alphaV2.name));
     }
 
-    if (prefs.getBool(_routeMigratedKey) == true) return; // honour the toggle choice
+    if (prefs.getBool(_routeMigratedKey) == true)
+      return; // honour the toggle choice
     await prefs.setBool(_routeMigratedKey, true);
     if (existing.address != serverUrl) {
       final current = store.getServer(serverId) ?? existing;

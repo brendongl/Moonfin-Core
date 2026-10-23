@@ -76,12 +76,15 @@ enum SipflixSignInFailure {
 
 /// One `AuthenticateByName` call. Returns the HTTP status and body, or a null
 /// status when nothing answered at all.
-typedef SipflixAuthCall = Future<({int? status, Map<String, dynamic>? body})>
-    Function(String baseUrl, String username, String password);
+typedef SipflixAuthCall =
+    Future<({int? status, Map<String, dynamic>? body})> Function(
+      String baseUrl,
+      String username,
+      String password,
+    );
 
 /// Releases a token a probe obtained but sign-in did not use.
-typedef SipflixLogoutCall = Future<void> Function(
-    String baseUrl, String token);
+typedef SipflixLogoutCall = Future<void> Function(String baseUrl, String token);
 
 /// Sipflix: asks every server whether it holds an account, in parallel.
 ///
@@ -111,35 +114,37 @@ class SipflixAccountProbe {
     required SipflixAuthCall auth,
     required SipflixLogoutCall logout,
     Duration retryDelay = defaultRetryDelay,
-  })  : _auth = auth,
-        _logout = logout,
-        _retryDelay = retryDelay;
+  }) : _auth = auth,
+       _logout = logout,
+       _retryDelay = retryDelay;
 
   /// The live transport: plain Dio with this device's Emby identity, so a
   /// probe shows up as this box and not as a new device.
   factory SipflixAccountProbe.live(DeviceInfo deviceInfo) {
-    final dio = Dio(BaseOptions(
-      connectTimeout: const Duration(seconds: 8),
-      receiveTimeout: const Duration(seconds: 10),
-      sendTimeout: const Duration(seconds: 8),
-      // Every status is an answer to classify, not an exception.
-      validateStatus: (_) => true,
-      responseType: ResponseType.json,
-    ));
+    final dio = Dio(
+      BaseOptions(
+        connectTimeout: const Duration(seconds: 8),
+        receiveTimeout: const Duration(seconds: 10),
+        sendTimeout: const Duration(seconds: 8),
+        // Every status is an answer to classify, not an exception.
+        validateStatus: (_) => true,
+        responseType: ResponseType.json,
+      ),
+    );
     Map<String, String> headers({String? token}) => {
-          'X-Emby-Authorization': buildServerAuthorizationHeader(
-            scheme: 'Emby',
-            deviceInfo: deviceInfo,
-            accessToken: token,
-          ),
-          'X-Emby-Token': ?token,
-          'Accept': 'application/json',
-        };
+      'X-Emby-Authorization': buildServerAuthorizationHeader(
+        scheme: 'Emby',
+        deviceInfo: deviceInfo,
+        accessToken: token,
+      ),
+      'X-Emby-Token': ?token,
+      'Accept': 'application/json',
+    };
     return SipflixAccountProbe(
       auth: (baseUrl, username, password) async {
         try {
           final res = await dio.post<dynamic>(
-            '${normalizeServerBaseUrl(baseUrl)}/emby/Users/AuthenticateByName',
+            '${apiRoot(baseUrl)}/Users/AuthenticateByName',
             data: {'Username': username, 'Pw': password},
             options: Options(headers: headers()),
           );
@@ -155,12 +160,20 @@ class SipflixAccountProbe {
       logout: (baseUrl, token) async {
         try {
           await dio.post<dynamic>(
-            '${normalizeServerBaseUrl(baseUrl)}/emby/Sessions/Logout',
+            '${apiRoot(baseUrl)}/Sessions/Logout',
             options: Options(headers: headers(token: token)),
           );
         } catch (_) {}
       },
     );
+  }
+
+  /// Match the selected server's API prefix; Silo does not expose /emby.
+  static String apiRoot(String baseUrl) {
+    final base = normalizeServerBaseUrl(baseUrl);
+    return SipflixServers.defForRef(baseUrl)?.serverType == ServerType.jellyfin
+        ? base
+        : '$base/emby';
   }
 
   /// Probe [servers] (all of them by default) in parallel. [preferredRoutes]
