@@ -220,6 +220,45 @@ class SipflixRouteSelector {
     }
   }
 
+  /// Only a fully activated, matching client may lend credentials to probes.
+  /// Session switching retargets the client before publishing active IDs.
+  static SipflixRouteSession? coherentSession({
+    required SessionState state,
+    required String? serverId,
+    required String? userId,
+    required String? clientUserId,
+    required String? token,
+    required String address,
+    required ServerType serverType,
+    required Object clientIdentity,
+  }) {
+    if (state != SessionState.ready ||
+        serverId == null ||
+        userId == null ||
+        userId.isEmpty ||
+        clientUserId != userId ||
+        token == null ||
+        token.isEmpty ||
+        serverType != ServerType.emby) {
+      return null;
+    }
+    final def = SipflixServers.defForRef(serverId);
+    final clientDef = SipflixServers.defForRef(address);
+    if (def == null ||
+        clientDef?.recordId != def.recordId ||
+        def.routes.length < 2) {
+      return null;
+    }
+    return SipflixRouteSession(
+      serverId: serverId,
+      userId: userId,
+      token: token,
+      address: address,
+      clientIdentity: clientIdentity,
+      routes: def.routes,
+    );
+  }
+
   factory SipflixRouteSelector.live() {
     final getIt = GetIt.instance;
     final probe = SipflixBandwidthProbe();
@@ -229,26 +268,15 @@ class SipflixRouteSelector {
         return null;
       final session = getIt<SessionRepository>();
       final client = getIt<MediaServerClient>();
-      final serverId = session.activeServerId;
-      final userId = session.activeUserId;
-      final token = client.accessToken;
-      if (serverId == null ||
-          userId == null ||
-          token == null ||
-          token.isEmpty ||
-          client.serverType != ServerType.emby)
-        return null;
-      final def =
-          SipflixServers.defForRef(serverId) ??
-          SipflixServers.defForRef(client.baseUrl);
-      if (def == null || def.routes.length < 2) return null;
-      return SipflixRouteSession(
-        serverId: serverId,
-        userId: userId,
-        token: token,
+      return coherentSession(
+        state: session.state,
+        serverId: session.activeServerId,
+        userId: session.activeUserId,
+        clientUserId: client.userId,
+        token: client.accessToken,
         address: client.baseUrl,
+        serverType: client.serverType,
         clientIdentity: client,
-        routes: def.routes,
       );
     }
 

@@ -201,6 +201,26 @@ void main() {
       expect(client.playbackApi.stops, ['session']);
     },
   );
+  test(
+    'Silo HEVC cast uses receiver capabilities instead of controller veto',
+    () async {
+      final client = _Client();
+      await verifySipflixCastResolution(
+        client,
+        item(SipflixServers.dumb.recordId, []),
+        StreamResolutionResult(
+          streamUrl: 'https://example.invalid',
+          mediaSourceId: 'hevc',
+          playSessionId: 'session',
+          playMethod: StreamPlayMethod.directPlay,
+          mediaStreams: [
+            {'Type': 'Video', 'Width': 1920, 'Codec': 'hevc'},
+          ],
+        ),
+      );
+      expect(client.playbackApi.stops, isEmpty);
+    },
+  );
   test('non-Sipflix casts retain upstream behavior and skip fetch', () async {
     final client = _Client();
     final a = item('other', []);

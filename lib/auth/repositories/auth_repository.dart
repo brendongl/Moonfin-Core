@@ -103,9 +103,24 @@ class AuthRepository {
     );
   }
 
+  /// Persist a probed login without touching cached live clients, auth events,
+  /// current-user state or last-login preferences. SessionRepository owns
+  /// activation after it has stopped playback for the previous session.
+  Future<LoginState> storeAuthResult({
+    required Map<String, dynamic> result,
+    required String serverId,
+    required String fallbackName,
+  }) => _handleAuthResult(
+    result: result,
+    client: null,
+    serverId: serverId,
+    fallbackName: fallbackName,
+    activate: false,
+  );
+
   Future<LoginState> _handleAuthResult({
     required Map<String, dynamic> result,
-    required MediaServerClient client,
+    required MediaServerClient? client,
     required String serverId,
     required String fallbackName,
     bool activate = true,
@@ -131,8 +146,10 @@ class AuthRepository {
       return state;
     }
 
-    client.accessToken = accessToken;
-    client.userId = userId;
+    if (activate) {
+      client!.accessToken = accessToken;
+      client.userId = userId;
+    }
 
     final user = PrivateUser(
       id: userId,

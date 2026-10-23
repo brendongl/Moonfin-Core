@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
@@ -54,6 +56,9 @@ class _TestClient extends Fake implements MediaServerClient {
 
   @override
   String? accessToken;
+
+  @override
+  String baseUrl = 'https://old-route.test';
 
   @override
   String? userId;
@@ -154,7 +159,22 @@ class _RecordingManager extends PlaybackManager {
   int stops = 0;
 
   @override
-  Future<void> stop({bool userInitiated = true, bool notifySessionEnded = true}) async => stops++;
+  Future<void> stop({
+    bool userInitiated = true,
+    bool notifySessionEnded = true,
+  }) async => stops++;
+}
+
+class _GatedManager extends _RecordingManager {
+  final stopped = Completer<void>();
+  @override
+  Future<void> stop({
+    bool userInitiated = true,
+    bool notifySessionEnded = false,
+  }) async {
+    stops++;
+    await stopped.future;
+  }
 }
 
 void main() {
@@ -210,6 +230,60 @@ void main() {
       expect(clientFactory.removedClients, 1);
     },
   );
+
+  test('session switch waits for playback stop before mutating cached route or token', () async {
+    final manager = _GatedManager();
+    GetIt.instance.registerSingleton<PlaybackManager>(manager);
+    addTearDown(() async {
+      manager.dispose();
+      await GetIt.instance.reset();
+    });
+    final server = Server(
+      id: 'server-1',
+      name: 'Test',
+      address: 'https://new-route.test',
+      version: '10.11.0',
+      serverType: ServerType.jellyfin,
+      dateAdded: DateTime.utc(2026),
+    );
+    final user = PrivateUser(
+      id: 'user-1',
+      name: 'test',
+      serverId: server.id,
+      accessToken: 'fresh-token',
+      lastUsed: DateTime.utc(2026),
+    );
+    final factory = _TestClientFactory();
+    factory.client.accessToken = 'playing-token';
+    factory.client.userId = 'playing-user';
+    final repo = SessionRepository(
+      _TestAuthStore(user),
+      _TestAuthPrefs(),
+      _TestCredentialStore(),
+      factory,
+      _TestSocketHandler(),
+      _TestServerRepository(server),
+      _TestUserRepository(),
+      _TestPluginSyncService(),
+    );
+    final switching = repo.switchCurrentSession(
+      serverId: server.id,
+      userId: user.id,
+      validateToken: true,
+    );
+    await pumpEventQueue();
+    expect(repo.state, SessionState.switching);
+    expect(factory.client.baseUrl, 'https://old-route.test');
+    expect(factory.client.accessToken, 'playing-token');
+    expect(factory.client.userId, 'playing-user');
+    manager.stopped.complete();
+    expect(
+      await switching,
+      isFalse,
+    ); // Test endpoint refuses token after the guarded mutation.
+    expect(factory.client.baseUrl, 'https://new-route.test');
+    expect(factory.client.accessToken, 'fresh-token');
+  });
 
   // Music left playing in the background belongs to the user signing out, and
   // the sign-in screen has nothing to stop it.

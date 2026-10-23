@@ -252,6 +252,40 @@ void main() {
     },
   );
 
+  for (final thin in [false, true]) {
+    test(
+      'fragile Silo ${thin ? "resolved" : "known"} HEVC never reaches decoder',
+      () async {
+        manager.sourceRefusalPolicy = (item, streams, id) =>
+            Sipflix4kPolicy.sourceRefusal(
+              item,
+              streams,
+              id,
+              fragileDecoder: true,
+            );
+        final streams = <Map<String, dynamic>>[
+          {'Type': 'Video', 'Width': 1920, 'Codec': 'hevc'},
+        ];
+        final item = _PolicyItem(
+          'silo',
+          SipflixServers.dumb.recordId,
+          thin
+              ? []
+              : [
+                  {'Id': 'unsafe', 'MediaStreams': streams},
+                ],
+        );
+        resolver.playMethod = StreamPlayMethod.directPlay;
+        resolver.mediaStreams = streams;
+        await manager.playItems([item]);
+        expect(resolver.calls, thin ? 1 : 0);
+        expect(backend.playedUrls, isEmpty);
+        expect(manager.bringupState.phase, PlaybackBringupPhase.failed);
+        expect(service.transcodingStops, hasLength(thin ? 1 : 0));
+      },
+    );
+  }
+
   test('manual allowed Delta version is preserved', () async {
     final item = _PolicyItem('a', SipflixServers.delta.recordId, [
       _source('large', 1920, 900),

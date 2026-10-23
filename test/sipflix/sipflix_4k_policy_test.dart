@@ -18,6 +18,72 @@ Map<String, dynamic> _source(String id, int width, [int? size]) => {
 };
 
 void main() {
+  test('Silo fragile codec veto covers selected and resolved thin sources', () {
+    final server = SipflixServers.dumb.recordId;
+    for (final codec in ['hevc', 'h265', 'HEVC', 'av1', 'av01']) {
+      final streams = <Map<String, dynamic>>[
+        {'Type': 'Video', 'Width': 1920, 'Codec': codec},
+      ];
+      final item = _Item([
+        {'Id': 'unsafe', 'MediaStreams': streams},
+      ], server);
+      expect(
+        Sipflix4kPolicy.sourceRefusal(item, [], 'unsafe', fragileDecoder: true),
+        Sipflix4kPolicy.unsupportedSiloCodecMessage,
+      );
+      expect(
+        Sipflix4kPolicy.sourceRefusal(
+          _Item([], server),
+          streams,
+          'unsafe',
+          fragileDecoder: true,
+        ),
+        Sipflix4kPolicy.unsupportedSiloCodecMessage,
+      );
+      expect(
+        Sipflix4kPolicy.sourceRefusal(
+          item,
+          streams,
+          'unsafe',
+          fragileDecoder: false,
+        ),
+        isNull,
+      );
+      expect(
+        Sipflix4kPolicy.sourceRefusal(
+          _Item(item.mediaSources, SipflixServers.alphaV2.recordId),
+          streams,
+          'unsafe',
+          fragileDecoder: true,
+        ),
+        isNull,
+      );
+    }
+  });
+  test('Silo safe explicit H264 is allowed beside unsafe alternative', () {
+    final item = _Item([
+      {
+        'Id': 'hevc',
+        'MediaStreams': [
+          {'Type': 'Video', 'Codec': 'hevc'},
+        ],
+      },
+      {
+        'Id': 'safe',
+        'MediaStreams': [
+          {'Type': 'Video', 'Codec': 'h264'},
+        ],
+      },
+    ], SipflixServers.dumb.recordId);
+    expect(
+      Sipflix4kPolicy.sourceRefusal(item, [], 'safe', fragileDecoder: true),
+      isNull,
+    );
+    expect(
+      Sipflix4kPolicy.sourceRefusal(item, [], null, fragileDecoder: true),
+      Sipflix4kPolicy.unsupportedSiloCodecMessage,
+    );
+  });
   group('server version policy', () {
     final alpha = SipflixServers.alphaV2.recordId;
     final delta = SipflixServers.delta.recordId;

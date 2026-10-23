@@ -244,10 +244,10 @@ class SessionRepository {
     String? password,
     bool validateToken = false,
   }) async {
-    if (serverId != _activeServerId || userId != _activeUserId) {
-      await _stopPlaybackForSessionChange();
-    }
     _setState(SessionState.switching);
+    // Even the same account can have a fresh token or route. Its existing
+    // stream must report stop with the old client before either is changed.
+    await _stopPlaybackForSessionChange();
     _remoteVolumeGeneration++;
     _remoteNavigationGeneration++;
     _remoteSearch?.close();
@@ -293,6 +293,9 @@ class SessionRepository {
       baseUrl: server.address,
     );
 
+    // The factory returns a cached client unchanged; activation owns retargeting
+    // only after the previous playback has stopped above.
+    client.baseUrl = server.address;
     client.accessToken = accessToken;
     client.userId = userId;
 

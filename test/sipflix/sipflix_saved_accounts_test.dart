@@ -7,7 +7,6 @@ import 'package:moonfin/auth/repositories/auth_repository.dart';
 import 'package:moonfin/auth/repositories/server_repository.dart';
 import 'package:moonfin/auth/repositories/session_repository.dart';
 import 'package:moonfin/auth/store/authentication_store.dart';
-import 'package:moonfin/data/services/media_server_client_factory.dart';
 import 'package:moonfin/sipflix/sipflix_account_probe.dart';
 import 'package:moonfin/sipflix/sipflix_credential_vault.dart';
 import 'package:moonfin/sipflix/sipflix_servers.dart';
@@ -65,33 +64,17 @@ class _Sessions extends Fake implements SessionRepository {
       fail('Switch must not sign out existing accounts');
 }
 
-class _Client extends Fake implements MediaServerClient {
-  @override
-  String baseUrl = '';
-}
-
-class _Factory extends Fake implements MediaServerClientFactory {
-  @override
-  MediaServerClient getClient({
-    required String serverId,
-    required ServerType serverType,
-    required String baseUrl,
-  }) => _Client()..baseUrl = baseUrl;
-}
-
 class _Auth extends Fake implements AuthRepository {
   _Auth(this.store);
   final AuthenticationStore store;
   final activations = <bool>[];
   @override
-  Future<LoginState> adoptAuthResult({
+  Future<LoginState> storeAuthResult({
     required Map<String, dynamic> result,
-    required MediaServerClient client,
     required String serverId,
     required String fallbackName,
-    bool activate = true,
   }) async {
-    activations.add(activate);
+    activations.add(false);
     final user = result['User'] as Map<String, dynamic>;
     await store.putUser(
       PrivateUser(
@@ -139,7 +122,6 @@ void main() {
       authStore: store,
       authRepo: auth,
       sessionRepo: sessions,
-      clientFactory: _Factory(),
       vault: vault,
     );
   });
@@ -206,7 +188,7 @@ void main() {
     );
     await flow.connect(accepted(alpha, 'a'), username: 'alpha', password: 'a');
     await flow.remember(accepted(silo, 's'), username: 'silo', password: 's');
-    expect(auth.activations, [true, false]);
+    expect(auth.activations, [false, false]);
     expect(sessions.calls, hasLength(1));
     expect((await vault.read())?.username, 'alpha');
     expect((await vault.read(serverId: silo.recordId))?.username, 'silo');

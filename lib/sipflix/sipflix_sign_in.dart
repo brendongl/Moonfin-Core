@@ -12,7 +12,6 @@ import '../auth/repositories/auth_repository.dart';
 import '../auth/repositories/server_repository.dart';
 import '../auth/repositories/session_repository.dart';
 import '../auth/store/authentication_store.dart';
-import '../data/services/media_server_client_factory.dart';
 import '../ui/navigation/app_router.dart';
 import '../ui/navigation/destinations.dart';
 import '../ui/widgets/adaptive/adaptive_dialog.dart';
@@ -41,7 +40,6 @@ class SipflixSignIn {
   final AuthenticationStore _authStore;
   final AuthRepository _authRepo;
   final SessionRepository _sessionRepo;
-  final MediaServerClientFactory _clientFactory;
   final SipflixCredentialVault vault;
 
   SipflixSignIn({
@@ -50,14 +48,12 @@ class SipflixSignIn {
     required AuthenticationStore authStore,
     required AuthRepository authRepo,
     required SessionRepository sessionRepo,
-    required MediaServerClientFactory clientFactory,
     required this.vault,
   }) : _probe = probe,
        _serverRepo = serverRepo,
        _authStore = authStore,
        _authRepo = authRepo,
-       _sessionRepo = sessionRepo,
-       _clientFactory = clientFactory;
+       _sessionRepo = sessionRepo;
 
   factory SipflixSignIn.fromGetIt() {
     final getIt = GetIt.instance;
@@ -67,7 +63,6 @@ class SipflixSignIn {
       authStore: getIt<AuthenticationStore>(),
       authRepo: getIt<AuthRepository>(),
       sessionRepo: getIt<SessionRepository>(),
-      clientFactory: getIt<MediaServerClientFactory>(),
       vault: SipflixCredentialVault(),
     );
   }
@@ -121,18 +116,10 @@ class SipflixSignIn {
       existing?.copyWith(name: def.name, address: route) ??
           def.toRecord(address: route),
     );
-    final client = _clientFactory.getClient(
-      serverId: def.recordId,
-      serverType: def.serverType,
-      baseUrl: route,
-    );
-    client.baseUrl = route;
-    final state = await _authRepo.adoptAuthResult(
+    final state = await _authRepo.storeAuthResult(
       result: result,
-      client: client,
       serverId: def.recordId,
       fallbackName: username,
-      activate: false,
     );
     if (state is! Authenticated) return false;
     await vault.save(
@@ -199,17 +186,8 @@ class SipflixSignIn {
     );
     await _serverRepo.loadStoredServers();
 
-    final client = _clientFactory.getClient(
-      serverId: def.recordId,
-      serverType: def.serverType,
-      baseUrl: route,
-    );
-    // A cached client may still point at another route of this server.
-    client.baseUrl = route;
-
-    final state = await _authRepo.adoptAuthResult(
+    final state = await _authRepo.storeAuthResult(
       result: result,
-      client: client,
       serverId: def.recordId,
       fallbackName: username,
     );

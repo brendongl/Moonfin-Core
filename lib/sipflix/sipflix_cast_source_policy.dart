@@ -36,6 +36,9 @@ Future<void> verifySipflixCastResolution(
     item,
     resolution.mediaStreams,
     resolution.mediaSourceId,
+    // The receiver decodes the stream, not this controller's Allwinner chip.
+    // Server-wide Delta restrictions still apply independently of this flag.
+    fragileDecoder: false,
   );
   if (refusal == null) return;
   try {

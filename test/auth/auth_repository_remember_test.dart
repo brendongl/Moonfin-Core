@@ -15,9 +15,13 @@ class _Store extends Fake implements AuthenticationStore {
   @override
   Future<void> putUser(PrivateUser user) async => users.add(user);
 }
+
 class _Prefs extends Fake implements AuthenticationPreferences {}
+
 class _Sessions extends Fake implements SessionRepository {}
+
 class _Users extends Fake implements UserRepository {}
+
 class _Client extends Fake implements MediaServerClient {
   @override
   String? accessToken;
@@ -26,19 +30,33 @@ class _Client extends Fake implements MediaServerClient {
 }
 
 void main() {
-  test('remembering a secondary login stores it without activating it', () async {
-    final store = _Store();
-    final repo = AuthRepository(store, _Prefs(), _Sessions(), _Users());
-    final events = <LoginState>[];
-    final subscription = repo.stateStream.listen(events.add);
-    final result = await repo.adoptAuthResult(
-      result: {'AccessToken': 'test-token', 'User': {'Id': 'silo-user', 'Name': 'test'}},
-      client: _Client(), serverId: 'silo', fallbackName: 'test', activate: false,
-    );
-    await Future<void>.delayed(Duration.zero);
-    expect(result, isA<Authenticated>());
-    expect(store.users.single.serverId, 'silo');
-    expect(events, isEmpty);
-    await subscription.cancel();
-  });
+  test(
+    'remembering a secondary login stores it without activating it',
+    () async {
+      final store = _Store();
+      final repo = AuthRepository(store, _Prefs(), _Sessions(), _Users());
+      final events = <LoginState>[];
+      final subscription = repo.stateStream.listen(events.add);
+      final client = _Client()
+        ..accessToken = 'playing-token'
+        ..userId = 'playing-user';
+      final result = await repo.adoptAuthResult(
+        result: {
+          'AccessToken': 'test-token',
+          'User': {'Id': 'silo-user', 'Name': 'test'},
+        },
+        client: client,
+        serverId: 'silo',
+        fallbackName: 'test',
+        activate: false,
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(result, isA<Authenticated>());
+      expect(store.users.single.serverId, 'silo');
+      expect(events, isEmpty);
+      expect(client.accessToken, 'playing-token');
+      expect(client.userId, 'playing-user');
+      await subscription.cancel();
+    },
+  );
 }

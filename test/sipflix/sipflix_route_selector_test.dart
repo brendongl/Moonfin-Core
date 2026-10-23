@@ -1,5 +1,8 @@
 import 'dart:async';
 
+import 'package:moonfin/auth/repositories/session_repository.dart';
+import 'package:server_core/server_core.dart';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:moonfin/sipflix/sipflix_bandwidth_probe.dart';
 import 'package:moonfin/sipflix/sipflix_route_selector.dart';
@@ -22,6 +25,37 @@ const third = SipflixRouteDef(
 );
 
 void main() {
+  test(
+    'live snapshot requires ready state and matching server/user identity',
+    () {
+      final alpha = SipflixServers.alphaV2;
+      SipflixRouteSession? snapshot({
+        SessionState state = SessionState.ready,
+        String clientUser = 'alice',
+        String? address,
+        ServerType type = ServerType.emby,
+      }) => SipflixRouteSelector.coherentSession(
+        state: state,
+        serverId: alpha.recordId,
+        userId: 'alice',
+        clientUserId: clientUser,
+        token: 'test-token',
+        address: address ?? alpha.routes.first.url,
+        serverType: type,
+        clientIdentity: Object(),
+      );
+      expect(snapshot(), isNotNull);
+      for (final route in alpha.routes) {
+        expect(snapshot(address: route.url), isNotNull);
+      }
+      expect(snapshot(state: SessionState.switching), isNull);
+      expect(snapshot(state: SessionState.restoring), isNull);
+      expect(snapshot(clientUser: 'bob'), isNull);
+      expect(snapshot(address: SipflixServers.delta.routes.first.url), isNull);
+      expect(snapshot(address: 'https://unknown.invalid'), isNull);
+      expect(snapshot(type: ServerType.jellyfin), isNull);
+    },
+  );
   late Object client;
   late SipflixRouteSession? session;
   late bool busy;

@@ -68,7 +68,8 @@ class Sipflix4kPolicy {
       message == unsupportedDeviceMessage ||
       message == onlyAvailableIn4kMessage ||
       message == deltaHdOnlyMessage ||
-      message == castQueueUnsupportedMessage;
+      message == castQueueUnsupportedMessage ||
+      message == unsupportedSiloCodecMessage;
 
   /// Whether [sources] (a title's full, unfiltered media sources) has at
   /// least one version this fragile-decoder box could actually play.
@@ -163,6 +164,25 @@ class Sipflix4kPolicy {
       'This remote player cannot keep the selected versions for a queue. '
       'Cast one title at a time.';
 
+  static const String unsupportedSiloCodecMessage =
+      'This version uses a video codec this box cannot safely play. '
+      'Choose an H.264 version or another title; Silo cannot convert it.';
+
+  static bool _unsafeDirectCodec(Iterable<Map<String, dynamic>> streams) =>
+      streams.any(
+        (stream) =>
+            stream['Type'] == 'Video' &&
+            const {
+              'hevc',
+              'h265',
+              'h.265',
+              'hev1',
+              'hvc1',
+              'av1',
+              'av01',
+            }.contains(stream['Codec']?.toString().toLowerCase()),
+      );
+
   static const String deltaHdOnlyMessage =
       'This version is above 1080p and is not available on Delta. '
       'Choose an HD version or another title.';
@@ -204,8 +224,9 @@ class Sipflix4kPolicy {
   static String? sourceRefusal(
     dynamic item,
     List<Map<String, dynamic>> streams,
-    String? mediaSourceId,
-  ) {
+    String? mediaSourceId, {
+    bool? fragileDecoder,
+  }) {
     String? serverRef;
     List<Map<String, dynamic>> sources = const [];
     try {
@@ -215,6 +236,28 @@ class Sipflix4kPolicy {
           .map((m) => m.cast<String, dynamic>())
           .toList();
     } catch (_) {}
+    // Silo is direct-play-only. The generic resolver's terminal fallback
+    // must never override the device profile's unsafe decoder veto.
+    if (SipflixServers.defForRef(serverRef ?? '')?.key == 'dumb' &&
+        (fragileDecoder ?? isFragileHevcDecoder)) {
+      if (_unsafeDirectCodec(streams)) return unsupportedSiloCodecMessage;
+      final selected = mediaSourceId == null
+          ? sources.take(1)
+          : sources.where(
+              (source) => source['Id']?.toString() == mediaSourceId,
+            );
+      for (final source in selected) {
+        final video = source['MediaStreams'];
+        if (video is List &&
+            _unsafeDirectCodec(
+              video.whereType<Map>().map(
+                (stream) => stream.cast<String, dynamic>(),
+              ),
+            )) {
+          return unsupportedSiloCodecMessage;
+        }
+      }
+    }
     if (!isDelta(serverRef)) return null;
     if (exceedsDeltaHd(streams)) return deltaHdOnlyMessage;
     if (sources.isEmpty) return null; // The resolver supplies the final check.
