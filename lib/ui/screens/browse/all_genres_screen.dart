@@ -60,7 +60,8 @@ class _AllGenresScreenState extends State<AllGenresScreen> {
 
   ImageType get _imageType => _prefs.get(UserPreferences.allGenresImageType);
 
-  PosterSize get _posterSize => _prefs.resolveLibraryPosterSize();
+  PosterSize get _posterSize =>
+      _prefs.resolveScreenPosterSize(UserPreferences.allGenresPosterSize);
 
   List<GenreCardData> _genres = [];
   bool _isLoading = true;
@@ -150,41 +151,11 @@ class _AllGenresScreenState extends State<AllGenresScreen> {
 
       _genres = temp.map((x) {
         final data = x.data;
-        final primaryTag = data['PrimaryImageTag'] as String?;
-        final imageTags = data['ImageTags'] as Map?;
-        final primaryAr = data['PrimaryImageAspectRatio'] as num?;
-        final backdropTags = data['BackdropImageTags'] as List?;
-
-        final customThumb = imageTags?['Thumb'] as String?;
-        final hasCustomArtwork = (primaryTag != null && primaryAr != null && primaryAr < 1.0) ||
-            (customThumb != null && customThumb.isNotEmpty);
-
-        String? imageUrl;
-        String? backdropUrl;
-
-        if (hasCustomArtwork) {
-          if (customThumb != null && customThumb.isNotEmpty) {
-            imageUrl = _client.imageApi.getThumbImageUrl(
-              data['Id']?.toString() ?? '',
-              tag: customThumb,
-              maxWidth: _genreCardRequestMaxWidth(),
-            );
-          } else if (primaryTag != null) {
-            imageUrl = _client.imageApi.getPrimaryImageUrl(
-              data['Id']?.toString() ?? '',
-              tag: primaryTag,
-              maxWidth: _genreCardRequestMaxWidth(),
-            );
-          }
-
-          if (backdropTags != null && backdropTags.isNotEmpty) {
-            backdropUrl = _client.imageApi.getBackdropImageUrl(
-              data['Id']?.toString() ?? '',
-              tag: backdropTags.first.toString(),
-              maxWidth: 960,
-            );
-          }
-        }
+        final (imageUrl, backdropUrl, hasOwnArtwork) = resolveGenreOwnArtwork(
+          genreData: data,
+          imageApi: _client.imageApi,
+          maxWidth: _genreCardRequestMaxWidth(),
+        );
 
         return GenreCardData(
           id: data['Id']?.toString() ?? '',
@@ -192,7 +163,7 @@ class _AllGenresScreenState extends State<AllGenresScreen> {
           itemCount: x.itemCount,
           imageUrl: imageUrl,
           backdropUrl: backdropUrl,
-          isGenreFallback: !hasCustomArtwork,
+          isGenreFallback: !hasOwnArtwork,
         );
       }).toList();
     } catch (e) {
@@ -381,7 +352,7 @@ class _AllGenresScreenState extends State<AllGenresScreen> {
       builder: (_) => PosterSizeSettingsDialog(
         prefs: _prefs,
         imageTypePreference: UserPreferences.allGenresImageType,
-        posterSizePreference: UserPreferences.libraryPosterSize,
+        posterSizePreference: UserPreferences.allGenresPosterSize,
       ),
     );
 

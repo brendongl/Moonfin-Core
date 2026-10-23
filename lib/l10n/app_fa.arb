@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "زبان نمایش ترجیحی",
     "offlineBannerTitle": "آفلاین هستید",
     "offlineBannerSubtitle": "نمایش دانلودهای شما",
-    "offlineBannerAction": "دانلودها",
     "serverUnreachableBannerTitle": "دسترسی به سرور شما ممکن نیست",
     "serverUnreachableBannerSubtitle": "تا بازگشت سرور، پخش از دانلودها انجام می‌شود",
     "contextMenuHideFromContinueWatching": "پنهان کردن از «ادامه تماشا»",

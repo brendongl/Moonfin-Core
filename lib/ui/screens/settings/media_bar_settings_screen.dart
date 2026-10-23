@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:get_it/get_it.dart';
 import 'package:moonfin_design/moonfin_design.dart';
 import 'package:jellyfin_preference/jellyfin_preference.dart';
@@ -8,14 +7,13 @@ import 'package:server_core/server_core.dart';
 import '../../../data/repositories/media_bar_repository.dart';
 import '../../../data/services/plugin_sync_service.dart';
 import '../../../preference/user_preferences.dart';
-import '../../../util/focus/dpad_keys.dart';
+import '../../../util/device_performance.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../widgets/settings/settings_section_header.dart';
-import '../../widgets/adaptive/adaptive_dialog.dart';
 import '../../widgets/adaptive/adaptive_list_section.dart';
-import '../../widgets/overlay_sheet.dart';
 import '../../widgets/settings/clean_settings_typography.dart';
 import '../../widgets/settings/preference_binding.dart';
+import '../../widgets/settings/multi_select_dialog.dart';
 import '../../widgets/settings/preference_tiles.dart';
 import 'settings_app_bar.dart';
 import '../../widgets/focus/request_initial_focus.dart';
@@ -98,7 +96,8 @@ class _MediaBarSettingsScreenState extends State<MediaBarSettingsScreen> {
     }
 
     if (!mounted) return;
-    final result = await _showMultiSelectDialog(
+    final result = await showMultiSelectDialog(
+      context: context,
       title: title,
       items: options,
       selected: split.listed,
@@ -204,129 +203,6 @@ class _MediaBarSettingsScreenState extends State<MediaBarSettingsScreen> {
     }
   }
 
-  Future<Set<String>?> _showMultiSelectDialog({
-    required String title,
-    required Map<String, String> items,
-    required Set<String> selected,
-  }) {
-    final l10n = AppLocalizations.of(context);
-    final orderedEntries = items.entries.toList()
-      ..sort((a, b) => a.value.toLowerCase().compareTo(b.value.toLowerCase()));
-    final working = Set<String>.from(selected);
-    return showFocusRestoringDialog<Set<String>>(
-      context: context,
-      useRootNavigator: false,
-      builder: (dialogContext) {
-        var popped = false;
-        final closeOnce = createDialogBackCloseHandler(dialogContext);
-        return Focus(
-          canRequestFocus: false,
-          skipTraversal: true,
-          onKeyEvent: (_, event) {
-            if (!event.logicalKey.isBackKey) return KeyEventResult.ignored;
-            if (event is KeyDownEvent || event is KeyUpEvent) {
-              closeOnce();
-              return KeyEventResult.handled;
-            }
-            return KeyEventResult.ignored;
-          },
-          child: FocusScope(
-            autofocus: true,
-            child: StatefulBuilder(
-              builder: (builderContext, setDialogState) =>
-                  withCleanSettingsTypography(
-                    builderContext,
-                    AlertDialog.adaptive(
-                      title: Text(title),
-                      content: SizedBox(
-                        width: double.maxFinite,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                TextButton(
-                                  onPressed: () {
-                                    setDialogState(
-                                      () => working.addAll(items.keys),
-                                    );
-                                  },
-                                  child: Text(l10n.selectAll),
-                                ),
-                                TextButton(
-                                  onPressed: () {
-                                    setDialogState(() => working.clear());
-                                  },
-                                  child: Text(l10n.clear),
-                                ),
-                              ],
-                            ),
-                            Flexible(
-                              child: ListView(
-                                shrinkWrap: true,
-                                children: orderedEntries.asMap().entries.map((
-                                  entry,
-                                ) {
-                                  final i = entry.key;
-                                  final e = entry.value;
-                                  return TvFocusHighlight(
-                                    builder: (ctx, focused) => CheckboxListTile(
-                                      autofocus: i == 0,
-                                      dense: true,
-                                      visualDensity: VisualDensity.compact,
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                            horizontal: 8.0,
-                                          ),
-                                      controlAffinity:
-                                          ListTileControlAffinity.leading,
-                                      title: Text(e.value),
-                                      value: working.contains(e.key),
-                                      onChanged: (checked) {
-                                        setDialogState(() {
-                                          if (checked == true) {
-                                            working.add(e.key);
-                                          } else {
-                                            working.remove(e.key);
-                                          }
-                                        });
-                                      },
-                                    ),
-                                  );
-                                }).toList(),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      actions: [
-                        adaptiveDialogAction(
-                          onPressed: () {
-                            if (popped) return;
-                            popped = true;
-                            Navigator.pop(dialogContext);
-                          },
-                          child: Text(l10n.cancel),
-                        ),
-                        FilledButton(
-                          onPressed: () {
-                            if (popped) return;
-                            popped = true;
-                            Navigator.pop(dialogContext, working);
-                          },
-                          child: Text(l10n.save),
-                        ),
-                      ],
-                    ),
-                  ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   String _sourceSubtitle(
     Preference<String> pref,
     String noneLabel,
@@ -343,6 +219,9 @@ class _MediaBarSettingsScreenState extends State<MediaBarSettingsScreen> {
 
   Widget _buildContent(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final trailersHeldBack =
+        GetIt.instance<UserPreferences>().resolveDevicePerformanceTier() ==
+        DevicePerformanceTier.reduced;
     return withCleanSettingsTypography(
       context,
       Scaffold(
@@ -475,6 +354,48 @@ class _MediaBarSettingsScreenState extends State<MediaBarSettingsScreen> {
                     15000: l10n.fifteenSeconds,
                     30000: l10n.thirtySeconds,
                   },
+                  onChanged: _pushSync,
+                ),
+              ],
+            ),
+
+            SettingsSectionHeader(l10n.trailers),
+            adaptiveListSection(
+              children: [
+                SwitchPreferenceTile(
+                  preference: UserPreferences.mediaBarTrailerPreview,
+                  title: l10n.trailerPreview,
+                  // The switch would otherwise read as on while nothing
+                  // plays, so say why.
+                  subtitle: trailersHeldBack
+                      ? l10n.trailerPreviewHeldBack
+                      : l10n.autoPlayTrailers,
+                  icon: Icons.movie_outlined,
+                  onChanged: _pushSync,
+                ),
+                SwitchPreferenceTile(
+                  preference: UserPreferences.mediaBarTrailerAudio,
+                  title: l10n.trailerAudio,
+                  subtitle: l10n.enableTrailerAudio,
+                  icon: Icons.volume_up,
+                  onChanged: _pushSync,
+                ),
+                SliderPreferenceTile(
+                  preference: UserPreferences.trailerVolume,
+                  title: l10n.trailerVolume,
+                  description: l10n.trailerVolumeDescription,
+                  icon: Icons.volume_down,
+                  min: 0,
+                  max: 100,
+                  divisions: 20,
+                  labelOf: (v) => '$v%',
+                  onChangeEnd: _pushSync,
+                ),
+                SwitchPreferenceTile(
+                  preference: UserPreferences.mediaBarTrailerCaptions,
+                  title: l10n.trailerCaptions,
+                  subtitle: l10n.trailerCaptionsDescription,
+                  icon: Icons.closed_caption_outlined,
                   onChanged: _pushSync,
                 ),
               ],

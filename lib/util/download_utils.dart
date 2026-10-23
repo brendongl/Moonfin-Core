@@ -8,6 +8,7 @@ import '../auth/repositories/user_repository.dart';
 import '../data/models/aggregated_item.dart';
 import '../data/models/download_quality.dart';
 import '../preference/user_preferences.dart';
+import 'audio_track_logic.dart';
 import 'platform_detection.dart';
 
 /// Whether download actions may be offered on this device at all.
@@ -92,6 +93,73 @@ int sourceSizeBytes(AggregatedItem item) {
   final sources = item.mediaSources;
   if (sources.isEmpty) return 0;
   return sources.first['Size'] as int? ?? 0;
+}
+
+/// [item] with the media source [mediaSourceId] moved to the front, so every
+/// download step that reads the first source follows the picked version.
+/// The top level MediaStreams describe the item's own file, which on Emby
+/// isn't always the first source, so they're replaced with the picked
+/// source's streams. A single source or an unknown id leaves [item] as is.
+AggregatedItem withPreferredMediaSource(
+  AggregatedItem item,
+  String? mediaSourceId,
+) {
+  final sources = item.mediaSources;
+  if (mediaSourceId == null || sources.length < 2) return item;
+  final index = sources.indexWhere(
+    (source) => source['Id']?.toString() == mediaSourceId,
+  );
+  if (index < 0) return item;
+  final picked = sources[index];
+  return AggregatedItem(
+    id: item.id,
+    serverId: item.serverId,
+    rawData: {
+      ...item.rawData,
+      'MediaSources': [
+        picked,
+        ...sources.take(index),
+        ...sources.skip(index + 1),
+      ],
+      if (picked['MediaStreams'] is List)
+        'MediaStreams': picked['MediaStreams'],
+    },
+  );
+}
+
+/// The item id that serves the first media source of a multi-version [item].
+/// Jellyfin's /Items/{id}/Download and /File ignore MediaSourceId and serve
+/// a version only by its own item id, which is the source's Id there. On
+/// Emby it's the source's ItemId.
+String mediaSourceItemId(AggregatedItem item) {
+  final sources = item.mediaSources;
+  if (sources.length < 2) return item.id;
+  final source = sources.first;
+  return (source['ItemId'] ?? source['Id'])?.toString() ?? item.id;
+}
+
+/// The one audio track a transcoded download of [item] keeps. [picked] wins
+/// when the first source has it, otherwise the audio language settings
+/// choose the way they do for playback.
+int? transcodeAudioStreamIndex(
+  AggregatedItem item,
+  int? picked,
+  UserPreferences prefs,
+) {
+  final sourceStreams = item.mediaSources.firstOrNull?['MediaStreams'];
+  return computeEffectiveAudioIndex(
+    audioStreams: sourceStreams is List
+        ? sourceStreams
+              .whereType<Map>()
+              .map((stream) => stream.cast<String, dynamic>())
+              .toList()
+        : item.mediaStreams,
+    preferredAudioLanguage: prefs.get(UserPreferences.defaultAudioLanguage),
+    fallbackAudioLanguage: prefs.get(UserPreferences.fallbackAudioLanguage),
+    preferDefaultAudioTrack: prefs.get(UserPreferences.preferDefaultAudioTrack),
+    preferAudioDescription: prefs.get(UserPreferences.preferAudioDescription),
+    explicitAudioIndex: picked,
+  );
 }
 
 Duration? runtimeForEstimate(AggregatedItem item) {

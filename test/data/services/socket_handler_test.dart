@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -43,6 +44,12 @@ class _FakeSocket implements ServerWebSocketClient {
 
   @override
   void retryNow() => retryCalls++;
+
+  final sent = <(String, Object?)>[];
+
+  @override
+  void send(String messageType, [Object? data]) =>
+      sent.add((messageType, data));
 
   @override
   void dispose() {
@@ -99,6 +106,62 @@ void main() {
     expect(socket.disposed, isTrue);
     await Future<void>.delayed(Duration.zero);
     expect(opens, 0);
+  });
+
+  test('a feed starts once and stops when its last holder lets go', () {
+    handler.connectTo(_FakeClient());
+    handler.subscribe('Sessions');
+    handler.subscribe('Sessions');
+    handler.unsubscribe('Sessions');
+    expect(socket.sent, [('SessionsStart', '0,1000')]);
+
+    handler.unsubscribe('Sessions');
+    expect(socket.sent.last, ('SessionsStop', null));
+  });
+
+  test('held feeds are asked for again on every reconnect', () async {
+    handler.connectTo(_FakeClient());
+    handler.subscribe('ScheduledTasksInfo');
+    socket.sent.clear();
+
+    socket.announceConnected();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(socket.sent, [('ScheduledTasksInfoStart', '0,1000')]);
+  });
+
+  test('a feed taken before connecting is sent once the socket opens', () async {
+    handler.subscribe('Sessions');
+    handler.connectTo(_FakeClient());
+    socket.announceConnected();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(socket.sent, [('SessionsStart', '0,1000')]);
+  });
+
+  test('a message sent while the socket is still opening is dropped', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    final received = <String>[];
+    server.listen((request) async {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      final socket = await WebSocketTransformer.upgrade(request);
+      socket.listen((frame) =>
+          received.add((jsonDecode('$frame') as Map)['MessageType'] as String));
+    });
+    final client = JellyfinWebSocketClient(
+      _FakeClient(baseUrl: 'http://127.0.0.1:${server.port}'),
+    );
+    addTearDown(client.dispose);
+
+    final opened = client.connect();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    client.send('SessionsStart', '0,1000');
+    await opened;
+    client.send('ScheduledTasksInfoStart', '0,1000');
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+
+    expect(received, ['ScheduledTasksInfoStart']);
   });
 
   group('a server that accepts and never answers', () {

@@ -20,6 +20,16 @@ const List<String> kNonRootBrowseItemTypes = [
   'Folder',
 ];
 
+/// Plain directories. The server counts a series or a box set as a folder
+/// too, so sorting on IsFolder would put every show ahead of every movie.
+/// Folders first asks for these on their own instead.
+const List<String> kDirectoryItemTypes = [
+  'Folder',
+  'CollectionFolder',
+  'UserView',
+  'PhotoAlbum',
+];
+
 List<String> normalizeBrowsableGenreItemTypes(List<String>? includeItemTypes) {
   final requested =
       includeItemTypes
@@ -292,4 +302,56 @@ resolveGenreFallbackArtwork({
   }
 
   return (tileUrl, backdropUrl ?? tileUrl, selectedItem?['Id']?.toString());
+}
+
+/// The tile and backdrop art a genre carries itself. A Thumb or a portrait
+/// Primary counts, and callers fall back to [resolveGenreFallbackArtwork]
+/// when [hasOwnArtwork] is false.
+(String? imageUrl, String? backdropUrl, bool hasOwnArtwork)
+resolveGenreOwnArtwork({
+  required Map<String, dynamic> genreData,
+  required ImageApi imageApi,
+  required int maxWidth,
+}) {
+  final primaryTag = genreData['PrimaryImageTag'] as String?;
+  final imageTags = genreData['ImageTags'] as Map?;
+  final primaryAr = genreData['PrimaryImageAspectRatio'] as num?;
+  final backdropTags = genreData['BackdropImageTags'] as List?;
+
+  final customThumb = imageTags?['Thumb'] as String?;
+  final hasOwnArtwork =
+      (primaryTag != null && primaryAr != null && primaryAr < 1.0) ||
+      (customThumb != null && customThumb.isNotEmpty);
+
+  if (!hasOwnArtwork) {
+    return (null, null, false);
+  }
+
+  final genreId = genreData['Id']?.toString() ?? '';
+
+  String? imageUrl;
+  if (customThumb != null && customThumb.isNotEmpty) {
+    imageUrl = imageApi.getThumbImageUrl(
+      genreId,
+      tag: customThumb,
+      maxWidth: maxWidth,
+    );
+  } else if (primaryTag != null) {
+    imageUrl = imageApi.getPrimaryImageUrl(
+      genreId,
+      tag: primaryTag,
+      maxWidth: maxWidth,
+    );
+  }
+
+  String? backdropUrl;
+  if (backdropTags != null && backdropTags.isNotEmpty) {
+    backdropUrl = imageApi.getBackdropImageUrl(
+      genreId,
+      tag: backdropTags.first.toString(),
+      maxWidth: 960,
+    );
+  }
+
+  return (imageUrl, backdropUrl, true);
 }

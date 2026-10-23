@@ -29,6 +29,7 @@ import '../../../util/web_diagnostics_failure.dart';
 import '../../navigation/destinations.dart';
 import '../../widgets/adaptive/adaptive_dialog.dart';
 import '../../widgets/allow_self_signed_dialog.dart';
+import '../../widgets/client_certificate_dialog.dart';
 import '../../widgets/login_scaffold.dart';
 import '../../widgets/overlay_sheet.dart';
 import '../../widgets/server_type_icon.dart';
@@ -673,7 +674,7 @@ class _ServerSelectScreenState extends State<ServerSelectScreen> {
                     ),
                   ),
                   Text(
-                    '${server.address} • ${server.version}',
+                    '${server.displayAddress ?? server.address} • ${server.version}',
                     style: TextStyle(
                       fontSize: 13,
                       color: _loginForeground(0.5),
@@ -903,11 +904,13 @@ class _AddServerDialogState extends State<AddServerDialog> {
   final _connectFocus = FocusNode(debugLabel: 'addServerConnect');
   final _cancelFocus = FocusNode(debugLabel: 'addServerCancel');
   final _allowFocus = FocusNode(debugLabel: 'addServerAllowSelfSigned');
+  final _certFocus = FocusNode(debugLabel: 'addServerClientCert');
   final _tvFieldKey = GlobalKey<CustomTVTextFieldState>();
 
   bool _isConnecting = false;
   String? _errorMessage;
   String? _untrustedAddress;
+  String? _clientCertAddress;
   bool _dialogDismissed = false;
   bool get _isMoonfin => ThemeRegistry.active.id == ThemeRegistry.moonfinId;
 
@@ -916,7 +919,9 @@ class _AddServerDialogState extends State<AddServerDialog> {
   List<String> get _recentServerAddresses {
     final servers = [...widget.serverRepo.servers]
       ..sort((a, b) => b.dateLastAccessed.compareTo(a.dateLastAccessed));
-    return [for (final server in servers) server.address];
+    return [
+      for (final server in servers) server.displayAddress ?? server.address,
+    ];
   }
 
   Color _dialogForeground(double alpha) {
@@ -944,6 +949,7 @@ class _AddServerDialogState extends State<AddServerDialog> {
     _connectFocus.dispose();
     _cancelFocus.dispose();
     _allowFocus.dispose();
+    _certFocus.dispose();
     super.dispose();
   }
 
@@ -975,6 +981,7 @@ class _AddServerDialogState extends State<AddServerDialog> {
       _isConnecting = true;
       _errorMessage = null;
       _untrustedAddress = null;
+      _clientCertAddress = null;
     });
 
     try {
@@ -984,7 +991,22 @@ class _AddServerDialogState extends State<AddServerDialog> {
         _dismissDialog();
         return;
       }
-      final untrusted = widget.serverRepo.lastFailure?.untrustedCandidate;
+      final failure = widget.serverRepo.lastFailure;
+      final clientCert = failure?.clientCertCandidate;
+      if (clientCert != null) {
+        _clientCertAddress = clientCert;
+        _showError(widget.l10n.clientCertRequired, focus: _certFocus);
+        return;
+      }
+      // A proxy that turns a missing certificate away with a plain error page
+      // looks like any other failure, so the import is offered anyway, for
+      // the https address that failed that way rather than the last one tried,
+      // which is usually plain http.
+      final possible = failure?.possibleClientCertCandidate;
+      if (!PlatformDetection.isWeb && possible != null) {
+        _clientCertAddress = possible;
+      }
+      final untrusted = failure?.untrustedCandidate;
       if (untrusted == null) {
         _showError(widget.l10n.unableToConnectToServer);
         return;
@@ -995,6 +1017,16 @@ class _AddServerDialogState extends State<AddServerDialog> {
       if (!mounted) return;
       _showError(widget.l10n.unableToConnectToServer);
     }
+  }
+
+  Future<void> _importClientCertAndRetry() async {
+    final address = _clientCertAddress;
+    if (address == null) return;
+    final saved = await showClientCertificateDialog(
+      context: context,
+      host: Uri.tryParse(address)?.host ?? address,
+    );
+    if (saved != null && mounted) await _connect(address);
   }
 
   Future<void> _allowSelfSignedAndRetry() async {
@@ -1052,6 +1084,17 @@ class _AddServerDialogState extends State<AddServerDialog> {
     final onField = _addressFocus.hasFocus;
     final onCancel = _cancelFocus.hasFocus;
     final onConnect = _connectFocus.hasFocus;
+    // The address field, then whichever recovery buttons are showing, then
+    // the actions.
+    final column = [
+      _addressFocus,
+      if (_untrustedAddress != null) _allowFocus,
+      if (_clientCertAddress != null) _certFocus,
+      _connectFocus,
+    ];
+    final extraIndex = column.indexWhere(
+      (n) => n.hasFocus && n != _addressFocus && n != _connectFocus,
+    );
 
     if (onField) {
       if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.select) {
@@ -1059,7 +1102,19 @@ class _AddServerDialogState extends State<AddServerDialog> {
         return KeyEventResult.handled;
       }
       if (key == LogicalKeyboardKey.arrowDown) {
-        _connectFocus.requestFocus();
+        column[1].requestFocus();
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
+
+    if (extraIndex > 0) {
+      if (key == LogicalKeyboardKey.arrowUp) {
+        column[extraIndex - 1].requestFocus();
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.arrowDown) {
+        column[extraIndex + 1].requestFocus();
         return KeyEventResult.handled;
       }
       return KeyEventResult.ignored;
@@ -1067,7 +1122,7 @@ class _AddServerDialogState extends State<AddServerDialog> {
 
     if (onCancel || onConnect) {
       if (key == LogicalKeyboardKey.arrowUp) {
-        _addressFocus.requestFocus();
+        column[column.length - 2].requestFocus();
         return KeyEventResult.handled;
       }
       if (key == LogicalKeyboardKey.arrowLeft && onConnect) {
@@ -1212,6 +1267,15 @@ class _AddServerDialogState extends State<AddServerDialog> {
                 onPressed: _isConnecting ? null : _allowSelfSignedAndRetry,
                 style: _actionStyle(),
                 child: Text(widget.l10n.settingsAllowSelfSignedCerts),
+              ),
+            ],
+            if (_clientCertAddress != null) ...[
+              const SizedBox(height: 12),
+              OutlinedButton(
+                focusNode: _certFocus,
+                onPressed: _isConnecting ? null : _importClientCertAndRetry,
+                style: _actionStyle(),
+                child: Text(widget.l10n.clientCertAddButton),
               ),
             ],
           ],

@@ -35,6 +35,18 @@ final class SubtitleOverlay: PlatformView {
     private var lastUpdateTime: TimeInterval = 0
     var delaySeconds: TimeInterval = 0
 
+    /// On while a subtitle track is selected. iPadOS 27 can drop these views
+    /// from frames when a fullscreen video is the only other thing on screen,
+    /// so a near-invisible backing keeps them composited with the picture the
+    /// way the OSD does.
+    var keepsVideoComposited = false {
+        didSet {
+            #if canImport(UIKit)
+            backgroundColor = keepsVideoComposited ? UIColor(white: 0, alpha: 0.01) : .clear
+            #endif
+        }
+    }
+
     /// What the label is showing: the covering cues joined in start order.
     var activeText: String {
         activeTextEvents.compactMap(\.text).joined(separator: "\n")

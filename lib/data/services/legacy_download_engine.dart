@@ -4,8 +4,7 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
-
-import '../../util/insecure_certificates.dart';
+import 'package:server_core/server_core.dart';
 
 Future<void> _downloadIsolateMain(Map<String, Object?> args) async {
   final sendPort = args['sendPort'] as SendPort;
@@ -13,6 +12,8 @@ Future<void> _downloadIsolateMain(Map<String, Object?> args) async {
   final savePath = args['savePath'] as String;
   final headers = (args['headers'] as Map).cast<String, String>();
   final allowSelfSigned = args['allowSelfSigned'] == true;
+  final clientCertificate =
+      args['clientCertificate'] as ClientCertificateMaterial?;
 
   final cancelPort = ReceivePort();
   sendPort.send(<String, Object?>{'t': 'r', 'cp': cancelPort.sendPort});
@@ -28,6 +29,13 @@ Future<void> _downloadIsolateMain(Map<String, Object?> args) async {
     // the arguments rather than being read here.
     client.badCertificateCallback = (_, _, _) => allowSelfSigned;
     client.idleTimeout = const Duration(seconds: 120);
+    if (clientCertificate != null) {
+      // The connection factory reads both of these, and they start out empty
+      // in a new isolate.
+      gAllowSelfSignedCertificates = allowSelfSigned;
+      setClientCertificates([clientCertificate]);
+      applyClientCertificates(client);
+    }
 
     final request = await client.getUrl(Uri.parse(url));
     headers.forEach(
@@ -123,6 +131,7 @@ class LegacyDownloadEngine {
     required Options options,
     required CancelToken cancelToken,
     required void Function(int, int) onReceiveProgress,
+    ClientCertificateMaterial? clientCertificate,
   }) async {
     final fromIsolate = ReceivePort();
 
@@ -136,6 +145,7 @@ class LegacyDownloadEngine {
         ),
       ),
       'allowSelfSigned': gAllowSelfSignedCertificates,
+      'clientCertificate': clientCertificate,
     });
 
     SendPort? toIsolate;
@@ -224,6 +234,7 @@ class LegacyDownloadEngine {
     required CancelToken cancelToken,
     required int estimatedSize,
     required void Function(int, int) onReceiveProgress,
+    ClientCertificateMaterial? clientCertificate,
   }) async {
     final bytesComplete = Completer<void>();
     Timer? estimatedCompletionTimer;
@@ -259,6 +270,7 @@ class LegacyDownloadEngine {
       savePath,
       options: options,
       cancelToken: cancelToken,
+      clientCertificate: clientCertificate,
       onReceiveProgress: (received, total) {
         lastReceived = received;
         lastTotal = total;

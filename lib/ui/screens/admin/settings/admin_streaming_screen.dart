@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
-import 'package:moonfin_design/moonfin_design.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../../../l10n/app_localizations.dart';
 import '../../../util/error_message.dart';
+import '../admin_draft.dart';
+import '../admin_nav.dart';
 import '../widgets/admin_form_styles.dart';
+import '../widgets/premiere_note.dart';
+import 'admin_number_input.dart';
 
 class AdminStreamingScreen extends StatefulWidget {
   const AdminStreamingScreen({super.key});
@@ -14,11 +17,11 @@ class AdminStreamingScreen extends StatefulWidget {
   State<AdminStreamingScreen> createState() => _AdminStreamingScreenState();
 }
 
-class _AdminStreamingScreenState extends State<AdminStreamingScreen> {
+class _AdminStreamingScreenState extends State<AdminStreamingScreen>
+    with AdminDraftHost {
   late final AdminSystemApi _api;
   Map<String, dynamic>? _config;
   bool _loading = true;
-  bool _saving = false;
   String? _error;
 
   @override
@@ -40,6 +43,13 @@ class _AdminStreamingScreenState extends State<AdminStreamingScreen> {
         _config = config;
         _loading = false;
       });
+      hostDraft(
+        AdminDraft.single(
+          working: config,
+          reload: _api.getServerConfiguration,
+          post: _api.updateServerConfiguration,
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -49,32 +59,14 @@ class _AdminStreamingScreenState extends State<AdminStreamingScreen> {
     }
   }
 
-  Future<void> _save() async {
-    if (_config == null) return;
-    setState(() => _saving = true);
-    try {
-      await _api.updateServerConfiguration(_config!);
-      if (mounted) {
-        final l10n = AppLocalizations.of(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.adminStreamingSaved)),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        final l10n = AppLocalizations.of(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.adminSettingsSaveFailed(describeError(e, l10n)))),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  double _bitrateAsMbps() {
-    final bps = (_config!['RemoteClientBitrateLimit'] as num?)?.toInt() ?? 0;
-    return bps / 1000000.0;
+  /// The limit in Mbps, unrounded, empty for none.
+  String _mbpsText() {
+    final bps = (_config!['RemoteClientBitrateLimit'] as num?) ?? 0;
+    if (bps == 0) return '';
+    final mbps = bps / 1000000;
+    return mbps == mbps.truncateToDouble()
+        ? mbps.toInt().toString()
+        : mbps.toString();
   }
 
   @override
@@ -98,7 +90,6 @@ class _AdminStreamingScreenState extends State<AdminStreamingScreen> {
       );
     }
 
-    final mbps = _bitrateAsMbps();
     final bottomSafe = MediaQuery.of(context).padding.bottom;
 
     return ListView(
@@ -110,25 +101,54 @@ class _AdminStreamingScreenState extends State<AdminStreamingScreen> {
           subtitle: l10n.adminStreamingDescription,
           icon: Icons.stream,
         ),
-        adminSectionLabel(context, l10n.adminStreamingBitrateLimit,
-            icon: Icons.speed),
-        TextFormField(
-          key: ValueKey(mbps),
-          initialValue: mbps > 0 ? mbps.toStringAsFixed(1) : '',
-          decoration: adminInputDecoration(
-            label: l10n.adminStreamingBitrateLimit,
-            helper: l10n.adminStreamingBitrateLimitHint,
-            suffixText: 'Mbps',
+        draftKeyed(
+          adminSection(
+            context,
+            title: l10n.general,
+            icon: Icons.speed,
+            children: [
+              adminFieldRow(
+                label: l10n.adminStreamingBitrateLimit,
+                helper: l10n.adminStreamingBitrateLimitHint,
+                anchor: 'streaming.RemoteClientBitrateLimit',
+                // The server stores bits per second in an int, so the limit
+                // tops out at 2147.25 Mbps. Empty means no limit.
+                child: adminNumberInput(
+                  text: _mbpsText(),
+                  fallback: 0,
+                  max: 2147.25,
+                  decimal: true,
+                  suffixText: 'Mbps',
+                  onChanged: (mbps) {
+                    _config!['RemoteClientBitrateLimit'] =
+                        (mbps * 1000000).truncate();
+                    edited();
+                  },
+                ),
+              ),
+              if (AdminServerScope.isEmby(context))
+                adminFieldRow(
+                  label: l10n.adminStreamingStreamLimit,
+                  helper: l10n.adminStreamingStreamLimitHelp,
+                  anchor: 'streaming.SimultaneousStreamLimit',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      adminNumberInput(
+                        text: '${_config!['SimultaneousStreamLimit'] ?? 0}',
+                        fallback: 0,
+                        onChanged: (n) {
+                          _config!['SimultaneousStreamLimit'] = n;
+                          edited();
+                        },
+                      ),
+                      const PremiereNote(margin: EdgeInsets.only(top: 8)),
+                    ],
+                  ),
+                ),
+            ],
           ),
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          onChanged: (v) {
-            final parsed = double.tryParse(v) ?? 0;
-            _config!['RemoteClientBitrateLimit'] =
-                (parsed * 1000000).truncate();
-          },
         ),
-        const SizedBox(height: AppSpacing.spaceXl),
-        adminSaveButton(label: l10n.save, saving: _saving, onPressed: _save),
       ],
     );
   }

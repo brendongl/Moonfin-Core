@@ -8,6 +8,7 @@ import '../../../../l10n/app_localizations.dart';
 import '../../../util/error_message.dart';
 import '../../../../util/download_utils.dart';
 import '../../../navigation/destinations.dart';
+import '../widgets/admin_form_styles.dart';
 
 class AdminLogsScreen extends StatefulWidget {
   const AdminLogsScreen({super.key});
@@ -103,91 +104,94 @@ class _AdminLogsScreenState extends State<AdminLogsScreen> {
       );
     }
 
-    if (logs.isEmpty) {
-      return Center(child: Text(AppLocalizations.of(context).adminNoLogFiles));
-    }
-
-    return Column(
+    final l10n = AppLocalizations.of(context);
+    final bottomSafe = MediaQuery.of(context).padding.bottom;
+    final muted = AppColorScheme.onSurface.withValues(alpha: 0.55);
+    return ListView(
+      padding: EdgeInsets.fromLTRB(16, 20, 16, bottomSafe + 40),
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: Row(
+        Row(
+          children: [
+            Expanded(
+              child: adminScreenHeader(
+                context,
+                title: l10n.adminLogsTitle,
+                icon: Icons.article_outlined,
+              ),
+            ),
+            IconButton(
+              tooltip: _newestFirst
+                  ? l10n.adminLogsNewestFirst
+                  : l10n.adminLogsOldestFirst,
+              onPressed: () => setState(() => _newestFirst = !_newestFirst),
+              icon: Icon(
+                _newestFirst ? Icons.arrow_downward : Icons.arrow_upward,
+              ),
+            ),
+            IconButton(
+              tooltip: l10n.refresh,
+              onPressed: _loadLogs,
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
+        ),
+        if (logs.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.spaceXl),
+            child: Center(
+              child: Text(l10n.adminNoLogFiles, style: TextStyle(color: muted)),
+            ),
+          )
+        else
+          adminGlassGroup(
+            context,
             children: [
-              Expanded(
-                child: Text(
-                  AppLocalizations.of(context).adminLogsTitle,
-                  style: Theme.of(context).textTheme.headlineSmall,
-                ),
-              ),
-              IconButton(
-                tooltip: _newestFirst ? AppLocalizations.of(context).adminLogsNewestFirst : AppLocalizations.of(context).adminLogsOldestFirst,
-                onPressed: () {
-                  setState(() {
-                    _newestFirst = !_newestFirst;
-                  });
-                },
-                icon: Icon(
-                  _newestFirst ? Icons.arrow_downward : Icons.arrow_upward,
-                ),
-              ),
-              IconButton(
-                tooltip: AppLocalizations.of(context).refresh,
-                onPressed: _loadLogs,
-                icon: const Icon(Icons.refresh),
-              ),
+              for (var index = 0; index < logs.length; index++)
+                _logTile(logs[index], isActive: index == 0 && _newestFirst),
             ],
           ),
-        ),
-        const Divider(height: 1),
-        Expanded(
-          child: ListView.separated(
-            itemCount: logs.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (context, index) {
-              final item = logs[index];
-              final isActive = index == 0 && _newestFirst;
-              final theme = Theme.of(context);
-              return ListTile(
-                leading: Icon(
-                  isActive
-                      ? Icons.description
-                      : Icons.description_outlined,
-                  color: isActive ? theme.colorScheme.primary : null,
-                ),
-                title: Row(
-                  children: [
-                    Flexible(child: Text(item.name)),
-                    if (isActive) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: Colors.green,
-                          borderRadius: AppRadius.circular(999),
-                        ),
-                        child: Text(
-                          AppLocalizations.of(context).liveBadge,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-                subtitle: Text(
-                  '${formatBytes(item.size)} \u00b7 ${_relativeDate(item.dateModified)}',
-                ),
-                onTap: () =>
-                    context.push(Destinations.adminLogFile(item.name)),
-              );
-            },
-          ),
-        ),
       ],
+    );
+  }
+
+  Widget _logTile(LogFileInfo item, {required bool isActive}) {
+    final accent = AppColorScheme.accent;
+    return ListTile(
+      leading: Icon(
+        isActive ? Icons.description : Icons.description_outlined,
+        color: isActive ? accent : null,
+      ),
+      title: Row(
+        children: [
+          Flexible(child: Text(item.name)),
+          if (isActive) ...[
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              decoration: BoxDecoration(
+                color: accent,
+                borderRadius: AppRadius.circular(999),
+              ),
+              child: Text(
+                AppLocalizations.of(context).liveBadge,
+                style: TextStyle(
+                  color: AppColorScheme.onAccent,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+      subtitle: Text(
+        '${formatBytes(item.size)} \u00b7 ${_relativeDate(item.dateModified)}',
+        style: TextStyle(
+          fontSize: 12,
+          color: AppColorScheme.onSurface.withValues(alpha: 0.55),
+        ),
+      ),
+      onTap: () => context.push(Destinations.adminLogFile(item.name)),
     );
   }
 }

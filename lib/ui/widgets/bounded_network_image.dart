@@ -4,6 +4,7 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 import '../../util/image_fetch_priority.dart';
 import '../theme/vibrance.dart';
+import 'baked_blur_image.dart';
 import 'image_source.dart';
 
 export '../../util/image_fetch_priority.dart' show ImageFetchPriority;
@@ -47,6 +48,11 @@ class BoundedNetworkImage extends StatelessWidget {
   /// Which lane the fetch goes in. See [ImageFetchPriority].
   final ImageFetchPriority priority;
 
+  /// Blur sigma in logical pixels. Above zero, [BakedBlurImage] blurs the
+  /// image once when it loads. That path paints nothing on error and skips
+  /// [fadeInDuration] and [onLoadFinished].
+  final double blurSigma;
+
   const BoundedNetworkImage({
     super.key,
     required this.imageUrl,
@@ -62,6 +68,7 @@ class BoundedNetworkImage extends StatelessWidget {
     this.sourceAspectRatio,
     this.memCacheWidth,
     this.priority = ImageFetchPriority.normal,
+    this.blurSigma = 0,
   });
 
   /// The decoded pixel width upstream uses for every bounded image: the painted
@@ -133,6 +140,14 @@ class BoundedNetworkImage extends StatelessWidget {
       headers: headers,
       cacheManager: cacheManager,
     );
+    if (blurSigma > 0) {
+      return BakedBlurImage(
+        image: bounded,
+        sigma: blurSigma,
+        fit: fit,
+        alignment: alignment,
+      );
+    }
     if (local) {
       return Image(
         image: bounded,

@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get_it/get_it.dart';
@@ -7,13 +8,21 @@ import 'package:server_core/server_core.dart';
 import '../../../navigation/destinations.dart';
 import '../../../widgets/adaptive/adaptive_dialog.dart';
 import '../../detail/modern/widgets/details_tab_bar.dart';
+import '../admin_draft.dart';
+import '../admin_nav.dart';
 import '../widgets/admin_form_styles.dart';
+import '../widgets/premiere_note.dart';
 import '../providers/admin_user_providers.dart';
 import 'admin_user_delete_dialog.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../../util/error_message.dart';
 import '../../../../util/platform_detection.dart';
 
+typedef _RatingOption = ({String name, int score, int? subScore});
+
+/// One user's profile, permissions, access, parental control and password.
+/// The UserDto and its Policy are one draft with two targets, saved by the
+/// shell's bar. Password set and reset act at once.
 class AdminUserEditScreen extends ConsumerStatefulWidget {
   final String userId;
   const AdminUserEditScreen({super.key, required this.userId});
@@ -23,37 +32,49 @@ class AdminUserEditScreen extends ConsumerStatefulWidget {
       _AdminUserEditScreenState();
 }
 
-class _AdminUserEditScreenState extends ConsumerState<AdminUserEditScreen> {
+class _AdminUserEditScreenState extends ConsumerState<AdminUserEditScreen>
+    with AdminDraftHost {
   int _selectedTab = 0;
   final _tabFocusNodes = <int, FocusNode>{};
   late final MediaServerClient _client;
 
-  ServerUser? _user;
+  /// The UserDto as fetched, minus Policy, which [_policy] edits.
+  late Map<String, dynamic> _profile;
   late Map<String, dynamic> _policy;
-  List<VirtualFolderInfo>? _libraries;
-  List<Map<String, dynamic>> _parentalRatings = const [];
+  List<VirtualFolderInfo> _libraries = const [];
+  List<Map<String, dynamic>> _channels = const [];
+  List<Map<String, dynamic>> _deletableChannels = const [];
+  List<_RatingOption> _ratings = const [];
   List<Map<String, dynamic>> _authProviders = const [];
   List<Map<String, dynamic>> _resetProviders = const [];
   List<DeviceInfoDto> _devices = const [];
+  bool _serverRemoteAccess = true;
 
-  final _nameController = TextEditingController();
+  final _currentPasswordController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  final _bitrateLimitController = TextEditingController();
-  final _maxSessionsController = TextEditingController();
-  final _loginAttemptsController = TextEditingController();
+  final _connectController = TextEditingController();
   final _tagControllers = <String, TextEditingController>{};
 
   bool _loading = true;
-  bool _saving = false;
+  bool _passwordBusy = false;
+  bool _connectBusy = false;
   String? _error;
-  String _originalName = '';
+
+  /// The Emby Connect account the user is linked to, empty when none.
+  String _connectLinked = '';
+
+  /// Set on every build, for the draft's posts, which may finish after the
+  /// page has gone.
+  late AppLocalizations _l10n;
+
+  AdminUsersApi get _users => _client.adminUsersApi;
 
   @override
   void initState() {
     super.initState();
     _client = GetIt.instance<MediaServerClient>();
-    _loadUser();
+    _load();
   }
 
   FocusNode _tabNode(int index) {
@@ -66,63 +87,103 @@ class _AdminUserEditScreenState extends ConsumerState<AdminUserEditScreen> {
     for (final node in _tabFocusNodes.values) {
       node.dispose();
     }
-    _nameController.dispose();
+    _currentPasswordController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
-    _bitrateLimitController.dispose();
-    _maxSessionsController.dispose();
-    _loginAttemptsController.dispose();
+    _connectController.dispose();
     for (final c in _tagControllers.values) {
       c.dispose();
     }
     super.dispose();
   }
 
-  Future<void> _loadUser() async {
+  Future<Map<String, dynamic>> _fetchUser() async =>
+      Map<String, dynamic>.of((await _users.getUserById(widget.userId)).raw);
+
+  // A missing Policy throws, so a partial policy is never posted.
+  Future<Map<String, dynamic>> _fetchPolicy() async =>
+      Map<String, dynamic>.from((await _fetchUser())['Policy'] as Map);
+
+  Future<void> _load() async {
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final results = await Future.wait([
-        _client.adminUsersApi.getUserById(widget.userId),
-        _client.adminLibraryApi.getVirtualFolders(),
-      ]);
-      // Dropdown reference lists are optional; degrade to empty on older
-      // servers rather than failing the whole screen.
-      final ratings = await _client.adminSystemApi
-          .getParentalRatings()
-          .catchError((_) => <Map<String, dynamic>>[]);
-      final authProviders = await _client.adminSystemApi
-          .getAuthProviders()
-          .catchError((_) => <Map<String, dynamic>>[]);
-      final resetProviders = await _client.adminSystemApi
-          .getPasswordResetProviders()
-          .catchError((_) => <Map<String, dynamic>>[]);
-      final devices = await _client.adminDevicesApi
+      // Reference lists are optional, so a failed one is empty instead of
+      // failing the whole screen. They load alongside the user.
+      Future<List<Map<String, dynamic>>> list(
+        Future<List<Map<String, dynamic>>> call,
+      ) => call.catchError((_) => <Map<String, dynamic>>[]);
+      final ratingsLoad = list(_client.adminSystemApi.getParentalRatings());
+      final authLoad = list(_client.adminSystemApi.getAuthProviders());
+      final resetLoad =
+          list(_client.adminSystemApi.getPasswordResetProviders());
+      final channelsLoad = list(_users.getChannels());
+      final deletableLoad =
+          list(_users.getChannels(supportsMediaDeletion: true));
+      final devicesLoad = _client.adminDevicesApi
           .getDevices()
           .catchError((_) => <DeviceInfoDto>[]);
+      // Emby keeps the remote access switch in the base configuration.
+      final networkLoad = (_emby
+              ? _client.adminSystemApi.getServerConfiguration()
+              : _client.adminSystemApi.getNamedConfiguration('network'))
+          .catchError((_) => <String, dynamic>{});
+      final user = await _fetchUser();
+      final libraries = await _client.adminLibraryApi.getMediaFolders(
+        isHidden: false,
+      );
+      final ratings = await ratingsLoad;
+      final authProviders = await authLoad;
+      final resetProviders = await resetLoad;
+      final channels = await channelsLoad;
+      final deletable = await deletableLoad;
+      final devices = await devicesLoad;
+      final network = await networkLoad;
       if (!mounted) return;
-      final user = results[0] as ServerUser;
-      final libs = results[1] as List<VirtualFolderInfo>;
+      final policy = Map<String, dynamic>.from(user['Policy'] as Map);
+      final profile = user..remove('Policy');
       setState(() {
-        _user = user;
-        _libraries = libs;
-        _parentalRatings = ratings;
+        _profile = profile;
+        _policy = policy;
+        _libraries = libraries;
+        _ratings = _groupRatings(ratings);
         _authProviders = authProviders;
         _resetProviders = resetProviders;
+        _channels = channels;
+        _deletableChannels = deletable;
         _devices = devices;
-        _originalName = (user.name ?? '').trim();
-        _nameController.text = _originalName;
-        _policy = user.policy?.toJson() ?? <String, dynamic>{};
-        _bitrateLimitController.text =
-            (_policy['RemoteClientBitrateLimit'] as int?)?.toString() ?? '';
-        _maxSessionsController.text =
-            (_policy['MaxActiveSessions'] as int?)?.toString() ?? '';
-        _loginAttemptsController.text =
-            (_policy['LoginAttemptsBeforeLockout'] as int?)?.toString() ?? '';
+        _serverRemoteAccess = network['EnableRemoteAccess'] != false;
+        _connectLinked = _connectController.text =
+            '${user['ConnectUserName'] ?? ''}';
         _loading = false;
       });
+      hostDraft(AdminDraft({
+        // The whole UserDto goes back, so the user's Configuration survives a
+        // rename.
+        'profile': AdminDraftTarget(
+          working: profile,
+          reload: _fetchUser,
+          post: (dto) async {
+            final name = '${dto['Name'] ?? ''}'.trim();
+            if (name.isEmpty) throw Exception(_l10n.adminUsernameRequired);
+            await _users.updateUser(widget.userId, {...dto, 'Name': name});
+            if (mounted) ref.invalidate(adminUsersListProvider);
+          },
+        ),
+        'policy': AdminDraftTarget(
+          working: policy,
+          reload: _fetchPolicy,
+          post: (value) async {
+            if (_badSchedule(value) != null) {
+              throw Exception(_l10n.adminScheduleStartBeforeEnd);
+            }
+            await _users.updateUserPolicy(widget.userId, value);
+            if (mounted) ref.invalidate(adminUsersListProvider);
+          },
+        ),
+      }));
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -132,139 +193,147 @@ class _AdminUserEditScreenState extends ConsumerState<AdminUserEditScreen> {
     }
   }
 
-  Future<void> _saveProfile() async {
-    final l10n = AppLocalizations.of(context);
-    final newName = _nameController.text.trim();
-    if (newName.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.adminUsernameRequired)),
-      );
-      return;
-    }
+  void _editPolicy(void Function(Map<String, dynamic> policy) change) {
+    setState(() => change(_policy));
+    edited();
+  }
 
-    if (newName == _originalName) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.adminNoProfileChanges)),
-      );
-      return;
-    }
-
-    setState(() => _saving = true);
-    try {
-      await _client.adminUsersApi.updateUser(widget.userId, {
-        'Name': newName,
-        'Configuration': <String, dynamic>{},
+  /// Null removes the key, so clearing a nullable value the server left out
+  /// doesn't count as an edit.
+  void _setPolicy(String key, Object? value) => _editPolicy((p) {
+        if (value == null) {
+          p.remove(key);
+        } else {
+          p[key] = value;
+        }
       });
-      _originalName = newName;
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.adminProfileSaved)),
-        );
-      }
-      ref.invalidate(adminUsersListProvider);
-      ref.invalidate(adminUserProvider(widget.userId));
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.adminSaveFailed(describeError(e, l10n)))),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+
+  List<String> _listOf(String key) =>
+      List<String>.from(_policy[key] as List? ?? const []);
+
+  void _toggleListMembership(String key, String value, bool enabled) {
+    final list = _listOf(key)..remove(value);
+    if (enabled) list.add(value);
+    _setPolicy(key, list);
   }
 
-  Future<void> _savePolicy() async {
-    final l10n = AppLocalizations.of(context);
-    final bitrate = int.tryParse(_bitrateLimitController.text);
-    final maxSessions = int.tryParse(_maxSessionsController.text);
-    _policy['RemoteClientBitrateLimit'] = bitrate;
-    _policy['MaxActiveSessions'] = maxSessions;
-    final loginAttempts = _loginAttemptsController.text.trim();
-    if (loginAttempts.isNotEmpty) {
-      _policy['LoginAttemptsBeforeLockout'] = int.tryParse(loginAttempts);
-    }
-
-    setState(() => _saving = true);
-    try {
-      await _client.adminUsersApi
-          .updateUserPolicy(widget.userId, _policy);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.adminPermissionsSaved)),
-        );
-      }
-      ref.invalidate(adminUsersListProvider);
-      ref.invalidate(adminUserProvider(widget.userId));
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.adminSaveFailed(describeError(e, l10n)))),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
+  void _snack(String text) => ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(text)));
 
   Future<void> _savePassword() async {
     final l10n = AppLocalizations.of(context);
     final pw = _passwordController.text;
-    final confirm = _confirmPasswordController.text;
-    if (pw.isNotEmpty && pw != confirm) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.adminPasswordsMismatch)),
-      );
+    if (pw != _confirmPasswordController.text) {
+      _snack(l10n.adminPasswordsMismatch);
       return;
     }
-    setState(() => _saving = true);
-    try {
-      if (pw.isEmpty) {
-        await _client.adminUsersApi
-            .updateUserPassword(widget.userId, resetPassword: true);
-      } else {
-        await _client.adminUsersApi
-            .updateUserPassword(widget.userId, newPassword: pw);
-      }
-      if (mounted) {
-        _passwordController.clear();
-        _confirmPasswordController.clear();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content:
-                Text(pw.isEmpty ? l10n.adminPasswordReset : l10n.adminPasswordUpdated),
+    // An administrator can't be left without a password.
+    if (pw.isEmpty && _isAdmin) {
+      _snack(l10n.adminNewPasswordEmpty);
+      return;
+    }
+    await _passwordAction(
+      () => _users.updateUserPassword(
+        widget.userId,
+        currentPassword: _isSelf ? _currentPasswordController.text : null,
+        newPassword: pw,
+      ),
+      l10n.adminPasswordUpdated,
+    );
+  }
+
+  Future<void> _resetPassword() async {
+    final l10n = AppLocalizations.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog.adaptive(
+        title: Text(l10n.adminResetPassword),
+        content: Text(l10n.adminResetPasswordWarning),
+        actions: [
+          adaptiveDialogAction(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l10n.cancel),
           ),
-        );
-      }
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(l10n.reset),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _passwordAction(
+      () => _users.updateUserPassword(widget.userId, resetPassword: true),
+      l10n.adminPasswordReset,
+    );
+  }
+
+  Future<void> _passwordAction(
+    Future<void> Function() call,
+    String done,
+  ) async {
+    final l10n = AppLocalizations.of(context);
+    setState(() => _passwordBusy = true);
+    try {
+      await call();
+      if (!mounted) return;
+      _currentPasswordController.clear();
+      _passwordController.clear();
+      _confirmPasswordController.clear();
+      _snack(done);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.adminFailed(describeError(e, l10n)))),
-        );
-      }
+      if (mounted) _snack(l10n.adminFailed(describeError(e, l10n)));
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) setState(() => _passwordBusy = false);
     }
   }
 
-  void _togglePolicy(String key, bool value) {
-    setState(() => _policy[key] = value);
+  /// Links or unlinks right away rather than with the draft's save.
+  Future<void> _setConnect({required bool link}) async {
+    final l10n = AppLocalizations.of(context);
+    final emby = _client.embyAdminApi!;
+    final name = _connectController.text.trim();
+    if (link && name.isEmpty) return;
+    setState(() => _connectBusy = true);
+    try {
+      var pending = false;
+      if (link) {
+        final result = await emby.linkConnectUser(widget.userId, name);
+        pending = result['IsPending'] == true;
+      } else {
+        await emby.unlinkConnectUser(widget.userId);
+      }
+      final linked = '${(await _fetchUser())['ConnectUserName'] ?? ''}';
+      if (!mounted) return;
+      setState(() => _connectLinked = _connectController.text = linked);
+      _snack(link
+          ? (pending ? l10n.adminEmbyConnectPending : l10n.adminEmbyConnectLinked)
+          : l10n.adminEmbyConnectUnlinked);
+    } catch (e) {
+      if (!mounted) return;
+      // Emby answers an unknown account with a bare 500 "NotFound".
+      final notFound = e is DioException &&
+          e.response?.statusCode == 500 &&
+          '${e.response?.data}'.contains('NotFound');
+      _snack(notFound
+          ? l10n.adminEmbyConnectNotFound
+          : l10n.adminFailed(describeError(e, l10n)));
+    } finally {
+      if (mounted) setState(() => _connectBusy = false);
+    }
   }
 
-  void _toggleFolderAccess(String folderId, bool enabled) {
-    final folders = List<String>.from(
-        _policy['EnabledFolders'] as List? ?? []);
-    if (enabled) {
-      if (!folders.contains(folderId)) folders.add(folderId);
-    } else {
-      folders.remove(folderId);
-    }
-    setState(() => _policy['EnabledFolders'] = folders);
-  }
+  bool get _emby => AdminServerScope.isEmby(context);
+
+  /// A policy key only Emby has, shown when the server sent it.
+  bool _embyHas(String key) => _emby && _policy.containsKey(key);
+
+  bool get _isSelf => _client.userId == widget.userId;
+  bool get _isAdmin => _policy['IsAdministrator'] == true;
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
+    final l10n = _l10n = AppLocalizations.of(context);
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -278,36 +347,26 @@ class _AdminUserEditScreenState extends ConsumerState<AdminUserEditScreen> {
             const SizedBox(height: 8),
             Text(_error!, style: Theme.of(context).textTheme.bodySmall),
             const SizedBox(height: 16),
-            FilledButton.tonal(
-                onPressed: _loadUser, child: Text(l10n.retry)),
+            FilledButton.tonal(onPressed: _load, child: Text(l10n.retry)),
           ],
         ),
       );
     }
 
+    final name = '${_profile['Name'] ?? ''}'.trim();
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-          child: Row(
-            children: [
-              TextButton.icon(
-                onPressed: () => context.go(Destinations.adminUsers),
-                icon: const Icon(Icons.arrow_back),
-                label: Text(l10n.adminBackToUsers),
-              ),
-              const Spacer(),
-              Text(
-                _user?.name?.isNotEmpty == true
-                    ? _user!.name!
-                    : l10n.adminUserSettings,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            ],
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+          child: adminScreenHeader(
+            context,
+            title: name.isEmpty ? l10n.adminUserSettings : name,
+            icon: Icons.person_outline,
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
           child: DetailsTabBar(
             segmented: true,
             wrap: PlatformDetection.useMobileUi,
@@ -324,14 +383,117 @@ class _AdminUserEditScreenState extends ConsumerState<AdminUserEditScreen> {
           ),
         ),
         Expanded(
-          child: IndexedStack(
-            index: _selectedTab,
+          child: draftKeyed(
+            IndexedStack(
+              index: _selectedTab,
+              children: [
+                _tab(_buildProfileTab(l10n)),
+                _tab(_buildPermissionsTab(l10n)),
+                _tab(_buildAccessTab(l10n)),
+                _tab(_buildParentalTab(l10n)),
+                _tab(_buildPasswordTab(l10n)),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _tab(List<Widget> children) => ListView(
+        padding: EdgeInsets.fromLTRB(
+            16, 0, 16, MediaQuery.of(context).padding.bottom + 40),
+        children: children,
+      );
+
+  List<Widget> _buildProfileTab(AppLocalizations l10n) {
+    final scheme = Theme.of(context).colorScheme;
+    return [
+      if (_policy['IsDisabled'] == true)
+        Card(
+          color: scheme.errorContainer,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Text(
+              l10n.adminUserDisabledBanner,
+              style: TextStyle(color: scheme.onErrorContainer),
+            ),
+          ),
+        ),
+      adminSection(
+        context,
+        title: l10n.profile,
+        icon: Icons.badge_outlined,
+        children: [
+          adminFieldRow(
+            label: l10n.username,
+            child: TextFormField(
+              initialValue: '${_profile['Name'] ?? ''}',
+              decoration: adminInputDecoration(),
+              onChanged: (v) {
+                setState(() => _profile['Name'] = v);
+                edited();
+              },
+            ),
+          ),
+        ],
+      ),
+      if (_emby) _buildConnectSection(l10n),
+      const SizedBox(height: 16),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          onPressed: () => showAdminUserDeleteDialog(
+            context,
+            user: ServerUser(id: widget.userId, name: '${_profile['Name']}'),
+            onDeleted: () {
+              ref.invalidate(adminUsersListProvider);
+              draft?.discard();
+              context.go(Destinations.adminUsers);
+            },
+          ),
+          icon: const Icon(Icons.delete),
+          label: Text(l10n.adminDeleteUser),
+          style: TextButton.styleFrom(foregroundColor: scheme.error),
+        ),
+      ),
+    ];
+  }
+
+  Widget _buildConnectSection(AppLocalizations l10n) {
+    final linked = _connectLinked.isNotEmpty;
+    return adminSection(
+      context,
+      title: l10n.adminEmbyConnect,
+      icon: Icons.link,
+      children: [
+        adminFieldRow(
+          label: l10n.adminEmbyConnectUser,
+          helper: linked ? l10n.adminEmbyConnectLinked : l10n.adminEmbyConnectHelp,
+          child: Row(
             children: [
-              _buildProfileTab(),
-              _buildPermissionsTab(),
-              _buildAccessTab(),
-              _buildParentalTab(),
-              _buildPasswordTab(),
+              Expanded(
+                child: TextField(
+                  controller: _connectController,
+                  enabled: !linked && !_connectBusy,
+                  decoration: adminInputDecoration(),
+                  onChanged: (_) => setState(() {}),
+                  onSubmitted: (_) => _setConnect(link: true),
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (linked)
+                OutlinedButton(
+                  onPressed: _connectBusy ? null : () => _setConnect(link: false),
+                  child: Text(l10n.adminEmbyConnectUnlink),
+                )
+              else
+                FilledButton.tonal(
+                  onPressed: _connectBusy || _connectController.text.trim().isEmpty
+                      ? null
+                      : () => _setConnect(link: true),
+                  child: Text(l10n.adminEmbyConnectLink),
+                ),
             ],
           ),
         ),
@@ -339,116 +501,152 @@ class _AdminUserEditScreenState extends ConsumerState<AdminUserEditScreen> {
     );
   }
 
-  Widget _buildProfileTab() {
-    final l10n = AppLocalizations.of(context);
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        TextFormField(
-          controller: _nameController,
-          decoration: adminInputDecoration(label: l10n.username),
-        ),
-        const SizedBox(height: 24),
-        Row(
-          children: [
-            FilledButton(
-              onPressed: _saving ? null : _saveProfile,
-              child: Text(l10n.adminSaveProfile),
-            ),
-            const Spacer(),
-            TextButton.icon(
-              onPressed: () => showAdminUserDeleteDialog(
-                context,
-                user: _user!,
-                onDeleted: () {
-                  ref.invalidate(adminUsersListProvider);
-                  context.go(Destinations.adminUsers);
-                },
-              ),
-              icon: const Icon(Icons.delete),
-              label: Text(l10n.adminDeleteUser),
-              style: TextButton.styleFrom(
-                  foregroundColor: Theme.of(context).colorScheme.error),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPermissionsTab() {
-    final l10n = AppLocalizations.of(context);
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        _sectionHeader(l10n.admin),
-        if (_policy['IsAdministrator'] == true)
-          Card(
-            color: Theme.of(context).colorScheme.errorContainer,
-            child: Padding(
+  List<Widget> _buildPermissionsTab(AppLocalizations l10n) {
+    final scheme = Theme.of(context).colorScheme;
+    final auth = _authRows(l10n);
+    return [
+      adminSection(
+        context,
+        title: l10n.admin,
+        icon: Icons.shield_outlined,
+        children: [
+          if (_isAdmin)
+            Padding(
               padding: const EdgeInsets.all(12),
               child: Text(
                 l10n.adminFullAccessWarning,
-                style: TextStyle(
-                    color: Theme.of(context).colorScheme.onErrorContainer),
+                style: TextStyle(color: scheme.error),
               ),
             ),
-          ),
-        _policySwitch('IsAdministrator', l10n.administrator),
-        _policySwitch('IsHidden', l10n.adminHiddenUser),
-        _policySwitch('IsDisabled', l10n.disabled),
-        _sectionHeader(l10n.playback),
-        _policySwitch('EnableMediaPlayback', l10n.adminAllowMediaPlayback),
-        _policySwitch(
-            'EnableAudioPlaybackTranscoding', l10n.adminAllowAudioTranscoding),
-        _policySwitch(
-            'EnableVideoPlaybackTranscoding', l10n.adminAllowVideoTranscoding),
-        _policySwitch('EnablePlaybackRemuxing', l10n.adminAllowRemuxing),
-        _policySwitch('ForceRemoteSourceTranscoding',
-            l10n.adminForceRemoteTranscoding),
-        _sectionHeader(l10n.content),
-        _policySwitch('EnableContentDeletion', l10n.adminAllowContentDeletion),
-        _policySwitch(
-            'EnableContentDownloading', l10n.adminAllowContentDownloading),
-        _policySwitch('EnablePublicSharing', l10n.adminAllowPublicSharing),
-        _sectionHeader(l10n.sessions),
-        _policySwitch('EnableRemoteControlOfOtherUsers',
-            l10n.adminAllowRemoteControl),
-        _policySwitch(
-            'EnableSharedDeviceControl', l10n.adminAllowSharedDeviceControl),
-        _policySwitch('EnableRemoteAccess', l10n.adminAllowRemoteAccess),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: TextFormField(
-            controller: _bitrateLimitController,
-            decoration: adminInputDecoration(
-              label: l10n.adminRemoteBitrateLimit,
-              helper: l10n.adminLeaveEmptyNoLimit,
-            ),
-            keyboardType: TextInputType.number,
-          ),
+          _policySwitch('IsAdministrator', l10n.administrator),
+          _policySwitch('IsHidden', l10n.adminHiddenUser),
+          if (_embyHas('IsHiddenRemotely'))
+            _policySwitch('IsHiddenRemotely', l10n.adminHiddenRemotely),
+          if (_embyHas('IsHiddenFromUnusedDevices'))
+            _policySwitch(
+                'IsHiddenFromUnusedDevices', l10n.adminHiddenFromUnusedDevices),
+          _policySwitch('IsDisabled', l10n.disabled),
+        ],
+      ),
+      adminSection(
+        context,
+        title: l10n.playback,
+        icon: Icons.play_circle_outline,
+        children: [
+          _policySwitch('EnableMediaPlayback', l10n.adminAllowMediaPlayback),
+          _policySwitch(
+              'EnableAudioPlaybackTranscoding', l10n.adminAllowAudioTranscoding),
+          _policySwitch(
+              'EnableVideoPlaybackTranscoding', l10n.adminAllowVideoTranscoding),
+          _policySwitch('EnablePlaybackRemuxing', l10n.adminAllowRemuxing),
+          if (!_emby)
+            _policySwitch('ForceRemoteSourceTranscoding',
+                l10n.adminForceRemoteTranscoding),
+          _mbpsField('RemoteClientBitrateLimit', l10n.adminRemoteBitrateLimitMbps,
+              l10n.adminLeaveEmptyNoLimit),
+          if (_embyHas('AutoRemoteQuality'))
+            _mbpsField('AutoRemoteQuality', l10n.adminAutoRemoteQuality,
+                l10n.adminAutoRemoteQualityHelp),
+          if (_embyHas('SimultaneousStreamLimit')) _streamLimitRow(l10n),
+        ],
+      ),
+      adminSection(
+        context,
+        title: l10n.content,
+        icon: Icons.folder_outlined,
+        children: [
+          _policySwitch(
+              'EnableContentDownloading', l10n.adminAllowContentDownloading),
+          _policySwitch('EnablePublicSharing', l10n.adminAllowPublicSharing),
+          for (final (key, label) in [
+            ('EnableSyncTranscoding', l10n.adminAllowSyncTranscoding),
+            ('EnableMediaConversion', l10n.adminAllowMediaConversion),
+            ('AllowCameraUpload', l10n.adminAllowCameraUpload),
+            ('AllowSharingPersonalItems', l10n.adminAllowSharingPersonalItems),
+          ])
+            if (_embyHas(key)) _policySwitch(key, label),
+        ],
+      ),
+      adminSection(
+        context,
+        title: l10n.sessions,
+        icon: Icons.devices_outlined,
+        children: [
+          _policySwitch(
+              'EnableRemoteControlOfOtherUsers', l10n.adminAllowRemoteControl),
+          _policySwitch(
+              'EnableSharedDeviceControl', l10n.adminAllowSharedDeviceControl),
+          if (_serverRemoteAccess)
+            _policySwitch('EnableRemoteAccess', l10n.adminAllowRemoteAccess),
+          if (!_emby)
+            _intField('MaxActiveSessions', l10n.adminMaxActiveSessions,
+                l10n.adminLeaveEmptyNoLimit),
+        ],
+      ),
+      adminSection(
+        context,
+        title: l10n.features,
+        icon: Icons.tune,
+        children: [
+          _policySwitch('EnableLiveTvAccess', l10n.adminAllowLiveTvAccess),
+          _policySwitch(
+              'EnableLiveTvManagement', l10n.adminAllowLiveTvManagement),
+          if (!_emby)
+            _policySwitch('EnableCollectionManagement',
+                l10n.adminAllowCollectionManagement),
+          _policySwitch(
+              'EnableSubtitleManagement', l10n.adminAllowSubtitleManagement),
+          if (_embyHas('EnableSubtitleDownloading'))
+            _policySwitch(
+                'EnableSubtitleDownloading', l10n.adminAllowSubtitleDownloading),
+          if (!_emby)
+            _policySwitch(
+                'EnableLyricManagement', l10n.adminAllowLyricManagement),
+          if (_embyHas('EnableUserPreferenceAccess'))
+            _policySwitch(
+                'EnableUserPreferenceAccess', l10n.adminAllowPreferenceAccess),
+        ],
+      ),
+      if (auth.isNotEmpty)
+        adminSection(
+          context,
+          title: l10n.authentication,
+          icon: Icons.lock_outline,
+          children: auth,
         ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: TextFormField(
-            controller: _maxSessionsController,
-            decoration: adminInputDecoration(
-              label: l10n.adminMaxActiveSessions,
-              helper: l10n.adminLeaveEmptyNoLimit,
-            ),
-            keyboardType: TextInputType.number,
+    ];
+  }
+
+  /// Emby counts 0 as unlimited. The stored value joins the list in case
+  /// it's past 50.
+  Widget _streamLimitRow(AppLocalizations l10n) {
+    final current = (_policy['SimultaneousStreamLimit'] as num?)?.toInt() ?? 0;
+    return adminFieldRow(
+      label: l10n.adminStreamingStreamLimit,
+      helper: l10n.adminSimultaneousStreamLimitHelp,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          DropdownButtonFormField<int>(
+            initialValue: current,
+            isExpanded: true,
+            decoration: adminInputDecoration(),
+            items: [
+              for (final n in {for (var i = 0; i <= 50; i++) i, current})
+                DropdownMenuItem(
+                  value: n,
+                  child: Text(n == 0 ? l10n.adminUnlimited : '$n'),
+                ),
+            ],
+            onChanged: (v) => _setPolicy('SimultaneousStreamLimit', v ?? 0),
           ),
-        ),
-        _sectionHeader(l10n.features),
-        _policySwitch('EnableLiveTvAccess', l10n.adminAllowLiveTvAccess),
-        _policySwitch(
-            'EnableLiveTvManagement', l10n.adminAllowLiveTvManagement),
-        _policySwitch(
-            'EnableCollectionManagement', l10n.adminAllowCollectionManagement),
-        _policySwitch(
-            'EnableSubtitleManagement', l10n.adminAllowSubtitleManagement),
-        _policySwitch('EnableLyricManagement', l10n.adminAllowLyricManagement),
-        _sectionHeader(l10n.authentication),
+          const PremiereNote(margin: EdgeInsets.only(top: 8)),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _authRows(AppLocalizations l10n) => [
         if (_authProviders.length > 1)
           _providerDropdown(
             label: l10n.adminAuthProvider,
@@ -461,50 +659,70 @@ class _AdminUserEditScreenState extends ConsumerState<AdminUserEditScreen> {
             policyKey: 'PasswordResetProviderId',
             providers: _resetProviders,
           ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: TextFormField(
-            controller: _loginAttemptsController,
-            decoration: adminInputDecoration(
-              label: l10n.adminLoginAttemptsBeforeLockout,
-              helper: l10n.adminLoginAttemptsHint,
+        if (!_emby) ...[
+          _intField('LoginAttemptsBeforeLockout',
+              l10n.adminLoginAttemptsBeforeLockout, l10n.adminLoginAttemptsHint),
+          adminFieldRow(
+            label: l10n.adminSyncPlayAccess,
+            child: DropdownButtonFormField<String>(
+              initialValue:
+                  (_policy['SyncPlayAccess'] as String?) ?? 'CreateAndJoinGroups',
+              isExpanded: true,
+              decoration: adminInputDecoration(),
+              items: [
+                DropdownMenuItem(
+                  value: 'CreateAndJoinGroups',
+                  child: Text(l10n.adminSyncPlayCreateAndJoin),
+                ),
+                DropdownMenuItem(
+                  value: 'JoinGroups',
+                  child: Text(l10n.adminSyncPlayJoin),
+                ),
+                DropdownMenuItem(
+                  value: 'None',
+                  child: Text(l10n.adminSyncPlayNone),
+                ),
+              ],
+              onChanged: (v) => _setPolicy('SyncPlayAccess', v),
             ),
-            keyboardType: TextInputType.number,
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: DropdownButtonFormField<String>(
-            initialValue:
-                (_policy['SyncPlayAccess'] as String?) ?? 'CreateAndJoinGroups',
-            decoration: adminInputDecoration(label: l10n.adminSyncPlayAccess),
-            items: [
-              DropdownMenuItem(
-                value: 'CreateAndJoinGroups',
-                child: Text(l10n.adminSyncPlayCreateAndJoin),
-              ),
-              DropdownMenuItem(
-                value: 'JoinGroups',
-                child: Text(l10n.adminSyncPlayJoin),
-              ),
-              DropdownMenuItem(
-                value: 'None',
-                child: Text(l10n.adminSyncPlayNone),
-              ),
-            ],
-            onChanged: (v) =>
-                setState(() => _policy['SyncPlayAccess'] = v),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: FilledButton(
-            onPressed: _saving ? null : _savePolicy,
-            child: Text(l10n.adminSavePermissions),
-          ),
-        ),
-      ],
+        ],
+      ];
+
+  static String _mbps(Object? bps) {
+    if (bps is! num || bps <= 0) return '';
+    final mbps = bps / 1e6;
+    return mbps == mbps.roundToDouble()
+        ? mbps.toInt().toString()
+        : mbps.toString();
+  }
+
+  /// Stored in bits per second, and an empty field is 0 (none).
+  Widget _mbpsField(String key, String label, String helper) {
+    return adminFieldRow(
+      label: label,
+      helper: helper,
+      child: TextFormField(
+        initialValue: _mbps(_policy[key]),
+        decoration: adminInputDecoration(),
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        onChanged: (v) =>
+            _setPolicy(key, ((double.tryParse(v.trim()) ?? 0) * 1e6).floor()),
+      ),
+    );
+  }
+
+  /// The server's ints aren't nullable, so an empty field is 0.
+  Widget _intField(String key, String label, String helper) {
+    return adminFieldRow(
+      label: label,
+      helper: helper,
+      child: TextFormField(
+        initialValue: '${_policy[key] ?? ''}',
+        decoration: adminInputDecoration(),
+        keyboardType: const TextInputType.numberWithOptions(signed: true),
+        onChanged: (v) => _setPolicy(key, int.tryParse(v.trim()) ?? 0),
+      ),
     );
   }
 
@@ -518,225 +736,291 @@ class _AdminUserEditScreenState extends ConsumerState<AdminUserEditScreen> {
         .map((p) => (p['Id'] ?? p['id'])?.toString())
         .whereType<String>()
         .toList();
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    return adminFieldRow(
+      label: label,
       child: DropdownButtonFormField<String>(
         initialValue: ids.contains(current)
             ? current
             : (ids.isNotEmpty ? ids.first : null),
-        decoration: adminInputDecoration(label: label),
+        isExpanded: true,
+        decoration: adminInputDecoration(),
         items: providers.map((p) {
           final id = (p['Id'] ?? p['id'])?.toString() ?? '';
           final name = (p['Name'] ?? p['name'])?.toString() ?? id;
           return DropdownMenuItem(value: id, child: Text(name));
         }).toList(),
-        onChanged: (v) => setState(() => _policy[policyKey] = v),
+        onChanged: (v) => _setPolicy(policyKey, v),
       ),
     );
   }
 
-  Widget _buildAccessTab() {
-    final l10n = AppLocalizations.of(context);
-    final enableAllFolders = _policy['EnableAllFolders'] as bool? ?? true;
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        _sectionHeader(l10n.adminLibraryAccess),
-        SwitchListTile.adaptive(
-          title: Text(l10n.adminEnableAllLibraryAccess),
-          value: enableAllFolders,
-          onChanged: (v) => _togglePolicy('EnableAllFolders', v),
+  List<Widget> _buildAccessTab(AppLocalizations l10n) {
+    String nameOf(Map<String, dynamic> item) => '${item['Name'] ?? item['Id']}';
+    return [
+      adminSection(
+        context,
+        title: l10n.adminLibraryAccess,
+        icon: Icons.video_library_outlined,
+        children: _allOrSome(
+          'EnableAllFolders',
+          'EnabledFolders',
+          l10n.adminEnableAllLibraryAccess,
+          [for (final lib in _libraries) (lib.itemId, lib.name)],
         ),
-        if (!enableAllFolders && _libraries != null)
-          ...() {
-            final enabledFolders = List<String>.from(
-                _policy['EnabledFolders'] as List? ?? []);
-            return (_libraries!).map((lib) {
-            final enabled = enabledFolders.contains(lib.itemId);
-            return CheckboxListTile(
-              title: Text(lib.name),
-              subtitle: lib.collectionType != null
-                  ? Text(lib.collectionType!)
-                  : null,
-              value: enabled,
-              onChanged: (v) =>
-                  _toggleFolderAccess(lib.itemId, v ?? false),
-            );
-          });
-          }(),
-        const Divider(height: 32),
-        _sectionHeader(l10n.adminDeviceAndChannelAccess),
-        _policySwitch('EnableAllDevices', l10n.adminEnableAllDevices),
-        if (_policy['EnableAllDevices'] != true && _devices.isNotEmpty)
-          ...() {
-            final enabledDevices = List<String>.from(
-                _policy['EnabledDevices'] as List? ?? []);
-            return _devices.map((d) {
-              final label = d.customName?.isNotEmpty == true
-                  ? d.customName!
-                  : (d.name ?? d.appName ?? d.id);
-              return CheckboxListTile(
-                title: Text(label),
-                subtitle: d.appName != null ? Text(d.appName!) : null,
-                value: enabledDevices.contains(d.id),
-                onChanged: (v) =>
-                    _toggleListMembership('EnabledDevices', d.id, v ?? false),
-              );
-            });
-          }(),
-        _policySwitch(
-            'EnableAllChannels', l10n.adminEnableAllChannels),
-        const Divider(height: 32),
-        _sectionHeader(l10n.adminAllowContentDeletion),
-        _policySwitch('EnableContentDeletion', l10n.adminAllowContentDeletion),
-        if (_policy['EnableContentDeletion'] != true && _libraries != null)
-          ...() {
-            final delFolders = List<String>.from(
-                _policy['EnableContentDeletionFromFolders'] as List? ?? []);
-            return _libraries!.map((lib) {
-              return CheckboxListTile(
-                title: Text(lib.name),
-                subtitle: Text(l10n.adminContentDeletionFolders),
-                value: delFolders.contains(lib.itemId),
-                onChanged: (v) => _toggleListMembership(
-                    'EnableContentDeletionFromFolders', lib.itemId, v ?? false),
-              );
-            });
-          }(),
-        const SizedBox(height: 16),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: FilledButton(
-            onPressed: _saving ? null : _savePolicy,
-            child: Text(l10n.adminSaveAccess),
+      ),
+      if (_channels.isNotEmpty)
+        adminSection(
+          context,
+          title: l10n.adminChannelAccess,
+          icon: Icons.live_tv_outlined,
+          children: _allOrSome(
+            'EnableAllChannels',
+            'EnabledChannels',
+            l10n.adminEnableAllChannels,
+            [for (final c in _channels) ('${c['Id']}', nameOf(c))],
           ),
         ),
-      ],
-    );
+      // Administrators sign in from any device, so this is hidden for them.
+      if (!_isAdmin)
+        adminSection(
+          context,
+          title: l10n.adminDeviceAccess,
+          icon: Icons.devices_outlined,
+          children: _allOrSome(
+            'EnableAllDevices',
+            'EnabledDevices',
+            l10n.adminEnableAllDevices,
+            // Emby's policy holds the id the client reported.
+            [
+              for (final d in _devices)
+                (d.reportedDeviceId ?? d.id, _deviceLabel(d)),
+            ],
+          ),
+        ),
+      adminSection(
+        context,
+        title: l10n.adminContentDeletionFolders,
+        icon: Icons.delete_outline,
+        children: _allOrSome(
+          'EnableContentDeletion',
+          'EnableContentDeletionFromFolders',
+          l10n.adminDeleteFromAllLibraries,
+          [
+            for (final lib in _libraries) (lib.itemId, lib.name),
+            for (final c in _deletableChannels) ('${c['Id']}', nameOf(c)),
+          ],
+        ),
+      ),
+    ];
   }
 
-  /// Generic add/remove of [value] in a `List<String>` policy key.
-  void _toggleListMembership(String key, String value, bool enabled) {
-    final list = List<String>.from(_policy[key] as List? ?? []);
-    if (enabled) {
-      if (!list.contains(value)) list.add(value);
-    } else {
-      list.remove(value);
-    }
-    setState(() => _policy[key] = list);
+  /// `CustomName or Name - AppName`, else the device id.
+  static String _deviceLabel(DeviceInfoDto d) {
+    final label = [
+      d.customName?.isNotEmpty == true ? d.customName : d.name,
+      d.appName,
+    ].whereType<String>().join(' - ');
+    return label.isEmpty ? d.id : label;
   }
 
-  /// Distinct parental-rating options, sorted by score. Handles both the legacy
-  /// `{Name, Value}` shape and the newer `{Name, RatingScore: {Score, SubScore}}`.
-  List<({String name, int score, int? subScore})> _parentalRatingOptions() {
-    final seen = <String>{};
-    final out = <({String name, int score, int? subScore})>[];
-    for (final r in _parentalRatings) {
-      final name = (r['Name'] ?? r['name'])?.toString();
-      if (name == null) continue;
-      int? score;
-      int? subScore;
-      final ratingScore = r['RatingScore'] ?? r['ratingScore'];
-      if (ratingScore is Map) {
-        score = (ratingScore['Score'] ?? ratingScore['score']) as int?;
-        subScore = (ratingScore['SubScore'] ?? ratingScore['subScore']) as int?;
+  /// An "all" switch and, while it's off, one checkbox per item. Turning it
+  /// on empties the list.
+  List<Widget> _allOrSome(
+    String allKey,
+    String listKey,
+    String allLabel,
+    List<(String, String)> items,
+  ) {
+    final all = _policy[allKey] == true;
+    final selected = _listOf(listKey);
+    return [
+      adminSwitchRow(
+        title: allLabel,
+        value: all,
+        onChanged: (v) => _editPolicy((p) {
+          p[allKey] = v;
+          if (v) p[listKey] = <String>[];
+        }),
+      ),
+      if (!all)
+        for (final (id, name) in items)
+          CheckboxListTile(
+            title: Text(name),
+            value: selected.contains(id),
+            onChanged: (v) => _toggleListMembership(listKey, id, v ?? false),
+          ),
+    ];
+  }
+
+  /// Neighbouring ratings with the same score and sub score are one option,
+  /// their names joined with "/".
+  static List<_RatingOption> _groupRatings(List<Map<String, dynamic>> raw) {
+    final out = <_RatingOption>[];
+    for (final r in raw) {
+      final name = r['Name']?.toString();
+      final ratingScore = r['RatingScore'];
+      // Servers before RatingScore only send Value.
+      final score = ratingScore is Map
+          ? ratingScore['score'] as int?
+          : r['Value'] as int?;
+      final subScore = ratingScore is Map ? ratingScore['subScore'] as int? : null;
+      if (name == null || score == null) continue;
+      if (out.isNotEmpty &&
+          out.last.score == score &&
+          out.last.subScore == subScore) {
+        out.last = (
+          name: '${out.last.name}/$name',
+          score: score,
+          subScore: subScore,
+        );
+      } else {
+        out.add((name: name, score: score, subScore: subScore));
       }
-      score ??= (r['Value'] ?? r['value']) as int?;
-      if (score == null) continue;
-      final key = '$score:${subScore ?? 0}';
-      if (!seen.add(key)) continue;
-      out.add((name: name, score: score, subScore: subScore));
     }
-    out.sort((a, b) => a.score.compareTo(b.score));
     return out;
   }
 
-  Widget _buildParentalTab() {
-    final l10n = AppLocalizations.of(context);
-    final options = _parentalRatingOptions();
-    final currentRating = _policy['MaxParentalRating'] as int?;
-    const unratedItems = <(String, String Function(AppLocalizations))>[
-      ('Book', _unratedBook),
-      ('ChannelContent', _unratedChannel),
-      ('LiveTvChannel', _unratedLiveTv),
-      ('Movie', _unratedMovie),
-      ('Music', _unratedMusic),
-      ('Trailer', _unratedTrailer),
-      ('Series', _unratedSeries),
-    ];
-    final blocked = List<String>.from(
-        _policy['BlockUnratedItems'] as List? ?? const []);
+  /// The exact score and sub score, else the highest score at or below it.
+  int? _ratingIndex() {
+    final max = _policy['MaxParentalRating'] as int?;
+    if (max == null) return null;
+    final sub = _policy['MaxParentalSubRating'] as int?;
+    final exact = _ratings.lastIndexWhere(
+        (o) => o.score == max && o.subScore == sub);
+    if (exact != -1) return exact;
+    final below = _ratings.lastIndexWhere((o) => o.score <= max);
+    return below == -1 ? null : below;
+  }
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        _sectionHeader(l10n.adminMaxParentalRating),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: DropdownButtonFormField<int?>(
-            initialValue:
-                options.any((o) => o.score == currentRating) ? currentRating : null,
-            decoration: adminInputDecoration(
-              label: l10n.adminMaxParentalRating,
-              helper: l10n.adminMaxParentalRatingHint,
+  List<Widget> _buildParentalTab(AppLocalizations l10n) {
+    final unratedItems = <(String, String)>[
+      ('Book', l10n.adminUnratedBook),
+      ('ChannelContent', l10n.adminUnratedChannelContent),
+      ('LiveTvChannel', l10n.adminUnratedLiveTvChannel),
+      ('Movie', l10n.adminUnratedMovie),
+      ('Music', l10n.adminUnratedMusic),
+      ('Trailer', l10n.adminUnratedTrailer),
+      ('Series', l10n.adminUnratedSeries),
+    ];
+    final blocked = _listOf('BlockUnratedItems');
+    // Emby has one tag list, which allows rather than blocks in this mode.
+    final inclusive = _policy['IsTagBlockingModeInclusive'] == true;
+
+    return [
+      adminSection(
+        context,
+        title: l10n.adminMaxParentalRating,
+        icon: Icons.family_restroom,
+        children: [
+          adminFieldRow(
+            label: l10n.adminMaxParentalRating,
+            helper: l10n.adminMaxParentalRatingHint,
+            child: DropdownButtonFormField<int?>(
+              initialValue: _ratingIndex(),
+              isExpanded: true,
+              decoration: adminInputDecoration(),
+              items: [
+                DropdownMenuItem<int?>(
+                  value: null,
+                  child: Text(l10n.adminParentalRatingNone),
+                ),
+                for (var i = 0; i < _ratings.length; i++)
+                  DropdownMenuItem<int?>(value: i, child: Text(_ratings[i].name)),
+              ],
+              onChanged: (i) => _editPolicy((p) {
+                p.remove('MaxParentalRating');
+                p.remove('MaxParentalSubRating');
+                if (i == null) return;
+                p['MaxParentalRating'] = _ratings[i].score;
+                if (_ratings[i].subScore != null) {
+                  p['MaxParentalSubRating'] = _ratings[i].subScore;
+                }
+              }),
             ),
-            items: [
-              DropdownMenuItem<int?>(
-                value: null,
-                child: Text(l10n.adminParentalRatingNone),
-              ),
-              ...options.map((o) => DropdownMenuItem<int?>(
-                    value: o.score,
-                    child: Text(o.name),
-                  )),
-            ],
-            onChanged: (v) => setState(() {
-              _policy['MaxParentalRating'] = v;
-              final match = options.where((o) => o.score == v);
-              _policy['MaxParentalSubRating'] =
-                  match.isNotEmpty ? match.first.subScore : null;
-            }),
           ),
-        ),
-        _sectionHeader(l10n.adminBlockUnratedItems),
-        ...unratedItems.map((item) => CheckboxListTile(
-              title: Text(item.$2(l10n)),
-              value: blocked.contains(item.$1),
+        ],
+      ),
+      adminSection(
+        context,
+        title: l10n.adminBlockUnratedItems,
+        icon: Icons.block,
+        children: [
+          for (final (value, label) in unratedItems)
+            CheckboxListTile(
+              title: Text(label),
+              value: blocked.contains(value),
               onChanged: (v) =>
-                  _toggleListMembership('BlockUnratedItems', item.$1, v ?? false),
-            )),
-        const Divider(height: 32),
-        _sectionHeader(l10n.adminAccessSchedules),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(l10n.adminAccessSchedulesHint,
-              style: Theme.of(context).textTheme.bodySmall),
+                  _toggleListMembership('BlockUnratedItems', value, v ?? false),
+            ),
+        ],
+      ),
+      if (!_emby)
+        adminSection(
+          context,
+          title: l10n.adminAllowedTags,
+          icon: Icons.label_outline,
+          children: [
+            _buildTagEditor('AllowedTags', l10n.adminAllowedTagsHint, l10n),
+          ],
         ),
-        _buildSchedules(l10n),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          child: OutlinedButton.icon(
-            onPressed: _addSchedule,
-            icon: const Icon(Icons.add),
-            label: Text(l10n.adminAddSchedule),
+      adminSection(
+        context,
+        title: inclusive ? l10n.adminAllowedTags : l10n.adminBlockedTags,
+        icon: inclusive ? Icons.label_outline : Icons.label_off_outlined,
+        children: [
+          if (_embyHas('IsTagBlockingModeInclusive'))
+            adminFieldRow(
+              label: l10n.adminTagMode,
+              child: DropdownButtonFormField<bool>(
+                initialValue: inclusive,
+                isExpanded: true,
+                decoration: adminInputDecoration(),
+                items: [
+                  DropdownMenuItem(
+                      value: false, child: Text(l10n.adminBlockedTags)),
+                  DropdownMenuItem(
+                      value: true, child: Text(l10n.adminAllowedTags)),
+                ],
+                onChanged: (v) =>
+                    _setPolicy('IsTagBlockingModeInclusive', v ?? false),
+              ),
+            ),
+          _buildTagEditor(
+            'BlockedTags',
+            inclusive ? l10n.adminAllowedTagsHint : l10n.adminBlockedTagsHint,
+            l10n,
           ),
+        ],
+      ),
+      if (!_isAdmin)
+        adminSection(
+          context,
+          title: l10n.adminAccessSchedules,
+          icon: Icons.schedule,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: Text(l10n.adminAccessSchedulesHint,
+                  style: Theme.of(context).textTheme.bodySmall),
+            ),
+            ..._buildSchedules(l10n),
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  onPressed: () => _setPolicy('AccessSchedules', [
+                    ..._schedules,
+                    {'DayOfWeek': 'Everyday', 'StartHour': 0, 'EndHour': 24},
+                  ]),
+                  icon: const Icon(Icons.add),
+                  label: Text(l10n.adminAddSchedule),
+                ),
+              ),
+            ),
+          ],
         ),
-        const Divider(height: 32),
-        _sectionHeader(l10n.adminAllowedTags),
-        _buildTagEditor('AllowedTags', l10n.adminAllowedTagsHint, l10n),
-        const SizedBox(height: 16),
-        _sectionHeader(l10n.adminBlockedTags),
-        _buildTagEditor('BlockedTags', l10n.adminBlockedTagsHint, l10n),
-        const SizedBox(height: 24),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: FilledButton(
-            onPressed: _saving ? null : _savePolicy,
-            child: Text(l10n.save),
-          ),
-        ),
-      ],
-    );
+    ];
   }
 
   static const List<String> _dayValues = [
@@ -778,31 +1062,41 @@ class _AdminUserEditScreenState extends ConsumerState<AdminUserEditScreen> {
     return value;
   }
 
-  Widget _buildSchedules(AppLocalizations l10n) {
-    final schedules = List<Map<String, dynamic>>.from(
-        (_policy['AccessSchedules'] as List? ?? const [])
-            .map((e) => Map<String, dynamic>.from(e as Map)));
-    if (schedules.isEmpty) return const SizedBox.shrink();
-    return Column(
-      children: List.generate(schedules.length, (i) {
-        final s = schedules[i];
-        final day = (s['DayOfWeek'] ?? 'Everyday').toString();
-        final start = ((s['StartHour'] as num?) ?? 0).round();
-        final end = ((s['EndHour'] as num?) ?? 24).round();
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+  List<Map<String, dynamic>> get _schedules => [
+        for (final s in _policy['AccessSchedules'] as List? ?? const [])
+          Map<String, dynamic>.from(s as Map),
+      ];
+
+  /// The index of the first schedule whose start isn't before its end.
+  static int? _badSchedule(Map<String, dynamic> policy) {
+    final schedules = policy['AccessSchedules'] as List? ?? const [];
+    for (var i = 0; i < schedules.length; i++) {
+      final s = schedules[i] as Map;
+      if (((s['StartHour'] as num?) ?? 0) >= ((s['EndHour'] as num?) ?? 0)) {
+        return i;
+      }
+    }
+    return null;
+  }
+
+  List<Widget> _buildSchedules(AppLocalizations l10n) {
+    final schedules = _schedules;
+    final bad = _badSchedule(_policy);
+    return [
+      for (var i = 0; i < schedules.length; i++)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 8, 0),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 flex: 3,
                 child: DropdownButtonFormField<String>(
-                  initialValue: _dayValues.contains(day) ? day : 'Everyday',
+                  initialValue: _dayValues.contains(schedules[i]['DayOfWeek'])
+                      ? schedules[i]['DayOfWeek'] as String
+                      : 'Everyday',
                   isExpanded: true,
-                  decoration: InputDecoration(
-                    labelText: l10n.adminScheduleDay,
-                    border: const OutlineInputBorder(),
-                    isDense: true,
-                  ),
+                  decoration: adminInputDecoration(label: l10n.adminScheduleDay),
                   items: _dayValues
                       .map((d) => DropdownMenuItem(
                           value: d, child: Text(_dayLabel(d, l10n))))
@@ -813,88 +1107,74 @@ class _AdminUserEditScreenState extends ConsumerState<AdminUserEditScreen> {
               const SizedBox(width: 8),
               Expanded(
                 flex: 2,
-                child: _hourDropdown(
-                    l10n.adminScheduleStart, start, 0, 23,
+                child: _hourDropdown(l10n.adminScheduleStart,
+                    schedules[i]['StartHour'], null,
                     (v) => _updateSchedule(i, 'StartHour', v)),
               ),
               const SizedBox(width: 8),
               Expanded(
                 flex: 2,
-                child: _hourDropdown(
-                    l10n.adminScheduleEnd, end, 1, 24,
+                child: _hourDropdown(l10n.adminScheduleEnd,
+                    schedules[i]['EndHour'],
+                    i == bad ? l10n.adminScheduleStartBeforeEnd : null,
                     (v) => _updateSchedule(i, 'EndHour', v)),
               ),
               IconButton(
                 icon: const Icon(Icons.delete_outline),
-                onPressed: () => _removeSchedule(i),
+                onPressed: () =>
+                    _setPolicy('AccessSchedules', schedules..removeAt(i)),
               ),
             ],
           ),
-        );
-      }),
-    );
+        ),
+    ];
   }
 
+  /// Half hours from 0:00 to 24:00, plus the stored value when it's off that
+  /// grid.
   Widget _hourDropdown(
-      String label, int value, int min, int max, ValueChanged<int?> onChanged) {
-    return DropdownButtonFormField<int>(
-      initialValue: value.clamp(min, max),
+    String label,
+    Object? raw,
+    String? error,
+    ValueChanged<double?> onChanged,
+  ) {
+    final value = (raw as num? ?? 0).toDouble();
+    final hours = {for (var i = 0; i <= 48; i++) i / 2, value}.toList()..sort();
+    String text(double h) =>
+        '${h.floor().toString().padLeft(2, '0')}:'
+        '${((h % 1) * 60).round().toString().padLeft(2, '0')}';
+    return DropdownButtonFormField<double>(
+      initialValue: value,
       isExpanded: true,
-      decoration: InputDecoration(
-        labelText: label,
-        border: const OutlineInputBorder(),
-        isDense: true,
-      ),
+      decoration: adminInputDecoration(label: label)
+          .copyWith(errorText: error, errorMaxLines: 3),
       items: [
-        for (var h = min; h <= max; h++)
-          DropdownMenuItem(
-              value: h, child: Text('${h.toString().padLeft(2, '0')}:00')),
+        for (final h in hours) DropdownMenuItem(value: h, child: Text(text(h))),
       ],
       onChanged: onChanged,
     );
   }
 
-  void _addSchedule() {
-    final schedules = List<Map<String, dynamic>>.from(
-        (_policy['AccessSchedules'] as List? ?? const [])
-            .map((e) => Map<String, dynamic>.from(e as Map)));
-    schedules.add({'DayOfWeek': 'Everyday', 'StartHour': 0, 'EndHour': 24});
-    setState(() => _policy['AccessSchedules'] = schedules);
-  }
-
-  void _removeSchedule(int index) {
-    final schedules = List<Map<String, dynamic>>.from(
-        (_policy['AccessSchedules'] as List? ?? const [])
-            .map((e) => Map<String, dynamic>.from(e as Map)));
-    schedules.removeAt(index);
-    setState(() => _policy['AccessSchedules'] = schedules);
-  }
-
-  void _updateSchedule(int index, String key, dynamic value) {
+  void _updateSchedule(int index, String key, Object? value) {
     if (value == null) return;
-    final schedules = List<Map<String, dynamic>>.from(
-        (_policy['AccessSchedules'] as List? ?? const [])
-            .map((e) => Map<String, dynamic>.from(e as Map)));
+    final schedules = _schedules;
     schedules[index][key] = value;
-    setState(() => _policy['AccessSchedules'] = schedules);
+    _setPolicy('AccessSchedules', schedules);
   }
 
   Widget _buildTagEditor(String key, String hint, AppLocalizations l10n) {
-    final tags = List<String>.from(_policy[key] as List? ?? const []);
+    final tags = _listOf(key);
     final controller =
         _tagControllers.putIfAbsent(key, () => TextEditingController());
     void addTag() {
       final t = controller.text.trim();
       if (t.isEmpty) return;
-      if (!tags.contains(t)) {
-        final next = [...tags, t];
-        setState(() => _policy[key] = next);
-      }
+      if (!tags.contains(t)) _setPolicy(key, [...tags, t]);
       controller.clear();
     }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -904,30 +1184,29 @@ class _AdminUserEditScreenState extends ConsumerState<AdminUserEditScreen> {
             Wrap(
               spacing: 8,
               runSpacing: 4,
-              children: tags
-                  .map((t) => Chip(
-                        label: Text(t),
-                        onDeleted: () => setState(() =>
-                            _policy[key] = tags.where((x) => x != t).toList()),
-                      ))
-                  .toList(),
+              children: [
+                for (final t in tags)
+                  Chip(
+                    label: Text(t),
+                    onDeleted: () =>
+                        _setPolicy(key, tags.where((x) => x != t).toList()),
+                  ),
+              ],
             ),
+          const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
                 child: TextField(
                   controller: controller,
-                  decoration: InputDecoration(
-                    hintText: l10n.adminAddTag,
-                    border: const OutlineInputBorder(),
-                    isDense: true,
-                  ),
+                  decoration: adminInputDecoration(hint: l10n.adminAddTag),
                   onSubmitted: (_) => addTag(),
                 ),
               ),
               const SizedBox(width: 8),
               IconButton(
                 icon: const Icon(Icons.add_circle_outline),
+                tooltip: l10n.adminAddTag,
                 onPressed: addTag,
               ),
             ],
@@ -937,87 +1216,54 @@ class _AdminUserEditScreenState extends ConsumerState<AdminUserEditScreen> {
     );
   }
 
-  static String _unratedBook(AppLocalizations l) => l.adminUnratedBook;
-  static String _unratedChannel(AppLocalizations l) => l.adminUnratedChannelContent;
-  static String _unratedLiveTv(AppLocalizations l) => l.adminUnratedLiveTvChannel;
-  static String _unratedMovie(AppLocalizations l) => l.adminUnratedMovie;
-  static String _unratedMusic(AppLocalizations l) => l.adminUnratedMusic;
-  static String _unratedTrailer(AppLocalizations l) => l.adminUnratedTrailer;
-  static String _unratedSeries(AppLocalizations l) => l.adminUnratedSeries;
-
-  Widget _buildPasswordTab() {
-    final l10n = AppLocalizations.of(context);
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Text(l10n.adminChangePassword,
-            style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 16),
-        TextFormField(
-          controller: _passwordController,
-          decoration: adminInputDecoration(label: l10n.adminNewPassword),
-          obscureText: true,
-        ),
-        const SizedBox(height: 16),
-        TextFormField(
-          controller: _confirmPasswordController,
-          decoration: adminInputDecoration(label: l10n.adminConfirmPassword),
-          obscureText: true,
-        ),
-        const SizedBox(height: 24),
-        Row(
-          children: [
-            FilledButton(
-              onPressed: _saving ? null : _savePassword,
-              child: Text(l10n.adminSetPassword),
-            ),
-            const SizedBox(width: 12),
+  List<Widget> _buildPasswordTab(AppLocalizations l10n) {
+    Widget field(String label, TextEditingController controller) =>
+        adminFieldRow(
+          label: label,
+          child: TextField(
+            controller: controller,
+            decoration: adminInputDecoration(),
+            obscureText: true,
+          ),
+        );
+    return [
+      adminSection(
+        context,
+        title: l10n.adminChangePassword,
+        icon: Icons.password,
+        children: [
+          // The server checks it when an admin changes their own password.
+          if (_isSelf) field(l10n.adminCurrentPassword, _currentPasswordController),
+          field(l10n.adminNewPassword, _passwordController),
+          field(l10n.adminConfirmPassword, _confirmPasswordController),
+        ],
+      ),
+      const SizedBox(height: 16),
+      Wrap(
+        spacing: 12,
+        runSpacing: 8,
+        children: [
+          FilledButton(
+            onPressed: _passwordBusy ? null : _savePassword,
+            child: Text(l10n.adminSetPassword),
+          ),
+          // A reset removes the password, and an administrator can't be left
+          // without one.
+          if (!_isAdmin)
             OutlinedButton(
-              onPressed: _saving
-                  ? null
-                  : () async {
-                      final confirmed = await showDialog<bool>(
-                        context: context,
-                        builder: (ctx) => AlertDialog.adaptive(
-                          title: Text(l10n.adminResetPassword),
-                          content: Text(l10n.adminResetPasswordWarning),
-                          actions: [
-                            adaptiveDialogAction(
-                              onPressed: () =>
-                                  Navigator.of(ctx).pop(false),
-                              child: Text(l10n.cancel),
-                            ),
-                            FilledButton(
-                              onPressed: () =>
-                                  Navigator.of(ctx).pop(true),
-                              child: Text(l10n.reset),
-                            ),
-                          ],
-                        ),
-                      );
-                      if (confirmed == true) {
-                        _passwordController.clear();
-                        _confirmPasswordController.clear();
-                        await _savePassword();
-                      }
-                    },
+              onPressed: _passwordBusy ? null : _resetPassword,
               child: Text(l10n.adminResetPassword),
             ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _sectionHeader(String title) {
-    return adminSectionLabel(context, title);
+        ],
+      ),
+    ];
   }
 
   Widget _policySwitch(String key, String label) {
     return adminSwitchRow(
       title: label,
       value: _policy[key] as bool? ?? false,
-      onChanged: (v) => _togglePolicy(key, v),
+      onChanged: (v) => _setPolicy(key, v),
     );
   }
 }

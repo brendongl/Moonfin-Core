@@ -259,6 +259,9 @@ typedef struct {
 
 #define LH_MAX_JOBS 16
 
+// Not an lh_result: every result code is zero or negative.
+#define LOAD_PENDING 1
+
 // Largest per-side frame dimension the host will accept, either from
 // notify_geometry (SET_SYSTEM_AV_INFO / SET_GEOMETRY) or from a video_refresh
 // callback. Both ultimately come from the loaded core, which is not a trusted
@@ -386,10 +389,9 @@ struct lh_host {
   // SET_HW_RENDER: the core owns that memory and may reuse it the moment the
   // environment call returns.
   struct retro_hw_render_callback hw_render;
-  // What the core asked for, normalised. hw_requested is set on the PLATFORM
-  // thread (SET_HW_RENDER arrives inside retro_load_game, which lh_load runs
-  // inline) but the context is only ever created on the emulation thread, so
-  // this is the hand-off between the two.
+  // What the core asked for, normalised. hw_requested is set while
+  // retro_load_game runs, but the context is only created once lh_start lets
+  // the loop run (see run_loop), so this is the hand-off between the two.
   lh_hw_request hw_request;
   int hw_requested;
   // The backend currently holds a live context. Emulation thread only.
@@ -420,8 +422,20 @@ struct lh_host {
   atomic_int unhandled_env_count;
 
   // Run loop. running/paused/fast_forward are shared with the loop thread.
+  // Every call into the core happens on [thread]: lh_load creates it to run
+  // retro_init and retro_load_game, and the same thread then runs the loop and
+  // the teardown. Some cores keep per-thread state from retro_init, such as
+  // libco's Windows fibers, and fault when retro_run comes from another thread.
   lh_thread thread;
   int has_thread;
+  // Loaded and waiting for lh_start or lh_stop, draining jobs meanwhile.
+  // Guarded by jobs_lock.
+  int idle;
+  // lh_load's result as the thread reports it, LOAD_PENDING until then.
+  // Guarded by jobs_lock.
+  int load_rc;
+  // The thread only runs retro_init for lh_probe_options, then exits.
+  int probing;
   atomic_int running;
   atomic_int paused;
   atomic_int fast_forward;
@@ -431,8 +445,8 @@ struct lh_host {
   atomic_int shutdown_requested;
   uint64_t last_sram_flush_ns;
 
-  // Jobs. jobs_open says whether the loop is still there to drain them, so a
-  // job queued as the loop exits is never left waiting.
+  // Jobs. jobs_open says whether the thread is still there to drain them, so
+  // a job queued as the loop exits is never left waiting.
   lh_job *jobs[LH_MAX_JOBS];
   int job_count;
   int jobs_open;
@@ -496,6 +510,15 @@ struct lh_host {
   // l2 packed in the high 16 bits, r2 in the low, for the same reason.
   atomic_uint trigger_level[LH_MAX_PORTS];
   atomic_uint trigger_frame[LH_MAX_PORTS];     // published, read cross-thread
+  // Touchscreen pointer, a level like the sticks. [0] packs x,y so a touch
+  // position can't tear, [1] is pressed.
+  atomic_uint pointer_level[LH_MAX_PORTS][2];
+  atomic_uint pointer_frame[LH_MAX_PORTS][2];  // published, read cross-thread
+  // A tap can start and end between two frame latches. tap records a press
+  // since the last latch, and hold keeps it down for the next frame so the
+  // core still sees it.
+  atomic_uint pointer_tap[LH_MAX_PORTS];
+  atomic_uint pointer_hold[LH_MAX_PORTS];
 
   // Ports the core has actually READ an analog stick on, bit N = port N; half
   // of lh_analog_stick_ports' answer. Written from whatever thread the core
@@ -1167,6 +1190,12 @@ static void reset_analog_state(struct lh_host *h) {
     atomic_store(&h->analog_frame[p][0], 0u);
     atomic_store(&h->analog_frame[p][1], 0u);
     atomic_store(&h->trigger_frame[p], 0u);
+    atomic_store(&h->pointer_level[p][0], 0u);
+    atomic_store(&h->pointer_level[p][1], 0u);
+    atomic_store(&h->pointer_frame[p][0], 0u);
+    atomic_store(&h->pointer_frame[p][1], 0u);
+    atomic_store(&h->pointer_tap[p], 0u);
+    atomic_store(&h->pointer_hold[p], 0u);
   }
 }
 
@@ -1428,10 +1457,9 @@ static bool RETRO_CALLCONV environment_cb(unsigned cmd, void *data) {
         // failure partway through shouldn't stop parsing the rest (later
         // entries are independent and may still succeed) - but it does mean
         // the option set is now incomplete, so the load has to be failed
-        // once open_core/load_content return control to lh_load. Keep
-        // parsing instead of bailing out here so h->def_count reflects
-        // whatever really was parsed, which matters if a caller ever
-        // inspects options after logging the failure.
+        // once open_core/load_content return. Keep parsing instead of bailing
+        // out here so h->def_count reflects whatever really was parsed, which
+        // matters if a caller ever inspects options after logging the failure.
         if (parse_variable(h, cursor->key, cursor->value) != 0) {
           h->alloc_failed = 1;
         }
@@ -1775,6 +1803,19 @@ static int hw_api_from_context_type(unsigned type, lh_hw_api *out) {
   }
 }
 
+// Sizes the render target from the core's declared maximum, or its base size
+// where the maximum is 0. Returns 1 when usable, 0 while the size is still 0,
+// and -1 when it is too large.
+static int hw_size_target(lh_hw_request *req,
+                          const struct retro_game_geometry *g) {
+  unsigned w = g->max_width ? g->max_width : g->base_width;
+  unsigned h = g->max_height ? g->max_height : g->base_height;
+  if (w > LH_MAX_FRAME_DIMENSION || h > LH_MAX_FRAME_DIMENSION) return -1;
+  req->max_width = (int)w;
+  req->max_height = (int)h;
+  return w > 0 && h > 0;
+}
+
 // Record a SET_HW_RENDER request; context creation is deferred to the loop.
 static bool hw_note_request(struct lh_host *h,
                             struct retro_hw_render_callback *cb) {
@@ -1798,19 +1839,15 @@ static bool hw_note_request(struct lh_host *h,
   req.bottom_left_origin = cb->bottom_left_origin ? 1 : 0;
   req.debug_context = cb->debug_context ? 1 : 0;
 
-  // Size the target once from the core's declared maximum; cores may cache it.
+  // Only an oversized target is refused here. PPSSPP reads its resolution
+  // option after this call and reports 0x0 until then, so load_content sizes
+  // the target again from the final geometry.
   struct retro_system_av_info av;
   memset(&av, 0, sizeof(av));
   h->core.get_system_av_info(&av);
-  req.max_width = (int)av.geometry.max_width;
-  req.max_height = (int)av.geometry.max_height;
-  if (req.max_width <= 0) req.max_width = (int)av.geometry.base_width;
-  if (req.max_height <= 0) req.max_height = (int)av.geometry.base_height;
-  if (req.max_width <= 0 || req.max_height <= 0 ||
-      req.max_width > LH_MAX_FRAME_DIMENSION ||
-      req.max_height > LH_MAX_FRAME_DIMENSION) {
-    host_log(h, "Core declared an unusable hardware framebuffer size %dx%d",
-             req.max_width, req.max_height);
+  if (hw_size_target(&req, &av.geometry) < 0) {
+    host_log(h, "Core declared an unusable hardware framebuffer size %ux%u",
+             av.geometry.max_width, av.geometry.max_height);
     return false;
   }
 
@@ -2023,6 +2060,13 @@ static void latch_analog(struct lh_host *h) {
     atomic_store_explicit(&h->trigger_frame[p],
                           atomic_load(&h->trigger_level[p]),
                           memory_order_release);
+    atomic_store_explicit(&h->pointer_frame[p][0],
+                          atomic_load(&h->pointer_level[p][0]),
+                          memory_order_release);
+    atomic_store_explicit(&h->pointer_frame[p][1],
+                          atomic_load(&h->pointer_level[p][1]) |
+                              atomic_load(&h->pointer_hold[p]),
+                          memory_order_release);
   }
 }
 
@@ -2114,6 +2158,7 @@ static void latch_input(struct lh_host *h) {
         }
       }
     }
+    atomic_store(&h->pointer_hold[p], atomic_exchange(&h->pointer_tap[p], 0u));
   }
   latch_analog(h);
   // Runs before retro_run, so the flag being rolled up here belongs to the
@@ -2262,6 +2307,21 @@ static int16_t RETRO_CALLCONV input_state_cb(unsigned port, unsigned device,
     return 0;
   }
 
+  if (device == RETRO_DEVICE_POINTER) {
+    if (index != 0) return 0;  // one touch per port
+    unsigned pressed = atomic_load_explicit(&h->pointer_frame[port][1],
+                                            memory_order_acquire);
+    uint32_t xy = atomic_load_explicit(&h->pointer_frame[port][0],
+                                       memory_order_acquire);
+    switch (id) {
+      case RETRO_DEVICE_ID_POINTER_X: return unpack_x(xy);
+      case RETRO_DEVICE_ID_POINTER_Y: return unpack_y(xy);
+      case RETRO_DEVICE_ID_POINTER_PRESSED:
+      case RETRO_DEVICE_ID_POINTER_COUNT: return pressed ? 1 : 0;
+      default: return 0;
+    }
+  }
+
   if (device != RETRO_DEVICE_JOYPAD) return 0;
   // Latched by the host before retro_run. Each read observes one complete
   // atomic mask rather than independently sampled button bits.
@@ -2318,26 +2378,19 @@ static void execute_job(struct lh_host *h, lh_job *job) {
   }
 }
 
-// Runs [job] on the emulation thread and waits, or inline when no loop runs.
-// A full queue or a loop that already exited gives up instead of waiting, since
-// nothing would ever mark the job done.
+// Runs [job] on the emulation thread and waits. A full queue, or no thread
+// left to drain it, gives up instead of waiting, since nothing would ever mark
+// the job done.
 static int run_job(struct lh_host *h, lh_job *job) {
   mutex_lock(&h->jobs_lock);
-  if (h->jobs_open) {
-    if (h->job_count < LH_MAX_JOBS) {
-      h->jobs[h->job_count++] = job;
-      while (!job->done) cond_wait(&h->jobs_cond, &h->jobs_lock);
-      mutex_unlock(&h->jobs_lock);
-      return 0;
-    }
-    mutex_unlock(&h->jobs_lock);
-    return -1;
+  int queued = h->jobs_open && h->job_count < LH_MAX_JOBS;
+  if (queued) {
+    h->jobs[h->job_count++] = job;
+    cond_broadcast(&h->jobs_cond);  // wakes a loop idling before lh_start
+    while (!job->done) cond_wait(&h->jobs_cond, &h->jobs_lock);
   }
-  int loaded = h->core_loaded;
   mutex_unlock(&h->jobs_lock);
-  if (!loaded) return -1;
-  execute_job(h, job);
-  return 0;
+  return queued ? 0 : -1;
 }
 
 static void drain_jobs(struct lh_host *h) {
@@ -2398,19 +2451,37 @@ static void sram_flush(struct lh_host *h) {
 // Run loop.
 // ---------------------------------------------------------------------------
 
-static void *run_loop(void *arg) {
-  struct lh_host *h = (struct lh_host *)arg;
+// Between lh_load and lh_start (or lh_stop): no frames run, but jobs such as a
+// controller change or a save-state size query still run here.
+static void wait_for_start(struct lh_host *h) {
+  mutex_lock(&h->jobs_lock);
+  while (h->idle) {
+    if (h->job_count == 0) {
+      cond_wait(&h->jobs_cond, &h->jobs_lock);
+      continue;
+    }
+    mutex_unlock(&h->jobs_lock);
+    drain_jobs(h);
+    mutex_lock(&h->jobs_lock);
+  }
+  mutex_unlock(&h->jobs_lock);
+}
+
+// Runs on the emulation thread once the load succeeded, and owns the core from
+// here to its unload.
+static void run_loop(struct lh_host *h) {
+  wait_for_start(h);
   const uint64_t frame_ns =
       (uint64_t)(1000000000.0 / (h->av.fps > 0 ? h->av.fps : 60.0));
   // Seconds of audio to keep queued.
   const double pace_seconds = 0.05;
   uint64_t next = now_ns();
 
-  // The context is created HERE, not in lh_load. SET_HW_RENDER arrives inside
-  // retro_load_game, which lh_load runs inline on the platform thread, but a
-  // graphics context has to belong to the thread that calls retro_run. So the
-  // load only records the request and this is the first chance to honour it.
-  if (hw_bring_up(h) != 0 && h->cb.fatal_error) {
+  // The context waits for lh_start rather than coming up right after
+  // retro_load_game, which only records the request. A session stopped before
+  // it starts then never touches the GPU, and the platform has had lh_load's
+  // return to hand over its surface first.
+  if (h->running && hw_bring_up(h) != 0 && h->cb.fatal_error) {
     h->running = 0;
     h->cb.fatal_error(h->cb.user,
                       "The graphics context for this core could not be created.");
@@ -2525,22 +2596,24 @@ static void *run_loop(void *arg) {
   if (h->shutdown_requested && h->cb.core_shutdown) {
     h->cb.core_shutdown(h->cb.user);
   }
-  return NULL;
 }
 
+// Defined after open_core and load_content, which it calls.
+static void *emu_thread(void *arg);
+
 #ifdef _WIN32
-static DWORD WINAPI run_loop_win(LPVOID arg) {
-  run_loop(arg);
+static DWORD WINAPI emu_thread_win(LPVOID arg) {
+  emu_thread(arg);
   return 0;
 }
 #endif
 
 static void thread_start(struct lh_host *h) {
 #ifdef _WIN32
-  h->thread = CreateThread(NULL, 0, run_loop_win, h, 0, NULL);
+  h->thread = CreateThread(NULL, 0, emu_thread_win, h, 0, NULL);
   h->has_thread = h->thread != NULL;
 #else
-  h->has_thread = pthread_create(&h->thread, NULL, run_loop, h) == 0;
+  h->has_thread = pthread_create(&h->thread, NULL, emu_thread, h) == 0;
 #endif
 }
 
@@ -2652,6 +2725,22 @@ void lh_set_pad_state(lh_host *host, int port, uint16_t mask, int16_t lx,
   set_digital_input(host, port, mask);
 }
 
+void lh_set_pointer(lh_host *host, int port, int pressed, int16_t x,
+                    int16_t y) {
+  if (!host || port < 0 || port >= LH_MAX_PORTS) return;
+  if (!pressed) {
+    // A latched tap still needs the position it landed on.
+    atomic_store(&host->pointer_level[port][1], 0u);
+    return;
+  }
+  // Position first, for the same reason as the analog-first order above: a
+  // poll that sees the press already sees where it landed.
+  atomic_store(&host->pointer_level[port][0], pack_axes(x, y));
+  if (!atomic_exchange(&host->pointer_level[port][1], 1u)) {
+    atomic_store(&host->pointer_tap[port], 1u);
+  }
+}
+
 void lh_test_poll_input(lh_host *host) {
   if (host) {
     apply_resume_request(host);
@@ -2703,6 +2792,13 @@ uint16_t lh_test_read_trigger(lh_host *host, int port, int which) {
   return which == 0 ? (uint16_t)unpack_x(packed) : (uint16_t)unpack_y(packed);
 }
 
+int16_t lh_test_read_pointer(lh_host *host, int port, int field) {
+  if (!host || port < 0 || port >= LH_MAX_PORTS) return 0;
+  if (field == 2) return (int16_t)atomic_load(&host->pointer_frame[port][1]);
+  uint32_t packed = atomic_load(&host->pointer_frame[port][0]);
+  return field == 0 ? unpack_x(packed) : unpack_y(packed);
+}
+
 static void free_load_paths(struct lh_host *h) {
   free(h->system_dir);
   free(h->save_dir);
@@ -2713,14 +2809,14 @@ static void free_load_paths(struct lh_host *h) {
       NULL;
 }
 
-// Unwinds a core that was opened (and possibly loaded) for an attempt that
-// is now being abandoned: lh_load's load_failed and restart_core's failure
-// path both reach this. load_content can fail (e.g. -7, alloc_failed) after
-// it already set core_loaded = 1 and called retro_load_game successfully;
-// leaving core_loaded = 1 here would let lh_serialize_size/lh_reset/lh_stop
-// pass their core_loaded guard and run a job against a core struct this
-// function is about to zero out. retro_unload_game must also be paired with
-// the retro_load_game that succeeded before deinit runs - calling deinit
+// Unwinds a core that was opened, and possibly loaded, for an attempt that is
+// now being abandoned. A failed load in emu_thread, a probe, and restart_core's
+// failure path all reach this. load_content can fail (e.g. -7, alloc_failed)
+// after it already set core_loaded = 1 and called retro_load_game. Leaving
+// core_loaded = 1 here would let lh_serialize_size, lh_reset or lh_stop pass
+// their core_loaded guard and run a job against a core struct this function is
+// about to zero out. retro_unload_game must also be paired with the
+// retro_load_game that succeeded before deinit runs, because calling deinit
 // without unload_game first is out of the libretro contract.
 static void unwind_failed_core(struct lh_host *h) {
   // Same ordering rule as the clean paths: the core hears about the context
@@ -2734,17 +2830,6 @@ static void unwind_failed_core(struct lh_host *h) {
   if (h->core.deinit) h->core.deinit();
   if (h->core.handle) lib_close(h->core.handle);
   memset(&h->core, 0, sizeof(h->core));
-}
-
-// Unwinds a load that failed after retro_init, pairing the init and freeing the
-// paths that lh_stop would otherwise own.
-static int load_failed(struct lh_host *h, int code) {
-  unwind_failed_core(h);
-  clear_controller_info(h);
-  clear_input_descriptors(h);
-  free_load_paths(h);
-  g_session = NULL;
-  return code;
 }
 
 static int open_core(struct lh_host *h) {
@@ -2787,7 +2872,9 @@ static int open_core(struct lh_host *h) {
 }
 
 // open_core already does exactly what a probe needs -- dlopen, resolve,
-// set_environment, retro_init -- and stops short of content.
+// set_environment, retro_init -- and stops short of content. It runs on a
+// short-lived thread of its own, so whatever per-thread state retro_init sets
+// up never lands on the caller's thread.
 int lh_probe_options(lh_host *h, const char *core_path, const char *system_dir) {
   if (!h || !core_path || !system_dir) return -1;
   if (g_session) return LH_ERR_SESSION_BUSY;
@@ -2802,18 +2889,17 @@ int lh_probe_options(lh_host *h, const char *core_path, const char *system_dir) 
   }
 
   g_session = h;
-  int rc = open_core(h);
-  if (rc != 0) {
-    free_load_paths(h);
-    g_session = NULL;
-    return rc;
+  h->probing = 1;
+  thread_start(h);
+  int rc = LH_ERR_ALLOC;
+  if (h->has_thread) {
+    thread_join(h);  // publishes load_rc
+    rc = h->load_rc;
   }
-
-  // Pairs the init and drops the module. Deliberately leaves h->defs alone.
-  unwind_failed_core(h);
+  h->probing = 0;
   free_load_paths(h);
   g_session = NULL;
-  return 0;
+  return rc;
 }
 
 static int load_content(struct lh_host *h) {
@@ -2880,6 +2966,14 @@ static int load_content(struct lh_host *h) {
   struct retro_system_av_info av;
   memset(&av, 0, sizeof(av));
   h->core.get_system_av_info(&av);
+  // The core's hardware request was already accepted and it has no software
+  // path left, so a target that can't be sized fails the load.
+  if (h->hw_requested && hw_size_target(&h->hw_request, &av.geometry) != 1) {
+    host_log(h, "Core declared an unusable hardware framebuffer size %ux%u",
+             av.geometry.max_width, av.geometry.max_height);
+    if (h->core.unload_game) h->core.unload_game();
+    return LH_ERR_CONTENT_REJECTED;
+  }
   h->av.width = (int)av.geometry.base_width;
   h->av.height = (int)av.geometry.base_height;
   if (av.geometry.aspect_ratio > 0) {
@@ -2922,6 +3016,35 @@ static int load_content(struct lh_host *h) {
   // its own setup", so both callers just check `rc != 0`.
   if (h->alloc_failed) return LH_ERR_ALLOC;
   return 0;
+}
+
+static void *emu_thread(void *arg) {
+  struct lh_host *h = (struct lh_host *)arg;
+  if (h->probing) {
+    // Pairs the init and drops the module. Deliberately leaves h->defs alone.
+    h->load_rc = open_core(h);
+    if (h->load_rc == 0) unwind_failed_core(h);
+    return NULL;
+  }
+
+  int rc = open_core(h);
+  if (rc == 0) {
+    rc = load_content(h);
+    // Pairs the init here, on the thread that ran it. lh_load frees the paths.
+    if (rc != 0) {
+      unwind_failed_core(h);
+      clear_controller_info(h);
+      clear_input_descriptors(h);
+    }
+  }
+  mutex_lock(&h->jobs_lock);
+  h->load_rc = rc;
+  h->jobs_open = rc == 0;
+  h->idle = rc == 0;
+  cond_broadcast(&h->jobs_cond);
+  mutex_unlock(&h->jobs_lock);
+  if (rc == 0) run_loop(h);
+  return NULL;
 }
 
 int lh_load(lh_host *h, const char *core_path, const char *rom_path,
@@ -2984,42 +3107,40 @@ int lh_load(lh_host *h, const char *core_path, const char *rom_path,
   }
 
   g_session = h;
-  int rc = open_core(h);
+  h->load_rc = LOAD_PENDING;
+  thread_start(h);
+  int rc = LH_ERR_ALLOC;
+  if (h->has_thread) {
+    mutex_lock(&h->jobs_lock);
+    while (h->load_rc == LOAD_PENDING) cond_wait(&h->jobs_cond, &h->jobs_lock);
+    rc = h->load_rc;
+    mutex_unlock(&h->jobs_lock);
+    // A failed load already unwound the core on its thread, which then exits.
+    if (rc != 0) thread_join(h);
+  }
   if (rc != 0) {
     free_load_paths(h);
     g_session = NULL;
     return rc;
   }
-  rc = load_content(h);
-  if (rc != 0) return load_failed(h, rc);
   if (out_info) *out_info = h->av;
   return 0;
 }
 
+// The thread already exists from lh_load, so this only lets its loop run.
 int lh_start(lh_host *h) {
-  if (h->has_thread) return 0;  // already running
-  if (!h->core_loaded || h->shutdown_requested) return -1;
-  h->running = 1;
-  atomic_store(&h->paused, 0);
-  // Opened before thread_start, or run_job could run a job inline while the
-  // loop is already live.
   mutex_lock(&h->jobs_lock);
-  h->jobs_open = 1;
-  mutex_unlock(&h->jobs_lock);
-  thread_start(h);
-  if (!h->has_thread) {
-    // Close and drain, or run_job waits forever on a condvar no thread can
-    // signal. Draining is required here because while (!job->done) ignores a wake.
-    h->running = 0;
-    mutex_lock(&h->jobs_lock);
-    h->jobs_open = 0;
-    for (int i = 0; i < h->job_count; i++) h->jobs[i]->done = 1;
-    h->job_count = 0;
+  int rc = h->has_thread && !h->idle ? 0 : -1;  // already running
+  // A core that asked to quit from a job run before the start is never run.
+  if (h->idle && !h->shutdown_requested) {
+    h->idle = 0;
+    h->running = 1;
+    atomic_store(&h->paused, 0);
     cond_broadcast(&h->jobs_cond);
-    mutex_unlock(&h->jobs_lock);
-    return -1;
+    rc = 0;
   }
-  return 0;
+  mutex_unlock(&h->jobs_lock);
+  return rc;
 }
 
 void lh_pause(lh_host *h) { atomic_store(&h->paused, 1); }
@@ -3059,9 +3180,9 @@ static int restart_core(struct lh_host *h) {
     return -1;
   }
 
-  // restart_core is executed by the emulation thread (or inline only when no
-  // run loop exists), so this shared lifecycle reset cannot race latch_input's
-  // plain per-button ages. The latest physical level intentionally survives.
+  // restart_core always runs on the emulation thread, so this shared lifecycle
+  // reset can't race latch_input's plain per-button ages. The latest physical
+  // level intentionally survives.
   reset_digital_input(h);
   sram_flush(h);
   // A restart builds a brand-new core instance that knows nothing about the
@@ -3092,12 +3213,12 @@ static int restart_core(struct lh_host *h) {
 
   int rc = open_core(h);
   if (rc == 0) rc = load_content(h);
-  // Already on the emulation thread here, so the new core's context can be
-  // stood up immediately rather than waiting for the top of the loop.
-  if (rc == 0) rc = hw_bring_up(h);
+  // A running loop stands the new core's context up immediately rather than
+  // waiting for the top of the loop. Before lh_start, run_loop does it.
+  if (rc == 0 && h->running) rc = hw_bring_up(h);
   if (rc == 0) reapply_controller_devices(h);
   if (rc != 0) {
-    // Same unwind load_failed performs for lh_load, but restart_core keeps
+    // Same unwind a failed lh_load performs, but restart_core keeps
     // g_session and the load paths alive (a later restart attempt reuses
     // core_path/rom_path via open_core, and lh_stop still needs them).
     unwind_failed_core(h);
@@ -3128,36 +3249,20 @@ unsigned lh_restart_generation(lh_host *h) {
 }
 
 void lh_stop(lh_host *h) {
-  if (h->has_thread) {
-    // Clearing running under jobs_lock makes this transition atomic with
-    // run_job's queue-or-execute decision (see the comment on run_job): either
-    // a concurrent run_job call observes running==1 here and queues into a
-    // loop that is guaranteed one more drain_jobs before it can exit (see
-    // run_loop's final drain), or it observes running==0 and fails the job
-    // without entering a core that may be unloading. Without holding the lock across this
-    // write, run_job could read running==1 a moment after this store and
-    // queue into a loop that has already fallen out of its while() condition,
-    // and the job would then wait on jobs_cond forever.
-    mutex_lock(&h->jobs_lock);
-    h->running = 0;
-    mutex_unlock(&h->jobs_lock);
-    thread_join(h);  // the loop flushes SRAM and tears the core down
-  } else if (h->core_loaded) {
-    // Same order as the run loop's exit, so a job from another thread is
-    // refused rather than run against a core going away.
-    mutex_lock(&h->jobs_lock);
-    h->core_loaded = 0;
-    mutex_unlock(&h->jobs_lock);
-    sram_flush(h);
-    if (h->core.unload_game) h->core.unload_game();
-    if (h->core.deinit) h->core.deinit();
-    if (h->core.handle) lib_close(h->core.handle);
-    memset(&h->core, 0, sizeof(h->core));
-  }
-  // Both branches above end with the core torn down (thread_join returns only
-  // after run_loop has unloaded it), so no core-held GET_VARIABLE pointer can
-  // outlive this point and the retired values can go. h->vars themselves stay
-  // put - lh_destroy's free_options owns those.
+  // Under jobs_lock, so a concurrent run_job either queues before this and is
+  // drained or refused by the loop's exit, or finds the queue closed. Clearing
+  // idle as well releases a loop that was never started, which then goes
+  // straight to the same teardown.
+  mutex_lock(&h->jobs_lock);
+  h->running = 0;
+  h->idle = 0;
+  cond_broadcast(&h->jobs_cond);
+  mutex_unlock(&h->jobs_lock);
+  thread_join(h);  // the thread flushes SRAM and tears the core down
+  // thread_join returns only after run_loop has unloaded the core, so no
+  // core-held GET_VARIABLE pointer can outlive this point and the retired
+  // values can go. h->vars themselves stay, because lh_destroy's free_options
+  // owns those.
   mutex_lock(&h->vars_lock);
   vars_free_retired(h);
   mutex_unlock(&h->vars_lock);
@@ -3186,7 +3291,7 @@ static void free_options(struct lh_host *h) {
 
 void lh_destroy(lh_host *h) {
   if (!h) return;
-  if (h->core_loaded || h->has_thread) lh_stop(h);
+  if (h->has_thread) lh_stop(h);
   free_options(h);
   clear_controller_info(h);
   clear_input_descriptors(h);

@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "Foretrukket visningssprog",
     "offlineBannerTitle": "Du er offline",
     "offlineBannerSubtitle": "Viser dine downloads",
-    "offlineBannerAction": "Downloads",
     "serverUnreachableBannerTitle": "Kan ikke få forbindelse til din server",
     "serverUnreachableBannerSubtitle": "Afspiller fra downloads, indtil den er tilbage",
     "contextMenuHideFromContinueWatching": "Skjul fra Fortsæt med at se",

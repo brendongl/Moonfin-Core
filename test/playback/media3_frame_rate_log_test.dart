@@ -26,6 +26,7 @@ Future<void> _send(Map<String, dynamic> payload) {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  late UserPreferences prefs;
   late LogService logs;
   late Media3PlayerBackend backend;
 
@@ -33,7 +34,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final store = PreferenceStore();
     await store.init();
-    final prefs = UserPreferences(store);
+    prefs = UserPreferences(store);
     await prefs.set(UserPreferences.diagnosticLoggingEnabled, true);
     logs = LogService(
       prefs,
@@ -144,7 +145,7 @@ void main() {
     );
   });
 
-  test('the source payload carries the dimensions the chooser needs', () async {
+  test('the source payload carries what the player needs', () async {
     final calls = <MethodCall>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_control, (call) async {
@@ -152,6 +153,7 @@ void main() {
           return null;
         });
 
+    await prefs.set(UserPreferences.videoStartDelay, 2000);
     await backend.play(<String, dynamic>{
       'url': 'http://example.test/video.mkv',
       'mediaType': 'video',
@@ -165,5 +167,18 @@ void main() {
     expect(args['videoFrameRate'], closeTo(23.976023, 0.000001));
     expect(args['videoWidth'], 1920);
     expect(args['videoHeight'], 800);
+    expect(args['videoStartDelayMs'], 2000);
+  });
+
+  test('a start held for the mode switch says how long', () async {
+    await _send(<String, dynamic>{
+      'event': 'startHeldForDisplayMode',
+      'heldMs': 2600,
+    });
+    await pumpEventQueue();
+    expect(
+      lastLine(),
+      'Media3: held the start 2600ms for the display mode switch to settle',
+    );
   });
 }

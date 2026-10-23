@@ -4,6 +4,7 @@ import 'package:server_core/server_core.dart';
 
 import '../../../../l10n/app_localizations.dart';
 import 'admin_form_styles.dart';
+import 'admin_settings_search.dart';
 
 class ServerPathsCard extends StatelessWidget {
   final StorageInfo storageInfo;
@@ -14,12 +15,11 @@ class ServerPathsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    final pathRows = <Widget>[];
-    for (final row in [
+    final pathRows = [
       _pathTile(
-        l10n.adminServerPathData,
-        storageInfo.programDataPath,
-        storageInfo.programDataFolder,
+        l10n.adminServerPathCache,
+        storageInfo.cachePath,
+        storageInfo.cacheFolder,
         context,
       ),
       _pathTile(
@@ -29,9 +29,9 @@ class ServerPathsCard extends StatelessWidget {
         context,
       ),
       _pathTile(
-        l10n.adminServerPathCache,
-        storageInfo.cachePath,
-        storageInfo.cacheFolder,
+        l10n.adminServerPathData,
+        storageInfo.programDataPath,
+        storageInfo.programDataFolder,
         context,
       ),
       _pathTile(
@@ -58,40 +58,29 @@ class ServerPathsCard extends StatelessWidget {
         storageInfo.webFolder,
         context,
       ),
-    ]) {
-      if (row != null) {
-        pathRows.add(row);
-      }
-    }
+    ].nonNulls.toList();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        adminSectionLabel(context, l10n.adminServerPaths, icon: Icons.folder),
-        adminGlassGroup(
-          context,
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.spaceLg,
-                vertical: AppSpacing.spaceMd,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (pathRows.isEmpty)
-                    Text(
-                      l10n.adminNoServerPathsReturned,
-                      style: theme.textTheme.bodySmall,
-                    )
-                  else
-                    ...pathRows,
-                ],
-              ),
-            ),
-          ],
-        ),
-      ],
+    return AdminSettingAnchor(
+      id: 'dashboard.ServerPaths',
+      child: adminSection(
+        context,
+        title: l10n.adminServerPaths,
+        icon: Icons.folder,
+        children: pathRows.isEmpty
+            ? [
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.spaceLg,
+                    vertical: AppSpacing.spaceMd,
+                  ),
+                  child: Text(
+                    l10n.adminNoServerPathsReturned,
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+              ]
+            : pathRows,
+      ),
     );
   }
 
@@ -110,13 +99,16 @@ class ServerPathsCard extends StatelessWidget {
     final bool critical = usageFrac >= 0.90;
     final bool warning = usageFrac >= 0.75;
     final Color barColor = critical
-      ? AppColorScheme.statusRequested
+        ? Theme.of(context).colorScheme.error
         : warning
-        ? AppColorScheme.statusPending
-        : AppColorScheme.statusAvailable;
+            ? AppColorScheme.recordingScheduled
+            : AppColorScheme.statusAvailable;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.spaceLg,
+        vertical: AppSpacing.spaceMd,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -127,7 +119,7 @@ class ServerPathsCard extends StatelessWidget {
               if (critical) ...[
                 const SizedBox(width: 6),
                 Icon(Icons.warning_amber,
-                    size: 13, color: AppColorScheme.statusPending),
+                    size: 13, color: AppColorScheme.recordingScheduled),
               ],
             ],
           ),
@@ -162,7 +154,11 @@ class ServerPathsCard extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '${_formatBytes(storage.usedSpace)} / ${_formatBytes(storage.totalSpace)}',
+                  // The server sends a negative used space when it couldn't
+                  // read it.
+                  storage.usedSpace < 0
+                      ? '? / ?'
+                      : '${_formatBytes(storage.usedSpace)} / ${_formatBytes(storage.totalSpace)}',
                   style: const TextStyle(fontSize: 11),
                 ),
               ],

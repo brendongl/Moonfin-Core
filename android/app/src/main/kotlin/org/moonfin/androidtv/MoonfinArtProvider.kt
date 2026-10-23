@@ -11,13 +11,6 @@ import java.io.FileNotFoundException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
-import java.security.SecureRandom
-import java.security.cert.X509Certificate
-import javax.net.ssl.HostnameVerifier
-import javax.net.ssl.HttpsURLConnection
-import javax.net.ssl.SSLContext
-import javax.net.ssl.TrustManager
-import javax.net.ssl.X509TrustManager
 
 /**
  * Serves browse artwork to the Android Auto host as content:// URIs.
@@ -79,11 +72,8 @@ class MoonfinArtProvider : ContentProvider() {
                 readTimeout = 8000
                 instanceFollowRedirects = true
             }
-            // Match the app: if the user trusts self-signed / private-CA certs,
-            // the car process must too, or such a proxy fails the handshake here.
-            if (conn is HttpsURLConnection && allowSelfSigned()) {
-                trustAllCerts(conn)
-            }
+            // Self-signed trust and client certificates come from the process
+            // defaults that moonfin_native_video's TlsPolicy sets.
             if (conn.responseCode !in 200..299) {
                 throw FileNotFoundException("http ${conn.responseCode}")
             }
@@ -106,31 +96,6 @@ class MoonfinArtProvider : ContentProvider() {
         } finally {
             conn?.disconnect()
             if (tmp.exists()) tmp.delete()
-        }
-    }
-
-    // Mirrors the flutter allow-self-signed pref (shared_preferences stores keys
-    // under the flutter. prefix).
-    private fun allowSelfSigned(): Boolean {
-        val ctx = context ?: return false
-        return ctx
-            .getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            .getBoolean("flutter.pref_allow_self_signed_certs", false)
-    }
-
-    private fun trustAllCerts(conn: HttpsURLConnection) {
-        try {
-            val trustAll = arrayOf<TrustManager>(object : X509TrustManager {
-                override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
-                override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
-                override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
-            })
-            val sslContext = SSLContext.getInstance("TLS")
-            sslContext.init(null, trustAll, SecureRandom())
-            conn.sslSocketFactory = sslContext.socketFactory
-            conn.hostnameVerifier = HostnameVerifier { _, _ -> true }
-        } catch (_: Exception) {
-            // Keep default validation if the trust-all context fails to build.
         }
     }
 

@@ -9,6 +9,7 @@ import 'package:get_it/get_it.dart';
 import 'package:jellyfin_preference/jellyfin_preference.dart';
 import 'package:moonfin/preference/user_preferences.dart';
 import 'package:moonfin/util/focus/gamepad/gamepad_navigation_scope.dart';
+import 'package:moonfin/util/platform_detection.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 NormalizedGamepadEvent _button(GamepadButton button, {required bool pressed}) =>
@@ -140,6 +141,26 @@ void main() {
       await send(tester, _button(GamepadButton.a, pressed: true));
       expect(downs().last, LogicalKeyboardKey.select);
       await send(tester, _button(GamepadButton.a, pressed: false));
+      await unmount(tester);
+    });
+  });
+
+  testWidgets('a desktop set to the TV layout still drives the UI', (
+    tester,
+  ) async {
+    PlatformDetection.setInterfaceLayout(InterfaceLayout.tv);
+    addTearDown(
+      () => PlatformDetection.setInterfaceLayout(InterfaceLayout.automatic),
+    );
+    await on(TargetPlatform.linux, () async {
+      expect(GamepadNavigationScope.isConfigurable, isTrue);
+      await mount(tester);
+      await prefs.set(UserPreferences.gamepadNavigationEnabled, true);
+      await tester.pump();
+
+      await send(tester, _button(GamepadButton.dpadDown, pressed: true));
+      expect(downs(), [LogicalKeyboardKey.arrowDown]);
+      await send(tester, _button(GamepadButton.dpadDown, pressed: false));
       await unmount(tester);
     });
   });

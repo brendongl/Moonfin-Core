@@ -596,6 +596,15 @@ JNI(void, nativeSetPadState)(JNIEnv *env, jobject thiz, jint port, jint mask,
                    (uint16_t)l2, (uint16_t)r2);
 }
 
+JNI(void, nativeSetPointer)(JNIEnv *env, jobject thiz, jint port,
+                            jboolean pressed, jint x, jint y) {
+  (void)env;
+  (void)thiz;
+  if (!g_ctx.host) return;
+  lh_set_pointer(g_ctx.host, (int)port, pressed ? 1 : 0, (int16_t)x,
+                 (int16_t)y);
+}
+
 // Bitmask of ports whose stick is passed through as analog instead of being
 // converted to d-pad bits. This is the AND of the game's analog-stick
 // descriptors and the core actually reading a stick - see

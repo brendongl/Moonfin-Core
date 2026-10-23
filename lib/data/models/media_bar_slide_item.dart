@@ -4,6 +4,9 @@ class MediaBarSlideItem {
   final String title;
   final String? overview;
   final String? backdropUrl;
+
+  /// The wide banner art, which usually has the title painted into it.
+  final String? bannerUrl;
   final String? logoUrl;
   final String? posterUrl;
   final String? officialRating;
@@ -23,6 +26,7 @@ class MediaBarSlideItem {
     required this.title,
     this.overview,
     this.backdropUrl,
+    this.bannerUrl,
     this.logoUrl,
     this.posterUrl,
     this.officialRating,

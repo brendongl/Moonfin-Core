@@ -76,13 +76,8 @@ class SyncService extends ChangeNotifier {
     DownloadedItem row,
     MediaServerClient client,
     String serverId,
-  ) {
-    if (row.serverId == serverId) return true;
-    if (!row.serverId.contains('://')) return false;
-    final rowUrl = normalizeServerBaseUrl(row.serverId);
-    return rowUrl.isNotEmpty &&
-        rowUrl == normalizeServerBaseUrl(client.baseUrl);
-  }
+  ) =>
+      isStoredServer(row.serverId, serverId: serverId, baseUrl: client.baseUrl);
 
   /// Pushes progress recorded offline through [client], furthest progress
   /// winning. Only rows from [serverId] are touched: a server answers a stop
@@ -132,7 +127,7 @@ class SyncService extends ChangeNotifier {
             await _offlineRepo.setSyncedPlaybackPosition(
               item.itemId,
               0,
-              metadataJson: _mergeUserData(item.metadataJson, userData),
+              metadataJson: mergeServerUserData(item.metadataJson, userData),
             );
             synced++;
             continue;
@@ -144,7 +139,7 @@ class SyncService extends ChangeNotifier {
             await _offlineRepo.setSyncedPlaybackPosition(
               item.itemId,
               serverTicks,
-              metadataJson: _mergeUserData(item.metadataJson, userData),
+              metadataJson: mergeServerUserData(item.metadataJson, userData),
             );
             synced++;
             continue;
@@ -177,7 +172,10 @@ class SyncService extends ChangeNotifier {
   /// Returns [metadataJson] with its `UserData` replaced by the server's, so
   /// the offline UI (which reads played/position from metadata) reflects the
   /// adopted progress immediately rather than waiting for a metadata refresh.
-  String _mergeUserData(String metadataJson, Map<String, dynamic> userData) {
+  static String mergeServerUserData(
+    String metadataJson,
+    Map<String, dynamic> userData,
+  ) {
     try {
       final decoded = jsonDecode(metadataJson) as Map<String, dynamic>;
       decoded['UserData'] = userData;

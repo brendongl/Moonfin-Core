@@ -2312,7 +2312,7 @@
     "@seerr": {
         "description": "Seerr brand name"
     },
-    "savedMedia": "Mentett média",
+    "savedMedia": "Letöltések",
     "@savedMedia": {
         "description": "Header title for saved/downloaded media screen"
     },
@@ -2795,7 +2795,7 @@
     "@playWhenBrowsingHomeScreen": {
         "description": "Description for theme music on home rows"
     },
-    "detailsBackgroundBlur": "Részletek hátterének elmosása",
+    "detailsBackgroundBlur": "Háttér elmosása",
     "@detailsBackgroundBlur": {
         "description": "Setting for details background blur"
     },
@@ -2828,7 +2828,7 @@
     "@fit": {
         "description": "Zoom mode: fit"
     },
-    "autoCrop": "Automatikus kivágás",
+    "autoCrop": "Zoomolás kitöltéshez",
     "@autoCrop": {
         "description": "Zoom mode: auto crop"
     },
@@ -6605,7 +6605,7 @@
     "settingsPreferServerTranscode": "Szerveroldali átkódolás előnyben részesítése",
     "settingsDolbyVisionProfile7DirectPlay": "Dolby Vision 7. profil közvetlen lejátszás",
     "settingsDolbyVisionProfile7DirectPlayDescription": "Azt szabályozza, hogy a Dolby Vision 7. profil bővítőrétegű adatfolyamai közvetlenül lejátszhatók-e.",
-    "settingsAutoAftkrtEnabled": "Automatikus (AFTKRT engedélyezve)",
+    "settingsAutoAftkrtEnabled": "Automatikus",
     "settingsEnabledOnThisDevice": "Engedélyezve ezen az eszközön",
     "settingsDisabledPreferTranscode": "Letiltva (inkább átkódolás)",
     "settingsResumeRewindDescription": "A lejátszás folytatásakor (a „Megtekintés folytatása” szakaszból vagy egy médiaelem oldaláról) hány másodpercet tekerjen vissza a lejátszó?",
@@ -8328,7 +8328,7 @@
     "@detailScreenStyleModern": {
         "description": "Detail screen style option: the responsive cinematic layout"
     },
-    "recommendationsApplyParentalRatingCap": "Alkalmazod a szülői korhatár-korlátot?",
+    "recommendationsApplyParentalRatingCap": "Értékelési limit alkalmazása a Javaslatokra",
     "@recommendationsApplyParentalRatingCap": {
         "description": "Label for the toggle that controls whether similar suggestions are capped by target media parental rating"
     },
@@ -8653,7 +8653,7 @@
     "navButtons": "Gombok",
     "rendering": "Renderelés",
     "mpvConfiguration": "MPV-konfiguráció",
-    "showTechnicalDetails": "Megjelenjenek a technikai részletek?",
+    "showTechnicalDetails": "Technikai részletek megjelenítése",
     "@showTechnicalDetails": {
         "description": "Label for the detail screen setting to show stream/codec technical details"
     },
@@ -8930,7 +8930,6 @@
     },
     "offlineBannerTitle": "Offline vagy",
     "offlineBannerSubtitle": "A letöltéseid megjelenítése",
-    "offlineBannerAction": "Letöltések",
     "serverUnreachableBannerTitle": "A szervered nem érhető el",
     "serverUnreachableBannerSubtitle": "Lejátszás a letöltésekből, amíg újra elérhető nem lesz",
     "imdbTop250Movies": "IMDb Top 250 film",
@@ -8998,7 +8997,7 @@
     "adminPlaybackThrottleDelay": "Visszafogási késleltetés (másodperc)",
     "adminPlaybackEnableSubtitleExtraction": "Feliratok menet közbeni kinyerésének engedélyezése",
     "adminGeneralDisplayLanguage": "Előnyben részesített megjelenítési nyelv",
-    "hideBackdropsInLibraries": "Elrejted a háttérképeket böngészés közben?",
+    "hideBackdropsInLibraries": "Háttérképek elrejtése böngészés közben",
     "@hideBackdropsInLibraries": {
         "description": "Setting title to show/hide backdrops when browsing library pages"
     },
@@ -9010,11 +9009,11 @@
     "@animeMarkerMixed": {
         "description": "Badge on an anime episode that mixes source material with filler, so it still contains story"
     },
-    "animeMarkerAnimeCanon": "Anime Kánon",
+    "animeMarkerAnimeCanon": "Anime kánon",
     "@animeMarkerAnimeCanon": {
         "description": "Badge on an anime episode that is not in the source manga but is part of the anime's own continuity"
     },
-    "animeMarkerMangaCanon": "Manga Kánon",
+    "animeMarkerMangaCanon": "Manga kánon",
     "@animeMarkerMangaCanon": {
         "description": "Badge on an anime episode adapted from the source manga"
     },
@@ -9042,7 +9041,7 @@
     "@detailScreenStyleSpotlight": {
         "description": "Detail screen style option: the hero-first layout with summary cards that open grid modals"
     },
-    "spotlightMoreActions": "További hatások",
+    "spotlightMoreActions": "További lehetőségek",
     "@spotlightMoreActions": {
         "description": "Tooltip/semantics of the spotlight ellipsis button and the title of the overflow actions menu it opens"
     },
@@ -9516,5 +9515,1287 @@
     "setupDetailNouveauHint": "Teljesképernyő, fülek helyett rendezett szekciókkal.",
     "@setupDetailNouveauHint": {
         "description": "What the nouveau detail screen style gives you"
+    },
+    "spotlightFileDetails": "Fájl részletek",
+    "@spotlightFileDetails": {
+        "description": "Title of the spotlight summary card that opens the file details modal"
+    },
+    "fetchingSubtitles": "Feliratok keresése",
+    "@fetchingSubtitles": {
+        "description": "Playback status shown while the selected subtitle file is loading"
+    },
+    "keyboardShortcutsSubtitle": "Gyorsbillentyű az alkalmazáshoz, videólejátszóhoz és olvasóhoz",
+    "@keyboardShortcutsSubtitle": {
+        "description": "Subtitle of the About tile that opens the keyboard shortcut list"
+    },
+    "keyboardShortcutsPlayerHint": "A ? vagy F1 gomb lenyomásával megtekinteheted a listát a lejátszó elhagyása nélkül.",
+    "@keyboardShortcutsPlayerHint": {
+        "description": "Footnote on the keyboard shortcuts settings screen"
+    },
+    "keyboardShortcutsSectionApp": "Mindenhol",
+    "@keyboardShortcutsSectionApp": {
+        "description": "Keyboard shortcut section for keys that work on every screen"
+    },
+    "keyboardShortcutsSectionAppScope": "Bármely oldalon",
+    "@keyboardShortcutsSectionAppScope": {
+        "description": "Under the Everywhere section title: when those keys apply"
+    },
+    "keyboardShortcutsSectionPlayer": "Videólejátszó",
+    "@keyboardShortcutsSectionPlayer": {
+        "description": "Keyboard shortcut section for the video player"
+    },
+    "keyboardShortcutsSectionPlayerScope": "Amikor egy videó megtekintés alatt áll vagy szüneteltetett",
+    "@keyboardShortcutsSectionPlayerScope": {
+        "description": "Under the Video player section title: when those keys apply"
+    },
+    "keyboardShortcutsSectionReader": "Könyv és képregény olvasó",
+    "@keyboardShortcutsSectionReader": {
+        "description": "Keyboard shortcut section for the ebook and comic reader"
+    },
+    "keyboardShortcutsSectionReaderScope": "Amikor olvasol egy könyvet vagy képregényt",
+    "@keyboardShortcutsSectionReaderScope": {
+        "description": "Under the reader section title: when those keys apply"
+    },
+    "keyNameArrowKeys": "Nyilak",
+    "@keyNameArrowKeys": {
+        "description": "Key cap label standing for the four arrow keys"
+    },
+    "keyNameSpace": "Szóköz",
+    "@keyNameSpace": {
+        "description": "Key cap label for the space bar"
+    },
+    "keyNameEnter": "Enter",
+    "@keyNameEnter": {
+        "description": "Key cap label for the Enter key"
+    },
+    "keyNameEsc": "Esc",
+    "@keyNameEsc": {
+        "description": "Key cap label for the Escape key"
+    },
+    "keyNameBackspace": "Backspace",
+    "@keyNameBackspace": {
+        "description": "Key cap label for the Backspace key"
+    },
+    "keyNamePageUp": "Page Up",
+    "@keyNamePageUp": {
+        "description": "Key cap label for the Page Up key"
+    },
+    "keyNamePageDown": "Page Down",
+    "@keyNamePageDown": {
+        "description": "Key cap label for the Page Down key"
+    },
+    "keyNameHome": "Home",
+    "@keyNameHome": {
+        "description": "Key cap label for the Home key"
+    },
+    "keyNameEnd": "End",
+    "@keyNameEnd": {
+        "description": "Key cap label for the End key"
+    },
+    "keyNameShift": "Shift",
+    "@keyNameShift": {
+        "description": "Key cap label for the Shift modifier"
+    },
+    "keyNameCtrl": "Ctrl",
+    "@keyNameCtrl": {
+        "description": "Key cap label for the Control modifier"
+    },
+    "keyNameAlt": "Alt",
+    "@keyNameAlt": {
+        "description": "Key cap label for the Alt modifier"
+    },
+    "keyNameScrollWheel": "Görgetés",
+    "@keyNameScrollWheel": {
+        "description": "Key cap label standing for the mouse scroll wheel"
+    },
+    "shortcutMoveFocus": "Elemek közötti mozgás",
+    "@shortcutMoveFocus": {
+        "description": "What the arrow keys do outside the player"
+    },
+    "shortcutActivate": "Kiválasztott elem megnyitása",
+    "@shortcutActivate": {
+        "description": "What Enter does outside the player"
+    },
+    "shortcutGoBack": "Visszalépés",
+    "@shortcutGoBack": {
+        "description": "What Esc and Backspace do outside the player"
+    },
+    "shortcutToggleFullscreen": "Teljesképernyő be- vagy kikapcsolása",
+    "@shortcutToggleFullscreen": {
+        "description": "F11 and Alt+Enter anywhere, F in the player"
+    },
+    "shortcutQuit": "Kilépés a Moonfinből",
+    "@shortcutQuit": {
+        "description": "What Ctrl+Q does on desktop"
+    },
+    "shortcutPlayPause": "Lejátszás vagy szüneteltetés",
+    "@shortcutPlayPause": {
+        "description": "Player shortcut action"
+    },
+    "shortcutShowControlsOrPlayPause": "Irányítópanel megjelenítése vagy lejátszás/szüneteltetés ha már látható",
+    "@shortcutShowControlsOrPlayPause": {
+        "description": "What Enter does in the player"
+    },
+    "shortcutVolumeUp": "Hangerő fel",
+    "@shortcutVolumeUp": {
+        "description": "Player shortcut action"
+    },
+    "shortcutVolumeDown": "Hangerő le",
+    "@shortcutVolumeDown": {
+        "description": "Player shortcut action"
+    },
+    "shortcutMute": "Némítás vagy némítás megszüntetése",
+    "@shortcutMute": {
+        "description": "Player shortcut action"
+    },
+    "shortcutToggleSubtitles": "Feliratok be- vagy kikapcsolása",
+    "@shortcutToggleSubtitles": {
+        "description": "Player shortcut action"
+    },
+    "shortcutSlower": "Lelassítás",
+    "@shortcutSlower": {
+        "description": "Player shortcut action"
+    },
+    "shortcutFaster": "Felgyorsítás",
+    "@shortcutFaster": {
+        "description": "Player shortcut action"
+    },
+    "shortcutPlaybackInfo": "Lejátszási információ megjelenítése",
+    "@shortcutPlaybackInfo": {
+        "description": "Player shortcut action"
+    },
+    "shortcutMpvStats": "mpv statisztikák be- vagy kikapcsolása",
+    "@shortcutMpvStats": {
+        "description": "Player shortcut action, Windows only"
+    },
+    "shortcutRecropBlackBars": "Fekete sávok eltüntetése",
+    "@shortcutRecropBlackBars": {
+        "description": "Player shortcut to run letterbox crop detection now"
+    },
+    "shortcutLeaveFullscreenOrStop": "Teljesképernyő kikapcsolása vagy megállítás, ha teljesképernyős mód aktív",
+    "@shortcutLeaveFullscreenOrStop": {
+        "description": "What Esc does in the player"
+    },
+    "shortcutStopPlayback": "Lejátszás megállítása",
+    "@shortcutStopPlayback": {
+        "description": "Player shortcut action"
+    },
+    "shortcutNextItem": "Következő elem",
+    "@shortcutNextItem": {
+        "description": "Player shortcut action for the next-track media key"
+    },
+    "shortcutPreviousItem": "Előző elem",
+    "@shortcutPreviousItem": {
+        "description": "Player shortcut action for the previous-track media key"
+    },
+    "shortcutShowShortcuts": "Mutasd ezt a listát",
+    "@shortcutShowShortcuts": {
+        "description": "What ? and F1 do in the player"
+    },
+    "shortcutNextPage": "Következő oldal",
+    "@shortcutNextPage": {
+        "description": "Reader shortcut action"
+    },
+    "shortcutPreviousPage": "Előző oldal",
+    "@shortcutPreviousPage": {
+        "description": "Reader shortcut action"
+    },
+    "shortcutScrollPage": "Oldal görgetése (ebookok esetén)",
+    "@shortcutScrollPage": {
+        "description": "What the up and down arrows do in the ebook reader"
+    },
+    "shortcutFirstPage": "Első oldal vagy fejezet kezdete",
+    "@shortcutFirstPage": {
+        "description": "Reader shortcut action"
+    },
+    "shortcutLastPage": "Utolsó oldal vagy fejezet vége",
+    "@shortcutLastPage": {
+        "description": "Reader shortcut action"
+    },
+    "shortcutZoom": "Be- vagy kizoomolás (képregények esetén)",
+    "@shortcutZoom": {
+        "description": "Reader shortcut action"
+    },
+    "shortcutResetZoom": "Zoom visszaállítása (képregények esetén)",
+    "@shortcutResetZoom": {
+        "description": "Reader shortcut action"
+    },
+    "hdrOutput": "HDR kimenet",
+    "@hdrOutput": {
+        "description": "Stream info label for whether HDR is reaching the display untouched"
+    },
+    "hdrOutputActive": "Aktív — {format}",
+    "@hdrOutputActive": {
+        "description": "Stream info value when HDR passthrough is running, e.g. 'Active — HDR10 (PQ, BT.2020)'",
+        "placeholders": {
+            "format": {
+                "type": "String"
+            }
+        }
+    },
+    "hdrOutputActiveTonemapped": "Aktív — SDR tónustérképezés ehhez a képernyőhöz",
+    "@hdrOutputActiveTonemapped": {
+        "description": "Stream info value when native output is engaged but the window sits on a display without HDR, so the renderer is tone-mapping"
+    },
+    "hdrOutputContentSdr": "Inaktív — a tartalom SDR formátumú",
+    "@hdrOutputContentSdr": {
+        "description": "Stream info value when the title itself is not HDR"
+    },
+    "hdrOutputDisabled": "Inaktív — kikapcsolva a beállításokban",
+    "@hdrOutputDisabled": {
+        "description": "Stream info value when the video renderer setting keeps video inside the app"
+    },
+    "hdrOutputFailed": "Inakítv — nem sikerült elindítani, a rendszer a hagyományos feldolgozási útvonalat használja",
+    "@hdrOutputFailed": {
+        "description": "Stream info value when the native HDR window could not be created"
+    },
+    "videoRenderer": "Videómegjelenítő",
+    "@videoRenderer": {
+        "description": "Settings label for choosing where Windows draws video, in its own window or inside the app"
+    },
+    "videoRendererDescription": "A natív ablak biztosítja a legfolyamatosabb mozgásmegjelenítést, és a HDR-tartalmat módosítás nélkül továbbítja a kijelzőre. Ha problémát tapasztalsz a videólejátszás során, próbálj ki egy másik beállítást.",
+    "@videoRendererDescription": {
+        "description": "Settings description for the video renderer choice"
+    },
+    "videoRendererNativeWindow": "Natív ablak (ajánlott)",
+    "@videoRendererNativeWindow": {
+        "description": "Video renderer option that plays every title in its own window"
+    },
+    "videoRendererNativeHdrOnly": "Natív ablak csak a HDR tartalmaknál",
+    "@videoRendererNativeHdrOnly": {
+        "description": "Video renderer option that uses its own window for HDR titles and the in-app renderer for SDR"
+    },
+    "videoRendererInApp": "Alkalmazásbeli (hagyományos)",
+    "@videoRendererInApp": {
+        "description": "Video renderer option that draws every title inside the app and converts HDR to SDR"
+    },
+    "guideRepeatBadge": "Ismétlés",
+    "@guideRepeatBadge": {
+        "description": "Short badge label shown on a rerun in the guide hero band"
+    },
+    "noProgramData": "Nincs műsoradat",
+    "@noProgramData": {
+        "description": "Guide cell label for a real EPG schedule gap, not a genre-filtered program"
+    },
+    "nextSeriesRecording": "A sorozat következő felvétele: {dateTime}",
+    "@nextSeriesRecording": {
+        "description": "Next scheduled recording for the current series, shown in the Live TV recording dialog",
+        "placeholders": {
+            "dateTime": {
+                "type": "String",
+                "example": "Oct 5, 2026 · 8:00 PM"
+            }
+        }
+    },
+    "rendererMode": "Megjelenítő",
+    "@rendererMode": {
+        "description": "Label for the TV graphics renderer setting"
+    },
+    "rendererModeSubtitle": "Az automatikus beállítás az Impellert használja azokon az eszközökön, amelyeken megfelelően működnek a grafikák, mindenhol máshol pedig a Skiát. Ha az animációk vagy videók nem megfelelően jelennek meg, válaszd a Skiát. A módosítás a következő indításkor lép érvénybe.",
+    "@rendererModeSubtitle": {
+        "description": "Explanation under the TV graphics renderer setting"
+    },
+    "rendererModeAuto": "Auto",
+    "@rendererModeAuto": {
+        "description": "Renderer option: let the app choose per device"
+    },
+    "rendererModeSkia": "Skia",
+    "@rendererModeSkia": {
+        "description": "Renderer option: always use the Skia renderer"
+    },
+    "gameOrientation": "Játék tájolás",
+    "@gameOrientation": {
+        "description": "Setting and in-game menu row for how the device is held while playing games"
+    },
+    "gameOrientationSubtitle": "Képernyőtájolás játék közben",
+    "@gameOrientationSubtitle": {
+        "description": "Subtitle of the game orientation setting"
+    },
+    "landscape": "Fekvő",
+    "@landscape": {
+        "description": "Orientation choice: the device held sideways"
+    },
+    "portrait": "Álló",
+    "@portrait": {
+        "description": "Orientation choice: the device held upright"
+    },
+    "gameKeepPlaying": "Játék folytatása",
+    "@gameKeepPlaying": {
+        "description": "Exit confirmation choice that returns to the game"
+    },
+    "gameSaveAndExit": "Mentés és kilépés",
+    "@gameSaveAndExit": {
+        "description": "Exit confirmation choice that saves the game state and then leaves, staying in the game if the save fails"
+    },
+    "gameExitGame": "Kilépés a játékból",
+    "@gameExitGame": {
+        "description": "Exit confirmation choice that leaves the game"
+    },
+    "gameSavingBeforeExit": "Mentés…",
+    "@gameSavingBeforeExit": {
+        "description": "Shown over the paused game while it saves on the way out"
+    },
+    "gameSaveFailedStillPlaying": "Mentés nem sikerült. Játék folytatása.",
+    "@gameSaveFailedStillPlaying": {
+        "description": "Message shown when Save & exit could not save, so the game keeps running"
+    },
+    "additionalParts": "További részek",
+    "@additionalParts": {
+        "description": "Heading for the other files of a movie split across several files, like DVD1 and DVD2"
+    },
+    "shortcutSeekBack": "Visszaugrás (hosszan nyomva nagyobb ugrásokkal)",
+    "@shortcutSeekBack": {
+        "description": "Player shortcut action. The step is the skip back length from settings"
+    },
+    "shortcutSeekForward": "Előreugrás (hosszan nyomva nagyobb ugrásokkal)",
+    "@shortcutSeekForward": {
+        "description": "Player shortcut action. The step is the skip forward length from settings"
+    },
+    "shortcutSkipSegment": "Bevezető vagy stáblista átugrása, ha elérhető",
+    "@shortcutSkipSegment": {
+        "description": "Player shortcut action that presses the skip intro or credits button while it is showing"
+    },
+    "liveTvJumpToLive": "Ugrás az Élőhöz",
+    "@liveTvJumpToLive": {
+        "description": "Live TV player button that leaves a rewound or paused stream and returns to what is airing now"
+    },
+    "noUpcomingSeriesRecording": "A sorozat felvétele be van ütemezve, de a műsorújságban nem szerepelnek közelgő epizódok",
+    "@noUpcomingSeriesRecording": {
+        "description": "A series recording rule exists but no future episode timer is available"
+    },
+    "recordCurrentEpisode": "Epizód felvétele",
+    "@recordCurrentEpisode": {
+        "description": "Live TV player action to record only the current episode"
+    },
+    "recordCurrentProgram": "Műsor felvétele",
+    "@recordCurrentProgram": {
+        "description": "Live TV player action to record only the current program"
+    },
+    "cancelCurrentRecording": "Felvétel visszavonása",
+    "@cancelCurrentRecording": {
+        "description": "Live TV player action to cancel only the current recording, leaving any series rule intact"
+    },
+    "recordSeries": "Sorozat felvétele",
+    "@recordSeries": {
+        "description": "Button label to record every showing of a live TV series"
+    },
+    "seriesSetToRecord": "Sorozatfelvétel beütemezve",
+    "@seriesSetToRecord": {
+        "description": "Snackbar confirmation after scheduling a live TV series recording"
+    },
+    "seriesRecordingCancelled": "Sorozatfelvétel visszavonva",
+    "@seriesRecordingCancelled": {
+        "description": "Snackbar confirmation after cancelling a live TV series recording"
+    },
+    "unableToCreateSeriesRecording": "Sorozatfelvétel létrehozása nem sikerült",
+    "@unableToCreateSeriesRecording": {
+        "description": "Error when creating a live TV series recording fails"
+    },
+    "watchChannelLive": "Csatorna nézése élőben",
+    "@watchChannelLive": {
+        "description": "Button label to tune a channel live when the selected program is not the one that will play (ended or upcoming)"
+    },
+    "playbackStreamLost": "A lejátszás leállt, és nem sikerült helyreállítani.",
+    "@playbackStreamLost": {
+        "description": "Shown in place of an internal sentinel error code when playback gives up trying to recover a stalled or starved stream"
+    },
+    "playbackVideoUnsupported": "Ez az eszköz nem támogatja ezt a videóformátumot. Próbáld meg külső lejátszóval.",
+    "@playbackVideoUnsupported": {
+        "description": "Shown when the player can't show an item's video and no transcode is left to try, instead of playing the audio over a black screen"
+    },
+    "liveReconnecting": "Újracsatlakozás... ({attempt} of {total})",
+    "@liveReconnecting": {
+        "description": "Overlay shown while a live channel's bounded recovery is retrying",
+        "placeholders": {
+            "attempt": {
+                "type": "int"
+            },
+            "total": {
+                "type": "int"
+            }
+        }
+    },
+    "activeDownloads": "Aktív letöltések",
+    "@activeDownloads": {
+        "description": "Tab title for downloads that are transferring or queued"
+    },
+    "savedMediaCount": "{count, plural, =1{1 elem} other{{count} elem}}",
+    "@savedMediaCount": {
+        "description": "How many downloads the saved media list holds, shown beside the total size",
+        "placeholders": {
+            "count": {
+                "type": "int"
+            }
+        }
+    },
+    "savedMediaOfLimit": "Felhasználva: {used} / {limit}",
+    "@savedMediaOfLimit": {
+        "description": "Storage used against the configured limit, for example '56.4 GB of 80 GB'",
+        "placeholders": {
+            "used": {
+                "type": "String"
+            },
+            "limit": {
+                "type": "String"
+            }
+        }
+    },
+    "savedMediaSelectItems": "Elemek kiválasztása",
+    "@savedMediaSelectItems": {
+        "description": "Overflow menu entry that turns on multi-select in the saved media list"
+    },
+    "savedMediaNoDownloads": "Még nincs mentett elem",
+    "@savedMediaNoDownloads": {
+        "description": "Empty state title when no downloads are on the device"
+    },
+    "savedMediaNoDownloadsDetail": "Az elindított letöltések itt jelennek meg, és internetkapcsolat nélkül is lejátszhatók.",
+    "@savedMediaNoDownloadsDetail": {
+        "description": "Empty state body when no downloads are on the device"
+    },
+    "savedMediaNoActiveDownloads": "Jelenleg nincs letöltés",
+    "@savedMediaNoActiveDownloads": {
+        "description": "Empty state for the active downloads tab"
+    },
+    "savedMediaNoResults": "Nincs a keresésnek megfelelő letöltés",
+    "@savedMediaNoResults": {
+        "description": "Empty state when a search over saved media matches nothing"
+    },
+    "savedMediaPlayFromStart": "Lejátszás az elejétől",
+    "@savedMediaPlayFromStart": {
+        "description": "Row menu action that restarts a partly watched download from the beginning"
+    },
+    "savedMediaGoToDetails": "Részletek megjelenítése",
+    "@savedMediaGoToDetails": {
+        "description": "Row menu action that opens the item's detail screen"
+    },
+    "savedMediaDeleteDownload": "Letöltés törlése",
+    "@savedMediaDeleteDownload": {
+        "description": "Row menu action that removes one downloaded file from the device"
+    },
+    "savedMediaDeleteSeason": "{season} törlése",
+    "@savedMediaDeleteSeason": {
+        "description": "Menu action that removes every saved episode of one season",
+        "placeholders": {
+            "season": {
+                "type": "String"
+            }
+        }
+    },
+    "savedMediaDeleteEpisodes": "{count, plural, =1{1 epizód törlése} other{{count} epizód törlése}}",
+    "@savedMediaDeleteEpisodes": {
+        "description": "Menu action that removes every saved episode of one series",
+        "placeholders": {
+            "count": {
+                "type": "int"
+            }
+        }
+    },
+    "savedMediaOpenShow": "Sorozat megnyitása",
+    "@savedMediaOpenShow": {
+        "description": "Row menu action that opens a saved show's seasons and episodes"
+    },
+    "savedMediaPlayNextUnwatched": "Következő megtekintetlen epizód lejátszása",
+    "@savedMediaPlayNextUnwatched": {
+        "description": "Row menu action that plays the earliest unwatched saved episode of a show"
+    },
+    "savedMediaRead": "Olvasás",
+    "@savedMediaRead": {
+        "description": "Row menu action that opens a downloaded book in the reader"
+    },
+    "savedMediaCancelDownload": "Letöltés visszavonása",
+    "@savedMediaCancelDownload": {
+        "description": "Row menu action that stops a running or queued transfer"
+    },
+    "sortBySize": "Méret",
+    "@sortBySize": {
+        "description": "Sort option: largest download first"
+    },
+    "sortByName": "Név",
+    "@sortByName": {
+        "description": "Sort option: alphabetical by title"
+    },
+    "sortByDateAdded": "Hozzáadás dátuma",
+    "@sortByDateAdded": {
+        "description": "Sort option: most recently downloaded first"
+    },
+    "settingsSearchHint": "Keresés a beállításokban",
+    "@settingsSearchHint": {
+        "description": "Hint text in the settings search field"
+    },
+    "mixedRowsOnly": "Csak vegyes sorok",
+    "@mixedRowsOnly": {
+        "description": "Option: only show the label on rows holding both movies and series"
+    },
+    "loadingAnimation": "Betöltési animáció",
+    "@loadingAnimation": {
+        "description": "Setting title for custom loading animation"
+    },
+    "loadingAnimationDescription": "A Moonfin alkalmazásban használt betöltési animációk testreszabása",
+    "@loadingAnimationDescription": {
+        "description": "Description for loading animation customization settings"
+    },
+    "loadingAnimationConfiguration": "Betöltési animáció beállítások",
+    "@loadingAnimationConfiguration": {
+        "description": "Subtitle header for loading animation settings"
+    },
+    "loadingAnimationImage": "Kép",
+    "@loadingAnimationImage": {
+        "description": "Title for loading animation image selection"
+    },
+    "loadingAnimationImageMoonfinLogo": "Moonfin logo",
+    "@loadingAnimationImageMoonfinLogo": {
+        "description": "Loading animation image option: Moonfin Logo"
+    },
+    "loadingAnimationImageSpinner": "Forgó betöltésjelző",
+    "@loadingAnimationImageSpinner": {
+        "description": "Loading animation image option: Spinner"
+    },
+    "loadingAnimationImageRunner": "Futó",
+    "@loadingAnimationImageRunner": {
+        "description": "Loading animation image option: Runner"
+    },
+    "loadingAnimationImageMoonPhases": "Holdfázisok",
+    "@loadingAnimationImageMoonPhases": {
+        "description": "Loading animation image option: Moon Phases"
+    },
+    "loadingAnimationImageMoonfinPhases": "Moonfin fázisok",
+    "@loadingAnimationImageMoonfinPhases": {
+        "description": "Loading animation image option: Moonfin Phases in brand gradient"
+    },
+    "loadingAnimationImageNeonfinPhases": "Neonfin fázisok",
+    "@loadingAnimationImageNeonfinPhases": {
+        "description": "Loading animation image option: Neonfin Phases in neon colors"
+    },
+    "loadingAnimationSize": "Animáció mérete",
+    "@loadingAnimationSize": {
+        "description": "Title for loading animation size selection"
+    },
+    "loadingAnimationSizeThumbnail": "Bélyegkép",
+    "@loadingAnimationSizeThumbnail": {
+        "description": "Loading animation size option: Thumbnail"
+    },
+    "loadingAnimationSizeSmall": "Kicsi",
+    "@loadingAnimationSizeSmall": {
+        "description": "Loading animation size option: Small"
+    },
+    "loadingAnimationSizeMedium": "Közepes",
+    "@loadingAnimationSizeMedium": {
+        "description": "Loading animation size option: Medium"
+    },
+    "loadingAnimationSizeLarge": "Nagy",
+    "@loadingAnimationSizeLarge": {
+        "description": "Loading animation size option: Large"
+    },
+    "loadingAnimationPosition": "Animáció elhelyezkedése",
+    "@loadingAnimationPosition": {
+        "description": "Title for loading animation position selection"
+    },
+    "loadingAnimationPositionTopLeft": "Bal felül",
+    "@loadingAnimationPositionTopLeft": {
+        "description": "Loading animation position: Top-Left"
+    },
+    "loadingAnimationPositionTopCenter": "Középen felül",
+    "@loadingAnimationPositionTopCenter": {
+        "description": "Loading animation position: Top-Center"
+    },
+    "loadingAnimationPositionTopRight": "Jobb felül",
+    "@loadingAnimationPositionTopRight": {
+        "description": "Loading animation position: Top-Right"
+    },
+    "loadingAnimationPositionMiddleLeft": "Bal középen",
+    "@loadingAnimationPositionMiddleLeft": {
+        "description": "Loading animation position: Middle-Left"
+    },
+    "loadingAnimationPositionMiddle": "Középen",
+    "@loadingAnimationPositionMiddle": {
+        "description": "Loading animation position: Middle"
+    },
+    "loadingAnimationPositionMiddleRight": "Jobb középen",
+    "@loadingAnimationPositionMiddleRight": {
+        "description": "Loading animation position: Middle-Right"
+    },
+    "loadingAnimationPositionBottomLeft": "Bal alul",
+    "@loadingAnimationPositionBottomLeft": {
+        "description": "Loading animation position: Bottom-Left"
+    },
+    "loadingAnimationPositionBottomCenter": "Középen alul",
+    "@loadingAnimationPositionBottomCenter": {
+        "description": "Loading animation position: Bottom-Center"
+    },
+    "loadingAnimationPositionBottomRight": "Jobb alul",
+    "@loadingAnimationPositionBottomRight": {
+        "description": "Loading animation position: Bottom-Right"
+    },
+    "loadingAnimationPositionBouncing": "Ugráló DVD",
+    "@loadingAnimationPositionBouncing": {
+        "description": "Loading animation position: Bouncing DVD screensaver style"
+    },
+    "loadingAnimationSpeed": "Animáció sebessége",
+    "@loadingAnimationSpeed": {
+        "description": "Title for loading animation speed selection"
+    },
+    "loadingAnimationSpeedSlow": "Lassú",
+    "@loadingAnimationSpeedSlow": {
+        "description": "Loading animation speed option: Slow"
+    },
+    "loadingAnimationSpeedModerate": "Mérsékelt",
+    "@loadingAnimationSpeedModerate": {
+        "description": "Loading animation speed option: Moderate"
+    },
+    "loadingAnimationSpeedFast": "Gyors",
+    "@loadingAnimationSpeedFast": {
+        "description": "Loading animation speed option: Fast"
+    },
+    "loadingAnimationSpeedUltra": "Nagyon gyors",
+    "@loadingAnimationSpeedUltra": {
+        "description": "Loading animation speed option: Ultra"
+    },
+    "showLoadingAnimationText": "Szöveg megjelenítése",
+    "@showLoadingAnimationText": {
+        "description": "Setting toggle for showing loading animation text"
+    },
+    "loadingAnimationPreview": "Előnézet",
+    "@loadingAnimationPreview": {
+        "description": "Label for loading animation preview window"
+    },
+    "seasonalChristmas": "Karácsony",
+    "@seasonalChristmas": {
+        "description": "Seasonal effect: snow with falling baubles and stars"
+    },
+    "seasonalPetals": "Tavaszi szirmok",
+    "@seasonalPetals": {
+        "description": "Seasonal effect: falling cherry blossoms and petals with bees flying by"
+    },
+    "seasonalFireflies": "Szentjánosbogarak",
+    "@seasonalFireflies": {
+        "description": "Seasonal effect: glowing fireflies for summer"
+    },
+    "seasonalHalloween": "Halloween",
+    "@seasonalHalloween": {
+        "description": "Seasonal effect: bats, ghosts, candy and orange and purple leaves"
+    },
+    "seasonalDensity": "Mennyiség",
+    "@seasonalDensity": {
+        "description": "Setting for how many seasonal effect particles are on screen at once"
+    },
+    "seasonalDensityLight": "Kevés",
+    "@seasonalDensityLight": {
+        "description": "Seasonal effect density: fewest particles"
+    },
+    "seasonalDensityNormal": "Normál",
+    "@seasonalDensityNormal": {
+        "description": "Seasonal effect density: the default amount"
+    },
+    "seasonalDensityHeavy": "Sok",
+    "@seasonalDensityHeavy": {
+        "description": "Seasonal effect density: most particles"
+    },
+    "seasonalRow": "Ünnepi sor",
+    "@seasonalRow": {
+        "description": "Name of the Home row that shows holiday movies"
+    },
+    "seasonalRowDescription": "Ünnepi filmek megjelenítése egy sorban a médiatáradból, kiegészítve a Seerr ajánlásaival, ha elérhetők.",
+    "@seasonalRowDescription": {
+        "description": "Explains the seasonal Home row setting"
+    },
+    "seasonalRowSubtitle": "Ünnepi",
+    "@seasonalRowSubtitle": {
+        "description": "Source label shown under the seasonal row's title"
+    },
+    "seasonalRowCountry": "Ország",
+    "@seasonalRowCountry": {
+        "description": "Setting for which country's holidays the seasonal row follows"
+    },
+    "seasonalRowCountryAuto": "Auto",
+    "@seasonalRowCountryAuto": {
+        "description": "Country option that reads the country from the device"
+    },
+    "countryUnitedStates": "Egyesült Államok",
+    "@countryUnitedStates": {
+        "description": "Country name"
+    },
+    "countryCanada": "Kanada",
+    "@countryCanada": {
+        "description": "Country name"
+    },
+    "seasonalRowCountryOther": "Egyéb",
+    "@seasonalRowCountryOther": {
+        "description": "Country option for a country the seasonal row does not list"
+    },
+    "seasonalRowHolidays": "Ünnepek",
+    "@seasonalRowHolidays": {
+        "description": "Heading for the list of holidays the seasonal row can show"
+    },
+    "seasonalRowHolidaysHint": "Vedd ki a pipát az ünnep mellől a hozzá tartozó sor elrejtéséhez.",
+    "@seasonalRowHolidaysHint": {
+        "description": "Hint under the holiday checklist"
+    },
+    "holidayNewYear": "Újév",
+    "@holidayNewYear": {
+        "description": "Seasonal row title for New Year's"
+    },
+    "holidayValentines": "Valentin nap",
+    "@holidayValentines": {
+        "description": "Seasonal row title for Valentine's Day"
+    },
+    "holidayEaster": "Húsvét",
+    "@holidayEaster": {
+        "description": "Seasonal row title for Easter"
+    },
+    "holidayPride": "Pride",
+    "@holidayPride": {
+        "description": "Seasonal row title for Pride month"
+    },
+    "holidayHalloween": "Halloween",
+    "@holidayHalloween": {
+        "description": "Seasonal row title for Halloween"
+    },
+    "holidayThanksgiving": "Hálaadás",
+    "@holidayThanksgiving": {
+        "description": "Seasonal row title for Thanksgiving"
+    },
+    "holidayChristmas": "Karácsonyi filmek",
+    "@holidayChristmas": {
+        "description": "Seasonal row title for Christmas"
+    },
+    "holidayLunarNewYear": "Holdújév",
+    "@holidayLunarNewYear": {
+        "description": "Seasonal row title for Lunar New Year"
+    },
+    "holidayDiwali": "Diváli",
+    "@holidayDiwali": {
+        "description": "Seasonal row title for Diwali"
+    },
+    "detailsBackgroundOpacity": "Háttér áttetszősége",
+    "@detailsBackgroundOpacity": {
+        "description": "Setting for details background opacity on modern screens"
+    },
+    "cropBlackBars": "Fekete sávok levágása",
+    "@cropBlackBars": {
+        "description": "Setting to detect and crop encoded letterbox/pillarbox bars"
+    },
+    "settingsCropBlackBarsDescription": "A lejátszás megkezdése után felismeri és levágja a videóba kódolt fekete sávokat, majd kitölti a képernyőt. A levágás a lejátszó zoomgombjával megismételhető.",
+    "@settingsCropBlackBarsDescription": {
+        "description": "Description for the crop black bars playback setting"
+    },
+    "cropBlackBarsRecropInterval": "Újravágás időköze",
+    "@cropBlackBarsRecropInterval": {
+        "description": "Setting for how often to re-detect encoded letterbox bars"
+    },
+    "cropBlackBarsOnce": "Indításkor egyszer",
+    "@cropBlackBarsOnce": {
+        "description": "Letterbox recrop interval: detect once after playback starts"
+    },
+    "cropBlackBarsEverySecond": "Minden másodpercben",
+    "@cropBlackBarsEverySecond": {
+        "description": "Letterbox recrop interval: scan about once a second"
+    },
+    "settingsCropBlackBarsIntervalDescription": "A képarány változásainak követése lejátszás közben.",
+    "@settingsCropBlackBarsIntervalDescription": {
+        "description": "Description for the letterbox recrop-interval setting"
+    },
+    "playerRecroppingBlackBars": "Fekete sávok újravágása",
+    "@playerRecroppingBlackBars": {
+        "description": "Toast when the player re-runs letterbox crop detection"
+    },
+    "manual": "Kézi",
+    "@manual": {
+        "description": "Option: manual"
+    },
+    "autoDetect": "Automatikus felismerés",
+    "@autoDetect": {
+        "description": "Option: detect the value automatically"
+    },
+    "trickplayDisplayStyleSingle": "Egyetlen bélyegkép",
+    "@trickplayDisplayStyleSingle": {
+        "description": "Trickplay display style option: one thumbnail at the scrub position"
+    },
+    "trickplayDisplayStyleStrip": "Filmszalag",
+    "@trickplayDisplayStyleStrip": {
+        "description": "Trickplay display style option: a row of 5 thumbnails around the scrub position"
+    },
+    "trickplayModeFull": "Teljesképernyő",
+    "@trickplayModeFull": {
+        "description": "Trickplay mode option: temporarily replaces the video with the trickplay image while scrubbing"
+    },
+    "trickplaySettingsPreviewHint": "Húzd el a csúszkát a tekerés előnézetének megtekintéséhez",
+    "@trickplaySettingsPreviewHint": {
+        "description": "Hint shown below the live trickplay settings preview"
+    },
+    "trickplayPreviewScale": "Előnézet mérete",
+    "@trickplayPreviewScale": {
+        "description": "Setting for the size of the trickplay seek preview"
+    },
+    "trickplayVerticalOffset": "Távolság a tekerősávtól",
+    "@trickplayVerticalOffset": {
+        "description": "Setting for the vertical position of the trickplay seek preview relative to the seekbar"
+    },
+    "trickplayFollowScrubPosition": "Tekerési pozíció követése",
+    "@trickplayFollowScrubPosition": {
+        "description": "Setting for whether the trickplay preview horizontally tracks the scrub handle"
+    },
+    "trickplayFollowScrubPositionSubtitle": "Az előnézet tekerés közben a tekerősáv mentén mozog, ahelyett, hogy középen maradna",
+    "@trickplayFollowScrubPositionSubtitle": {
+        "description": "Description for the trickplay follow-scrub-position setting"
+    },
+    "trickplayPauseWhileScrubbing": "Lejátszás szüneteltetése tekerés közben",
+    "@trickplayPauseWhileScrubbing": {
+        "description": "Setting for whether seeking pauses playback so the trickplay preview holds still"
+    },
+    "trickplayPauseWhileScrubbingSubtitle": "Tekerés közben a lejátszás szünetel, és a lejátszás gomb megnyomásakor folytatódik. Kapcsold ki ezt a beállítást, ha azt szeretnéd, hogy a lejátszás ne álljon meg, hanem azonnal a kiválasztott pontra ugorjon",
+    "@trickplayPauseWhileScrubbingSubtitle": {
+        "description": "Description for the trickplay pause-while-scrubbing setting"
+    },
+    "showChapterMarkers": "Fejezetjelölők",
+    "@showChapterMarkers": {
+        "description": "Setting label for drawing a mark per chapter on the player seek bar"
+    },
+    "showChapterMarkersDescription": "A fejezetek kezdőpontjainak megjelölése a tekerősávon",
+    "@showChapterMarkersDescription": {
+        "description": "Description for the chapter marks setting"
+    },
+    "playerSwipeGestures": "Hangerő és fényerő szabályozása ujjmozdulatokkal",
+    "@playerSwipeGestures": {
+        "description": "Setting for player swipe gestures"
+    },
+    "playerSwipeGesturesDescription": "Húzd az ujjad felfelé vagy lefelé a lejátszó bal oldalán a fényerő, a jobb oldalán pedig a hangerő szabályozásához",
+    "@playerSwipeGesturesDescription": {
+        "description": "Description for player swipe gestures"
+    },
+    "osdButtons": "Lejátszó gombok",
+    "@osdButtons": {
+        "description": "Settings screen for choosing which buttons the player shows"
+    },
+    "osdButtonsDescription": "Válaszd ki, mely gombok jelenjenek meg a lejátszóban",
+    "@osdButtonsDescription": {
+        "description": "Subtitle for the player buttons settings tile"
+    },
+    "osdButtonsSectionDescription": "A lejátszásvezérlő gombok mindig láthatók. Az alábbi gombok megjelenítése szabadon beállítható, és minden eszköztípushoz külön beállítások tartoznak.",
+    "@osdButtonsSectionDescription": {
+        "description": "Explains that transport controls can't be hidden and that the list is per device kind"
+    },
+    "detailButtons": "Műveletgombok",
+    "@detailButtons": {
+        "description": "Settings screen for choosing which buttons the details screen shows"
+    },
+    "detailButtonsDescription": "A részletképernyőn megjelenő gombok kiválasztása",
+    "@detailButtonsDescription": {
+        "description": "Subtitle for the details action buttons settings tile"
+    },
+    "detailButtonsSectionDescription": "A lejátszás gombja mindig az első helyen szerepel, a zárolt gombok pedig mindig láthatók. A többi gomb megjelenítése szabadon beállítható, és minden eszköztípushoz külön beállítások tartoznak.",
+    "@detailButtonsSectionDescription": {
+        "description": "Explains that the play buttons can't be hidden and that the list is per device kind"
+    },
+    "actionButtonsOnScreen": "Képernyőn megjelenő műveletgombok száma",
+    "@actionButtonsOnScreen": {
+        "description": "Setting title for choosing how many action buttons are visible before overflowing into More Actions"
+    },
+    "actionButtonsOnScreenDescription": "Beállítható, hogy hány műveletgomb jelenjen meg közvetlenül a képernyőn, mielőtt a többi a „További műveletek” menübe kerülne.",
+    "@actionButtonsOnScreenDescription": {
+        "description": "Subtitle explaining how action buttons overflow into More Actions"
+    },
+    "actionButtonsOnScreenAuto": "Auto (Téma alapbeállítás)",
+    "@actionButtonsOnScreenAuto": {
+        "description": "Option showing theme default number of action buttons"
+    },
+    "actionButtonsOnScreenPlayOnly": "1 (Csak lejátszás)",
+    "@actionButtonsOnScreenPlayOnly": {
+        "description": "Option showing only the play action button on screen"
+    },
+    "actionButtonsOnScreenAll": "Mind (Vízszintes görgetés)",
+    "@actionButtonsOnScreenAll": {
+        "description": "Option showing all action buttons in a horizontal scrollable row"
+    },
+    "detailMetadata": "Metaadat sor",
+    "@detailMetadata": {
+        "description": "Settings screen for choosing and reordering details screen metadata items"
+    },
+    "detailMetadataDescription": "A részletképernyőn megjelenő metaadatok kiválasztása és sorrendjük módosítása",
+    "@detailMetadataDescription": {
+        "description": "Subtitle for the details metadata settings tile"
+    },
+    "detailMetadataSectionDescription": "A metaadatok megjelenítése ki- és bekapcsolható, valamint a részletképernyőn megjelenő sorrendjük is módosítható. Minden eszköztípushoz külön beállítások tartoznak.",
+    "@detailMetadataSectionDescription": {
+        "description": "Explains how to customize and reorder details screen metadata items"
+    },
+    "detailMetadataYear": "Megjelenés éve",
+    "@detailMetadataYear": {
+        "description": "Item label for release or production year in metadata row"
+    },
+    "detailMetadataParentalRating": "Korhatárbesorolás",
+    "@detailMetadataParentalRating": {
+        "description": "Item label for parental content rating in metadata row"
+    },
+    "detailMetadataRuntimeAndSeasons": "Játékidő és évadok",
+    "@detailMetadataRuntimeAndSeasons": {
+        "description": "Item label for runtime or season/episode counts in metadata row"
+    },
+    "detailMetadataStatus": "Sorozat állapota",
+    "@detailMetadataStatus": {
+        "description": "Item label for series status badge in metadata row"
+    },
+    "detailMetadataStatusSubtitle": "Megjeleníti, hogy a sorozat folytatódik, véget ért, vagy új évaddal tér vissza",
+    "@detailMetadataStatusSubtitle": {
+        "description": "Subtitle explaining the series status metadata badge"
+    },
+    "detailMetadataGenres": "Műfajok",
+    "@detailMetadataGenres": {
+        "description": "Item label for genre tags in metadata row"
+    },
+    "detailMetadataSeerrAvailability": "Seerr elérhetőség",
+    "@detailMetadataSeerrAvailability": {
+        "description": "Item label for Seerr request and availability badge in metadata row"
+    },
+    "detailMetadataSeerrAvailabilitySubtitle": "Megjeleníti a Seerrből származó igénylések állapotát és a médiatartalmak elérhetőségét",
+    "@detailMetadataSeerrAvailabilitySubtitle": {
+        "description": "Subtitle explaining the Seerr availability metadata badge"
+    },
+    "detailMetadataUpcomingEpisodeDate": "Közelgő epizódok",
+    "@detailMetadataUpcomingEpisodeDate": {
+        "description": "Item label for upcoming episode air date badge in metadata row"
+    },
+    "detailMetadataUpcomingEpisodeDateSubtitle": "A Sonarr és a TMDB adatai alapján megjeleníti a közelgő megjelenési dátumokat",
+    "@detailMetadataUpcomingEpisodeDateSubtitle": {
+        "description": "Subtitle describing data sources for upcoming episode air dates in metadata row"
+    },
+    "detailSections": "Szakaszok",
+    "@detailSections": {
+        "description": "Settings tile title for switching Details screen sections on and off"
+    },
+    "detailSectionsDescription": "A részletképernyőn megjelenő szakaszok kiválasztása",
+    "@detailSectionsDescription": {
+        "description": "Settings tile subtitle for the Details screen sections list"
+    },
+    "detailSectionsScreenDescription": "Csak az aktuális részletképernyő-stílusban megjeleníthető szakaszok szerepelnek a listában. Egy szakasz elrejtése minden olyan stílusra érvényes, amely tartalmazza azt.",
+    "@detailSectionsScreenDescription": {
+        "description": "Explanatory text at the top of the Details screen sections list"
+    },
+    "detailSectionGroupHeader": "Fejléc",
+    "@detailSectionGroupHeader": {
+        "description": "Group heading for the title area of the Details screen"
+    },
+    "detailSectionGroupSections": "Szakaszok",
+    "@detailSectionGroupSections": {
+        "description": "Group heading for the rows, tabs and cards of the Details screen"
+    },
+    "detailSectionGroupPerson": "Személyek adatlapjai",
+    "@detailSectionGroupPerson": {
+        "description": "Group heading for sections only shown on a person's Details screen"
+    },
+    "detailSectionGroupCollection": "Gyűjtemények adatlapjai",
+    "@detailSectionGroupCollection": {
+        "description": "Group heading for sections only shown on a collection's Details screen"
+    },
+    "detailSectionGroupOther": "Egyéb",
+    "@detailSectionGroupOther": {
+        "description": "Group heading for Details screen sections that fit no other group"
+    },
+    "detailSectionLogo": "Logo",
+    "@detailSectionLogo": {
+        "description": "Details screen section: the title logo artwork"
+    },
+    "detailSectionLogoSubtitle": "Cím megjelenítése szövegként, ha a logo szakasz ki van kapcsolva",
+    "@detailSectionLogoSubtitle": {
+        "description": "Subtitle for the logo section switch"
+    },
+    "detailSectionTagline": "Jelmondat",
+    "@detailSectionTagline": {
+        "description": "Details screen section: the short tagline under the title"
+    },
+    "detailSectionPoster": "Poszter",
+    "@detailSectionPoster": {
+        "description": "Details screen section: the poster image beside the title"
+    },
+    "detailSectionVersionBadge": "Verzió jelvény",
+    "@detailSectionVersionBadge": {
+        "description": "Details screen section: the badge shown when an item has more than one version"
+    },
+    "detailSectionUpNext": "Következik",
+    "@detailSectionUpNext": {
+        "description": "Details screen section: the next up or next episode card"
+    },
+    "detailSectionLyrics": "Dalszöveg",
+    "@detailSectionLyrics": {
+        "description": "Details screen section: the lyrics panel for songs"
+    },
+    "detailSectionCast": "Szereplők",
+    "@detailSectionCast": {
+        "description": "Details screen section: the cast row, tab or card"
+    },
+    "detailSectionCastSubtitle": "Gyűjtemények adatlapjain is",
+    "@detailSectionCastSubtitle": {
+        "description": "Subtitle for the cast section switch"
+    },
+    "detailSectionCrew": "Rendezők és írók",
+    "@detailSectionCrew": {
+        "description": "Details screen section: directors and writers"
+    },
+    "detailSectionStudios": "Stúdiók",
+    "@detailSectionStudios": {
+        "description": "Details screen section: studios and networks"
+    },
+    "detailSectionChapters": "Fejezetek",
+    "@detailSectionChapters": {
+        "description": "Details screen section: chapters"
+    },
+    "detailSectionExtras": "Extrák",
+    "@detailSectionExtras": {
+        "description": "Details screen section: trailers, featurettes and other extras"
+    },
+    "detailSectionCollections": "Gyűjtemények",
+    "@detailSectionCollections": {
+        "description": "Details screen section: the collections an item belongs to"
+    },
+    "detailSectionMoreLikeThis": "Hasonlók",
+    "@detailSectionMoreLikeThis": {
+        "description": "Details screen section: similar items from the library"
+    },
+    "detailSectionMoreLikeThisSubtitle": "Hasonló albumok és előadók is",
+    "@detailSectionMoreLikeThisSubtitle": {
+        "description": "Subtitle for the More Like This section switch"
+    },
+    "detailSectionMoreEpisodes": "További epizódok",
+    "@detailSectionMoreEpisodes": {
+        "description": "Details screen section: the other episodes of a show on an episode's page"
+    },
+    "detailSectionMoreEpisodesSubtitle": "Epizódok oldalain",
+    "@detailSectionMoreEpisodesSubtitle": {
+        "description": "Subtitle for the More episodes section switch"
+    },
+    "detailSectionMediaInfo": "Média infó",
+    "@detailSectionMediaInfo": {
+        "description": "Details screen section: file, stream and Direct Play details"
+    },
+    "detailSectionMediaInfoSubtitle": "Fájl, stream és közvetlen lejátszás ellenőrzése",
+    "@detailSectionMediaInfoSubtitle": {
+        "description": "Subtitle for the media info section switch"
+    },
+    "detailSectionSeerrGenresTags": "Műfajok és címkék",
+    "@detailSectionSeerrGenresTags": {
+        "description": "Details screen Seerr section: genre and keyword chips"
+    },
+    "detailSectionSeerrStats": "Statisztikák",
+    "@detailSectionSeerrStats": {
+        "description": "Details screen Seerr section: TMDB score, status, budget and revenue"
+    },
+    "detailSectionSeerrRecommendations": "Ajánlások",
+    "@detailSectionSeerrRecommendations": {
+        "description": "Details screen Seerr section: recommended titles"
+    },
+    "detailSectionSeerrSimilar": "Hasonló címek",
+    "@detailSectionSeerrSimilar": {
+        "description": "Details screen Seerr section: similar titles"
+    },
+    "detailSectionSeerrCollection": "Gyűjtemény borítókép",
+    "@detailSectionSeerrCollection": {
+        "description": "Details screen Seerr section: the banner for the collection a movie is part of"
+    },
+    "detailSectionSeerrPersonAppearances": "Szereplések",
+    "@detailSectionSeerrPersonAppearances": {
+        "description": "Details screen Seerr section: a person's appearances"
+    },
+    "detailSectionSeerrPersonCrew": "Stábtagként végzett munkák",
+    "@detailSectionSeerrPersonCrew": {
+        "description": "Details screen Seerr section: a person's crew credits"
+    },
+    "detailSectionPersonPagesSubtitle": "Személyek adatlapjain",
+    "@detailSectionPersonPagesSubtitle": {
+        "description": "Subtitle for Seerr sections only shown on a person's Details screen"
+    },
+    "detailSectionBiography": "Életrajz",
+    "@detailSectionBiography": {
+        "description": "Details screen section: a person's biography"
+    },
+    "detailSectionBirthplace": "Születési hely",
+    "@detailSectionBirthplace": {
+        "description": "Details screen section: a person's place of birth"
+    },
+    "detailSectionGuestAppearances": "Vendégszereplések",
+    "@detailSectionGuestAppearances": {
+        "description": "Details screen section: a person's guest appearances"
+    },
+    "detailSectionMusicVideos": "Videóklippek",
+    "@detailSectionMusicVideos": {
+        "description": "Details screen section: a person's music videos"
+    },
+    "detailSectionPlaylistOrder": "Lejátszási lista sorrend",
+    "@detailSectionPlaylistOrder": {
+        "description": "Details screen section: a collection's playlist order"
+    },
+    "detailSectionBookGenres": "Könyvműfajok",
+    "@detailSectionBookGenres": {
+        "description": "Details screen section: the genre chips on a book's page"
+    },
+    "detailSectionPhotoExif": "Fényképrészletek",
+    "@detailSectionPhotoExif": {
+        "description": "Details screen section: camera and image details on a photo's page"
+    },
+    "upcomingEpisodeNext": "Következő: {date} ({season}. évad, {episode}. epizód)",
+    "@upcomingEpisodeNext": {
+        "description": "Formatted badge text for an upcoming episode release date",
+        "placeholders": {
+            "date": {
+                "type": "String"
+            },
+            "season": {
+                "type": "int"
+            },
+            "episode": {
+                "type": "int"
+            }
+        }
+    },
+    "upcomingEpisodeToday": "Ma",
+    "@upcomingEpisodeToday": {
+        "description": "Upcoming episode airs today"
+    },
+    "upcomingEpisodeTomorrow": "Holnap",
+    "@upcomingEpisodeTomorrow": {
+        "description": "Upcoming episode airs tomorrow"
+    },
+    "moveUp": "Feljebb",
+    "@moveUp": {
+        "description": "Moves a button one place earlier in its row"
+    },
+    "moveDown": "Lejjebb",
+    "@moveDown": {
+        "description": "Moves a button one place later in its row"
+    },
+    "buttonOrderHint": "A sorrend a nyilakkal módosítható. Távirányító használatakor a bal és jobb nyílgombokkal mozgatható a kijelölt gomb. Egy gomb kikapcsolásakor az a lista végére kerül.",
+    "@buttonOrderHint": {
+        "description": "Explains how to reorder the buttons in a row"
+    },
+    "buttonShownInSyncPlayGroup": "Csak SyncPlay-csoporthoz csatlakozva jelenik meg",
+    "@buttonShownInSyncPlayGroup": {
+        "description": "Hint under the SyncPlay and Watch with group buttons in the button settings, which only appear once the user has joined a group"
+    },
+    "orientationLock": "Tájolás zár",
+    "@orientationLock": {
+        "description": "Player button that locks the screen orientation"
+    },
+    "fullscreen": "Teljesképernyő",
+    "@fullscreen": {
+        "description": "Player button that toggles fullscreen"
+    },
+    "settingsAudioPassthroughMode": "Továbbítás",
+    "@settingsAudioPassthroughMode": {
+        "description": "Title of the audio passthrough mode selector"
+    },
+    "settingsAudioPassthroughModeDescription": "A tömörített térhatású hang televízióra vagy vevőegységre történő továbbításának módja.",
+    "settingsAudioPassthroughModeDisabled": "Kikapcsolva (a dekódolás mindig ezen az eszközön történik)",
+    "settingsAudioPassthroughModeAuto": "Automatikus (az észlelt eszköz támogatásához igazítva)",
+    "settingsAudioPassthroughModeManual": "Kézi (az alábbi formátumok kiválasztásával)",
+    "settingsAudioPassthroughOutput": "Hangtovábbítás kimenete",
+    "@settingsAudioPassthroughOutput": {
+        "description": "Title of the RAW-vs-IEC passthrough packer selector (Android TV, Media3 engine)"
+    },
+    "settingsAudioPassthroughOutputDescription": "A HDMI-kapcsolaton továbbított bitfolyamok csomagolásának módja. Ha a hangtovábbítás nem működik megfelelően, vagy a hang akadozik, érdemes az alkalmazás saját csomagolóját használni.",
+    "settingsAudioPassthroughOutputPlatform": "Automatikus, rendszerszintű csomagolás (AudioTrack RAW)",
+    "settingsAudioPassthroughOutputIec": "Alkalmazásszintű csomagolás (AudioTrack IEC)",
+    "settingsAudioPassthroughOutputIecLabel": "Alkalmazás (IEC)",
+    "settingsDownmixToStereoDescription": "Az összes dekódolt hang két csatornára keverése.",
+    "settingsAudioEac3IncludesAtmos": "E-AC-3 bitfolyam továbbítása, beleértve a Dolby Atmos (JOC) hangot is.",
+    "settingsAudioDtsHdIncludesDtsX": "DTS-HD bitfolyam továbbítása, beleértve a DTS:X hangot is.",
+    "settingsAudioTrueHdIncludesAtmos": "TrueHD bitfolyam továbbítása, beleértve a Dolby Atmos hangot is.",
+    "subtitleDownloadLanguages": "Feliratletöltések nyelve",
+    "@subtitleDownloadLanguages": {
+        "description": "Setting that picks which languages a subtitle download searches"
+    },
+    "subtitleDownloadLanguagesDescription": "A feliratok letöltésekor keresett nyelvek, legfeljebb 5. Automatikus módban a keresés a feliratok alapértelmezett nyelve vagy a videó alapján kiválasztott egyetlen nyelven történik.",
+    "@subtitleDownloadLanguagesDescription": {
+        "description": "Description for the subtitle download languages setting"
+    },
+    "preferredSecondarySubtitleLanguage": "Előnyben részesített másodlagos feliratnyelv",
+    "@preferredSecondarySubtitleLanguage": {
+        "description": "Preferred language used to sort secondary subtitle tracks in the picker. It doesn't turn subtitles on."
+    },
+    "primarySubtitleSlot": "Elsődleges",
+    "@primarySubtitleSlot": {
+        "description": "Label for the primary subtitle selection slot"
+    },
+    "secondarySubtitleSlot": "Másodlagos",
+    "@secondarySubtitleSlot": {
+        "description": "Label for the secondary subtitle selection slot"
+    },
+    "secondarySubtitleTrack": "Másodlagos feliratsáv",
+    "@secondarySubtitleTrack": {
+        "description": "Title of the picker for the secondary subtitle track"
+    },
+    "decreaseValue": "{setting} csökkentése",
+    "@decreaseValue": {
+        "description": "Tooltip for the button that lowers a setting's value",
+        "placeholders": {
+            "setting": {
+                "type": "String"
+            }
+        }
+    },
+    "increaseValue": "{setting} növelése",
+    "@increaseValue": {
+        "description": "Tooltip for the button that raises a setting's value",
+        "placeholders": {
+            "setting": {
+                "type": "String"
+            }
+        }
+    },
+    "semiTransparentWhite": "Félig áttetsző fehér",
+    "@semiTransparentWhite": {
+        "description": "Color: semi-transparent white"
+    },
+    "lightGray": "Világosszürke",
+    "@lightGray": {
+        "description": "Color: light gray"
+    },
+    "darkGray": "Sötétszürke",
+    "@darkGray": {
+        "description": "Color: dark gray"
+    },
+    "blue": "Kék",
+    "@blue": {
+        "description": "Color: blue"
+    },
+    "magenta": "Magenta",
+    "@magenta": {
+        "description": "Color: magenta"
+    },
+    "resetProfileTitle": "{profile} visszaállítása?",
+    "@resetProfileTitle": {
+        "description": "Title of the dialog confirming a profile reset",
+        "placeholders": {
+            "profile": {
+                "type": "String"
+            }
+        }
+    },
+    "resetProfileDescription": "Ez törli {profile} profilját a szerverről, és visszaállítja az összes szinkronizált beállítást az alapértelmezett értékére ezen az eszközön.",
+    "@resetProfileDescription": {
+        "description": "Body of the dialog confirming a device profile reset",
+        "placeholders": {
+            "profile": {
+                "type": "String"
+            }
+        }
+    },
+    "resetGlobalProfileDescription": "Ez törli az összes mentett profilt a szerverről, és visszaállítja az összes szinkronizált beállítást az alapértelmezett értékére ezen az eszközön.",
+    "@resetGlobalProfileDescription": {
+        "description": "Body of the dialog confirming a global profile reset"
+    },
+    "profileReset": "{profile} profiljának visszaállítása az alapértelmezett beállításokra.",
+    "@profileReset": {
+        "description": "Message after a profile was reset",
+        "placeholders": {
+            "profile": {
+                "type": "String"
+            }
+        }
+    },
+    "resetRatingsTitle": "Értékelések visszaállítása?",
+    "@resetRatingsTitle": {
+        "description": "Title of the dialog confirming a ratings reset"
+    },
+    "resetRatingsDescription": "Ez visszaállítja az értékelések összes beállítását az alapértelmezett értékére, beleértve a megjelenített forrásokat és azok sorrendjét is.",
+    "@resetRatingsDescription": {
+        "description": "Body of the dialog confirming a ratings reset"
     }
 }

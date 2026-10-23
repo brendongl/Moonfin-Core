@@ -21,6 +21,9 @@ void main() {
   var probes = 0;
   var answer = HttpStatus.ok;
 
+  // A ping body labelled json. Empty means no body, as in every other case.
+  var pingBody = '';
+
   setUp(() async {
     // The test binding answers every request with a 400, and the probe has to
     // reach the server on the loopback for these to mean anything.
@@ -29,6 +32,7 @@ void main() {
     failuresLeft = 0;
     probes = 0;
     answer = HttpStatus.ok;
+    pingBody = '';
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     server.listen((request) async {
       probes++;
@@ -36,6 +40,10 @@ void main() {
           ? HttpStatus.serviceUnavailable
           : answer;
       if (failuresLeft > 0) failuresLeft--;
+      if (pingBody.isNotEmpty) {
+        request.response.headers.contentType = ContentType.json;
+        request.response.write(pingBody);
+      }
       await request.response.close();
     });
 
@@ -114,6 +122,19 @@ void main() {
 
   test('a ping turned down for its missing token still counts', () async {
     answer = HttpStatus.unauthorized;
+    final service = serviceOnline(online: true);
+    addTearDown(service.dispose);
+
+    await service.recheckNow();
+
+    expect(service.canReachServer, isTrue);
+    expect(probes, 1);
+  });
+
+  // A proxy can label Emby's plain text ping as json. Decoding it used to fail
+  // the probe and send every browse call to the downloads catalog.
+  test('a ping body that is not json still counts as reachable', () async {
+    pingBody = 'Emby Server';
     final service = serviceOnline(online: true);
     addTearDown(service.dispose);
 

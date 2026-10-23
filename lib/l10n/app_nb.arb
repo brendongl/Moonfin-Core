@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "Foretrukket visningsspråk",
     "offlineBannerTitle": "Du er frakoblet",
     "offlineBannerSubtitle": "Viser nedlastingene dine",
-    "offlineBannerAction": "Nedlastinger",
     "serverUnreachableBannerTitle": "Får ikke kontakt med serveren",
     "serverUnreachableBannerSubtitle": "Spiller av fra nedlastinger til den er tilbake",
     "contextMenuHideFromContinueWatching": "Skjul fra Fortsett å se",

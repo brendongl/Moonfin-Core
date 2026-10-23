@@ -15,6 +15,7 @@ import '../../../../widgets/focus/locked_focus_row.dart';
 import '../../../../widgets/sliding_pill_tabs.dart';
 import '../../detail_episode_images.dart';
 import '../../detail_layout_metrics.dart';
+import '../../play_item_on_screen.dart';
 import 'minimalist_episode_card.dart';
 
 /// The gap between the season tabs and the rail under them.
@@ -125,17 +126,22 @@ class _MinimalistEpisodesSectionState extends State<MinimalistEpisodesSection> {
     showContextMenu(context, episode, onChanged: () => setState(() {}));
   }
 
+  // From an episode the one picked takes its page, so Back leaves the run of
+  // episodes in one press.
   void _openEpisode(BuildContext context, AggregatedItem episode) {
-    context.push(
-      Destinations.item(
-        episode.id,
-        serverId: episode.serverId,
-        seasonContext: seasonContextParam(
-          contextSeasonId: _isSeason ? _vm.item?.id : null,
-          episodeSeasonId: episode.seasonId,
-        ),
+    if (episode.id == _vm.item?.id) {
+      playItemOnScreen(context);
+      return;
+    }
+    final location = Destinations.item(
+      episode.id,
+      serverId: episode.serverId,
+      seasonContext: seasonContextParam(
+        contextSeasonId: _isSeason ? _vm.item?.id : null,
+        episodeSeasonId: episode.seasonId,
       ),
     );
+    _isEpisode ? context.pushReplacement(location) : context.push(location);
   }
 
   /// The room under the still. Measured rather than guessed, or a larger user
@@ -255,6 +261,7 @@ class _MinimalistEpisodesSectionState extends State<MinimalistEpisodesSection> {
                     episode: episode,
                     width: cardWidth,
                     isFocused: isFocused,
+                    isCurrent: _isEpisode && episode.id == _vm.item?.id,
                     imageUrl: minimalistEpisodeImageUrl(
                       episode,
                       _vm,

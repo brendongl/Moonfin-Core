@@ -120,6 +120,7 @@ class LibraryBrowseViewModel extends ChangeNotifier {
   int get totalCount => _totalCount;
 
   int _filteredOutCount = 0;
+  int _directoryCount = 0;
 
   /// Rows the server has handed back so far, which is where the next page
   /// starts. The rendered count drifts below this whenever a row is dropped,
@@ -859,6 +860,17 @@ class LibraryBrowseViewModel extends ChangeNotifier {
       sortBy = 'SortName';
     }
 
+    // Plain directories come in full with the first page and everything else
+    // follows by name.
+    final directoriesFirst =
+        isFolderyLibrary && _sortBy == LibrarySortBy.foldersFirst;
+    if (directoriesFirst) {
+      sortBy = 'SortName';
+      excludeTypes = {...?excludeTypes, ...kDirectoryItemTypes}.toList();
+    }
+    final fetchDirectories =
+        directoriesFirst && startIndex == 0 && includeTypes == null;
+
     // Everything the user rated loads as one page, since the plugin serves
     // ids and scores rather than a paged, sorted stream. With the endpoint
     // unreachable this stays null and the browse falls back to the normal
@@ -881,6 +893,7 @@ class LibraryBrowseViewModel extends ChangeNotifier {
     }
 
     final Map<String, dynamic> response;
+    List<dynamic> directories = const [];
     if (myRatingResponse != null) {
       response = myRatingResponse;
     } else if (isAlbumArtistBrowse) {
@@ -912,35 +925,58 @@ class LibraryBrowseViewModel extends ChangeNotifier {
         isFavorite: _favoriteFilter ? true : null,
       );
     } else {
-      response = await _fetchItemsWithFallback(
-        parentId: _effectiveParentId,
-        genreIds: genreId != null ? [genreId!] : null,
-        studios: studioName != null ? [studioName!] : null,
-        includeItemTypes: includeTypes,
-        excludeItemTypes: excludeTypes,
-        collapseBoxSetItems: collapseBoxSets,
-        sortBy: sortBy,
-        sortOrder: _sortDirection == SortDirection.ascending
-            ? 'Ascending'
-            : 'Descending',
-        startIndex: startIndex,
-        limit: pageSize,
-        recursive: recursive,
-        fields: _browseFields,
-        filters: filters.isEmpty ? null : filters,
-        seriesStatus: seriesStatus.isEmpty ? null : seriesStatus,
-        isFavorite: _favoriteFilter ? true : null,
-        nameStartsWith: canJumpByServerFilter ? _serverLetter : null,
-      );
+      final sortOrder = _sortDirection == SortDirection.ascending
+          ? 'Ascending'
+          : 'Descending';
+      final results = await Future.wait([
+        _fetchItemsWithFallback(
+          parentId: _effectiveParentId,
+          genreIds: genreId != null ? [genreId!] : null,
+          studios: studioName != null ? [studioName!] : null,
+          includeItemTypes: includeTypes,
+          excludeItemTypes: excludeTypes,
+          collapseBoxSetItems: collapseBoxSets,
+          sortBy: sortBy,
+          sortOrder: sortOrder,
+          startIndex: startIndex,
+          limit: pageSize,
+          recursive: recursive,
+          fields: _browseFields,
+          filters: filters.isEmpty ? null : filters,
+          seriesStatus: seriesStatus.isEmpty ? null : seriesStatus,
+          isFavorite: _favoriteFilter ? true : null,
+          nameStartsWith: canJumpByServerFilter ? _serverLetter : null,
+        ),
+        if (fetchDirectories)
+          _getFilteredItems(
+            parentId: _effectiveParentId,
+            genreIds: genreId != null ? [genreId!] : null,
+            studios: studioName != null ? [studioName!] : null,
+            includeItemTypes: kDirectoryItemTypes,
+            sortBy: 'SortName',
+            sortOrder: sortOrder,
+            recursive: recursive,
+            fields: _browseFields,
+            enableImageTypes: _imageTypes,
+            imageTypeLimit: _imageTypeLimit,
+            filters: filters.isEmpty ? null : filters,
+            isFavorite: _favoriteFilter ? true : null,
+            enableTotalRecordCount: false,
+          ),
+      ]);
+      response = results.first;
+      if (fetchDirectories) {
+        directories = (results.last['Items'] as List?) ?? const [];
+      }
     }
-
     // The list this window was requested for is gone, so nothing it carries
     // belongs in the one on screen — not the rows, not the counters, not the
     // ids the de-dupe reads.
     if (_disposed || generation != _fetchGeneration) return;
+    if (startIndex == 0) _directoryCount = directories.length;
 
     final rawItems = (response['Items'] as List?) ?? [];
-    var mapped = rawItems
+    var mapped = [...directories, ...rawItems]
         .whereType<Map>()
         .map((raw) => raw.cast<String, dynamic>())
         .map((raw) {
@@ -985,7 +1021,7 @@ class LibraryBrowseViewModel extends ChangeNotifier {
     } else {
       _totalCountKnown = totalFromServer != null;
       if (_totalCountKnown) {
-        _totalCount = totalFromServer! - _filteredOutCount;
+        _totalCount = totalFromServer! + _directoryCount - _filteredOutCount;
         _hasMoreFromPageSize = _items.length + filtered.length < _totalCount;
       } else {
         _hasMoreFromPageSize = rawItems.length == pageSize;

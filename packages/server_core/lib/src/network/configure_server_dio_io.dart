@@ -7,6 +7,7 @@ import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 
 import '../diagnostics/server_log_sink.dart';
+import 'client_certificates.dart';
 import 'insecure_certificates.dart';
 import 'server_user_agent.dart';
 
@@ -39,6 +40,10 @@ void configureServerDio(Dio dio, {Duration? idleTimeout}) {
 
         client.badCertificateCallback = (_, _, _) =>
             gAllowSelfSignedCertificates;
+
+        // The app's HttpOverrides already do this, and replacing their
+        // connection factory would undo any other override.
+        if (HttpOverrides.current == null) applyClientCertificates(client);
 
         client.idleTimeout = idleTimeout ?? _idleTimeout;
 

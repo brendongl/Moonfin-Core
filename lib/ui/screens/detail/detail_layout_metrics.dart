@@ -198,5 +198,6 @@ double minimalistEpisodeCardWidth(
 /// Whether a style other than Modern hands this item type to Modern anyway.
 ///
 /// Spotlight and Minimalist both draw a playlist as a single card that opens
-/// a modal, which leaves the screen with nothing on it but buttons.
+/// a modal, and Nouveau has no track list at all, which leaves the screen with
+/// nothing on it but buttons.
 bool detailFallsBackToModern(String? type) => type == 'Playlist';

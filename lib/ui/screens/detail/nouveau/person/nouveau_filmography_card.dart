@@ -104,7 +104,7 @@ class NouveauFilmographyCard extends StatelessWidget {
     final poster = NouveauPosterCard(
       imageUrl: _imageUrl(),
       title: title,
-      subtitle: item.productionYear?.toString(),
+      subtitle: item.personRole ?? item.productionYear?.toString(),
       width: width,
       height: height,
       isFocused: isFocused,

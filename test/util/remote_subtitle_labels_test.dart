@@ -1,10 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:jellyfin_preference/jellyfin_preference.dart';
+import 'package:mocktail/mocktail.dart';
 import 'package:moonfin/l10n/app_localizations_en.dart';
 import 'package:moonfin/preference/user_preferences.dart';
 import 'package:moonfin/util/remote_subtitle_labels.dart';
+import 'package:server_core/server_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+class _ItemsApi extends Mock implements ItemsApi {}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -178,6 +182,90 @@ void main() {
       await prefs.set(UserPreferences.defaultSubtitleLanguage, '');
 
       expect(remoteSubtitleLanguage(const [], const []), 'eng');
+    });
+  });
+
+  // Issue #1283: downloads can search several languages picked in settings.
+  group('remoteSubtitleLanguages', () {
+    late UserPreferences prefs;
+
+    setUp(() async {
+      SharedPreferences.setMockInitialValues(const <String, Object>{});
+      final store = PreferenceStore();
+      await store.init();
+      prefs = UserPreferences(store);
+      GetIt.instance.registerSingleton<UserPreferences>(prefs);
+      await prefs.set(UserPreferences.defaultSubtitleLanguage, 'eng');
+    });
+
+    tearDown(() => GetIt.instance.unregister<UserPreferences>());
+
+    test('the picked languages replace the single guess', () async {
+      await prefs.set(UserPreferences.subtitleDownloadLanguages, 'hrv, ger');
+
+      expect(remoteSubtitleLanguages(const [], const []), ['hrv', 'ger']);
+    });
+
+    test('none picked searches the single guess', () {
+      expect(remoteSubtitleLanguages(const [], const []), ['eng']);
+    });
+
+    test('never searches more than the cap', () async {
+      await prefs.set(
+        UserPreferences.subtitleDownloadLanguages,
+        'eng,ger,hrv,fre,spa,ita,jpn',
+      );
+
+      expect(
+        remoteSubtitleLanguages(const [], const []),
+        hasLength(maxSubtitleDownloadLanguages),
+      );
+    });
+  });
+
+  group('searchRemoteSubtitlesIn', () {
+    late _ItemsApi api;
+
+    setUp(() => api = _ItemsApi());
+
+    void answer(String language, Future<List<Map<String, dynamic>>> result) {
+      when(
+        () => api.searchRemoteSubtitles('item', language: language),
+      ).thenAnswer((_) => result);
+    }
+
+    test('lists the results language by language in the order given', () async {
+      answer('hrv', Future.value([<String, dynamic>{'Id': 'h1'}]));
+      answer('ger', Future.value([<String, dynamic>{'Id': 'g1'}]));
+
+      final results = await searchRemoteSubtitlesIn(api, 'item', [
+        'hrv',
+        'ger',
+      ]);
+
+      expect(results.map((r) => r['Id']), ['h1', 'g1']);
+    });
+
+    test('a failed language still shows the others', () async {
+      answer('hrv', Future.error(Exception('rate limited')));
+      answer('ger', Future.value([<String, dynamic>{'Id': 'g1'}]));
+
+      final results = await searchRemoteSubtitlesIn(api, 'item', [
+        'hrv',
+        'ger',
+      ]);
+
+      expect(results.map((r) => r['Id']), ['g1']);
+    });
+
+    test('nothing found with a failure reports the failure', () async {
+      answer('hrv', Future.error(Exception('rate limited')));
+      answer('ger', Future.value(const []));
+
+      await expectLater(
+        searchRemoteSubtitlesIn(api, 'item', ['hrv', 'ger']),
+        throwsException,
+      );
     });
   });
 }

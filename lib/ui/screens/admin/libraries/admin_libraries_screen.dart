@@ -67,6 +67,18 @@ class AdminLibrariesScreen extends ConsumerWidget {
     final listBottomPadding = bottomSafe + 120;
     final actionsBottom = bottomSafe + 16;
     final librariesAsync = ref.watch(adminLibrariesProvider);
+    // Scanning every library starts the RefreshLibrary task, so the button
+    // follows that task's state.
+    final scanTask = ref
+        .watch(adminTasksProvider)
+        .valueOrNull
+        ?.where((t) => t.key == 'RefreshLibrary')
+        .firstOrNull;
+    final scanTaskId = scanTask?.id;
+    final scanning = scanTask != null && scanTask.state != 'Idle';
+    final scanProgress = scanTask?.state == 'Running'
+        ? scanTask?.currentProgressPercentage
+        : null;
 
     return librariesAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -212,11 +224,21 @@ class AdminLibrariesScreen extends ConsumerWidget {
               spacing: 8,
               runSpacing: 8,
               children: [
+                // A second start would cancel the running scan, so the button
+                // waits for the task to go idle.
                 FloatingActionButton.extended(
                   heroTag: 'scan',
-                  onPressed: () => _scanAll(context),
-                  icon: const Icon(Icons.refresh),
-                  label: Text(l10n.adminRefreshAllLibraries),
+                  onPressed: scanning ? null : () => _scanAll(context, scanTaskId),
+                  icon: scanning
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh),
+                  label: Text(scanProgress == null
+                      ? l10n.adminRefreshAllLibraries
+                      : '${l10n.adminRefreshAllLibraries} ${scanProgress.round()}%'),
                 ),
                 FloatingActionButton.extended(
                   heroTag: 'add',
@@ -250,50 +272,37 @@ class AdminLibrariesScreen extends ConsumerWidget {
       BuildContext context, WidgetRef ref, String action, VirtualFolderInfo lib) {
     switch (action) {
       case 'refresh':
-        _scanLibrary(context, lib);
+        showRefreshItemDialog(context, itemId: lib.itemId);
       case 'edit':
         context.push(Destinations.adminLibrary(lib.itemId));
       case 'rename':
         showRenameLibraryDialog(
           context,
           currentName: lib.name,
+          libraryId: lib.itemId,
           onRenamed: () => ref.invalidate(adminLibrariesProvider),
         );
       case 'delete':
         showDeleteLibraryDialog(
           context,
           libraryName: lib.name,
+          libraryId: lib.itemId,
+          locations: lib.locations,
           onDeleted: () => ref.invalidate(adminLibrariesProvider),
         );
     }
   }
 
-  Future<void> _scanLibrary(BuildContext context, VirtualFolderInfo lib) async {
+  Future<void> _scanAll(BuildContext context, String? taskId) async {
     final l10n = AppLocalizations.of(context);
+    final client = GetIt.instance<MediaServerClient>();
     try {
-      await GetIt.instance<MediaServerClient>()
-          .adminItemsApi
-          .refreshItem(lib.itemId, recursive: true);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.adminLibraryScanStarted)),
-        );
+      // /Library/Refresh queues the same scan when the task list is missing.
+      if (taskId != null) {
+        await client.adminTasksApi.startTask(taskId);
+      } else {
+        await client.adminLibraryApi.refreshLibrary();
       }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.adminScanFailed(describeError(e, l10n)))),
-        );
-      }
-    }
-  }
-
-  Future<void> _scanAll(BuildContext context) async {
-    final l10n = AppLocalizations.of(context);
-    try {
-      await GetIt.instance<MediaServerClient>()
-          .adminLibraryApi
-          .refreshLibrary();
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(l10n.adminLibraryScanStarted)),

@@ -1,6 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:get_it/get_it.dart';
 
+import '../../../l10n/app_localizations.dart';
+import '../../../preference/preference_constants.dart';
+import '../../../preference/user_preferences.dart';
 import '../../../util/system_ui.dart';
 
 /// Wraps an index-driven game menu selection, including reverse navigation.
@@ -67,25 +73,78 @@ void showGamePlaybackMessage(BuildContext context, String message) {
   );
 }
 
+/// The orientations a game screen allows for a [GamePlaybackOrientation].
+List<DeviceOrientation> deviceOrientationsFor(GamePlaybackOrientation o) =>
+    switch (o) {
+      GamePlaybackOrientation.landscape => const [
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ],
+      GamePlaybackOrientation.portrait => const [DeviceOrientation.portraitUp],
+      GamePlaybackOrientation.auto => DeviceOrientation.values,
+    };
+
+/// The user's orientation choice. Landscape when preferences aren't wired up,
+/// which is how the player widget tests build the screens.
+GamePlaybackOrientation currentGamePlaybackOrientation() {
+  if (!GetIt.instance.isRegistered<UserPreferences>()) {
+    return GamePlaybackOrientation.landscape;
+  }
+  return GetIt.instance<UserPreferences>().get(
+    UserPreferences.gamePlaybackOrientation,
+  );
+}
+
+Future<void> saveGamePlaybackOrientation(GamePlaybackOrientation o) async {
+  if (!GetIt.instance.isRegistered<UserPreferences>()) return;
+  await GetIt.instance<UserPreferences>().set(
+    UserPreferences.gamePlaybackOrientation,
+    o,
+  );
+}
+
+/// Steps to the next orientation choice, applies it to the device and saves
+/// it. Returns the new choice for the caller's state.
+GamePlaybackOrientation cycleGamePlaybackOrientation(
+  GamePlaybackOrientation current,
+) {
+  const values = GamePlaybackOrientation.values;
+  final next = values[(current.index + 1) % values.length];
+  GamePlaybackSystemUi.apply(deviceOrientationsFor(next));
+  unawaited(saveGamePlaybackOrientation(next));
+  return next;
+}
+
+/// Label for an orientation choice. English when no localizations are at hand,
+/// as in the native player's context-free menu list.
+String gamePlaybackOrientationLabel(
+  GamePlaybackOrientation o,
+  AppLocalizations? l10n,
+) => switch (o) {
+  GamePlaybackOrientation.landscape => l10n?.landscape ?? 'Landscape',
+  GamePlaybackOrientation.portrait => l10n?.portrait ?? 'Portrait',
+  GamePlaybackOrientation.auto => l10n?.auto ?? 'Auto',
+};
+
 /// Shared full-screen system UI lifecycle for game players.
 ///
 /// The flags preserve each backend's platform policy: EmulatorJS hides system
 /// UI on every host while native playback does so only with touch controls.
+/// A null [orientations] leaves the device alone (TV and desktop).
 abstract final class GamePlaybackSystemUi {
   static void enter(
     ImmersiveSystemUi screen, {
     required bool immersive,
-    required bool lockLandscape,
+    List<DeviceOrientation>? orientations,
   }) {
     if (!immersive) return;
     screen.setImmersive(true);
-    if (lockLandscape) {
-      SystemChrome.setPreferredOrientations([
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
-      ]);
-    }
+    if (orientations != null) apply(orientations);
   }
+
+  /// Re-applies an orientation choice mid-game, for the in-game menu row.
+  static void apply(List<DeviceOrientation> orientations) =>
+      SystemChrome.setPreferredOrientations(orientations);
 
   static Future<void> restore(
     ImmersiveSystemUi screen, {

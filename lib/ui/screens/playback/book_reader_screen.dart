@@ -32,11 +32,13 @@ import '../../../data/services/media_server_client_factory.dart';
 import '../../../data/services/reader_settings_store.dart';
 import '../../../util/platform_detection.dart';
 import '../../../util/insecure_certificates.dart';
+import '../../../util/webview_client_cert.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../util/error_message.dart';
 import '../../../l10n/current_app_localizations.dart';
 import '../../../util/system_ui.dart';
 import '../../widgets/adaptive/sf_symbol.dart';
+import '../../widgets/reader/epub_js_view.dart';
 import '../../widgets/reader/reader_chrome_bar.dart';
 import '../../widgets/reader/reader_contents_hub.dart';
 import '../../widgets/reader/reader_settings_sheet.dart';
@@ -109,8 +111,23 @@ class _BookReaderScreenState extends State<BookReaderScreen>
   final Map<String, List<String>> _epubThemeCache = {};
   final ScrollController _epubScrollController = ScrollController();
   bool _epubScrollToBottomOnLoad = false;
+  final EpubJsController _epubJs = EpubJsController();
+  bool _epubJsFailed = false;
+  int _epubSectionCount = 0;
+  bool _epubBookRtl = false;
+  String? _epubStartCfi;
+  double? _epubStartFraction;
+  int _epubStartSection = 0;
+  String? _epubCfi;
+  double? _epubFraction;
+  bool _epubAtEnd = false;
+  int? _epubMinutesLeft;
+  int? _reportedEpubTicks;
+  Timer? _epubSaveDebounce;
+  Future<void> _epubSaveChain = Future.value();
   Timer? _comicStateSaveDebounce;
   Timer? _pdfPageSaveDebounce;
+  int? _reportedPageIndex;
   List<_BookmarkEntry> _bookmarks = const [];
   List<_HighlightEntry> _highlights = const [];
   List<({String title, int chapterIndex, int depth})> _epubTocEntries =
@@ -131,20 +148,38 @@ class _BookReaderScreenState extends State<BookReaderScreen>
   Color get _readerAccent => AppColorScheme.accent;
 
   bool get _useNativeHtmlEpub =>
+      !_useEpubJs &&
       !kIsWeb &&
       (PlatformDetection.isMacOS ||
           PlatformDetection.isLinux ||
           PlatformDetection.isWindows);
 
-  bool get _epubIsRtl => Directionality.of(context) == TextDirection.rtl;
+  /// Build with --dart-define=MOONFIN_EPUBJS=false to go back to the chapter
+  /// HTML reader everywhere.
+  static const bool _epubJsEnabled = bool.fromEnvironment(
+    'MOONFIN_EPUBJS',
+    defaultValue: true,
+  );
 
-  ReaderThemeColors get _fixedLayoutChromeColors => ReaderThemeColors(
-    background: _invertFixedLayout
-        ? const Color(0xFFF2F2F2)
-        : const Color(0xFF0A0A0A),
-    foreground: _invertFixedLayout ? const Color(0xFF1A1A1A) : Colors.white,
-    link: const Color(0xFF6FA8FF),
-    isDark: !_invertFixedLayout,
+  // Linux has no embeddable web view, so it keeps the chapter reader. Web has
+  // no flutter_inappwebview JavaScript handlers for the bridge.
+  bool get _useEpubJs =>
+      _epubJsEnabled &&
+      !_epubJsFailed &&
+      (PlatformDetection.isAndroid ||
+          PlatformDetection.isIOS ||
+          PlatformDetection.isMacOS ||
+          PlatformDetection.isWindows);
+
+  bool get _epubIsRtl => _useEpubJs
+      ? _epubBookRtl
+      : Directionality.of(context) == TextDirection.rtl;
+
+  static const _fixedLayoutChromeColors = ReaderThemeColors(
+    background: Color(0xFF0A0A0A),
+    foreground: Colors.white,
+    link: Color(0xFF6FA8FF),
+    isDark: true,
   );
 
   Widget _readerDimWarmthOverlay() {
@@ -278,11 +313,24 @@ class _BookReaderScreenState extends State<BookReaderScreen>
     return 'book_reader_epub_${item.serverId}_${item.id}_chapter';
   }
 
+  String get _epubJsPlacePrefKey {
+    final item = _item;
+    if (item == null) return 'book_reader_epubjs_unknown_place';
+    return 'book_reader_epubjs_${item.serverId}_${item.id}_place';
+  }
+
+  bool get _reportsEpubProgress =>
+      _resolveClient().serverType == ServerType.jellyfin;
+
   String get _pdfProgressPrefKey {
     final item = _item;
     if (item == null) return 'book_reader_pdf_unknown_page';
     return 'book_reader_pdf_${item.serverId}_${item.id}_page';
   }
+
+  String get _pdfSavedAtPrefKey => '${_pdfProgressPrefKey}_saved_at';
+
+  String get _comicSavedAtPrefKey => '${_comicProgressKeyPrefix}_saved_at';
 
   String get _bookmarkPrefKey {
     final item = _item;
@@ -306,6 +354,18 @@ class _BookReaderScreenState extends State<BookReaderScreen>
         GetIt.instance<MediaServerClient>();
   }
 
+  int? _newerServerPageIndex(SharedPreferences prefs, String savedAtKey) {
+    final item = _item;
+    if (item == null) return null;
+    final savedAtMs = prefs.getInt(savedAtKey);
+    return BookReaderService.newerServerPageIndex(
+      item,
+      localSavedAt: savedAtMs == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(savedAtMs),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -317,6 +377,7 @@ class _BookReaderScreenState extends State<BookReaderScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    if (_epubSaveDebounce != null) _saveEpubPlace();
     _comicStateSaveDebounce?.cancel();
     _pdfPageSaveDebounce?.cancel();
     _pageController.dispose();
@@ -330,9 +391,124 @@ class _BookReaderScreenState extends State<BookReaderScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused && _epubSaveDebounce != null) {
+      _saveEpubPlace();
+    }
     if (state == AppLifecycleState.resumed && !_loading && !_loadingContent) {
       _refreshItem();
     }
+  }
+
+  void _onEpubRelocated(EpubJsLocation location) {
+    setState(() {
+      _currentEpubChapter = location.sectionIndex;
+      _epubFraction = location.fraction;
+      _epubMinutesLeft = location.minutesLeftInSection;
+    });
+    _epubCfi = location.cfi;
+    _epubAtEnd = location.atEnd;
+    _epubSaveDebounce?.cancel();
+    _epubSaveDebounce = Timer(const Duration(seconds: 2), _saveEpubPlace);
+  }
+
+  ({String cfi, int? ticks, DateTime savedAt})? _readEpubJsPlace(
+    SharedPreferences prefs,
+    int bookBytes,
+  ) {
+    try {
+      final raw = jsonDecode(prefs.getString(_epubJsPlacePrefKey) ?? '');
+      // A changed file size means the server has a different copy of the
+      // book, where the saved CFI may point anywhere.
+      if (raw is! Map || raw['bytes'] != bookBytes) return null;
+      return (
+        cfi: raw['cfi'] as String,
+        ticks: raw['ticks'] as int?,
+        savedAt: DateTime.fromMillisecondsSinceEpoch(raw['savedAt'] as int),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Saves the exact place on this device and reports the Jellyfin position.
+  /// Saves run one after another so an older one can't land last.
+  void _saveEpubPlace() {
+    _epubSaveDebounce?.cancel();
+    _epubSaveDebounce = null;
+    final item = _item;
+    final cfi = _epubCfi;
+    final bytes = _epubBytes;
+    if (item == null || cfi == null || bytes == null) return;
+    final fraction = _epubFraction;
+    final ticks = fraction != null && _reportsEpubProgress
+        ? BookReaderService.epubTicks(fraction)
+        : null;
+    final atEnd = _epubAtEnd;
+    final chapter = _currentEpubChapter;
+    final placeKey = _epubJsPlacePrefKey;
+    final chapterKey = _epubProgressPrefKey;
+    final api = _resolveClient().userLibraryApi;
+    final savedAt = DateTime.now().millisecondsSinceEpoch;
+    // The ticks kept with the place are the last ones the server took, which
+    // is how the next open knows the server position is this one.
+    String place(int? reported) => jsonEncode({
+      'cfi': cfi,
+      'ticks': reported,
+      'bytes': bytes.length,
+      'savedAt': savedAt,
+    });
+
+    _epubSaveChain = _epubSaveChain.then((_) async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(placeKey, place(_reportedEpubTicks));
+        await prefs.setInt(chapterKey, chapter);
+        if (ticks == null || ticks == _reportedEpubTicks) return;
+        await api.updatePlayedPosition(item.id, positionTicks: ticks);
+        _reportedEpubTicks = ticks;
+        await prefs.setString(placeKey, place(ticks));
+        if (atEnd) await api.markPlayed(item.id);
+      } catch (_) {}
+    });
+  }
+
+  void _onEpubJsError() {
+    if (!mounted) return;
+    setState(() => _epubJsFailed = true);
+    _prepareReaderContent();
+  }
+
+  Future<void> _reportServerProgress() async {
+    final item = _item;
+    final (pageIndex, lastVisibleIndex, pageCount) = switch (_mode) {
+      _ReaderMode.pdf => (
+        _currentPdfPage - 1,
+        _currentPdfPage - 1,
+        _pdfPageCount,
+      ),
+      _ReaderMode.comic => (
+        _currentComicPage,
+        _currentComicPage + (_twoPageSpreadActive ? 1 : 0),
+        _comicPageCount,
+      ),
+      _ => (0, 0, 0),
+    };
+    if (item == null || pageCount <= 0 || pageIndex == _reportedPageIndex) {
+      return;
+    }
+    final api = _resolveClient().userLibraryApi;
+    try {
+      // The position goes first so it still saves offline, where markPlayed
+      // throws.
+      await api.updatePlayedPosition(
+        item.id,
+        positionTicks: pageIndex * BookReaderService.ticksPerPage,
+      );
+      if ((lastVisibleIndex + 1) / pageCount >= 0.98) {
+        await api.markPlayed(item.id);
+      }
+      _reportedPageIndex = pageIndex;
+    } catch (_) {}
   }
 
   Future<void> _loadAndPrepare() async {
@@ -408,6 +584,7 @@ class _BookReaderScreenState extends State<BookReaderScreen>
 
     Uri? fallbackUriCandidate;
 
+    if (_epubSaveDebounce != null) _saveEpubPlace();
     setState(() {
       _loadingContent = true;
       _error = null;
@@ -429,6 +606,11 @@ class _BookReaderScreenState extends State<BookReaderScreen>
       _currentEpubChapter = 0;
       _epubBytes = null;
       _epubThemeCache.clear();
+      _epubSectionCount = 0;
+      _epubCfi = null;
+      _epubFraction = null;
+      _epubAtEnd = false;
+      _epubMinutesLeft = null;
     });
 
     setImmersive(false);
@@ -627,17 +809,51 @@ class _BookReaderScreenState extends State<BookReaderScreen>
     if (kindleFormat) {
       bytes = await compute(BookDocumentService.convertKindleToEpub, bytes);
     }
-    final chapterHtml = _resolveEpubChapterHtml(bytes, _currentEpubTheme);
-    final tocEntries = BookDocumentService.extractEpubTocEntries(bytes);
+    final tocEntries = await compute(
+      BookDocumentService.extractEpubTocEntries,
+      bytes,
+    );
     if (mounted && tocEntries.isNotEmpty) {
       setState(() => _epubTocEntries = tocEntries);
     }
 
     final prefs = await SharedPreferences.getInstance();
-    final initialChapter =
-        (widget.initialMode == 'epub' && widget.initialPosition != null)
+    final chapterRequested =
+        widget.initialMode == 'epub' && widget.initialPosition != null;
+    final initialChapter = chapterRequested
         ? widget.initialPosition!
         : (prefs.getInt(_epubProgressPrefKey) ?? 0);
+
+    if (_useEpubJs) {
+      final item = _item;
+      final local = chapterRequested
+          ? null
+          : _readEpubJsPlace(prefs, bytes.length);
+      final serverFraction =
+          chapterRequested || item == null || !_reportsEpubProgress
+          ? null
+          : BookReaderService.newerServerEpubFraction(
+              item,
+              localTicks: local?.ticks,
+              localSavedAt: local?.savedAt,
+            );
+      if (!mounted) return;
+      setState(() {
+        _mode = _ReaderMode.epub;
+        _webController = null;
+        _epubBytes = bytes;
+        _epubChapterHtml = const [];
+        _epubStartFraction = serverFraction;
+        _epubStartCfi = serverFraction == null ? local?.cfi : null;
+        _epubStartSection = initialChapter < 0 ? 0 : initialChapter;
+        _currentEpubChapter = _epubStartSection;
+        _reportedEpubTicks = local?.ticks;
+        _webLoadProgress = 100;
+      });
+      return;
+    }
+
+    final chapterHtml = _resolveEpubChapterHtml(bytes, _currentEpubTheme);
     final savedChapter = initialChapter.clamp(0, chapterHtml.length - 1);
 
     if (!mounted) {
@@ -673,6 +889,12 @@ class _BookReaderScreenState extends State<BookReaderScreen>
   }
 
   Future<void> _loadEpubChapter(int index) async {
+    if (_useEpubJs) {
+      if (_epubSectionCount > 0) {
+        await _epubJs.displaySection(index.clamp(0, _epubSectionCount - 1));
+      }
+      return;
+    }
     if (_epubChapterHtml.isEmpty) {
       return;
     }
@@ -724,6 +946,10 @@ class _BookReaderScreenState extends State<BookReaderScreen>
   /// current chapter and crossing into the neighbour once its edge is reached.
   Future<void> _epubPage(int dir) async {
     final forward = dir > 0;
+    if (_useEpubJs) {
+      await (forward ? _epubJs.next() : _epubJs.prev());
+      return;
+    }
     if (_useNativeHtmlEpub) {
       if (!_epubScrollController.hasClients) {
         return;
@@ -1398,6 +1624,7 @@ class _BookReaderScreenState extends State<BookReaderScreen>
   double _readerProgressFraction() {
     switch (_mode) {
       case _ReaderMode.epub:
+        if (_useEpubJs) return _epubFraction ?? 0;
         final count = _epubChapterHtml.length;
         if (count <= 1) return 0;
         return ((_currentEpubChapter + 1) / count).clamp(0.0, 1.0);
@@ -1418,6 +1645,7 @@ class _BookReaderScreenState extends State<BookReaderScreen>
   }
 
   int _estimateEpubChapterMinutes() {
+    if (_useEpubJs) return _epubMinutesLeft ?? 0;
     if (_currentEpubChapter < 0 ||
         _currentEpubChapter >= _epubChapterHtml.length) {
       return 0;
@@ -1443,7 +1671,9 @@ class _BookReaderScreenState extends State<BookReaderScreen>
     final initialPage =
         (widget.initialMode == 'comic' && widget.initialPosition != null)
         ? widget.initialPosition!
-        : (prefs.getInt('${_comicProgressKeyPrefix}_page') ?? 0);
+        : _newerServerPageIndex(prefs, _comicSavedAtPrefKey) ??
+              prefs.getInt('${_comicProgressKeyPrefix}_page') ??
+              0;
     final savedPage = initialPage;
     final savedZoom = prefs.getDouble('${_comicProgressKeyPrefix}_zoom') ?? 1.0;
 
@@ -1456,6 +1686,7 @@ class _BookReaderScreenState extends State<BookReaderScreen>
     setState(() {
       _currentComicPage = clampedPage;
     });
+    _reportedPageIndex = clampedPage;
 
     _setComicZoom(savedZoom);
 
@@ -1476,8 +1707,19 @@ class _BookReaderScreenState extends State<BookReaderScreen>
     }
 
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('${_comicProgressKeyPrefix}_page', _currentComicPage);
+    final pageKey = '${_comicProgressKeyPrefix}_page';
+    // Only a page change updates the save time, so a zoom can't outrank a
+    // newer page from another device.
+    if (prefs.getInt(pageKey) != _currentComicPage) {
+      await prefs.setInt(
+        _comicSavedAtPrefKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
+    }
+    await prefs.setInt(pageKey, _currentComicPage);
     await prefs.setDouble('${_comicProgressKeyPrefix}_zoom', _comicZoom);
+
+    await _reportServerProgress();
   }
 
   void _scheduleComicStateSave() {
@@ -1807,6 +2049,7 @@ class _BookReaderScreenState extends State<BookReaderScreen>
       accent: _readerAccent,
       pageColors: _pageColors,
       onChanged: _applyReaderSettings,
+      showScroll: _useEpubJs,
     );
   }
 
@@ -1832,7 +2075,8 @@ class _BookReaderScreenState extends State<BookReaderScreen>
 
   Future<void> _refreshEpubTheme() async {
     final bytes = _epubBytes;
-    if (bytes == null || _mode != _ReaderMode.epub) {
+    // epub.js gets the new style when the reader rebuilds.
+    if (bytes == null || _mode != _ReaderMode.epub || _useEpubJs) {
       return;
     }
 
@@ -1887,34 +2131,20 @@ class _BookReaderScreenState extends State<BookReaderScreen>
     return chapters;
   }
 
+  static const _fixedLayoutInvertMatrix = <double>[
+    -1, 0, 0, 0, 255,
+    0, -1, 0, 0, 255,
+    0, 0, -1, 0, 255,
+    0, 0, 0, 1, 0,
+  ];
+
   Widget _maybeInvertFixedLayout(Widget child) {
     if (!_invertFixedLayout) {
       return child;
     }
 
     return ColorFiltered(
-      colorFilter: const ColorFilter.matrix(<double>[
-        -1,
-        0,
-        0,
-        0,
-        255,
-        0,
-        -1,
-        0,
-        0,
-        255,
-        0,
-        0,
-        -1,
-        0,
-        255,
-        0,
-        0,
-        0,
-        1,
-        0,
-      ]),
+      colorFilter: const ColorFilter.matrix(_fixedLayoutInvertMatrix),
       child: child,
     );
   }
@@ -2134,7 +2364,7 @@ class _BookReaderScreenState extends State<BookReaderScreen>
     final title = item?.name ?? l10n.bookReader;
 
     return Scaffold(
-      backgroundColor: _invertFixedLayout ? Colors.white : Colors.black,
+      backgroundColor: Colors.black,
       body: _loadingContent
           ? const Center(child: CircularProgressIndicator())
           : _comicEntries.isEmpty
@@ -2566,7 +2796,9 @@ class _BookReaderScreenState extends State<BookReaderScreen>
   Widget _buildEpubFullscreen() {
     final l10n = AppLocalizations.of(context);
     final title = _item?.name ?? l10n.bookReader;
-    final chapterCount = _epubChapterHtml.length;
+    final chapterCount = _useEpubJs
+        ? _epubSectionCount
+        : _epubChapterHtml.length;
     final chromeColors = _pageColors;
     final epubMinutes = _estimateEpubChapterMinutes();
 
@@ -2870,12 +3102,19 @@ class _BookReaderScreenState extends State<BookReaderScreen>
                 }
                 final pageCount = controller.pageCount;
                 final prefs = await SharedPreferences.getInstance();
+                final serverPageIndex = _newerServerPageIndex(
+                  prefs,
+                  _pdfSavedAtPrefKey,
+                );
                 final initialPage =
                     (widget.initialMode == 'pdf' &&
                         widget.initialPosition != null)
                     ? widget.initialPosition!
+                    : serverPageIndex != null
+                    ? serverPageIndex + 1
                     : (prefs.getInt(_pdfProgressPrefKey) ?? 1);
                 final savedPage = initialPage.clamp(1, pageCount);
+                _reportedPageIndex = savedPage - 1;
                 final outline = await document.loadOutline();
                 if (mounted) {
                   final flat = _flattenPdfOutline(outline, 0);
@@ -2901,7 +3140,14 @@ class _BookReaderScreenState extends State<BookReaderScreen>
                   const Duration(milliseconds: 300),
                   () async {
                     final prefs = await SharedPreferences.getInstance();
+                    if (prefs.getInt(_pdfProgressPrefKey) != pageNumber) {
+                      await prefs.setInt(
+                        _pdfSavedAtPrefKey,
+                        DateTime.now().millisecondsSinceEpoch,
+                      );
+                    }
                     await prefs.setInt(_pdfProgressPrefKey, pageNumber);
+                    await _reportServerProgress();
                   },
                 );
               },
@@ -3003,6 +3249,48 @@ class _BookReaderScreenState extends State<BookReaderScreen>
       );
     }
 
+    if (_mode == _ReaderMode.epub && _useEpubJs) {
+      final bytes = _epubBytes;
+      if (bytes == null) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      return SafeArea(
+        child: EpubJsView(
+          bytes: bytes,
+          controller: _epubJs,
+          style: _epubStyle(),
+          scrolled: _settings.scrolled,
+          startCfi: _epubStartCfi,
+          startFraction: _epubStartFraction,
+          startSection: _epubStartSection,
+          // macOS and Windows don't build custom menu items.
+          contextMenu: PlatformDetection.isAndroid || PlatformDetection.isIOS
+              ? ContextMenu(
+                  menuItems: [
+                    ContextMenuItem(
+                      id: 1,
+                      title: 'Highlight',
+                      action: () async {
+                        final selected = await _epubJs.selectedText();
+                        if (selected.trim().isNotEmpty) {
+                          await _addHighlight(selected);
+                        }
+                      },
+                    ),
+                  ],
+                )
+              : null,
+          onReady: (sections, rtl) => setState(() {
+            _epubSectionCount = sections;
+            _epubBookRtl = rtl;
+          }),
+          onRelocated: _onEpubRelocated,
+          onToggleChrome: _toggleOverlay,
+          onError: _onEpubJsError,
+        ),
+      );
+    }
+
     final l10n = AppLocalizations.of(context);
     final isEpub = _mode == _ReaderMode.epub;
 
@@ -3079,6 +3367,7 @@ class _BookReaderScreenState extends State<BookReaderScreen>
               action: ServerTrustAuthResponseAction.PROCEED,
             )
           : null,
+      onReceivedClientCertRequest: clientCertificateResponse,
       onProgressChanged: (controller, progress) {
         if (!mounted) return;
         setState(() => _webLoadProgress = progress);

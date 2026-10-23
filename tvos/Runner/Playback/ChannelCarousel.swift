@@ -282,7 +282,7 @@ final class ChannelCarouselCardView: UIView {
         logoView.image = nil
         logoView.isHidden = url.isEmpty
         guard let parsed = URL(string: url) else { return }
-        URLSession.shared.dataTask(with: parsed) { [weak self] data, _, _ in
+        MoonfinURLSession.shared.dataTask(with: parsed) { [weak self] data, _, _ in
             let image = data.flatMap { UIImage(data: $0) }
             DispatchQueue.main.async {
                 guard let self, self.logoUrl == url else { return }

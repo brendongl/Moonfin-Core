@@ -8767,7 +8767,6 @@
     "adminGeneralDisplayLanguage": "界面首选语言",
     "offlineBannerTitle": "当前离线状态",
     "offlineBannerSubtitle": "仅展示本地离线下载内容",
-    "offlineBannerAction": "离线下载",
     "serverUnreachableBannerTitle": "无法连接媒体服务器",
     "serverUnreachableBannerSubtitle": "服务器恢复前仅播放本地缓存影片",
     "contextMenuHideFromContinueWatching": "从继续观看列表隐藏",
@@ -10487,10 +10486,6 @@
     "autoDownloadDelete": "删除已下载剧集",
     "@autoDownloadDelete": {
         "description": "Setting that picks how soon an auto-downloaded episode is removed after it was watched"
-    },
-    "autoDownloadDeleteSubtitle": "观看后何时自动删除已下载剧集",
-    "@autoDownloadDeleteSubtitle": {
-        "description": "Explains the delete-after-watching setting"
     },
     "autoDownloadDeleteNever": "永不删除",
     "@autoDownloadDeleteNever": {

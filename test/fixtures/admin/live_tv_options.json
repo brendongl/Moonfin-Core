@@ -1,0 +1,59 @@
+{
+  "EnableRecordingSubfolders": false,
+  "EnableOriginalAudioWithEncodedRecordings": false,
+  "TunerHosts": [
+    {
+      "Id": "1c92f00ffde046528c7174f564e0e6b2",
+      "Url": "http://169.254.1.2:9124/playlist.m3u",
+      "Type": "m3u",
+      "FriendlyName": "Verify M3U",
+      "ImportFavoritesOnly": false,
+      "AllowHWTranscoding": true,
+      "AllowFmp4TranscodingContainer": false,
+      "AllowStreamSharing": true,
+      "FallbackMaxStreamingBitrate": 30000000,
+      "EnableStreamLooping": false,
+      "TunerCount": 2,
+      "IgnoreDts": true,
+      "ReadAtNativeFramerate": false
+    }
+  ],
+  "ListingProviders": [
+    {
+      "Id": "1a2e1b1caee4458b94bbadbd55bdec42",
+      "Type": "xmltv",
+      "Path": "http://169.254.1.2:9124/guide.xml",
+      "EnabledTuners": [],
+      "EnableAllTuners": true,
+      "NewsCategories": [
+        "news",
+        "journalism",
+        "documentary",
+        "current affairs"
+      ],
+      "SportsCategories": [
+        "sports",
+        "basketball",
+        "baseball",
+        "football"
+      ],
+      "KidsCategories": [
+        "kids",
+        "family",
+        "children",
+        "childrens",
+        "disney"
+      ],
+      "MovieCategories": [
+        "movie"
+      ],
+      "ChannelMappings": []
+    }
+  ],
+  "PrePaddingSeconds": 0,
+  "PostPaddingSeconds": 0,
+  "MediaLocationsCreated": [],
+  "RecordingPostProcessorArguments": "\"{path}\"",
+  "SaveRecordingNFO": true,
+  "SaveRecordingImages": true
+}

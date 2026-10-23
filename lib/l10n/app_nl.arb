@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "Voorkeurstaal voor weergave",
     "offlineBannerTitle": "U bent offline",
     "offlineBannerSubtitle": "Uw downloads worden getoond",
-    "offlineBannerAction": "Downloads",
     "serverUnreachableBannerTitle": "Kan uw server niet bereiken",
     "serverUnreachableBannerSubtitle": "Afspelen vanuit downloads tot hij weer bereikbaar is",
     "contextMenuHideFromContinueWatching": "Verbergen uit Ga door met kijken",

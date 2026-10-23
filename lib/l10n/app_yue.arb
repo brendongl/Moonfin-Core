@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "偏好嘅顯示語言",
     "offlineBannerTitle": "你而家離線",
     "offlineBannerSubtitle": "顯示緊你嘅下載",
-    "offlineBannerAction": "下載",
     "serverUnreachableBannerTitle": "連唔到你個伺服器",
     "serverUnreachableBannerSubtitle": "喺伺服器返嚟之前，會先播下載咗嘅內容",
     "contextMenuHideFromContinueWatching": "喺「繼續睇」度隱藏",

@@ -37,6 +37,13 @@ class OfflineUsersApi implements UsersApi {
     throw offlineUnavailable('/Users/Me');
   }
 
+  @override
+  Future<List<AccessSchedule>?> getAccessSchedules(String userId) async {
+    // An empty list reads as unrestricted, so answering with one would lift a
+    // closed schedule while offline. Failing keeps the last schedule read.
+    throw offlineUnavailable('/Users/$userId');
+  }
+
   // Answering with an empty configuration reads as a user who excludes
   // nothing, and a caller that caches the answer keeps that long after the
   // server is back. Failing lets them ask again.
@@ -97,6 +104,19 @@ class OfflineUserLibraryApi implements UserLibraryApi {
   @override
   Future<void> unmarkPlayed(String itemId) async {
     throw offlineUnavailable('/UserPlayedItems/$itemId');
+  }
+
+  @override
+  Future<void> updatePlayedPosition(
+    String itemId, {
+    required int positionTicks,
+  }) async {
+    // The progress sync pushes this to the server on reconnect.
+    final serverId = _catalog.byId(itemId)?.row.serverId;
+    if (serverId == null || serverId.isEmpty) {
+      throw offlineUnavailable('/UserItems/$itemId/UserData');
+    }
+    await _offlineRepo.updatePlaybackPosition(itemId, positionTicks);
   }
 
   @override

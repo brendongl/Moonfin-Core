@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "Limba de afișare preferată",
     "offlineBannerTitle": "Ești offline",
     "offlineBannerSubtitle": "Se afișează descărcările tale",
-    "offlineBannerAction": "Descărcări",
     "serverUnreachableBannerTitle": "Serverul nu poate fi contactat",
     "serverUnreachableBannerSubtitle": "Se redă din descărcări până revine serverul",
     "contextMenuHideFromContinueWatching": "Ascunde din Continuă vizionarea",
@@ -10689,10 +10688,6 @@
     "autoDownloadDelete": "Șterge episoadele descărcate",
     "@autoDownloadDelete": {
         "description": "Setting that picks how soon an auto-downloaded episode is removed after it was watched"
-    },
-    "autoDownloadDeleteSubtitle": "Când să se elimine automat episoadele descărcate automat după ce le vizionezi",
-    "@autoDownloadDeleteSubtitle": {
-        "description": "Explains the delete-after-watching setting"
     },
     "autoDownloadDeleteNever": "Niciodată",
     "@autoDownloadDeleteNever": {

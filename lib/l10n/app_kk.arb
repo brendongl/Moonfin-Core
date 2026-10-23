@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "Қалаулы көрсету тілі",
     "offlineBannerTitle": "Желіден тыссыз",
     "offlineBannerSubtitle": "Жүктеулеріңіз көрсетілуде",
-    "offlineBannerAction": "Жүктеулер",
     "serverUnreachableBannerTitle": "Серверге қосылу мүмкін емес",
     "serverUnreachableBannerSubtitle": "Ол қайта қосылғанша жүктеулерден ойнатылуда",
     "contextMenuHideFromContinueWatching": "«Көруді жалғастыру» бөлімінен жасыру",

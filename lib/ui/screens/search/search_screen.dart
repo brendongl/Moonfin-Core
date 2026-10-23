@@ -707,11 +707,6 @@ class _SearchScreenState extends State<SearchScreen>
       return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-      return _tryFocusSidebar()
-          ? KeyEventResult.handled
-          : KeyEventResult.ignored;
-    }
-    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
       _searchFocus.requestFocus();
       return KeyEventResult.handled;
     }
@@ -745,11 +740,12 @@ class _SearchScreenState extends State<SearchScreen>
       return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-      if (PlatformDetection.isAppleTV) {
-        return _tryFocusSidebar()
-            ? KeyEventResult.handled
-            : KeyEventResult.ignored;
-      }
+      return _tryFocusSidebar()
+          ? KeyEventResult.handled
+          : KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight &&
+        !PlatformDetection.isAppleTV) {
       _voiceFocus.requestFocus();
       return KeyEventResult.handled;
     }
@@ -823,35 +819,27 @@ class _SearchScreenState extends State<SearchScreen>
     return item.subtitle;
   }
 
-  Widget _buildVoiceActivation() {
+  Widget _buildVoiceActivation(Color idleColor) {
     final hasFocus = _voiceFocus.hasFocus;
     final isListening = _voiceController.isListening;
     final isInitializing = _voiceController.isInitializing;
+    final size = PlatformDetection.isTV ? 52.0 : 40.0;
     final backgroundColor = isListening
         ? const Color(0xFF8B1A1A)
-        : (hasFocus
-              ? AppColorScheme.buttonFocused
-              : AppColorScheme.surfaceVariant);
+        : (hasFocus ? AppColorScheme.buttonFocused : Colors.transparent);
     final iconColor = isListening
         ? AppColorScheme.onAccent
-        : (hasFocus
-              ? AppColorScheme.onButtonFocused
-              : AppColorScheme.onSurface);
+        : (hasFocus ? AppColorScheme.onButtonFocused : idleColor);
 
     Widget button = GestureDetector(
       onTap: isInitializing ? null : _toggleVoiceSearch,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        width: 54,
-        height: 54,
+        width: size,
+        height: size,
         decoration: BoxDecoration(
           color: backgroundColor,
           shape: BoxShape.circle,
-          border: Border.fromBorderSide(
-            hasFocus
-                ? ThemeRegistry.active.borders.focusBorder
-                : ThemeRegistry.active.borders.chipBorder,
-          ),
           boxShadow: isListening
               ? [
                   BoxShadow(
@@ -875,7 +863,7 @@ class _SearchScreenState extends State<SearchScreen>
               : Icon(
                   isListening ? Icons.mic : Icons.mic_none,
                   color: iconColor,
-                  size: 24,
+                  size: PlatformDetection.isTV ? 28 : 24,
                 ),
         ),
       ),
@@ -893,22 +881,31 @@ class _SearchScreenState extends State<SearchScreen>
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    // On TV the mic lives inside the field's focus scope, so the field should
+    // not light up while the mic has focus.
     final searchHasFocus = PlatformDetection.isTV
-        ? _searchFocus.hasFocus
+        ? _searchFocus.hasFocus && !_voiceFocus.hasFocus
         : _searchInputFocus.hasFocus;
-    final searchBackgroundColor = searchHasFocus
-        ? AppColorScheme.buttonFocused
-        : AppColorScheme.surfaceVariant;
-    final searchTextColor = searchHasFocus
-        ? AppColorScheme.onButtonFocused
-        : AppColorScheme.onSurface;
-    final searchHintColor = searchHasFocus
-        ? AppColorScheme.onButtonFocused.withAlpha(153)
-        : AppColorScheme.onSurface.withAlpha(128);
+    final searchBorders = ThemeRegistry.active.borders;
+    final searchHintColor = AppColorScheme.onSurface.withAlpha(128);
     final searchIconColor = searchHasFocus
-        ? AppColorScheme.onButtonFocused
+        ? AppColorScheme.accent
         : AppColorScheme.onSurface.withValues(alpha: 0.7);
-    const searchBorderRadius = 28.0;
+    final searchFontSize = PlatformDetection.isTV ? 22.0 : 16.0;
+    final searchHeight = PlatformDetection.isTV ? 64.0 : 52.0;
+    final searchIcon = Icon(
+      Icons.search,
+      color: searchIconColor,
+      size: PlatformDetection.isTV ? 30 : 24,
+    );
+    final searchHint =
+        widget.scopedLibraryId != null && widget.scopedLibraryId!.isNotEmpty
+        ? l10n.searchThisLibrary
+        : l10n.searchEllipsis;
+    OutlineInputBorder searchBorder(BorderSide side) => OutlineInputBorder(
+      borderRadius: BorderRadius.circular(searchHeight / 2),
+      borderSide: side,
+    );
 
     // Vertical focus order: search field, then the tabs pill when results exist.
     // Results themselves are a 2D grid handled by their own key handlers.
@@ -933,127 +930,112 @@ class _SearchScreenState extends State<SearchScreen>
               const SizedBox(height: 30),
               if (topbar || !PlatformDetection.isTV)
                 const SizedBox(height: 50),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 48),
-                child: Row(
-                  children: [
-                    if (!PlatformDetection.isAppleTV) ...[
-                      _buildVoiceActivation(),
-                      const SizedBox(width: 14),
-                    ],
-                    Expanded(
-                      child: PlatformDetection.isTV
-                          ? Focus(
-                              focusNode: _searchFocus,
-                              onKeyEvent: _onSearchKey,
+              Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: PlatformDetection.isTV ? 820 : 640,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: PlatformDetection.isTV
+                        ? Focus(
+                            focusNode: _searchFocus,
+                            onKeyEvent: _onSearchKey,
+                            child: SizedBox(
+                              height: searchHeight,
                               child: CustomTVTextField(
                                 key: _searchTvFieldKey,
                                 controller: _searchController,
-                                isFocused: _searchFocus.hasFocus,
+                                isFocused: searchHasFocus,
                                 inputPurpose: InputPurpose.search,
                                 suggestionsBuilder: _fetchKeyboardSuggestions,
                                 recentSuggestions: _recentSearches,
                                 preferSystemIme: _userPreferences.get(
                                   UserPreferences.preferSystemImeKeyboard,
                                 ),
-                                hint:
-                                    widget.scopedLibraryId != null &&
-                                        widget.scopedLibraryId!.isNotEmpty
-                                    ? l10n.searchThisLibrary
-                                    : l10n.searchEllipsis,
+                                hint: searchHint,
                                 textStyle: TextStyle(
-                                  color: searchTextColor,
-                                  fontSize: 20,
+                                  color: AppColorScheme.onSurface,
+                                  fontSize: searchFontSize,
                                 ),
                                 hintStyle: TextStyle(
                                   color: searchHintColor,
-                                  fontSize: 20,
+                                  fontSize: searchFontSize,
                                 ),
-                                prefixIcon: Icon(
-                                  Icons.search,
-                                  color: searchIconColor,
-                                  size: 30,
-                                ),
+                                prefixIcon: searchIcon,
+                                suffixIcon: PlatformDetection.isAppleTV
+                                    ? null
+                                    : _buildVoiceActivation(searchIconColor),
                                 filled: true,
-                                fillColor: searchBackgroundColor,
-                                borderRadius: searchBorderRadius,
-                                borderColor: AppColorScheme.scrim.withValues(
-                                  alpha: 0,
-                                ),
-                                focusedBorderColor: AppColorScheme.scrim
-                                    .withValues(alpha: 0),
-                                borderWidth: 0,
-                                focusedBorderWidth: 0,
+                                fillColor: AppColorScheme.surfaceVariant,
+                                borderRadius: searchHeight / 2,
+                                borderColor: searchBorders.chipBorder.color,
+                                focusedBorderColor:
+                                    searchBorders.focusBorder.color,
+                                borderWidth: searchBorders.chipBorder.width,
+                                focusedBorderWidth:
+                                    searchBorders.focusBorder.width,
+                                // Leaves room for the 52 px mic inside the
+                                // 2 px focus border.
                                 contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 12,
+                                  horizontal: 18,
+                                  vertical: 4,
                                 ),
                                 popParentOnKeyboardClose: false,
                                 onFieldSubmitted: _onSearchSubmitted,
                               ),
-                            )
-                          : TextField(
-                              controller: _searchController,
-                              focusNode: _searchInputFocus,
-                              autofocus: true,
-                              onSubmitted: _onSearchSubmitted,
-                              style: TextStyle(
-                                color: searchTextColor,
-                                fontSize: 20,
+                            ),
+                          )
+                        : TextField(
+                            controller: _searchController,
+                            focusNode: _searchInputFocus,
+                            autofocus: true,
+                            onSubmitted: _onSearchSubmitted,
+                            style: TextStyle(
+                              color: AppColorScheme.onSurface,
+                              fontSize: searchFontSize,
+                            ),
+                            decoration: InputDecoration(
+                              hintText: searchHint,
+                              hintStyle: TextStyle(color: searchHintColor),
+                              filled: true,
+                              fillColor: AppColorScheme.surfaceVariant,
+                              enabledBorder: searchBorder(
+                                searchBorders.chipBorder,
                               ),
-                              decoration: InputDecoration(
-                                hintText:
-                                    widget.scopedLibraryId != null &&
-                                        widget.scopedLibraryId!.isNotEmpty
-                                    ? l10n.searchThisLibrary
-                                    : l10n.searchEllipsis,
-                                hintStyle: TextStyle(color: searchHintColor),
-                                filled: true,
-                                fillColor: searchBackgroundColor,
-                                enabledBorder: const OutlineInputBorder(
-                                  borderRadius: BorderRadius.all(
-                                    Radius.circular(searchBorderRadius),
-                                  ),
-                                  borderSide: BorderSide.none,
-                                ),
-                                focusedBorder: const OutlineInputBorder(
-                                  borderRadius: BorderRadius.all(
-                                    Radius.circular(searchBorderRadius),
-                                  ),
-                                  borderSide: BorderSide.none,
-                                ),
-                                border: const OutlineInputBorder(
-                                  borderRadius: BorderRadius.all(
-                                    Radius.circular(searchBorderRadius),
-                                  ),
-                                  borderSide: BorderSide.none,
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 14,
-                                ),
-                                prefixIcon: Icon(
-                                  Icons.search,
-                                  color: searchIconColor,
-                                  size: 30,
-                                ),
-                                prefixIconConstraints: const BoxConstraints(
-                                  minWidth: 54,
-                                  minHeight: 54,
-                                ),
-                                suffixIcon: _searchController.text.isNotEmpty
-                                    ? IconButton(
-                                        icon: Icon(
-                                          Icons.clear,
-                                          color: searchIconColor,
-                                        ),
-                                        onPressed: _searchController.clear,
-                                      )
-                                    : null,
+                              focusedBorder: searchBorder(
+                                searchBorders.focusBorder,
+                              ),
+                              border: searchBorder(searchBorders.chipBorder),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 16,
+                              ),
+                              prefixIcon: searchIcon,
+                              prefixIconConstraints: const BoxConstraints(
+                                minWidth: 48,
+                                minHeight: 48,
+                              ),
+                              suffixIcon: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (_searchController.text.isNotEmpty)
+                                    IconButton(
+                                      icon: Icon(
+                                        Icons.close,
+                                        color: searchIconColor,
+                                        size: 20,
+                                      ),
+                                      onPressed: _searchController.clear,
+                                      visualDensity: VisualDensity.compact,
+                                    ),
+                                  _buildVoiceActivation(searchIconColor),
+                                  const SizedBox(width: 6),
+                                ],
                               ),
                             ),
-                    ),
-                  ],
+                          ),
+                  ),
                 ),
               ),
               Expanded(child: _buildBody()),

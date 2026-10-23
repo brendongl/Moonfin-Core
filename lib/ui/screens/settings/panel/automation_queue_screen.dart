@@ -54,6 +54,9 @@ class _AutomationQueueScreenState extends State<_AutomationQueueScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final cinemaEnabled =
+        _prefs.get(UserPreferences.cinemaModeEnabled) ||
+        _prefs.get(UserPreferences.cinemaModeEpisodesEnabled);
     final nextUpBehavior = _prefs.get(UserPreferences.nextUpBehavior);
     final mediaSegmentActions = _prefs.get(UserPreferences.mediaSegmentActions);
     final segmentActions = parseMediaSegmentActions(mediaSegmentActions);
@@ -65,40 +68,43 @@ class _AutomationQueueScreenState extends State<_AutomationQueueScreen> {
     final showReplaceSkipOutroWithNextUp =
         showNextUpOptions &&
         segmentActions[MediaSegmentType.outro] == MediaSegmentAction.askToSkip;
-    final advanced = SipflixSettingsMode.advanced;
 
     return Scaffold(
-      appBar: buildSettingsAppBar(
-        context,
-        Text(l10n.settingsAutomationAndQueue),
-      ),
+      appBar: buildSettingsAppBar(context, Text(l10n.skippingAndAutoplay)),
       body: ListView(
         children: [
           _SectionHeader(l10n.playbackEnhancements),
           adaptiveListSection(
             children: [
-              if (advanced) ...[
+              if (SipflixSettingsMode.advanced)
                 SwitchPreferenceTile(
                   preference: UserPreferences.cinemaModeEnabled,
                   title: l10n.settingsCinemaMode,
                   subtitle: l10n.settingsCinemaModeSubtitle,
                   icon: Icons.movie_filter,
                 ),
+              if (SipflixSettingsMode.advanced)
                 SwitchPreferenceTile(
                   preference: UserPreferences.cinemaModeEpisodesEnabled,
                   title: l10n.settingsCinemaModeEpisodes,
                   subtitle: l10n.settingsCinemaModeEpisodesSubtitle,
                   icon: Icons.live_tv,
                 ),
-              ],
+              if (cinemaEnabled)
+                if (SipflixSettingsMode.advanced)
+                  SwitchPreferenceTile(
+                    preference: UserPreferences.cinemaModeSkipEnabled,
+                    title: l10n.cinemaSkipPrerolls,
+                    subtitle: l10n.cinemaSkipPrerollsDescription,
+                    icon: Icons.skip_next,
+                  ),
               // Every type writes to the one preference, so each tile is
               // keyed on the current value. The tiles seed their notifier in
               // initState, so without the key a tile left over from the
               // previous value would keep showing it and overwrite a
               // sibling's change on the next pick.
-              // Sipflix fork: Basic shows only the intro and outro pickers.
               for (final type in configurableMediaSegmentTypes)
-                if (advanced ||
+                if (SipflixSettingsMode.advanced ||
                     type == MediaSegmentType.intro ||
                     type == MediaSegmentType.outro)
                   StringPickerPreferenceTile(
@@ -117,36 +123,38 @@ class _AutomationQueueScreenState extends State<_AutomationQueueScreen> {
                       type,
                     ),
                   ),
-              if (advanced && (promptsForAnySegment || showNextUpOptions))
-                EnumPreferenceTile<MediaSegmentCountdown>(
-                  preference: UserPreferences.mediaSegmentCountdown,
-                  title: l10n.settingsMediaSegmentCountdown,
-                  icon: Icons.timer_outlined,
-                  labelOf: (v) => switch (v) {
-                    MediaSegmentCountdown.progressBar =>
-                      l10n.settingsProgressBar,
-                    MediaSegmentCountdown.timer => l10n.settingsTimer,
-                    MediaSegmentCountdown.both => l10n.settingsBoth,
-                    MediaSegmentCountdown.none => l10n.settingsNone,
-                  },
-                ),
-              if (advanced && promptsForAnySegment)
-                EnumPreferenceTile<MediaSegmentAutoHide>(
-                  preference: UserPreferences.mediaSegmentAutoHide,
-                  title: l10n.settingsSkipButtonAutoHide,
-                  description: l10n.settingsSkipButtonAutoHideDescription,
-                  icon: Icons.visibility_off_outlined,
-                  labelOf: (v) => switch (v) {
-                    MediaSegmentAutoHide.off => l10n.off,
-                    _ => l10n.secondsValue(v.seconds),
-                  },
-                ),
+              if (promptsForAnySegment || showNextUpOptions)
+                if (SipflixSettingsMode.advanced)
+                  EnumPreferenceTile<MediaSegmentCountdown>(
+                    preference: UserPreferences.mediaSegmentCountdown,
+                    title: l10n.settingsMediaSegmentCountdown,
+                    icon: Icons.timer_outlined,
+                    labelOf: (v) => switch (v) {
+                      MediaSegmentCountdown.progressBar =>
+                        l10n.settingsProgressBar,
+                      MediaSegmentCountdown.timer => l10n.settingsTimer,
+                      MediaSegmentCountdown.both => l10n.settingsBoth,
+                      MediaSegmentCountdown.none => l10n.settingsNone,
+                    },
+                  ),
+              if (promptsForAnySegment)
+                if (SipflixSettingsMode.advanced)
+                  EnumPreferenceTile<MediaSegmentAutoHide>(
+                    preference: UserPreferences.mediaSegmentAutoHide,
+                    title: l10n.settingsSkipButtonAutoHide,
+                    description: l10n.settingsSkipButtonAutoHideDescription,
+                    icon: Icons.visibility_off_outlined,
+                    labelOf: (v) => switch (v) {
+                      MediaSegmentAutoHide.off => l10n.off,
+                      _ => l10n.secondsValue(v.seconds),
+                    },
+                  ),
             ],
           ),
           _SectionHeader(l10n.automaticQueuing),
           adaptiveListSection(
             children: [
-              if (advanced)
+              if (SipflixSettingsMode.advanced)
                 ListTile(
                   leading: const Icon(Icons.queue),
                   title: Text(l10n.mediaQueuing),
@@ -158,7 +166,7 @@ class _AutomationQueueScreenState extends State<_AutomationQueueScreen> {
                 subtitle: l10n.autoplayNextEpisodeSubtitle,
                 icon: Icons.play_circle,
               ),
-              if (advanced) ...[
+              if (SipflixSettingsMode.advanced)
                 EnumPreferenceTile<NextUpBehavior>(
                   preference: UserPreferences.nextUpBehavior,
                   title: l10n.nextUpDisplay,
@@ -170,7 +178,8 @@ class _AutomationQueueScreenState extends State<_AutomationQueueScreen> {
                     NextUpBehavior.disabled => l10n.disabled,
                   },
                 ),
-                if (showNextUpOptions)
+              if (showNextUpOptions)
+                if (SipflixSettingsMode.advanced)
                   SliderPreferenceTile(
                     preference: UserPreferences.nextUpTimeout,
                     title: l10n.nextUpTimeout,
@@ -180,14 +189,14 @@ class _AutomationQueueScreenState extends State<_AutomationQueueScreen> {
                     divisions: 30,
                     labelOf: (v) => l10n.secondsValue((v / 1000).round()),
                   ),
-                if (showReplaceSkipOutroWithNextUp)
+              if (showReplaceSkipOutroWithNextUp)
+                if (SipflixSettingsMode.advanced)
                   SwitchPreferenceTile(
                     preference: UserPreferences.replaceSkipOutroWithNextUp,
                     title: l10n.replaceSkipOutroWithNextUpDisplay,
                     subtitle: l10n.replaceSkipOutroWithNextUpDisplaySubtitle,
                     icon: Icons.skip_next,
                   ),
-              ],
               EnumPreferenceTile<StillWatchingBehavior>(
                 preference: UserPreferences.stillWatchingBehavior,
                 title: l10n.stillWatchingPrompt,

@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
-import 'package:moonfin_design/moonfin_design.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../../../l10n/app_localizations.dart';
 import '../../../util/error_message.dart';
+import '../admin_draft.dart';
 import '../widgets/admin_form_styles.dart';
 
 /// Kodi/NFO metadata saver settings, backed by the named `xbmcmetadata`
-/// configuration. Mirrors jellyfin-web's Libraries > NFO Settings page.
+/// configuration.
 class AdminLibraryNfoScreen extends StatefulWidget {
   const AdminLibraryNfoScreen({super.key});
 
@@ -16,12 +16,14 @@ class AdminLibraryNfoScreen extends StatefulWidget {
   State<AdminLibraryNfoScreen> createState() => _AdminLibraryNfoScreenState();
 }
 
-class _AdminLibraryNfoScreenState extends State<AdminLibraryNfoScreen> {
+class _AdminLibraryNfoScreenState extends State<AdminLibraryNfoScreen>
+    with AdminDraftHost {
+  static const _key = 'xbmcmetadata';
+
   late final MediaServerClient _client;
   Map<String, dynamic>? _config;
   List<ServerUser> _users = const [];
   bool _loading = true;
-  bool _saving = false;
   String? _error;
 
   @override
@@ -37,17 +39,27 @@ class _AdminLibraryNfoScreenState extends State<AdminLibraryNfoScreen> {
       _error = null;
     });
     try {
-      final config =
-          await _client.adminSystemApi.getNamedConfiguration('xbmcmetadata');
-      final users = await _client.adminUsersApi
-          .getUsers()
-          .catchError((_) => <ServerUser>[]);
+      final api = _client.adminSystemApi;
+      final config = await api.getNamedConfiguration(_key);
+      // A failed user list shows the error instead of the form.
+      final users = await _client.adminUsersApi.getUsers();
       if (!mounted) return;
       setState(() {
         _config = config;
         _users = users;
         _loading = false;
       });
+      hostDraft(
+        AdminDraft.single(
+          working: config,
+          reload: () => api.getNamedConfiguration(_key),
+          post: (value) {
+            final format = value['ReleaseDateFormat'] as String? ?? '';
+            if (format.isEmpty) value['ReleaseDateFormat'] = 'yyyy-MM-dd';
+            return api.updateNamedConfiguration(_key, value);
+          },
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -57,39 +69,17 @@ class _AdminLibraryNfoScreenState extends State<AdminLibraryNfoScreen> {
     }
   }
 
-  Future<void> _save() async {
-    if (_config == null) return;
-    setState(() => _saving = true);
-    try {
-      final format = (_config!['ReleaseDateFormat'] as String?) ?? '';
-      _config!['ReleaseDateFormat'] =
-          format.isEmpty ? 'yyyy-MM-dd' : format;
-      await _client.adminSystemApi
-          .updateNamedConfiguration('xbmcmetadata', _config!);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppLocalizations.of(context).adminSettingsSaved)),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        final l10n = AppLocalizations.of(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(l10n.adminSettingsSaveFailed(describeError(e, l10n))),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+  void _set(String key, Object? value) {
+    setState(() => _config![key] = value);
+    edited();
   }
 
   Widget _switchTile(String key, String title) {
     return adminSwitchRow(
       title: title,
+      anchor: 'nfo.$key',
       value: _config![key] as bool? ?? false,
-      onChanged: (v) => setState(() => _config![key] = v),
+      onChanged: (v) => _set(key, v),
     );
   }
 
@@ -126,31 +116,44 @@ class _AdminLibraryNfoScreenState extends State<AdminLibraryNfoScreen> {
           subtitle: l10n.adminLibNfoHelp,
           icon: Icons.text_snippet_outlined,
         ),
-        adminSectionLabel(context, l10n.adminLibKodiUser, icon: Icons.person_outline),
-        DropdownButtonFormField<String>(
-          initialValue: userIds.contains(currentUser) ? currentUser : '',
-          decoration: adminInputDecoration(label: l10n.adminLibKodiUser),
-          items: [
-            DropdownMenuItem(value: '', child: Text(l10n.adminLibNone)),
-            ..._users.map((u) =>
-                DropdownMenuItem(value: u.id, child: Text(u.name ?? u.id))),
-          ],
-          onChanged: (v) =>
-              setState(() => _config!['UserId'] = (v ?? '').isEmpty ? null : v),
+        draftKeyed(
+          adminSection(
+            context,
+            title: l10n.adminDrawerNfo,
+            icon: Icons.tune,
+            children: [
+              adminFieldRow(
+                label: l10n.adminLibKodiUser,
+                anchor: 'nfo.UserId',
+                child: DropdownButtonFormField<String>(
+                  initialValue:
+                      userIds.contains(currentUser) ? currentUser : '',
+                  isExpanded: true,
+                  decoration: adminInputDecoration(),
+                  items: [
+                    DropdownMenuItem(value: '', child: Text(l10n.adminLibNone)),
+                    ..._users.map((u) => DropdownMenuItem(
+                        value: u.id, child: Text(u.name ?? u.id))),
+                  ],
+                  // None is saved as '', not null.
+                  onChanged: (v) => _set('UserId', v ?? ''),
+                ),
+              ),
+              _switchTile('SaveImagePathsInNfo', l10n.adminLibSaveImagePaths),
+              _switchTile(
+                  'EnablePathSubstitution', l10n.adminLibPathSubstitution),
+              _switchTile(
+                  'EnableExtraThumbsDuplication', l10n.adminLibExtraThumbs),
+            ],
+          ),
         ),
-        adminSection(
-          context,
-          title: l10n.adminDrawerNfo,
-          icon: Icons.tune,
-          children: [
-            _switchTile('SaveImagePathsInNfo', l10n.adminLibSaveImagePaths),
-            _switchTile('EnablePathSubstitution', l10n.adminLibPathSubstitution),
-            _switchTile(
-                'EnableExtraThumbsDuplication', l10n.adminLibExtraThumbs),
-          ],
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+          child: Text(
+            l10n.adminLibMetadataChangeHelp,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
         ),
-        const SizedBox(height: AppSpacing.spaceXl),
-        adminSaveButton(label: l10n.save, saving: _saving, onPressed: _save),
       ],
     );
   }

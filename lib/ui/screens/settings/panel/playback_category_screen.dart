@@ -6,122 +6,77 @@ class _PlaybackCategoryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final advanced = SipflixSettingsMode.advanced;
-    // Sipflix: no game libraries, so the game settings stay hidden.
-    const games = SipflixSettingsMode.showRetired;
     return withCleanSettingsTypography(
       context,
       Scaffold(
-        appBar: buildSettingsAppBar(
-          context,
-          Text(
-            SipflixSettingsMode.label(
-              l10n.settingsPlaybackSyncplay,
-              l10n.playback,
-            ),
-          ),
-        ),
+        appBar: buildSettingsAppBar(context, Text(l10n.playback)),
         // Rebuild on preference changes so the Emulator Cores tile appears or
         // disappears the moment the emulator backend toggle flips.
         body: ListenableBuilder(
           listenable: GetIt.instance<UserPreferences>(),
           builder: (context, _) => ListView(
             children: [
-              _SectionHeader(l10n.playback),
+              _SectionHeader(l10n.video),
               adaptiveListSection(
                 children: [
                   _TvSettingsListTile(
                     autofocus: true,
                     leading: const Icon(Icons.play_circle),
-                    title: Text(l10n.settingsVideoPlaybackPreferences),
-                    subtitle: Text(
-                      SipflixSettingsMode.label(
-                        l10n.settingsVideoPlaybackPreferencesSubtitle,
-                        'Picture zoom',
-                      ),
-                    ),
+                    title: Text(l10n.player),
+                    subtitle: Text(l10n.playerSettingsSubtitle),
                     onTap: () => context.pushSettingsScreen(
                       const _VideoPlaybackScreen(),
                     ),
                   ),
-                  _TvSettingsListTile(
-                    leading: const Icon(Icons.volume_up),
-                    title: Text(l10n.settingsAudioPreferences),
-                    subtitle: Text(
-                      SipflixSettingsMode.label(
-                        l10n.settingsAudioPreferencesSubtitle,
-                        'Audio language and night mode',
+                  if (SipflixSettingsMode.advanced)
+                    _TvSettingsListTile(
+                      leading: const Icon(Icons.high_quality_outlined),
+                      title: Text(l10n.qualityAndDecoding),
+                      subtitle: Text(l10n.qualityAndDecodingSubtitle),
+                      onTap: () => context.pushSettingsScreen(
+                        const _QualityDecodingScreen(),
                       ),
                     ),
+                ],
+              ),
+              _SectionHeader(l10n.settingsAudioAndSubtitlesSection),
+              adaptiveListSection(
+                children: [
+                  _TvSettingsListTile(
+                    leading: const Icon(Icons.volume_up),
+                    title: Text(l10n.audio),
+                    subtitle: Text(l10n.settingsAudioPreferencesSubtitle),
                     onTap: () => context.pushSettingsScreen(
                       const _AudioPreferencesScreen(),
                     ),
                   ),
                   _TvSettingsListTile(
                     leading: const Icon(Icons.subtitles),
-                    title: Text(l10n.subtitlePreferences),
-                    subtitle: Text(
-                      SipflixSettingsMode.label(
-                        l10n.subtitlePreferencesDescription,
-                        'Subtitle language, mode and size',
-                      ),
-                    ),
+                    title: Text(l10n.subtitles),
+                    subtitle: Text(l10n.subtitlePreferencesDescription),
                     onTap: () => context.pushSettingsScreen(
                       const SubtitleSettingsScreen(),
                     ),
                   ),
                 ],
               ),
-              _SectionHeader(l10n.general),
+              _SectionHeader(l10n.settingsSkippingAndQueueSection),
               adaptiveListSection(
                 children: [
                   _TvSettingsListTile(
                     leading: const Icon(Icons.queue_play_next),
-                    title: Text(l10n.settingsAutomationAndQueue),
+                    title: Text(l10n.skippingAndAutoplay),
                     subtitle: Text(l10n.settingsAutomationAndQueueSubtitle),
                     onTap: () => context.pushSettingsScreen(
                       const _AutomationQueueScreen(),
                     ),
                   ),
-                  // Sipflix fork: offline downloads are retired on TV boxes.
-                  if (PlatformDetection.supportsOfflineDownloads &&
-                      !PlatformDetection.isWeb &&
-                      (!PlatformDetection.isTV ||
-                          SipflixSettingsMode.showRetired))
-                    _TvSettingsListTile(
-                      leading: const Icon(Icons.download_for_offline),
-                      title: Text(l10n.settingsOfflineDownloads),
-                      subtitle: Text(l10n.settingsOfflineDownloadsSubtitle),
-                      onTap: () => context.pushSettingsScreen(
-                        const DownloadSettingsScreen(),
-                      ),
-                    ),
-                  if (games && canToggleGameBackend)
-                    SwitchPreferenceTile(
-                      preference: UserPreferences.useNativeEmulator,
-                      title: l10n.useNativeEmulator,
-                      subtitle: l10n.useNativeEmulatorSubtitle,
-                      icon: Icons.sports_esports,
-                    ),
-                  if (games && supportsCoreDownloads && usesNativeGameBackend)
-                    _TvSettingsListTile(
-                      leading: const Icon(Icons.videogame_asset),
-                      title: Text(l10n.emulatorCores),
-                      subtitle: Text(l10n.emulatorCoresSubtitle),
-                      onTap: () => context.pushSettingsScreen(
-                        const EmulatorCoresScreen(),
-                      ),
-                    ),
-                  if (games && usesNativeGameBackend)
-                    _TvSettingsListTile(
-                      leading: const Icon(Icons.sd_storage),
-                      title: Text(l10n.downloadedGames),
-                      subtitle: Text(l10n.downloadedGamesSubtitle),
-                      onTap: () => context.pushSettingsScreen(
-                        const DownloadedGamesScreen(),
-                      ),
-                    ),
-                  if (advanced)
+                ],
+              ),
+              _SectionHeader(l10n.settingsWatchTogetherSection),
+              adaptiveListSection(
+                children: [
+                  if (SipflixSettingsMode.advanced)
                     _TvSettingsListTile(
                       leading: const Icon(Icons.groups),
                       title: Text(l10n.syncPlay),
@@ -130,17 +85,74 @@ class _PlaybackCategoryScreen extends StatelessWidget {
                         const _SyncPlaySettingsScreen(),
                       ),
                     ),
-                  if (advanced)
-                    _TvSettingsListTile(
-                      leading: const Icon(Icons.settings),
-                      title: Text(l10n.advancedOptions),
-                      subtitle: Text(l10n.settingsAdvancedOptionsSubtitle),
-                      onTap: () => context.pushSettingsScreen(
-                        const _AdvancedOptionsScreen(),
-                      ),
-                    ),
                 ],
               ),
+              if (SipflixSettingsMode.showRetired &&
+                  (canToggleGameBackend || usesNativeGameBackend)) ...[
+                _SectionHeader(l10n.games),
+                adaptiveListSection(
+                  children: [
+                    if (canToggleGameBackend)
+                      SwitchPreferenceTile(
+                        preference: UserPreferences.useNativeEmulator,
+                        title: l10n.useNativeEmulator,
+                        subtitle: l10n.useNativeEmulatorSubtitle,
+                        icon: Icons.sports_esports,
+                      ),
+                    if (usesOnScreenControls)
+                      EnumPreferenceTile<GamePlaybackOrientation>(
+                        preference: UserPreferences.gamePlaybackOrientation,
+                        title: l10n.gameOrientation,
+                        description: l10n.gameOrientationSubtitle,
+                        icon: Icons.screen_rotation_outlined,
+                        labelOf: (v) => switch (v) {
+                          GamePlaybackOrientation.landscape => l10n.landscape,
+                          GamePlaybackOrientation.portrait => l10n.portrait,
+                          GamePlaybackOrientation.auto => l10n.auto,
+                        },
+                      ),
+                    if (supportsCoreDownloads && usesNativeGameBackend)
+                      _TvSettingsListTile(
+                        leading: const Icon(Icons.videogame_asset),
+                        title: Text(l10n.emulatorCores),
+                        subtitle: Text(l10n.emulatorCoresSubtitle),
+                        onTap: () => context.pushSettingsScreen(
+                          const EmulatorCoresScreen(),
+                        ),
+                      ),
+                    if (usesNativeGameBackend)
+                      _TvSettingsListTile(
+                        leading: const Icon(Icons.sd_storage),
+                        title: Text(l10n.downloadedGames),
+                        subtitle: Text(l10n.downloadedGamesSubtitle),
+                        onTap: () => context.pushSettingsScreen(
+                          const DownloadedGamesScreen(),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+              // Everything left on Advanced Playback is either Android player
+              // routing or mpv, so other platforms would open an empty screen.
+              if (PlatformDetection.isAndroid ||
+                  (!PlatformDetection.isTV &&
+                      !PlatformDetection.isIOS &&
+                      !PlatformDetection.isWeb)) ...[
+                _SectionHeader(l10n.settingsAdvancedSection),
+                adaptiveListSection(
+                  children: [
+                    if (SipflixSettingsMode.advanced)
+                      _TvSettingsListTile(
+                        leading: const Icon(Icons.settings),
+                        title: Text(l10n.advancedPlayback),
+                        subtitle: Text(l10n.advancedPlaybackSubtitle),
+                        onTap: () => context.pushSettingsScreen(
+                          const _AdvancedOptionsScreen(),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),

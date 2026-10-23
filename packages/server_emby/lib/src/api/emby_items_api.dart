@@ -490,7 +490,7 @@ class EmbyItemsApi implements ItemsApi {
       '/Playlists/$playlistId/Items',
       queryParameters: {
         'Fields':
-            'BasicSyncInfo,PrimaryImageAspectRatio,RunTimeTicks,Artists,AlbumArtist,IndexNumber,MediaType,PlaylistItemId,BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId,SeriesName,ParentIndexNumber,Genres,Chapters,Overview,UserData,MediaStreams',
+            'BasicSyncInfo,PrimaryImageAspectRatio,RunTimeTicks,Artists,AlbumArtist,IndexNumber,MediaType,PlaylistItemId,BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId,SeriesName,ParentIndexNumber,Genres,Chapters,Overview,UserData,MediaStreams,DateCreated,SortName',
         'EnableImageTypes': 'Primary,Backdrop,Logo,Thumb',
         'ImageTypeLimit': 1,
         'StartIndex': ?startIndex,
@@ -758,6 +758,15 @@ class EmbyItemsApi implements ItemsApi {
     } catch (_) {
       return const [];
     }
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getAdditionalParts(String itemId) async {
+    final response = await _dio.get(
+      '/Videos/$itemId/AdditionalParts',
+      queryParameters: {'UserId': _getUserId()},
+    );
+    return _parseItemListResponse(response.data);
   }
 
   @override

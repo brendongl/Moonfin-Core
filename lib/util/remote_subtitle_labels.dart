@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:get_it/get_it.dart';
+import 'package:server_core/server_core.dart';
 
 import '../l10n/app_localizations.dart';
 import '../preference/user_preferences.dart';
@@ -74,7 +75,7 @@ String remoteSubtitleDetails(
 
   final frameRate = subtitle['FrameRate'] as num?;
   if (frameRate != null && frameRate > 0) {
-    details.add(l10n.framerateFps(_frameRateLabel(frameRate)));
+    details.add(l10n.framerateFps(frameRateLabel(frameRate)));
   }
 
   return details.join(' | ');
@@ -83,7 +84,7 @@ String remoteSubtitleDetails(
 // 23.976 stays as it is, 25.000 reads better as 25.
 final RegExp _trailingZeros = RegExp(r'\.?0+$');
 
-String _frameRateLabel(num value) =>
+String frameRateLabel(num value) =>
     value.toStringAsFixed(3).replaceFirst(_trailingZeros, '');
 
 /// Turns a failed search or download into something worth reading.
@@ -153,4 +154,51 @@ String remoteSubtitleLanguage(
   }
 
   return 'eng';
+}
+
+/// The most languages one download searches, since each is its own request to
+/// the subtitle providers.
+const maxSubtitleDownloadLanguages = 5;
+
+/// The languages a subtitle download searches: the ones picked in settings,
+/// or the single [remoteSubtitleLanguage] guess when none are.
+List<String> remoteSubtitleLanguages(
+  List<Map<String, dynamic>> subtitleStreams,
+  List<Map<String, dynamic>> audioStreams,
+) {
+  final picked = GetIt.instance<UserPreferences>()
+      .get(UserPreferences.subtitleDownloadLanguages)
+      .split(',')
+      .map((code) => code.trim().toLowerCase())
+      .where((code) => code.isNotEmpty)
+      .toSet()
+      .take(maxSubtitleDownloadLanguages)
+      .toList();
+  return picked.isNotEmpty
+      ? picked
+      : [remoteSubtitleLanguage(subtitleStreams, audioStreams)];
+}
+
+/// Searches every one of [languages] at once and lists the results language
+/// by language, in the order given. A language that fails is left out, and
+/// its error only surfaces when no language found anything.
+Future<List<Map<String, dynamic>>> searchRemoteSubtitlesIn(
+  ItemsApi itemsApi,
+  String itemId,
+  List<String> languages,
+) async {
+  Object? firstError;
+  final perLanguage = await Future.wait(
+    languages.map(
+      (language) => itemsApi
+          .searchRemoteSubtitles(itemId, language: language)
+          .catchError((Object error) {
+            firstError ??= error;
+            return const <Map<String, dynamic>>[];
+          }),
+    ),
+  );
+  final results = [for (final found in perLanguage) ...found];
+  if (results.isEmpty && firstError != null) throw firstError!;
+  return results;
 }

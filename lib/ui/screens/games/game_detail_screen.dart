@@ -22,6 +22,7 @@ import '../../widgets/focus/focus_theme.dart';
 import '../../widgets/focus/focusable_button.dart';
 import '../../widgets/game/game_poster_rail.dart';
 import '../../widgets/game/retro_artwork_image.dart';
+import '../../widgets/game/retro_artwork_shape.dart';
 import '../../../data/services/background_service.dart';
 import '../../../data/services/retro_artwork/retro_artwork_activity_gate.dart';
 import '../../../data/services/retro_artwork/retro_artwork_cache.dart';
@@ -1057,6 +1058,12 @@ class _Poster extends StatelessWidget {
     final transport = retroArtworkTransport;
     final gate = retroArtworkActivityGate;
     final fallback = _ArtFallback(seed: game.id, iconSize: 40);
+    final artAspect = artworkDataSource?.snapshot?.aspectRatioFor(game.id);
+    final cell = RetroArtworkShape.cellFor(artAspect);
+    final posterWidth = width * cell.width;
+    final containArt =
+        artAspect != null &&
+        RetroArtworkShape.needsFill(artAspect, cell.aspectRatio);
     final artwork = source != null && transport != null && gate != null
         ? RetroArtworkImage(
             source: source,
@@ -1064,10 +1071,11 @@ class _Poster extends StatelessWidget {
             activityGate: gate,
             // Sized from what is painted, like every other bounded image.
             maxDecodeWidth: BoundedNetworkImage.cacheWidthFor(
-              width,
+              posterWidth,
               MediaQuery.devicePixelRatioOf(context),
             ),
-            fit: BoxFit.cover,
+            fit: containArt ? BoxFit.contain : BoxFit.cover,
+            fillBehind: containArt,
             onLoadFinished: () =>
                 artworkDataSource?.reportImageLoaded(game.id, role: 'boxart'),
             errorBuilder: (_, error) {
@@ -1111,7 +1119,11 @@ class _Poster extends StatelessWidget {
             ),
           ],
         ),
-        child: SizedBox(width: width, height: width * 1.34, child: artwork),
+        child: SizedBox(
+          width: posterWidth,
+          height: width * cell.height,
+          child: artwork,
+        ),
       ),
     );
   }
@@ -1325,7 +1337,6 @@ class _ActionRow extends StatelessWidget {
         : failed
         ? onRetrySave
         : onPlay;
-    final accent = Theme.of(context).colorScheme.primary;
     final native = _usesNativeBackend(game);
     final coreFill = _coreButtonFillColor(native);
 
@@ -1336,7 +1347,6 @@ class _ActionRow extends StatelessWidget {
           FocusableButton(
             focusNode: primaryFocusNode,
             autofocus: true,
-            focusColor: accent,
             autoScroll: true,
             padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
             onPressed: primaryAction,

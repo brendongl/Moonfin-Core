@@ -13,8 +13,9 @@ import '../../../auth/repositories/server_user_repository.dart';
 import '../../../auth/repositories/session_repository.dart';
 import '../../../auth/store/authentication_preferences.dart';
 import '../../../data/services/media_server_client_factory.dart';
+import '../../../data/services/pin_guard.dart';
+import '../../../data/services/server_pin_service.dart';
 import '../../../l10n/app_localizations.dart';
-import '../../../util/pin_code_util.dart';
 import '../../../util/platform_detection.dart';
 import '../../../sipflix/sipflix_connection_manager.dart';
 import '../../../sipflix/sipflix_servers.dart';
@@ -88,7 +89,7 @@ class _ServerScreenState extends State<ServerScreen> {
       }
 
       if (mounted && merged.isEmpty) {
-        context.go('${Destinations.login}?serverId=${server.id}');
+        context.go('${Destinations.login}?serverId=${server.id}&noUsers=true');
         return;
       }
 
@@ -124,32 +125,62 @@ class _ServerScreenState extends State<ServerScreen> {
     }
   }
 
-  String _buildUserLoginRoute(Server server, _MergedUser user) {
+  String _buildUserLoginRoute(
+    Server server,
+    _MergedUser user, {
+    bool resetPin = false,
+  }) {
     return Uri(
       path: Destinations.login,
       queryParameters: {
         'serverId': server.id,
         'username': user.name,
         if (!user.hasPassword) 'hasPassword': 'false',
+        if (resetPin) 'resetPin': '1',
       },
     ).toString();
   }
 
+  /// Set while a tapped user is being handled, since the PIN lookup before the
+  /// dialog takes long enough that Select gets pressed again.
+  bool _handlingUserTap = false;
+
   Future<void> _onUserTap(_MergedUser user) async {
+    if (_handlingUserTap) return;
+    _handlingUserTap = true;
+    try {
+      await _handleUserTap(user);
+    } finally {
+      _handlingUserTap = false;
+    }
+  }
+
+  Future<void> _handleUserTap(_MergedUser user) async {
     final server = _server;
     if (server == null) return;
 
-    final store = GetIt.instance<PreferenceStore>();
-    final pinUtil = PinCodeUtil(store, user.id);
+    final guard = PinGuard.forAccount(
+      store: GetIt.instance<PreferenceStore>(),
+      service: GetIt.instance<ServerPinService>(),
+      userId: user.id,
+      serverAddress: server.address,
+      accessToken: _userRepo
+          .getStoredServerUsers(server.id)
+          .where((stored) => stored.id == user.id)
+          .map((stored) => stored.accessToken)
+          .firstOrNull,
+    );
+    await guard.refresh();
+    if (!mounted) return;
 
-    if (pinUtil.isPinEnabled) {
+    if (guard.pin.isPinEnabled) {
       final verified = await PinEntryDialog.show(
         context,
         mode: PinEntryMode.verify,
-        onVerify: pinUtil.verifyPin,
+        onVerifyAsync: guard.verify,
         onForgotPin: () {
           if (mounted) {
-            context.go(_buildUserLoginRoute(server, user));
+            context.go(_buildUserLoginRoute(server, user, resetPin: true));
           }
         },
       );
@@ -498,57 +529,67 @@ class _ServerScreenState extends State<ServerScreen> {
               scale: focused ? 1.08 : 1.0,
               duration: const Duration(milliseconds: 120),
               curve: Curves.easeOut,
-              child: InkWell(
-                focusNode: focusNode,
-                onFocusChange: (f) => hasFocus.value = f,
-                onTap: () => _onUserTap(user),
-                borderRadius: AppRadius.circular(12),
-                child: Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: focused
-                              ? Border.all(
-                                  color: Theme.of(context).colorScheme.primary,
-                                  width: 3,
-                                )
-                              : null,
+              // Focus follows the pointer, so the card under the mouse lights
+              // up the way the one under the remote does, and the arrow keys
+              // carry on from wherever the mouse left it.
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                onEnter: (_) => focusNode.requestFocus(),
+                child: InkWell(
+                  focusNode: focusNode,
+                  onFocusChange: (f) => hasFocus.value = f,
+                  onTap: () {
+                    focusNode.requestFocus();
+                    _onUserTap(user);
+                  },
+                  borderRadius: AppRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: focused
+                                ? Border.all(
+                                    color: Theme.of(context).colorScheme.primary,
+                                    width: 3,
+                                  )
+                                : null,
+                          ),
+                          child: CircleAvatar(
+                            radius: 36,
+                            backgroundColor: Colors.white.withValues(alpha: 0.1),
+                            backgroundImage: user.imageTag != null
+                                ? NetworkImage(
+                                    _userImageUrl(user),
+                                    headers: serverImageHeaders,
+                                  )
+                                : null,
+                            child: user.imageTag == null
+                                ? Icon(
+                                    Icons.person,
+                                    size: 32,
+                                    color: Colors.white.withValues(alpha: 0.6),
+                                  )
+                                : null,
+                          ),
                         ),
-                        child: CircleAvatar(
-                          radius: 36,
-                          backgroundColor: Colors.white.withValues(alpha: 0.1),
-                          backgroundImage: user.imageTag != null
-                              ? NetworkImage(
-                                  _userImageUrl(user),
-                                  headers: serverImageHeaders,
-                                )
-                              : null,
-                          child: user.imageTag == null
-                              ? Icon(
-                                  Icons.person,
-                                  size: 32,
-                                  color: Colors.white.withValues(alpha: 0.6),
-                                )
-                              : null,
+                        const SizedBox(height: 8),
+                        Text(
+                          user.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: focused
+                                ? Theme.of(context).colorScheme.primary
+                                : null,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        user.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: focused
-                              ? Theme.of(context).colorScheme.primary
-                              : null,
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),

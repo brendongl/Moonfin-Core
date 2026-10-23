@@ -77,6 +77,35 @@ void main() {
     );
   });
 
+  test('hiding from Continue Watching sets the HideFromResume flag', () async {
+    final request = await record(
+      (api) => api.setHiddenFromResume('episode-1', hidden: true),
+    );
+
+    expect(request?.method, 'POST');
+    expect(request?.path, '/Users/user-1/Items/episode-1/HideFromResume');
+    expect(request?.queryParameters, {'Hide': true});
+  });
+
+  test('unhiding clears the HideFromResume flag', () async {
+    final request = await record(
+      (api) => api.setHiddenFromResume('episode-1', hidden: false),
+    );
+
+    expect(request?.path, '/Users/user-1/Items/episode-1/HideFromResume');
+    expect(request?.queryParameters, {'Hide': false});
+  });
+
+  test('hiding from Continue Watching never touches the played state',
+      () async {
+    final request = await record(
+      (api) => api.setHiddenFromResume('episode-1', hidden: true),
+    );
+
+    expect(request?.path, isNot(contains('PlayedItems')));
+    expect(request?.path, isNot(endsWith('/UserData')));
+  });
+
   group('a server with no Moonbase on it', () {
     test('does not fail a rating', () async {
       await expectLater(

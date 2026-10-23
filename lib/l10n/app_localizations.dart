@@ -280,12 +280,6 @@ abstract class AppLocalizations {
   /// **'Recap'**
   String get animeMarkerRecap;
 
-  /// Section header for account preferences settings
-  ///
-  /// In en, this message translates to:
-  /// **'ACCOUNT PREFERENCES'**
-  String get accountPreferences;
-
   /// Label for the app interface language setting
   ///
   /// In en, this message translates to:
@@ -346,6 +340,48 @@ abstract class AppLocalizations {
   /// **'Enter this code on your server\'s web dashboard:'**
   String get quickConnectInstruction;
 
+  /// Caption under the Quick Connect QR code that opens the server's web page with the code filled in
+  ///
+  /// In en, this message translates to:
+  /// **'Or scan this with a phone that\'s signed in to your server'**
+  String get quickConnectScanHint;
+
+  /// Caption under the Quick Connect QR code on a phone or tablet, where tapping the code opens the server's web page with the code filled in
+  ///
+  /// In en, this message translates to:
+  /// **'Tap to approve in your browser, or scan this with another device'**
+  String get quickConnectTapOrScanHint;
+
+  /// Title of the screen that covers the app when the user's access schedule doesn't allow the current time
+  ///
+  /// In en, this message translates to:
+  /// **'Time\'s up'**
+  String get timesUpTitle;
+
+  /// Explanation on the Time's up screen
+  ///
+  /// In en, this message translates to:
+  /// **'This account isn\'t available right now.'**
+  String get timesUpMessage;
+
+  /// When access returns, on the Time's up screen, for a time later today
+  ///
+  /// In en, this message translates to:
+  /// **'You can use it again today at {time}.'**
+  String timesUpResumesToday(String time);
+
+  /// When access returns, on the Time's up screen, for a time tomorrow
+  ///
+  /// In en, this message translates to:
+  /// **'You can use it again tomorrow at {time}.'**
+  String timesUpResumesTomorrow(String time);
+
+  /// When access returns, on the Time's up screen, for a time on a later day
+  ///
+  /// In en, this message translates to:
+  /// **'You can use it again on {day} at {time}.'**
+  String timesUpResumesOn(String day, String time);
+
   /// Quick Connect polling status text
   ///
   /// In en, this message translates to:
@@ -369,6 +405,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Login failed'**
   String get loginFailed;
+
+  /// Sign in error when the server refuses the account with a 403, which Jellyfin does for an access schedule, a lockout or a disabled account without saying which
+  ///
+  /// In en, this message translates to:
+  /// **'This account can\'t sign in right now. It may be outside its allowed hours, locked or disabled. Try again later or ask an administrator.'**
+  String get loginForbidden;
 
   /// Quick Connect generic error message
   ///
@@ -562,6 +604,12 @@ abstract class AppLocalizations {
   /// **'Chapters and Extras'**
   String get spotlightChaptersExtras;
 
+  /// Title of the spotlight summary card that opens the file details modal
+  ///
+  /// In en, this message translates to:
+  /// **'File Details'**
+  String get spotlightFileDetails;
+
   /// Title of the spotlight summary card that opens the similar titles and recommendations modal
   ///
   /// In en, this message translates to:
@@ -733,7 +781,7 @@ abstract class AppLocalizations {
   /// Label for the detail screen setting to show stream/codec technical details
   ///
   /// In en, this message translates to:
-  /// **'Show Technical Details?'**
+  /// **'Show Technical Details'**
   String get showTechnicalDetails;
 
   /// Explanation under the show technical details setting
@@ -775,7 +823,7 @@ abstract class AppLocalizations {
   /// Label for the toggle that controls whether similar suggestions are capped by target media parental rating
   ///
   /// In en, this message translates to:
-  /// **'Apply Parental Rating Cap?'**
+  /// **'Apply Rating Limit to Recommendations'**
   String get recommendationsApplyParentalRatingCap;
 
   /// Explanation under the parental rating cap setting toggle
@@ -934,6 +982,30 @@ abstract class AppLocalizations {
   /// **'Reduced'**
   String get performanceModeReduced;
 
+  /// Label for the TV graphics renderer setting
+  ///
+  /// In en, this message translates to:
+  /// **'Renderer'**
+  String get rendererMode;
+
+  /// Explanation under the TV graphics renderer setting
+  ///
+  /// In en, this message translates to:
+  /// **'Auto uses Impeller on boxes whose graphics run it smoothly and Skia everywhere else. Pick Skia if animations or video look wrong. Takes effect on the next launch.'**
+  String get rendererModeSubtitle;
+
+  /// Renderer option: let the app choose per device
+  ///
+  /// In en, this message translates to:
+  /// **'Auto'**
+  String get rendererModeAuto;
+
+  /// Renderer option: always use the Skia renderer
+  ///
+  /// In en, this message translates to:
+  /// **'Skia'**
+  String get rendererModeSkia;
+
   /// Shown under the trailer preview switch when the device tier suppresses trailers
   ///
   /// In en, this message translates to:
@@ -961,7 +1033,7 @@ abstract class AppLocalizations {
   /// Settings label for preferring the native system keyboard instead of the custom TV keyboard
   ///
   /// In en, this message translates to:
-  /// **'Prefer system keyboard'**
+  /// **'Prefer System Keyboard'**
   String get keyboardPreferSystemIme;
 
   /// Settings subtitle for the system keyboard preference
@@ -979,7 +1051,7 @@ abstract class AppLocalizations {
   /// Settings label for the switch that lets a game controller move focus and select items
   ///
   /// In en, this message translates to:
-  /// **'Gamepad navigation'**
+  /// **'Gamepad Navigation'**
   String get gamepadNavigation;
 
   /// Settings subtitle for the gamepad navigation switch
@@ -1174,6 +1246,30 @@ abstract class AppLocalizations {
   /// **'Fast-forward'**
   String get gameFastForward;
 
+  /// Setting and in-game menu row for how the device is held while playing games
+  ///
+  /// In en, this message translates to:
+  /// **'Game orientation'**
+  String get gameOrientation;
+
+  /// Subtitle of the game orientation setting
+  ///
+  /// In en, this message translates to:
+  /// **'Screen orientation while playing games'**
+  String get gameOrientationSubtitle;
+
+  /// Orientation choice: the device held sideways
+  ///
+  /// In en, this message translates to:
+  /// **'Landscape'**
+  String get landscape;
+
+  /// Orientation choice: the device held upright
+  ///
+  /// In en, this message translates to:
+  /// **'Portrait'**
+  String get portrait;
+
   /// In-game menu action opening the emulator settings
   ///
   /// In en, this message translates to:
@@ -1191,6 +1287,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Hold to open menu'**
   String get gameHoldToOpenMenu;
+
+  /// Exit confirmation choice that returns to the game
+  ///
+  /// In en, this message translates to:
+  /// **'Keep playing'**
+  String get gameKeepPlaying;
+
+  /// Exit confirmation choice that saves the game state and then leaves, staying in the game if the save fails
+  ///
+  /// In en, this message translates to:
+  /// **'Save & exit'**
+  String get gameSaveAndExit;
+
+  /// Exit confirmation choice that leaves the game
+  ///
+  /// In en, this message translates to:
+  /// **'Exit game'**
+  String get gameExitGame;
+
+  /// Shown over the paused game while it saves on the way out
+  ///
+  /// In en, this message translates to:
+  /// **'Saving…'**
+  String get gameSavingBeforeExit;
+
+  /// Message shown when Save & exit could not save, so the game keeps running
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save state. Still playing.'**
+  String get gameSaveFailedStillPlaying;
 
   /// Shown when the device cannot run the retro-game emulator
   ///
@@ -2368,6 +2494,12 @@ abstract class AppLocalizations {
   /// **'Extras'**
   String get extras;
 
+  /// Heading for the other files of a movie split across several files, like DVD1 and DVD2
+  ///
+  /// In en, this message translates to:
+  /// **'Additional Parts'**
+  String get additionalParts;
+
   /// Tab label for behind the scenes special features
   ///
   /// In en, this message translates to:
@@ -2764,6 +2896,12 @@ abstract class AppLocalizations {
   /// **'Searching for subtitles…'**
   String get searchingSubtitles;
 
+  /// Playback status shown while the selected subtitle file is loading
+  ///
+  /// In en, this message translates to:
+  /// **'Fetching subtitles'**
+  String get fetchingSubtitles;
+
   /// Shown while a chosen subtitle is downloaded and the server is picking it up
   ///
   /// In en, this message translates to:
@@ -3118,12 +3256,6 @@ abstract class AppLocalizations {
   /// **'{rate} fps'**
   String framerateFps(String rate);
 
-  /// Audio channel count label
-  ///
-  /// In en, this message translates to:
-  /// **'{count}ch'**
-  String channelsCount(int count);
-
   /// Audio channel layout label for mono
   ///
   /// In en, this message translates to:
@@ -3334,12 +3466,6 @@ abstract class AppLocalizations {
   /// **'{mbps} Mbps'**
   String bitrateValueMbps(int mbps);
 
-  /// Label shown in stream info when a manual bitrate override is active
-  ///
-  /// In en, this message translates to:
-  /// **'Bitrate Override'**
-  String get bitrateOverride;
-
   /// Title for audio delay adjuster
   ///
   /// In en, this message translates to:
@@ -3477,6 +3603,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Backspace'**
   String get keyNameBackspace;
+
+  /// Key cap label for the Delete key
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get keyNameDelete;
 
   /// Key cap label for the Page Up key
   ///
@@ -3628,11 +3760,23 @@ abstract class AppLocalizations {
   /// **'mpv statistics on or off'**
   String get shortcutMpvStats;
 
+  /// Player shortcut to run letterbox crop detection now
+  ///
+  /// In en, this message translates to:
+  /// **'Recrop black bars'**
+  String get shortcutRecropBlackBars;
+
   /// What Esc does in the player
   ///
   /// In en, this message translates to:
   /// **'Exit fullscreen, or stop if not fullscreen'**
   String get shortcutLeaveFullscreenOrStop;
+
+  /// What Backspace and Delete do in the player: hide the controls or the panel on top of them
+  ///
+  /// In en, this message translates to:
+  /// **'Hide controls'**
+  String get shortcutHideControls;
 
   /// Player shortcut action
   ///
@@ -3651,6 +3795,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Previous item'**
   String get shortcutPreviousItem;
+
+  /// Player shortcut action that presses the skip intro or credits button while it is showing
+  ///
+  /// In en, this message translates to:
+  /// **'Skip intro or credits when offered'**
+  String get shortcutSkipSegment;
 
   /// What ? and F1 do in the player
   ///
@@ -3772,71 +3922,35 @@ abstract class AppLocalizations {
   /// **'HDR'**
   String get hdr;
 
-  /// Stream info label for whether HDR is reaching the display untouched
+  /// Settings label for choosing where Windows draws video, in its own window or inside the app
   ///
   /// In en, this message translates to:
-  /// **'HDR output'**
-  String get hdrOutput;
+  /// **'Video Renderer'**
+  String get videoRenderer;
 
-  /// Stream info value when HDR passthrough is running, e.g. 'Active — HDR10 (PQ, BT.2020)'
+  /// Settings description for the video renderer choice
   ///
   /// In en, this message translates to:
-  /// **'Active — {format}'**
-  String hdrOutputActive(String format);
+  /// **'Native window gives the smoothest motion and sends HDR to the display untouched. Try another option if video misbehaves.'**
+  String get videoRendererDescription;
 
-  /// Stream info value when native output is engaged but the window sits on a display without HDR, so the renderer is tone-mapping
+  /// Video renderer option that plays every title in its own window
   ///
   /// In en, this message translates to:
-  /// **'Active — tone-mapped to SDR for this display'**
-  String get hdrOutputActiveTonemapped;
+  /// **'Native window (recommended)'**
+  String get videoRendererNativeWindow;
 
-  /// Stream info value when the display has not been switched into HDR
+  /// Video renderer option that uses its own window for HDR titles and the in-app renderer for SDR
   ///
   /// In en, this message translates to:
-  /// **'Inactive — display is not in HDR mode'**
-  String get hdrOutputDisplayNotHdr;
+  /// **'Native window for HDR only'**
+  String get videoRendererNativeHdrOnly;
 
-  /// Stream info value when the title itself is not HDR
+  /// Video renderer option that draws every title inside the app and converts HDR to SDR
   ///
   /// In en, this message translates to:
-  /// **'Inactive — content is SDR'**
-  String get hdrOutputContentSdr;
-
-  /// Stream info value when the native HDR output preference is off
-  ///
-  /// In en, this message translates to:
-  /// **'Inactive — turned off in settings'**
-  String get hdrOutputDisabled;
-
-  /// Stream info value when the native HDR window could not be created
-  ///
-  /// In en, this message translates to:
-  /// **'Inactive — could not start, using the standard path'**
-  String get hdrOutputFailed;
-
-  /// Settings label for sending HDR to the display untouched
-  ///
-  /// In en, this message translates to:
-  /// **'Native HDR output'**
-  String get nativeHdrOutput;
-
-  /// Settings description for native HDR output
-  ///
-  /// In en, this message translates to:
-  /// **'Sends HDR video to the display untouched instead of converting it to SDR. Used only when the display is already in HDR mode and the title is HDR.'**
-  String get nativeHdrOutputDescription;
-
-  /// Stream info label for codec
-  ///
-  /// In en, this message translates to:
-  /// **'Codec'**
-  String get codec;
-
-  /// Stream info label for video bitrate
-  ///
-  /// In en, this message translates to:
-  /// **'Video Bitrate'**
-  String get videoBitrate;
+  /// **'In-app (legacy)'**
+  String get videoRendererInApp;
 
   /// Stream info label for track name
   ///
@@ -3849,18 +3963,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Channels'**
   String get channels;
-
-  /// Stream info label for audio bitrate
-  ///
-  /// In en, this message translates to:
-  /// **'Audio Bitrate'**
-  String get audioBitrate;
-
-  /// Stream info label for audio sample rate
-  ///
-  /// In en, this message translates to:
-  /// **'Sample Rate'**
-  String get sampleRate;
 
   /// Stream info label for subtitle format
   ///
@@ -3897,6 +3999,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'EPUB rendering in-app is not available on this platform yet.'**
   String get epubUnavailableOnPlatform;
+
+  /// Title of the dialog shown on Apple TV when the user tries to open a book or comic, which tvOS has no reader for
+  ///
+  /// In en, this message translates to:
+  /// **'Books can\'t be read on Apple TV'**
+  String get bookReadingUnavailableTitle;
+
+  /// Body of the dialog shown on Apple TV when the user tries to open a book or comic
+  ///
+  /// In en, this message translates to:
+  /// **'Open it in Moonfin on a phone, tablet or computer to read it. Audiobooks still play here.'**
+  String get bookReadingUnavailableMessage;
 
   /// Fallback message for unsupported document format
   ///
@@ -4216,6 +4330,12 @@ abstract class AppLocalizations {
   /// **'LIVE'**
   String get liveBadge;
 
+  /// Live TV player button that leaves a rewound or paused stream and returns to what is airing now
+  ///
+  /// In en, this message translates to:
+  /// **'Jump to Live'**
+  String get liveTvJumpToLive;
+
   /// Guide card line for the upcoming program, e.g. 'Next: 9:00 PM  The News'
   ///
   /// In en, this message translates to:
@@ -4281,6 +4401,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Record'**
   String get record;
+
+  /// Next scheduled recording for the current series, shown in the Live TV recording dialog
+  ///
+  /// In en, this message translates to:
+  /// **'Next series recording: {dateTime}'**
+  String nextSeriesRecording(String dateTime);
+
+  /// A series recording rule exists but no future episode timer is available
+  ///
+  /// In en, this message translates to:
+  /// **'Series recording is scheduled, but the guide has no upcoming episodes'**
+  String get noUpcomingSeriesRecording;
+
+  /// Live TV player action to record only the current episode
+  ///
+  /// In en, this message translates to:
+  /// **'Record This Episode'**
+  String get recordCurrentEpisode;
+
+  /// Live TV player action to record only the current program
+  ///
+  /// In en, this message translates to:
+  /// **'Record This Program'**
+  String get recordCurrentProgram;
+
+  /// Live TV player action to cancel only the current recording, leaving any series rule intact
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel This Recording'**
+  String get cancelCurrentRecording;
 
   /// Button label to cancel a scheduled live TV recording
   ///
@@ -4359,6 +4509,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Playback stopped and could not be recovered.'**
   String get playbackStreamLost;
+
+  /// Shown when the player can't show an item's video and no transcode is left to try, instead of playing the audio over a black screen
+  ///
+  /// In en, this message translates to:
+  /// **'This device can\'t play this video\'s format. Try an external player.'**
+  String get playbackVideoUnsupported;
 
   /// Overlay shown while a live channel's bounded recovery is retrying
   ///
@@ -4972,12 +5128,6 @@ abstract class AppLocalizations {
   /// **'Quality, storage'**
   String get qualityStorage;
 
-  /// Plugin settings description
-  ///
-  /// In en, this message translates to:
-  /// **'Server sync and plugin status'**
-  String get serverSyncAndPluginStatus;
-
   /// Seerr settings description
   ///
   /// In en, this message translates to:
@@ -5043,12 +5193,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Video and subtitles'**
   String get videoAndSubtitles;
-
-  /// Integrations section title
-  ///
-  /// In en, this message translates to:
-  /// **'Integrations'**
-  String get integrations;
 
   /// Integrations section description
   ///
@@ -5133,18 +5277,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Scale focused or hovered cards and tiles'**
   String get scaleFocusedCards;
-
-  /// Setting for background backdrops
-  ///
-  /// In en, this message translates to:
-  /// **'Background Backdrops'**
-  String get backgroundBackdrops;
-
-  /// Description for background backdrops
-  ///
-  /// In en, this message translates to:
-  /// **'Show backdrop images behind content'**
-  String get showBackdropImages;
 
   /// Setting for series thumbnails
   ///
@@ -5389,7 +5521,7 @@ abstract class AppLocalizations {
   /// Setting toggle for showing loading animation text
   ///
   /// In en, this message translates to:
-  /// **'Show Text?'**
+  /// **'Show Text'**
   String get showLoadingAnimationText;
 
   /// Label for loading animation preview window
@@ -5602,12 +5734,6 @@ abstract class AppLocalizations {
   /// **'Theme Music Volume'**
   String get themeMusicVolume;
 
-  /// Subtitle for the Theme Music settings sub-category tile
-  ///
-  /// In en, this message translates to:
-  /// **'Detail pages, home rows, and volume'**
-  String get themeMusicSettingsSubtitle;
-
   /// Percentage display
   ///
   /// In en, this message translates to:
@@ -5641,13 +5767,13 @@ abstract class AppLocalizations {
   /// Setting for details background blur
   ///
   /// In en, this message translates to:
-  /// **'Details Background Blur'**
+  /// **'Background Blur'**
   String get detailsBackgroundBlur;
 
   /// Setting for details background opacity on modern screens
   ///
   /// In en, this message translates to:
-  /// **'Details Background Opacity'**
+  /// **'Background Opacity'**
   String get detailsBackgroundOpacity;
 
   /// Pixel value display
@@ -5683,7 +5809,7 @@ abstract class AppLocalizations {
   /// Setting title for the mouse scroll wheel action during playback
   ///
   /// In en, this message translates to:
-  /// **'Mouse scroll wheel'**
+  /// **'Mouse Scroll Wheel'**
   String get settingsScrollWheelAction;
 
   /// Description for the mouse scroll wheel action setting
@@ -5722,23 +5848,53 @@ abstract class AppLocalizations {
   /// **'Fit'**
   String get fit;
 
-  /// Zoom mode: auto crop
+  /// Zoom mode: scales the video to fill the screen and cuts off the edges. It doesn't detect or remove black bars.
   ///
   /// In en, this message translates to:
-  /// **'Auto Crop'**
+  /// **'Zoom to Fill'**
   String get autoCrop;
 
   /// Setting to detect and crop encoded letterbox/pillarbox bars
   ///
   /// In en, this message translates to:
-  /// **'Crop black bars'**
+  /// **'Crop Black Bars'**
   String get cropBlackBars;
 
   /// Description for the crop black bars playback setting
   ///
   /// In en, this message translates to:
-  /// **'Detect encoded letterbox bars, crop them, then fill the screen.'**
+  /// **'Detect encoded letterbox bars after playback starts, crop them, then fill the screen. Recrop from the player zoom button.'**
   String get settingsCropBlackBarsDescription;
+
+  /// Setting for how often to re-detect encoded letterbox bars
+  ///
+  /// In en, this message translates to:
+  /// **'Recrop Interval'**
+  String get cropBlackBarsRecropInterval;
+
+  /// Letterbox recrop interval: detect once after playback starts
+  ///
+  /// In en, this message translates to:
+  /// **'Once at start'**
+  String get cropBlackBarsOnce;
+
+  /// Letterbox recrop interval: scan about once a second
+  ///
+  /// In en, this message translates to:
+  /// **'Every second'**
+  String get cropBlackBarsEverySecond;
+
+  /// Description for the letterbox recrop-interval setting
+  ///
+  /// In en, this message translates to:
+  /// **'Follow aspect ratio changes during playback.'**
+  String get settingsCropBlackBarsIntervalDescription;
+
+  /// Toast when the player re-runs letterbox crop detection
+  ///
+  /// In en, this message translates to:
+  /// **'Recropping black bars'**
+  String get playerRecroppingBlackBars;
 
   /// Zoom mode: stretch
   ///
@@ -5901,6 +6057,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Slide up or down on the player to change brightness on the left and volume on the right'**
   String get playerSwipeGesturesDescription;
+
+  /// Setting title for inverting placement of brightness and volume gesture indicators
+  ///
+  /// In en, this message translates to:
+  /// **'Invert Gesture Indicators'**
+  String get invertGestureIndicators;
+
+  /// Description explaining gesture indicator placement relative to the swipe side
+  ///
+  /// In en, this message translates to:
+  /// **'Place brightness and volume visual indicators on same or opposite side of screen from swipe'**
+  String get invertGestureIndicatorsDescription;
+
+  /// Option to display gesture indicators on the same side as the swipe
+  ///
+  /// In en, this message translates to:
+  /// **'Same'**
+  String get gestureIndicatorSame;
+
+  /// Option to display gesture indicators on the opposite side from the swipe
+  ///
+  /// In en, this message translates to:
+  /// **'Inverted'**
+  String get gestureIndicatorInverted;
 
   /// Settings screen for choosing which buttons the player shows
   ///
@@ -6340,6 +6520,12 @@ abstract class AppLocalizations {
   /// **'Use the arrows to change the order. On a remote, left and right move the highlighted button. Switching one off drops it below the rest.'**
   String get buttonOrderHint;
 
+  /// Hint under the SyncPlay and Watch with group buttons in the button settings, which only appear once the user has joined a group
+  ///
+  /// In en, this message translates to:
+  /// **'Only shows while you\'re in a SyncPlay group'**
+  String get buttonShownInSyncPlayGroup;
+
   /// Player button that locks the screen orientation
   ///
   /// In en, this message translates to:
@@ -6399,36 +6585,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Prefer audio description tracks over normal tracks.'**
   String get preferAudioDescriptionDescription;
-
-  /// Label for audio-only transcode playback method
-  ///
-  /// In en, this message translates to:
-  /// **'Transcoding (Audio)'**
-  String get transcodingAudio;
-
-  /// Play method label for direct stream with remuxing
-  ///
-  /// In en, this message translates to:
-  /// **'Direct Stream (Remux)'**
-  String get directStreamRemux;
-
-  /// Play method label for transcoding due to bitrate or resolution
-  ///
-  /// In en, this message translates to:
-  /// **'Transcoding (Bitrate or Resolution)'**
-  String get transcodingBitrateOrResolution;
-
-  /// Play method label for transcoding both video and audio
-  ///
-  /// In en, this message translates to:
-  /// **'Transcoding (Video & Audio)'**
-  String get transcodingVideoAndAudio;
-
-  /// Play method label for transcoding video
-  ///
-  /// In en, this message translates to:
-  /// **'Transcoding (Video)'**
-  String get transcodingVideo;
 
   /// Option: auto server default
   ///
@@ -6579,6 +6735,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Select the target format to transcode multi-channel audio when the source stream cannot be direct-played or passed through.'**
   String get settingsAudioFallbackCodecDescription;
+
+  /// Setting that lists the audio codecs the server converts instead of the device playing them
+  ///
+  /// In en, this message translates to:
+  /// **'Transcode Audio Codecs'**
+  String get transcodeAudioCodecs;
+
+  /// Description for the transcode audio codecs setting
+  ///
+  /// In en, this message translates to:
+  /// **'The server converts audio in these formats instead of sending it as is.'**
+  String get transcodeAudioCodecsDescription;
 
   /// Fallback codec option: Auto
   ///
@@ -6757,7 +6925,7 @@ abstract class AppLocalizations {
   /// Title of the RAW-vs-IEC passthrough packer selector (Android TV, Media3 engine)
   ///
   /// In en, this message translates to:
-  /// **'Passthrough output'**
+  /// **'Passthrough Output'**
   String get settingsAudioPassthroughOutput;
 
   /// No description provided for @settingsAudioPassthroughOutputDescription.
@@ -6892,66 +7060,6 @@ abstract class AppLocalizations {
   /// **'{count}ch PCM'**
   String settingsAudioPcmChannels(int count);
 
-  /// Section title for playback diagnostics
-  ///
-  /// In en, this message translates to:
-  /// **'Diagnostics'**
-  String get settingsAudioDiagnostics;
-
-  /// Diagnostics label for video level
-  ///
-  /// In en, this message translates to:
-  /// **'Video Level'**
-  String get settingsAudioDiagnosticsVideoLevel;
-
-  /// Diagnostics label for video range
-  ///
-  /// In en, this message translates to:
-  /// **'Video Range'**
-  String get settingsAudioDiagnosticsVideoRange;
-
-  /// Diagnostics label for subtitle codec
-  ///
-  /// In en, this message translates to:
-  /// **'Subtitle Codec'**
-  String get settingsAudioDiagnosticsSubtitleCodec;
-
-  /// Diagnostics label for allowed audio codecs
-  ///
-  /// In en, this message translates to:
-  /// **'Allowed Audio Codecs'**
-  String get settingsAudioDiagnosticsAllowedAudioCodecs;
-
-  /// Diagnostics label for HLS MPEG-TS audio codecs
-  ///
-  /// In en, this message translates to:
-  /// **'HLS MPEG-TS Audio Codecs'**
-  String get settingsAudioDiagnosticsHlsMpegTsAudioCodecs;
-
-  /// Diagnostics label for HLS fMP4 audio codecs
-  ///
-  /// In en, this message translates to:
-  /// **'HLS fMP4 Audio Codecs'**
-  String get settingsAudioDiagnosticsHlsFmp4AudioCodecs;
-
-  /// Diagnostics label for audio-spdif passthrough codecs
-  ///
-  /// In en, this message translates to:
-  /// **'audio-spdif passthrough'**
-  String get settingsAudioDiagnosticsAudioSpdifPassthrough;
-
-  /// Diagnostics label for active audio route
-  ///
-  /// In en, this message translates to:
-  /// **'Active Audio Route'**
-  String get settingsAudioDiagnosticsActiveAudioRoute;
-
-  /// Diagnostics label for route HD audio support
-  ///
-  /// In en, this message translates to:
-  /// **'Route HD Audio Support'**
-  String get settingsAudioDiagnosticsRouteHdAudioSupport;
-
   /// Setting for night mode
   ///
   /// In en, this message translates to:
@@ -6997,7 +7105,7 @@ abstract class AppLocalizations {
   /// Label for hardware decoding toggle
   ///
   /// In en, this message translates to:
-  /// **'Hardware decoding'**
+  /// **'Hardware Decoding'**
   String get hardwareDecoding;
 
   /// Description for hardware decoding toggle
@@ -7156,6 +7264,24 @@ abstract class AppLocalizations {
   /// **'Default Subtitle Language'**
   String get defaultSubtitleLanguage;
 
+  /// Setting that picks which languages a subtitle download searches
+  ///
+  /// In en, this message translates to:
+  /// **'Subtitle Download Languages'**
+  String get subtitleDownloadLanguages;
+
+  /// Description for the subtitle download languages setting
+  ///
+  /// In en, this message translates to:
+  /// **'Languages to search when downloading subtitles, up to 5. Auto searches one language picked from your default subtitle language or the video.'**
+  String get subtitleDownloadLanguagesDescription;
+
+  /// Preferred language used to sort secondary subtitle tracks in the picker. It doesn't turn subtitles on.
+  ///
+  /// In en, this message translates to:
+  /// **'Preferred Secondary Subtitle Language'**
+  String get preferredSecondarySubtitleLanguage;
+
   /// Setting for defaulting to no subtitles
   ///
   /// In en, this message translates to:
@@ -7173,6 +7299,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Subtitle Size'**
   String get subtitleSize;
+
+  /// Label for the primary subtitle selection slot
+  ///
+  /// In en, this message translates to:
+  /// **'Primary'**
+  String get primarySubtitleSlot;
+
+  /// Label for the secondary subtitle selection slot
+  ///
+  /// In en, this message translates to:
+  /// **'Secondary'**
+  String get secondarySubtitleSlot;
+
+  /// Title of the picker for the secondary subtitle track
+  ///
+  /// In en, this message translates to:
+  /// **'Secondary Subtitle Track'**
+  String get secondarySubtitleTrack;
+
+  /// Tooltip for the button that lowers a setting's value
+  ///
+  /// In en, this message translates to:
+  /// **'Decrease {setting}'**
+  String decreaseValue(String setting);
+
+  /// Tooltip for the button that raises a setting's value
+  ///
+  /// In en, this message translates to:
+  /// **'Increase {setting}'**
+  String increaseValue(String setting);
 
   /// Setting for subtitle text fill color
   ///
@@ -7432,41 +7588,11 @@ abstract class AppLocalizations {
   /// **'Synced local settings to {profile} profile.'**
   String syncedSettingsToProfile(String profile);
 
-  /// Setting for customization profile
-  ///
-  /// In en, this message translates to:
-  /// **'Customization Profile'**
-  String get customizationProfile;
-
-  /// Description for customization profile
-  ///
-  /// In en, this message translates to:
-  /// **'Choose the profile to load, edit, and sync. Global applies everywhere unless a device profile overrides it. The green dot marks your current device profile.'**
-  String get customizationProfileDescription;
-
-  /// Button to load a profile
-  ///
-  /// In en, this message translates to:
-  /// **'Load Profile'**
-  String get loadProfile;
-
   /// Label while syncing
   ///
   /// In en, this message translates to:
   /// **'Syncing...'**
   String get syncing;
-
-  /// Button to sync to a profile
-  ///
-  /// In en, this message translates to:
-  /// **'Sync Profile'**
-  String get syncToProfile;
-
-  /// Button to reset a profile to defaults
-  ///
-  /// In en, this message translates to:
-  /// **'Reset Profile'**
-  String get resetProfile;
 
   /// Title of the dialog confirming a profile reset
   ///
@@ -7555,7 +7681,7 @@ abstract class AppLocalizations {
   /// TV-only toggle in the Offline Downloads settings: offer download actions on item pages
   ///
   /// In en, this message translates to:
-  /// **'Enable offline downloads'**
+  /// **'Enable Offline Downloads'**
   String get tvOfflineDownloads;
 
   /// Subtitle for the TV-only offline downloads toggle
@@ -7567,7 +7693,7 @@ abstract class AppLocalizations {
   /// No description provided for @reportDownloadsActivity.
   ///
   /// In en, this message translates to:
-  /// **'Show downloads on the server'**
+  /// **'Show Downloads on the Server'**
   String get reportDownloadsActivity;
 
   /// No description provided for @reportDownloadsActivitySubtitle.
@@ -7633,7 +7759,7 @@ abstract class AppLocalizations {
   /// Setting for saving to downloads folder
   ///
   /// In en, this message translates to:
-  /// **'Save to Downloads folder'**
+  /// **'Save to Downloads Folder'**
   String get saveToDownloadsFolder;
 
   /// Description for downloads folder visibility
@@ -7930,6 +8056,168 @@ abstract class AppLocalizations {
   /// **'Library View'**
   String get libraryView;
 
+  /// Label for the setting that picks the library page header layout
+  ///
+  /// In en, this message translates to:
+  /// **'Video Library Style'**
+  String get libraryStyle;
+
+  /// Explanation under the library style setting on TV and desktop
+  ///
+  /// In en, this message translates to:
+  /// **'Classic is the original header with icon buttons. Modern puts search and labeled sort, group and filter buttons in one bar. Docked moves the controls and the letters into a side panel.'**
+  String get libraryStyleDescription;
+
+  /// Explanation under the library style setting on phones
+  ///
+  /// In en, this message translates to:
+  /// **'Classic is the original header with icon buttons. Modern adds labeled sort, group and filter chips under the search. Docked keeps the controls in a bar at the bottom of the screen.'**
+  String get libraryStyleDescriptionPhone;
+
+  /// Library style option: the original header
+  ///
+  /// In en, this message translates to:
+  /// **'Classic'**
+  String get libraryStyleClassic;
+
+  /// Library style option: one bar with labeled buttons
+  ///
+  /// In en, this message translates to:
+  /// **'Modern'**
+  String get libraryStyleModern;
+
+  /// Library style option: a side panel on TV and desktop, a bottom bar on phones
+  ///
+  /// In en, this message translates to:
+  /// **'Docked'**
+  String get libraryStyleDocked;
+
+  /// Label for the setting that picks the book and audiobook library layout
+  ///
+  /// In en, this message translates to:
+  /// **'Book Library Style'**
+  String get bookLibraryStyle;
+
+  /// Explanation under the book library style setting
+  ///
+  /// In en, this message translates to:
+  /// **'Classic is the original shelves under a featured title. Reading Room leads with what you\'re reading on large cards. Bookstore browses the whole library in a grid.'**
+  String get bookLibraryStyleDescription;
+
+  /// Book library style option: the original shelves
+  ///
+  /// In en, this message translates to:
+  /// **'Classic'**
+  String get bookLibraryStyleClassic;
+
+  /// Book library style option: large Continue cards over a few shelves
+  ///
+  /// In en, this message translates to:
+  /// **'Reading Room'**
+  String get bookLibraryStyleReadingRoom;
+
+  /// Book library style option: browse entries over a title grid
+  ///
+  /// In en, this message translates to:
+  /// **'Bookstore'**
+  String get bookLibraryStyleBookstore;
+
+  /// Label for the setting that picks the music library layout
+  ///
+  /// In en, this message translates to:
+  /// **'Music Library Style'**
+  String get musicLibraryStyle;
+
+  /// Explanation under the music library style setting
+  ///
+  /// In en, this message translates to:
+  /// **'Classic is the original rows under a Jump Back In card. Quick Access starts with a grid of your recent albums and playlists. Immersive leads with the album you\'re listening to.'**
+  String get musicLibraryStyleDescription;
+
+  /// Music library style option: the original rows
+  ///
+  /// In en, this message translates to:
+  /// **'Classic'**
+  String get musicLibraryStyleClassic;
+
+  /// Music library style option: a grid of recent albums and playlists over the rows
+  ///
+  /// In en, this message translates to:
+  /// **'Quick Access'**
+  String get musicLibraryStyleQuickAccess;
+
+  /// Music library style option: a full-width album hero over the rows
+  ///
+  /// In en, this message translates to:
+  /// **'Immersive'**
+  String get musicLibraryStyleImmersive;
+
+  /// Heading over the albums and playlists the user played recently in a music library
+  ///
+  /// In en, this message translates to:
+  /// **'Jump Back In'**
+  String get jumpBackIn;
+
+  /// Heading over the user's playlists in a music library
+  ///
+  /// In en, this message translates to:
+  /// **'Your Playlists'**
+  String get yourPlaylists;
+
+  /// Heading over the track list of the album shown in the music library hero
+  ///
+  /// In en, this message translates to:
+  /// **'From This Album'**
+  String get fromThisAlbum;
+
+  /// Placeholder and label for the search control in a music library
+  ///
+  /// In en, this message translates to:
+  /// **'Search Music'**
+  String get searchMusic;
+
+  /// How many series a book library holds
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 series} other{{count} series}}'**
+  String bookSeriesCount(int count);
+
+  /// How many books or audiobooks are started but not finished
+  ///
+  /// In en, this message translates to:
+  /// **'{count} in progress'**
+  String bookInProgressCount(int count);
+
+  /// Link from the book library to the full title grid
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Browse 1 title} other{Browse all {count} titles}}'**
+  String bookBrowseAllTitles(int count);
+
+  /// Button in the book library that opens search within it
+  ///
+  /// In en, this message translates to:
+  /// **'Search books'**
+  String get searchBooks;
+
+  /// Library button that opens the played status filter, followed by its current value such as All or Unwatched
+  ///
+  /// In en, this message translates to:
+  /// **'Show'**
+  String get libraryShowLabel;
+
+  /// Library bottom bar button that turns the alphabet on and off
+  ///
+  /// In en, this message translates to:
+  /// **'A to Z'**
+  String get libraryAToZ;
+
+  /// Label of the alphabet in a library, which scrolls to the first item starting with the chosen letter
+  ///
+  /// In en, this message translates to:
+  /// **'Jump to letter'**
+  String get libraryJumpToLetter;
+
   /// Setting for enabling folder view
   ///
   /// In en, this message translates to:
@@ -8073,18 +8361,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'seconds'**
   String get seconds;
-
-  /// Local previews settings screen title
-  ///
-  /// In en, this message translates to:
-  /// **'Local Previews'**
-  String get localPreviews;
-
-  /// Description for local previews settings
-  ///
-  /// In en, this message translates to:
-  /// **'Configure trailer, media, and audio previews.'**
-  String get localPreviewsDescription;
 
   /// Setting for choosing media bar style
   ///
@@ -8248,6 +8524,18 @@ abstract class AppLocalizations {
   /// **'Enable audio for trailers in media bar'**
   String get enableTrailerAudio;
 
+  /// Setting for how loud media bar trailers play
+  ///
+  /// In en, this message translates to:
+  /// **'Trailer Volume'**
+  String get trailerVolume;
+
+  /// Description for the trailer volume slider
+  ///
+  /// In en, this message translates to:
+  /// **'How loud media bar trailers play'**
+  String get trailerVolumeDescription;
+
   /// Setting for YouTube trailer captions
   ///
   /// In en, this message translates to:
@@ -8295,6 +8583,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Enable audio for media previews'**
   String get enablePreviewAudio;
+
+  /// Setting for how loud media previews on cards play
+  ///
+  /// In en, this message translates to:
+  /// **'Preview Volume'**
+  String get previewVolume;
+
+  /// Description for the preview volume slider
+  ///
+  /// In en, this message translates to:
+  /// **'How loud media previews on cards play'**
+  String get previewVolumeDescription;
 
   /// Home section: recently added media
   ///
@@ -8374,12 +8674,6 @@ abstract class AppLocalizations {
   /// **'Favorite Channels'**
   String get favoriteChannels;
 
-  /// Settings title for home sections
-  ///
-  /// In en, this message translates to:
-  /// **'Home Sections'**
-  String get homeSections;
-
   /// Tooltip for reset to defaults button
   ///
   /// In en, this message translates to:
@@ -8391,12 +8685,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Home Row Poster Size'**
   String get homeRowPosterSize;
-
-  /// Setting for per-row image type selection
-  ///
-  /// In en, this message translates to:
-  /// **'Per Row Image Type Selection'**
-  String get perRowImageTypeSelection;
 
   /// Description for per-row image type selection
   ///
@@ -8415,6 +8703,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Combine both rows into a single home section'**
   String get combineBothRows;
+
+  /// Setting for default click action on Continue Watching and Next Up items
+  ///
+  /// In en, this message translates to:
+  /// **'Default Action'**
+  String get continueWatchingDefaultAction;
+
+  /// Description for Continue Watching and Next Up default click action setting
+  ///
+  /// In en, this message translates to:
+  /// **'What selecting a Continue Watching or Next Up item does'**
+  String get continueWatchingDefaultActionDescription;
+
+  /// Option to navigate to the details screen for an item
+  ///
+  /// In en, this message translates to:
+  /// **'Go to Details'**
+  String get goToDetailsScreen;
+
+  /// Option to play an item immediately
+  ///
+  /// In en, this message translates to:
+  /// **'Play immediately'**
+  String get playImmediately;
 
   /// Setting for how far back the Next Up row reaches
   ///
@@ -8437,7 +8749,7 @@ abstract class AppLocalizations {
   /// Setting for full screen home rows
   ///
   /// In en, this message translates to:
-  /// **'Expanded Home Rows'**
+  /// **'Expanded Rows'**
   String get fullScreenRows;
 
   /// Description for full screen home rows
@@ -8449,7 +8761,7 @@ abstract class AppLocalizations {
   /// Title for home rows padding setting
   ///
   /// In en, this message translates to:
-  /// **'Home Row Padding'**
+  /// **'Row Padding'**
   String get homeRowsPadding;
 
   /// Description for home rows padding setting
@@ -8458,11 +8770,17 @@ abstract class AppLocalizations {
   /// **'Customize padding between home rows'**
   String get homeRowsPaddingDescription;
 
-  /// Title for per-row image type screen
+  /// Home Rows editor: heading of the group of disabled genre and studio rows
   ///
   /// In en, this message translates to:
-  /// **'Per Row Image Type'**
-  String get perRowImageType;
+  /// **'Genres and Studios'**
+  String get homeRowsGenresAndStudios;
+
+  /// Home Rows editor: heading of the group of disabled rows from IMDb, TMDB, Letterboxd and MDBList lists
+  ///
+  /// In en, this message translates to:
+  /// **'External Lists'**
+  String get homeRowsExternalLists;
 
   /// Section title for per-row settings
   ///
@@ -8541,6 +8859,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Enable PIN Code'**
   String get enablePinCode;
+
+  /// Shown under the PIN switch when the PIN is kept on the server, so it applies on every device
+  ///
+  /// In en, this message translates to:
+  /// **'PIN synced'**
+  String get pinSynced;
+
+  /// Shown on sign in when Forgot PIN could not clear a PIN kept on the server
+  ///
+  /// In en, this message translates to:
+  /// **'The PIN on the server could not be cleared. If it is still set, ask a server administrator to remove it.'**
+  String get pinResetFailed;
 
   /// Description for enable PIN code
   ///
@@ -8661,12 +8991,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Only show rated content'**
   String get onlyShowRatedContent;
-
-  /// Setting for showing clock
-  ///
-  /// In en, this message translates to:
-  /// **'Show Clock'**
-  String get showClock;
 
   /// Description for show clock
   ///
@@ -8914,12 +9238,6 @@ abstract class AppLocalizations {
   /// **'Enable and reorder the rating sources shown throughout the app'**
   String get ratingSourcesDescription;
 
-  /// Settings title for plugin
-  ///
-  /// In en, this message translates to:
-  /// **'Moonbase Plugin'**
-  String get pluginLabel;
-
   /// Status when plugin is detected
   ///
   /// In en, this message translates to:
@@ -8932,53 +9250,83 @@ abstract class AppLocalizations {
   /// **'Plugin Not Detected'**
   String get pluginNotDetected;
 
-  /// Description when plugin is detected
-  ///
-  /// In en, this message translates to:
-  /// **'Server plugin detected. Sync is enabled automatically the first time the plugin is found.'**
-  String get pluginDetectedDescription;
-
   /// Description when plugin is not detected
   ///
   /// In en, this message translates to:
   /// **'Server plugin is not currently detected. Local settings still use their saved values or built-in defaults.'**
   String get pluginNotDetectedDescription;
 
-  /// Plugin status with version
+  /// Status line on the Settings Sync screen when the server plugin answers
   ///
   /// In en, this message translates to:
-  /// **'{status}\nVersion: {version}'**
-  String pluginStatusVersion(String status, String version);
+  /// **'Connected'**
+  String get pluginConnected;
 
-  /// Section title for available services
+  /// Status line on the Settings Sync screen with the server plugin's version
   ///
   /// In en, this message translates to:
-  /// **'Available Services'**
-  String get availableServices;
+  /// **'Connected, version {version}'**
+  String pluginConnectedVersion(String version);
 
-  /// Setting for server plugin sync
+  /// Caption under the settings sync switch while sync is on
   ///
   /// In en, this message translates to:
-  /// **'Server Plugin Sync'**
-  String get serverPluginSync;
+  /// **'Sync on'**
+  String get pluginSyncOn;
 
-  /// Description for server plugin sync
+  /// Caption under the settings sync switch while sync is off
   ///
   /// In en, this message translates to:
-  /// **'Sync settings with the server plugin'**
-  String get syncSettingsWithPlugin;
+  /// **'Sync off'**
+  String get pluginSyncOff;
 
-  /// Info title for sync explanation
+  /// Caption above the settings profile cards on the Settings Sync screen
   ///
   /// In en, this message translates to:
-  /// **'What sync controls'**
-  String get whatSyncControls;
+  /// **'This device syncs with the profile you pick until you pick another.'**
+  String get syncProfileDescription;
 
-  /// Description of what sync controls
+  /// Subtitle of the Global settings profile card
   ///
   /// In en, this message translates to:
-  /// **'Sync only controls whether plugin-backed settings are pushed to and pulled from the server. Profile selection and profile sync actions are in Customization settings when plugin sync is enabled.'**
-  String get syncControlsDescription;
+  /// **'Applies everywhere'**
+  String get profileAppliesEverywhere;
+
+  /// Subtitle of the Desktop, Mobile and TV settings profile cards
+  ///
+  /// In en, this message translates to:
+  /// **'Overrides Global'**
+  String get profileOverridesGlobal;
+
+  /// Marks the settings profile card that matches the current device
+  ///
+  /// In en, this message translates to:
+  /// **'This device'**
+  String get profileThisDevice;
+
+  /// Button that replaces this device's settings with the chosen profile from the server
+  ///
+  /// In en, this message translates to:
+  /// **'Load'**
+  String get profileLoad;
+
+  /// Line under the Load button saying which way the settings go
+  ///
+  /// In en, this message translates to:
+  /// **'Server to this device'**
+  String get profileLoadSubtitle;
+
+  /// Line under the Save button saying which way the settings go
+  ///
+  /// In en, this message translates to:
+  /// **'This device to server'**
+  String get profileSaveSubtitle;
+
+  /// Button that resets the chosen settings profile, for example Reset TV Profile
+  ///
+  /// In en, this message translates to:
+  /// **'Reset {profile} Profile'**
+  String resetNamedProfile(String profile);
 
   /// Seerr row: recent requests
   ///
@@ -9064,6 +9412,12 @@ abstract class AppLocalizations {
   /// **'Seerr Discovery Rows'**
   String get seerrDiscoveryRows;
 
+  /// Seerr Lists heading for the sliders an admin set up on Seerr's discover page
+  ///
+  /// In en, this message translates to:
+  /// **'Seerr Discover Sliders'**
+  String get seerrDiscoverSliders;
+
   /// Seerr row: watchlist
   ///
   /// In en, this message translates to:
@@ -9139,7 +9493,7 @@ abstract class AppLocalizations {
   /// Title for the toggle that notifies approvers of new Seerr requests
   ///
   /// In en, this message translates to:
-  /// **'New request notifications'**
+  /// **'New Request Notifications'**
   String get seerrNotifyNewRequestsTitle;
 
   /// Subtitle for the new request notifications toggle
@@ -9151,7 +9505,7 @@ abstract class AppLocalizations {
   /// Title for the toggle that notifies a requester about approvals, declines, and library availability
   ///
   /// In en, this message translates to:
-  /// **'Request updates'**
+  /// **'Request Updates'**
   String get seerrNotifyLibraryAddedTitle;
 
   /// Subtitle for the library-added notifications toggle
@@ -9163,7 +9517,7 @@ abstract class AppLocalizations {
   /// Title for the issue notifications toggle
   ///
   /// In en, this message translates to:
-  /// **'Issue updates'**
+  /// **'Issue Updates'**
   String get seerrNotifyIssuesTitle;
 
   /// Subtitle for the issue notifications toggle
@@ -9175,7 +9529,7 @@ abstract class AppLocalizations {
   /// Title for the toggle that notifies about anything newly added to the server library, not just requested media
   ///
   /// In en, this message translates to:
-  /// **'New media added'**
+  /// **'New Media Added'**
   String get seerrNotifyNewMediaTitle;
 
   /// Subtitle for the new media notifications toggle
@@ -9382,12 +9736,6 @@ abstract class AppLocalizations {
   /// **'Navbar style, toolbar buttons, appearance'**
   String get navbarStyleToolbarAppearance;
 
-  /// Home sections settings subtitle
-  ///
-  /// In en, this message translates to:
-  /// **'Reorder and toggle both library and external-based home rows'**
-  String get reorderToggleHomeRows;
-
   /// Media bar settings subtitle
   ///
   /// In en, this message translates to:
@@ -9399,12 +9747,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Poster size, image type, folder view'**
   String get posterSizeImageTypeFolderView;
-
-  /// Ratings settings subtitle
-  ///
-  /// In en, this message translates to:
-  /// **'MDBList, TMDB, and rating sources'**
-  String get mdbListTmdbRatingSources;
 
   /// Gigabyte value display
   ///
@@ -9421,13 +9763,13 @@ abstract class AppLocalizations {
   /// No description provided for @imageCacheLimit.
   ///
   /// In en, this message translates to:
-  /// **'Image cache limit'**
+  /// **'Image Cache Limit'**
   String get imageCacheLimit;
 
   /// No description provided for @clearImageCache.
   ///
   /// In en, this message translates to:
-  /// **'Clear image cache'**
+  /// **'Clear Image Cache'**
   String get clearImageCache;
 
   /// No description provided for @imageCacheCleared.
@@ -10552,6 +10894,2460 @@ abstract class AppLocalizations {
   /// **'Exit Admin'**
   String get adminExitTooltip;
 
+  /// No description provided for @adminPremiereNoteLiveTv.
+  ///
+  /// In en, this message translates to:
+  /// **'Live TV needs Emby Premiere. Without it the server doesn\'t import channels or record anything.'**
+  String get adminPremiereNoteLiveTv;
+
+  /// No description provided for @adminPremiereNoteBackups.
+  ///
+  /// In en, this message translates to:
+  /// **'Backup & Restore needs Emby Premiere once its trial ends.'**
+  String get adminPremiereNoteBackups;
+
+  /// No description provided for @adminGeneralRunAtStartup.
+  ///
+  /// In en, this message translates to:
+  /// **'Run the server at startup'**
+  String get adminGeneralRunAtStartup;
+
+  /// No description provided for @adminGeneralLaunchWebApp.
+  ///
+  /// In en, this message translates to:
+  /// **'Open the web app in a browser when the server starts'**
+  String get adminGeneralLaunchWebApp;
+
+  /// No description provided for @adminGeneralBannerText.
+  ///
+  /// In en, this message translates to:
+  /// **'Home screen banner text'**
+  String get adminGeneralBannerText;
+
+  /// No description provided for @adminGeneralBannerTextHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Shown to every user on their home screen'**
+  String get adminGeneralBannerTextHelp;
+
+  /// No description provided for @adminGeneralSectionMaintenance.
+  ///
+  /// In en, this message translates to:
+  /// **'Maintenance mode'**
+  String get adminGeneralSectionMaintenance;
+
+  /// No description provided for @adminGeneralMaintenanceMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Put the server into maintenance mode'**
+  String get adminGeneralMaintenanceMode;
+
+  /// No description provided for @adminGeneralMaintenanceModeHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Users only see the maintenance message.'**
+  String get adminGeneralMaintenanceModeHelp;
+
+  /// No description provided for @adminGeneralMaintenanceMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Maintenance message'**
+  String get adminGeneralMaintenanceMessage;
+
+  /// No description provided for @adminGeneralMaintenanceMessageHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave it blank for a general message in each user\'s language.'**
+  String get adminGeneralMaintenanceMessageHelp;
+
+  /// No description provided for @adminGeneralSectionUpdates.
+  ///
+  /// In en, this message translates to:
+  /// **'Automatic updates'**
+  String get adminGeneralSectionUpdates;
+
+  /// No description provided for @adminGeneralAutoUpdate.
+  ///
+  /// In en, this message translates to:
+  /// **'Update the server automatically'**
+  String get adminGeneralAutoUpdate;
+
+  /// No description provided for @adminGeneralAutoRestart.
+  ///
+  /// In en, this message translates to:
+  /// **'Restart automatically to apply updates'**
+  String get adminGeneralAutoRestart;
+
+  /// No description provided for @adminGeneralAutoRestartHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'The server only restarts while no users are active.'**
+  String get adminGeneralAutoRestartHelp;
+
+  /// No description provided for @adminTaskTriggerSystemEvent.
+  ///
+  /// In en, this message translates to:
+  /// **'After a system event ({event})'**
+  String adminTaskTriggerSystemEvent(String event);
+
+  /// No description provided for @adminPluginNeedsPremiere.
+  ///
+  /// In en, this message translates to:
+  /// **'Needs Emby Premiere after a 14-day free trial'**
+  String get adminPluginNeedsPremiere;
+
+  /// No description provided for @adminEmbyBackupsHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Emby backs up through its Backup & Restore plugin.'**
+  String get adminEmbyBackupsHelp;
+
+  /// No description provided for @adminEmbyBackupsNoPlugin.
+  ///
+  /// In en, this message translates to:
+  /// **'The Backup & Restore plugin isn\'t installed. Install it from the plugin catalog to back up this server.'**
+  String get adminEmbyBackupsNoPlugin;
+
+  /// No description provided for @adminEmbyBackupNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Back up now'**
+  String get adminEmbyBackupNow;
+
+  /// No description provided for @adminEmbyFullBackup.
+  ///
+  /// In en, this message translates to:
+  /// **'Full backup'**
+  String get adminEmbyFullBackup;
+
+  /// No description provided for @adminEmbyLightBackups.
+  ///
+  /// In en, this message translates to:
+  /// **'Database backups'**
+  String get adminEmbyLightBackups;
+
+  /// No description provided for @adminEmbyBackupServerVersion.
+  ///
+  /// In en, this message translates to:
+  /// **'Emby {version}'**
+  String adminEmbyBackupServerVersion(String version);
+
+  /// No description provided for @adminEmbyRestoreConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore {name}? It replaces this server\'s libraries, settings, users and passwords, and the server shuts down when it\'s done. You may need to start it again yourself.'**
+  String adminEmbyRestoreConfirm(String name);
+
+  /// No description provided for @adminEmbyRestoreServerId.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore the server ID'**
+  String get adminEmbyRestoreServerId;
+
+  /// No description provided for @adminEmbyRestoreServerIdHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn this off when you restore the same backup onto more than one server.'**
+  String get adminEmbyRestoreServerIdHelp;
+
+  /// No description provided for @adminEmbyRestoreShuttingDown.
+  ///
+  /// In en, this message translates to:
+  /// **'The restore is done and the server is shutting down. Start it again if it doesn\'t restart by itself.'**
+  String get adminEmbyRestoreShuttingDown;
+
+  /// No description provided for @adminHiddenRemotely.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide from login screens when connected remotely'**
+  String get adminHiddenRemotely;
+
+  /// No description provided for @adminHiddenFromUnusedDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide from login screens on devices they\'ve never signed in on'**
+  String get adminHiddenFromUnusedDevices;
+
+  /// No description provided for @adminSimultaneousStreamLimitHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Limits how many videos this user can play at once.'**
+  String get adminSimultaneousStreamLimitHelp;
+
+  /// No description provided for @adminUnlimited.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlimited'**
+  String get adminUnlimited;
+
+  /// No description provided for @adminAutoRemoteQuality.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto remote quality (Mbps)'**
+  String get adminAutoRemoteQuality;
+
+  /// No description provided for @adminAutoRemoteQualityHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Used remotely when the player is set to auto quality. Leave empty to detect it.'**
+  String get adminAutoRemoteQualityHelp;
+
+  /// No description provided for @adminAllowCameraUpload.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow camera upload'**
+  String get adminAllowCameraUpload;
+
+  /// No description provided for @adminAllowSubtitleDownloading.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow subtitle downloading'**
+  String get adminAllowSubtitleDownloading;
+
+  /// No description provided for @adminAllowMediaConversion.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow media conversion'**
+  String get adminAllowMediaConversion;
+
+  /// No description provided for @adminAllowSyncTranscoding.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow downloads that need transcoding'**
+  String get adminAllowSyncTranscoding;
+
+  /// No description provided for @adminAllowSharingPersonalItems.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow sharing playlists with other users'**
+  String get adminAllowSharingPersonalItems;
+
+  /// No description provided for @adminAllowPreferenceAccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow changing their own password and profile image'**
+  String get adminAllowPreferenceAccess;
+
+  /// No description provided for @adminTagMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Tag mode'**
+  String get adminTagMode;
+
+  /// No description provided for @adminEmbyConnect.
+  ///
+  /// In en, this message translates to:
+  /// **'Emby Connect'**
+  String get adminEmbyConnect;
+
+  /// No description provided for @adminEmbyConnectUser.
+  ///
+  /// In en, this message translates to:
+  /// **'Emby Connect username or email'**
+  String get adminEmbyConnectUser;
+
+  /// No description provided for @adminEmbyConnectHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Lets this user sign in from any Emby app without knowing the server address.'**
+  String get adminEmbyConnectHelp;
+
+  /// No description provided for @adminEmbyConnectLink.
+  ///
+  /// In en, this message translates to:
+  /// **'Link'**
+  String get adminEmbyConnectLink;
+
+  /// No description provided for @adminEmbyConnectUnlink.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlink'**
+  String get adminEmbyConnectUnlink;
+
+  /// No description provided for @adminEmbyConnectLinked.
+  ///
+  /// In en, this message translates to:
+  /// **'Linked to Emby Connect'**
+  String get adminEmbyConnectLinked;
+
+  /// No description provided for @adminEmbyConnectPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Invitation sent. The link is made once they accept it.'**
+  String get adminEmbyConnectPending;
+
+  /// No description provided for @adminEmbyConnectUnlinked.
+  ///
+  /// In en, this message translates to:
+  /// **'Emby Connect link removed'**
+  String get adminEmbyConnectUnlinked;
+
+  /// No description provided for @adminEmbyConnectNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'No Emby Connect account has that username or email.'**
+  String get adminEmbyConnectNotFound;
+
+  /// No description provided for @adminLibImportPlaylists.
+  ///
+  /// In en, this message translates to:
+  /// **'Import playlist files'**
+  String get adminLibImportPlaylists;
+
+  /// No description provided for @adminLibExcludeFromSearch.
+  ///
+  /// In en, this message translates to:
+  /// **'Exclude from global search'**
+  String get adminLibExcludeFromSearch;
+
+  /// No description provided for @adminLibForcedSubtitlesOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Download forced subtitles only'**
+  String get adminLibForcedSubtitlesOnly;
+
+  /// No description provided for @adminLibImportCollections.
+  ///
+  /// In en, this message translates to:
+  /// **'Import collections from metadata downloaders'**
+  String get adminLibImportCollections;
+
+  /// No description provided for @adminLibThumbnailInterval.
+  ///
+  /// In en, this message translates to:
+  /// **'Preview thumbnail interval'**
+  String get adminLibThumbnailInterval;
+
+  /// No description provided for @adminLibThumbnailEverySeconds.
+  ///
+  /// In en, this message translates to:
+  /// **'Every {count} seconds'**
+  String adminLibThumbnailEverySeconds(int count);
+
+  /// No description provided for @adminLibThumbnailAtChapters.
+  ///
+  /// In en, this message translates to:
+  /// **'At chapter markers'**
+  String get adminLibThumbnailAtChapters;
+
+  /// No description provided for @adminLibSaveThumbnailsWithMedia.
+  ///
+  /// In en, this message translates to:
+  /// **'Save preview thumbnails into media folders'**
+  String get adminLibSaveThumbnailsWithMedia;
+
+  /// No description provided for @adminLibrarySectionMarkers.
+  ///
+  /// In en, this message translates to:
+  /// **'Intro markers'**
+  String get adminLibrarySectionMarkers;
+
+  /// No description provided for @adminLibIntroDetection.
+  ///
+  /// In en, this message translates to:
+  /// **'Detect intros'**
+  String get adminLibIntroDetection;
+
+  /// No description provided for @adminLibIntroDetectionDuringScan.
+  ///
+  /// In en, this message translates to:
+  /// **'Detect intros during the library scan'**
+  String get adminLibIntroDetectionDuringScan;
+
+  /// No description provided for @adminProviderEmbyGuide.
+  ///
+  /// In en, this message translates to:
+  /// **'Emby Guide Data'**
+  String get adminProviderEmbyGuide;
+
+  /// No description provided for @adminLiveTvEmbyGuideSelectLineup.
+  ///
+  /// In en, this message translates to:
+  /// **'Select a lineup. If none are listed, check the postal code. Lineups need Emby Premiere.'**
+  String get adminLiveTvEmbyGuideSelectLineup;
+
+  /// No description provided for @adminLiveTvWakeServer.
+  ///
+  /// In en, this message translates to:
+  /// **'Wake the server for recordings'**
+  String get adminLiveTvWakeServer;
+
+  /// No description provided for @adminDrawerLiveTvChannels.
+  ///
+  /// In en, this message translates to:
+  /// **'Live TV Channels'**
+  String get adminDrawerLiveTvChannels;
+
+  /// No description provided for @adminPageDescLiveTvChannels.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn channels on and off and set their order'**
+  String get adminPageDescLiveTvChannels;
+
+  /// No description provided for @adminLiveTvChannelsEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No channels yet. They show up here once a tuner is set up and the server has imported its channels.'**
+  String get adminLiveTvChannelsEmpty;
+
+  /// No description provided for @adminTranscodingHwaAdvanced.
+  ///
+  /// In en, this message translates to:
+  /// **'Advanced'**
+  String get adminTranscodingHwaAdvanced;
+
+  /// No description provided for @adminTranscodingHwaHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Advanced lets you pick and order the hardware codecs.'**
+  String get adminTranscodingHwaHelp;
+
+  /// No description provided for @adminTranscodingHwDecoders.
+  ///
+  /// In en, this message translates to:
+  /// **'Preferred hardware decoders'**
+  String get adminTranscodingHwDecoders;
+
+  /// No description provided for @adminTranscodingHwEncoders.
+  ///
+  /// In en, this message translates to:
+  /// **'Preferred hardware encoders'**
+  String get adminTranscodingHwEncoders;
+
+  /// No description provided for @adminTranscodingTempPathHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Where the transcoder keeps its working files. Leave it empty to use the server\'s data folder.'**
+  String get adminTranscodingTempPathHelp;
+
+  /// No description provided for @adminTranscodingThrottleHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Slows transcoding down once enough is buffered, to lower CPU use.'**
+  String get adminTranscodingThrottleHelp;
+
+  /// No description provided for @adminTranscodingDownmixHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Raises the volume when audio is downmixed. 1 keeps the original volume.'**
+  String get adminTranscodingDownmixHelp;
+
+  /// No description provided for @adminTranscodingFontExtraction.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow font extraction on the fly'**
+  String get adminTranscodingFontExtraction;
+
+  /// No description provided for @adminTranscodingMaxResolution.
+  ///
+  /// In en, this message translates to:
+  /// **'Max transcoding resolution'**
+  String get adminTranscodingMaxResolution;
+
+  /// No description provided for @adminTranscodingMaxResolutionHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'A limit on every transcode, whatever quality the app asks for.'**
+  String get adminTranscodingMaxResolutionHelp;
+
+  /// No description provided for @adminTranscodingToneMapSoftware.
+  ///
+  /// In en, this message translates to:
+  /// **'Tone mapping in software transcodes'**
+  String get adminTranscodingToneMapSoftware;
+
+  /// No description provided for @adminTranscodingToneMapHardware.
+  ///
+  /// In en, this message translates to:
+  /// **'Tone mapping in hardware transcodes'**
+  String get adminTranscodingToneMapHardware;
+
+  /// No description provided for @adminTranscodingToneMapHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Keeps HDR video from looking dim and washed out when it\'s transcoded.'**
+  String get adminTranscodingToneMapHelp;
+
+  /// No description provided for @adminNetworkingLocalAddress.
+  ///
+  /// In en, this message translates to:
+  /// **'Local IP address'**
+  String get adminNetworkingLocalAddress;
+
+  /// No description provided for @adminNetworkingLocalAddressHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'The local address the server gives to apps. Leave it empty to detect it automatically.'**
+  String get adminNetworkingLocalAddressHelp;
+
+  /// No description provided for @adminNetworkingBehindProxy.
+  ///
+  /// In en, this message translates to:
+  /// **'HTTPS is handled by a reverse proxy'**
+  String get adminNetworkingBehindProxy;
+
+  /// No description provided for @adminNetworkingExternalDomain.
+  ///
+  /// In en, this message translates to:
+  /// **'External domain'**
+  String get adminNetworkingExternalDomain;
+
+  /// No description provided for @adminNetworkingExternalDomainHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'A domain or dynamic DNS name for remote connections, without the protocol or port. A custom certificate needs it.'**
+  String get adminNetworkingExternalDomainHelp;
+
+  /// No description provided for @adminNetworkingUpnp.
+  ///
+  /// In en, this message translates to:
+  /// **'Enable automatic port mapping'**
+  String get adminNetworkingUpnp;
+
+  /// No description provided for @adminNetworkingUpnpHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Tries to map the public port to the local port with UPnP. Some routers don\'t support it.'**
+  String get adminNetworkingUpnpHelp;
+
+  /// No description provided for @adminNetworkingProxyHeaders.
+  ///
+  /// In en, this message translates to:
+  /// **'Read proxy headers for client addresses'**
+  String get adminNetworkingProxyHeaders;
+
+  /// No description provided for @adminNetworkingProxyHeadersHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Uses headers like X-Forwarded-For to find each client\'s address. Only turn this on behind a reverse proxy.'**
+  String get adminNetworkingProxyHeadersHelp;
+
+  /// No description provided for @adminNetworkingProxyHeadersRemote.
+  ///
+  /// In en, this message translates to:
+  /// **'Only when they hold remote addresses'**
+  String get adminNetworkingProxyHeadersRemote;
+
+  /// No description provided for @adminNetworkingIpv4Only.
+  ///
+  /// In en, this message translates to:
+  /// **'Use IPv4 for outgoing requests'**
+  String get adminNetworkingIpv4Only;
+
+  /// No description provided for @adminNetworkingIpv4OnlyHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'For when metadata providers and other services can\'t be reached over IPv6.'**
+  String get adminNetworkingIpv4OnlyHelp;
+
+  /// No description provided for @adminOnePerLine.
+  ///
+  /// In en, this message translates to:
+  /// **'One per line'**
+  String get adminOnePerLine;
+
+  /// No description provided for @adminStreamingStreamLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Max simultaneous video streams'**
+  String get adminStreamingStreamLimit;
+
+  /// No description provided for @adminStreamingStreamLimitHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'How many videos can play at once across the server. 0 means no limit.'**
+  String get adminStreamingStreamLimitHelp;
+
+  /// No description provided for @adminSyncJobsConversions.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversion jobs'**
+  String get adminSyncJobsConversions;
+
+  /// No description provided for @adminSyncJobsDownloads.
+  ///
+  /// In en, this message translates to:
+  /// **'Download jobs'**
+  String get adminSyncJobsDownloads;
+
+  /// No description provided for @adminSyncJobsEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No jobs'**
+  String get adminSyncJobsEmpty;
+
+  /// No description provided for @adminSyncJobCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel job'**
+  String get adminSyncJobCancel;
+
+  /// No description provided for @adminSyncJobCancelConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel {name} and remove it from the list?'**
+  String adminSyncJobCancelConfirm(String name);
+
+  /// No description provided for @adminSyncJobConverting.
+  ///
+  /// In en, this message translates to:
+  /// **'Converting'**
+  String get adminSyncJobConverting;
+
+  /// No description provided for @adminSyncJobReady.
+  ///
+  /// In en, this message translates to:
+  /// **'Ready to transfer'**
+  String get adminSyncJobReady;
+
+  /// No description provided for @adminSyncJobTransferring.
+  ///
+  /// In en, this message translates to:
+  /// **'Transferring'**
+  String get adminSyncJobTransferring;
+
+  /// No description provided for @adminSyncJobCompletedWithError.
+  ///
+  /// In en, this message translates to:
+  /// **'Completed with errors'**
+  String get adminSyncJobCompletedWithError;
+
+  /// No description provided for @adminSyncJobItemCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 item} other{{count} items}}'**
+  String adminSyncJobItemCount(int count);
+
+  /// No description provided for @adminDrawerDatabase.
+  ///
+  /// In en, this message translates to:
+  /// **'Database'**
+  String get adminDrawerDatabase;
+
+  /// No description provided for @adminPageDescDatabase.
+  ///
+  /// In en, this message translates to:
+  /// **'Cache size and upkeep'**
+  String get adminPageDescDatabase;
+
+  /// No description provided for @adminDatabaseWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'These are advanced options. Leave them at their defaults unless you have a reason to change them.'**
+  String get adminDatabaseWarning;
+
+  /// No description provided for @adminDatabaseCacheSize.
+  ///
+  /// In en, this message translates to:
+  /// **'Database cache size (MB)'**
+  String get adminDatabaseCacheSize;
+
+  /// No description provided for @adminDatabaseCacheSizeHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'How much of each database file the server keeps in memory. More can make the server faster. Takes effect after a restart.'**
+  String get adminDatabaseCacheSizeHelp;
+
+  /// No description provided for @adminDatabaseOptimize.
+  ///
+  /// In en, this message translates to:
+  /// **'Optimize the database when the server shuts down'**
+  String get adminDatabaseOptimize;
+
+  /// No description provided for @adminDatabaseOptimizeHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Usually this does nothing, but now and then it runs an analysis that helps the server\'s queries. Shutdowns can take longer.'**
+  String get adminDatabaseOptimizeHelp;
+
+  /// No description provided for @adminDatabaseAnalysisLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Analysis row limit'**
+  String get adminDatabaseAnalysisLimit;
+
+  /// No description provided for @adminDatabaseAnalysisLimitHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'About how many rows of each index the optimize step reads. More rows work better but can slow shutdowns.'**
+  String get adminDatabaseAnalysisLimitHelp;
+
+  /// No description provided for @adminDatabaseVacuum.
+  ///
+  /// In en, this message translates to:
+  /// **'Vacuum the database on the next startup'**
+  String get adminDatabaseVacuum;
+
+  /// No description provided for @adminDatabaseVacuumHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Rebuilds the database file so it takes up the least space, which can help performance. The server can\'t be used while it runs and shows no progress, so don\'t force it closed. It turns itself back off after that startup.'**
+  String get adminDatabaseVacuumHelp;
+
+  /// No description provided for @adminDrawerCinemaIntros.
+  ///
+  /// In en, this message translates to:
+  /// **'Cinema Intros'**
+  String get adminDrawerCinemaIntros;
+
+  /// No description provided for @adminPageDescCinemaIntros.
+  ///
+  /// In en, this message translates to:
+  /// **'Trailers and intros before playback'**
+  String get adminPageDescCinemaIntros;
+
+  /// No description provided for @adminCinemaIntrosPlayBefore.
+  ///
+  /// In en, this message translates to:
+  /// **'Play intros before'**
+  String get adminCinemaIntrosPlayBefore;
+
+  /// No description provided for @adminCinemaIntrosUpcoming.
+  ///
+  /// In en, this message translates to:
+  /// **'Include trailers from new and upcoming movies'**
+  String get adminCinemaIntrosUpcoming;
+
+  /// No description provided for @adminCinemaIntrosOlder.
+  ///
+  /// In en, this message translates to:
+  /// **'Include trailers from older movies'**
+  String get adminCinemaIntrosOlder;
+
+  /// No description provided for @adminCinemaIntrosLibrary.
+  ///
+  /// In en, this message translates to:
+  /// **'Include trailers from movies in my libraries'**
+  String get adminCinemaIntrosLibrary;
+
+  /// No description provided for @adminCinemaIntrosLibraryHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Needs local trailers set up.'**
+  String get adminCinemaIntrosLibraryHelp;
+
+  /// No description provided for @adminCinemaIntrosCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Number of trailers to play'**
+  String get adminCinemaIntrosCount;
+
+  /// No description provided for @adminCinemaIntrosParental.
+  ///
+  /// In en, this message translates to:
+  /// **'Smart parental control'**
+  String get adminCinemaIntrosParental;
+
+  /// No description provided for @adminCinemaIntrosParentalHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Only picks trailers rated the same as or lower than what\'s being watched.'**
+  String get adminCinemaIntrosParentalHelp;
+
+  /// No description provided for @adminCinemaIntrosUnwatchedOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Only play intros before unwatched content'**
+  String get adminCinemaIntrosUnwatchedOnly;
+
+  /// No description provided for @adminCinemaIntrosSimilarOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Only play trailers similar to what\'s being watched'**
+  String get adminCinemaIntrosSimilarOnly;
+
+  /// No description provided for @adminCinemaIntrosSimilarOnlyHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Based on shared genres, tags, studios and so on.'**
+  String get adminCinemaIntrosSimilarOnlyHelp;
+
+  /// No description provided for @adminCinemaIntrosCustom.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom intros'**
+  String get adminCinemaIntrosCustom;
+
+  /// No description provided for @adminCinemaIntrosCustomPath.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom intros folder'**
+  String get adminCinemaIntrosCustomPath;
+
+  /// No description provided for @adminCinemaIntrosCustomPathHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'A folder of videos. One is picked at random and plays after the trailers.'**
+  String get adminCinemaIntrosCustomPathHelp;
+
+  /// No description provided for @adminCinemaIntrosCodecPath.
+  ///
+  /// In en, this message translates to:
+  /// **'Codec intros folder'**
+  String get adminCinemaIntrosCodecPath;
+
+  /// No description provided for @adminCinemaIntrosCodecPathHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'A folder of videos. One whose file name matches the video codec, audio codec, audio profile or a tag plays before the main feature.'**
+  String get adminCinemaIntrosCodecPathHelp;
+
+  /// No description provided for @adminDrawerDlna.
+  ///
+  /// In en, this message translates to:
+  /// **'DLNA'**
+  String get adminDrawerDlna;
+
+  /// No description provided for @adminPageDescDlna.
+  ///
+  /// In en, this message translates to:
+  /// **'Play To and the DLNA server'**
+  String get adminPageDescDlna;
+
+  /// No description provided for @adminDlnaPlayTo.
+  ///
+  /// In en, this message translates to:
+  /// **'Enable DLNA Play To'**
+  String get adminDlnaPlayTo;
+
+  /// No description provided for @adminDlnaPlayToHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Emby can find devices on your network and control them remotely.'**
+  String get adminDlnaPlayToHelp;
+
+  /// No description provided for @adminDlnaServer.
+  ///
+  /// In en, this message translates to:
+  /// **'Enable the DLNA server'**
+  String get adminDlnaServer;
+
+  /// No description provided for @adminDlnaServerHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Lets the server stream media to DLNA devices.'**
+  String get adminDlnaServerHelp;
+
+  /// No description provided for @adminDlnaDefaultUser.
+  ///
+  /// In en, this message translates to:
+  /// **'Default user'**
+  String get adminDlnaDefaultUser;
+
+  /// No description provided for @adminDlnaDefaultUserHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Whose libraries connected devices see. A device profile can override it.'**
+  String get adminDlnaDefaultUserHelp;
+
+  /// No description provided for @adminDlnaDebugLog.
+  ///
+  /// In en, this message translates to:
+  /// **'Enable DLNA debug logging'**
+  String get adminDlnaDebugLog;
+
+  /// No description provided for @adminDlnaDebugLogHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Makes large log files. Only turn it on while troubleshooting.'**
+  String get adminDlnaDebugLogHelp;
+
+  /// No description provided for @adminDrawerCameraUpload.
+  ///
+  /// In en, this message translates to:
+  /// **'Camera Upload'**
+  String get adminDrawerCameraUpload;
+
+  /// No description provided for @adminPageDescCameraUpload.
+  ///
+  /// In en, this message translates to:
+  /// **'Where photos from phones are saved'**
+  String get adminPageDescCameraUpload;
+
+  /// No description provided for @adminCameraUploadPath.
+  ///
+  /// In en, this message translates to:
+  /// **'Camera upload folder'**
+  String get adminCameraUploadPath;
+
+  /// No description provided for @adminCameraUploadPathHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave it blank to use the default folder. A custom folder also has to be added as a library.'**
+  String get adminCameraUploadPathHelp;
+
+  /// No description provided for @adminCameraUploadSubfolders.
+  ///
+  /// In en, this message translates to:
+  /// **'Make a subfolder for each device'**
+  String get adminCameraUploadSubfolders;
+
+  /// No description provided for @adminDrawerConversions.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversions'**
+  String get adminDrawerConversions;
+
+  /// No description provided for @adminPageDescConversions.
+  ///
+  /// In en, this message translates to:
+  /// **'Converted media and downloads'**
+  String get adminPageDescConversions;
+
+  /// No description provided for @adminConversionsTempPath.
+  ///
+  /// In en, this message translates to:
+  /// **'Temporary file folder'**
+  String get adminConversionsTempPath;
+
+  /// No description provided for @adminConversionsTempPathHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Where media is kept while it\'s being converted.'**
+  String get adminConversionsTempPathHelp;
+
+  /// No description provided for @adminConversionsFullSpeed.
+  ///
+  /// In en, this message translates to:
+  /// **'Convert at full speed'**
+  String get adminConversionsFullSpeed;
+
+  /// No description provided for @adminConversionsFullSpeedHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversions run slowly by default to keep the load down.'**
+  String get adminConversionsFullSpeedHelp;
+
+  /// No description provided for @adminDrawerPremiere.
+  ///
+  /// In en, this message translates to:
+  /// **'Emby Premiere'**
+  String get adminDrawerPremiere;
+
+  /// No description provided for @adminPageDescPremiere.
+  ///
+  /// In en, this message translates to:
+  /// **'License status and key'**
+  String get adminPageDescPremiere;
+
+  /// No description provided for @adminPremiereActive.
+  ///
+  /// In en, this message translates to:
+  /// **'Premiere is active on this server.'**
+  String get adminPremiereActive;
+
+  /// No description provided for @adminPremiereInactive.
+  ///
+  /// In en, this message translates to:
+  /// **'This server has no Premiere key.'**
+  String get adminPremiereInactive;
+
+  /// No description provided for @adminPremiereKeyInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'A key is set but isn\'t active. It may be mistyped or expired.'**
+  String get adminPremiereKeyInvalid;
+
+  /// No description provided for @adminPremiereCurrentKey.
+  ///
+  /// In en, this message translates to:
+  /// **'Current key'**
+  String get adminPremiereCurrentKey;
+
+  /// No description provided for @adminPremiereNewKey.
+  ///
+  /// In en, this message translates to:
+  /// **'New key'**
+  String get adminPremiereNewKey;
+
+  /// No description provided for @adminPremiereNewKeyHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste the key from your Emby Premiere email.'**
+  String get adminPremiereNewKeyHint;
+
+  /// No description provided for @adminPremiereSaveKey.
+  ///
+  /// In en, this message translates to:
+  /// **'Save key'**
+  String get adminPremiereSaveKey;
+
+  /// No description provided for @adminPremiereRemoveKey.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove key'**
+  String get adminPremiereRemoveKey;
+
+  /// No description provided for @adminPremiereKeyRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'Emby saved the key but didn\'t accept it.'**
+  String get adminPremiereKeyRejected;
+
+  /// No description provided for @adminPremiereLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load the Premiere status'**
+  String get adminPremiereLoadFailed;
+
+  /// No description provided for @embyPremiereRequiredTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Emby Premiere required'**
+  String get embyPremiereRequiredTitle;
+
+  /// No description provided for @embyPremiereRequiredBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This needs an active Emby Premiere subscription on the server.'**
+  String get embyPremiereRequiredBody;
+
+  /// No description provided for @embyPremiereRequiredSaveBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This needs an active Emby Premiere subscription. Emby keeps the setting but won\'t use it until Premiere is active.'**
+  String get embyPremiereRequiredSaveBody;
+
+  /// No description provided for @embyPremiereLearnMore.
+  ///
+  /// In en, this message translates to:
+  /// **'Learn more'**
+  String get embyPremiereLearnMore;
+
+  /// No description provided for @embyPremiereSaveAnyway.
+  ///
+  /// In en, this message translates to:
+  /// **'Save anyway'**
+  String get embyPremiereSaveAnyway;
+
+  /// No description provided for @embyPremiereEnterKey.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter key'**
+  String get embyPremiereEnterKey;
+
+  /// No description provided for @adminPremiereNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Needs Emby Premiere. The server keeps this setting but won\'t use it until Premiere is active.'**
+  String get adminPremiereNote;
+
+  /// No description provided for @adminExternalIdLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} Id'**
+  String adminExternalIdLabel(String name);
+
+  /// No description provided for @adminExternalIdTypePerson.
+  ///
+  /// In en, this message translates to:
+  /// **'Person'**
+  String get adminExternalIdTypePerson;
+
+  /// No description provided for @adminExternalIdTypeArtist.
+  ///
+  /// In en, this message translates to:
+  /// **'Artist'**
+  String get adminExternalIdTypeArtist;
+
+  /// No description provided for @adminExternalIdTypeAlbumArtist.
+  ///
+  /// In en, this message translates to:
+  /// **'Album Artist'**
+  String get adminExternalIdTypeAlbumArtist;
+
+  /// No description provided for @adminExternalIdTypeOtherArtist.
+  ///
+  /// In en, this message translates to:
+  /// **'Other Artist'**
+  String get adminExternalIdTypeOtherArtist;
+
+  /// No description provided for @adminExternalIdTypeReleaseGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Release Group'**
+  String get adminExternalIdTypeReleaseGroup;
+
+  /// No description provided for @adminExternalIdTypeBook.
+  ///
+  /// In en, this message translates to:
+  /// **'Book'**
+  String get adminExternalIdTypeBook;
+
+  /// No description provided for @adminPlaybackHwAccelWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'Hardware acceleration can be unstable on some systems. Keep the operating system and video drivers up to date, and set this back to None if video stops playing.'**
+  String get adminPlaybackHwAccelWarning;
+
+  /// No description provided for @adminLibMetadataChangeHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Changes to metadata settings apply to new content. To update existing content, refresh it from its detail page or refresh the library.'**
+  String get adminLibMetadataChangeHelp;
+
+  /// No description provided for @adminLibFetcherSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Fetcher settings'**
+  String get adminLibFetcherSettings;
+
+  /// No description provided for @adminLibImageOptionsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Image options for {type}'**
+  String adminLibImageOptionsTitle(String type);
+
+  /// No description provided for @adminLibFetchImages.
+  ///
+  /// In en, this message translates to:
+  /// **'Fetch images'**
+  String get adminLibFetchImages;
+
+  /// No description provided for @adminLibMaxBackdrops.
+  ///
+  /// In en, this message translates to:
+  /// **'Maximum number of backdrops per item'**
+  String get adminLibMaxBackdrops;
+
+  /// No description provided for @adminLibMinBackdropWidth.
+  ///
+  /// In en, this message translates to:
+  /// **'Minimum backdrop download width'**
+  String get adminLibMinBackdropWidth;
+
+  /// No description provided for @adminImageTypeArt.
+  ///
+  /// In en, this message translates to:
+  /// **'Clearart'**
+  String get adminImageTypeArt;
+
+  /// No description provided for @adminImageTypeBox.
+  ///
+  /// In en, this message translates to:
+  /// **'Box'**
+  String get adminImageTypeBox;
+
+  /// No description provided for @adminImageTypeBoxRear.
+  ///
+  /// In en, this message translates to:
+  /// **'Box (back)'**
+  String get adminImageTypeBoxRear;
+
+  /// No description provided for @adminImageTypeDisc.
+  ///
+  /// In en, this message translates to:
+  /// **'Disc'**
+  String get adminImageTypeDisc;
+
+  /// No description provided for @adminImageTypeMenu.
+  ///
+  /// In en, this message translates to:
+  /// **'Menu'**
+  String get adminImageTypeMenu;
+
+  /// No description provided for @adminActivityMediaDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'Media details'**
+  String get adminActivityMediaDetails;
+
+  /// No description provided for @adminNetworkingOtherPublishedUriHint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. 192.168.1.0/24=http://192.168.1.5:8096'**
+  String get adminNetworkingOtherPublishedUriHint;
+
+  /// No description provided for @adminMetadataFieldOriginalLanguage.
+  ///
+  /// In en, this message translates to:
+  /// **'Original language'**
+  String get adminMetadataFieldOriginalLanguage;
+
+  /// No description provided for @adminMetadataFieldDateAdded.
+  ///
+  /// In en, this message translates to:
+  /// **'Date added'**
+  String get adminMetadataFieldDateAdded;
+
+  /// No description provided for @adminMetadataFieldArtists.
+  ///
+  /// In en, this message translates to:
+  /// **'Artists'**
+  String get adminMetadataFieldArtists;
+
+  /// No description provided for @adminMetadataFieldAlbumArtists.
+  ///
+  /// In en, this message translates to:
+  /// **'Album artists'**
+  String get adminMetadataFieldAlbumArtists;
+
+  /// No description provided for @adminMetadataFieldAlbum.
+  ///
+  /// In en, this message translates to:
+  /// **'Album'**
+  String get adminMetadataFieldAlbum;
+
+  /// No description provided for @adminMetadataFieldSeriesName.
+  ///
+  /// In en, this message translates to:
+  /// **'Series name'**
+  String get adminMetadataFieldSeriesName;
+
+  /// No description provided for @adminMetadataFieldEpisodeNumber.
+  ///
+  /// In en, this message translates to:
+  /// **'Episode number'**
+  String get adminMetadataFieldEpisodeNumber;
+
+  /// No description provided for @adminMetadataFieldSeasonNumber.
+  ///
+  /// In en, this message translates to:
+  /// **'Season number'**
+  String get adminMetadataFieldSeasonNumber;
+
+  /// No description provided for @adminMetadataFieldTrackNumber.
+  ///
+  /// In en, this message translates to:
+  /// **'Track number'**
+  String get adminMetadataFieldTrackNumber;
+
+  /// No description provided for @adminMetadataFieldDiscNumber.
+  ///
+  /// In en, this message translates to:
+  /// **'Disc number'**
+  String get adminMetadataFieldDiscNumber;
+
+  /// No description provided for @adminMetadataFieldAirTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Air time'**
+  String get adminMetadataFieldAirTime;
+
+  /// No description provided for @adminMetadataFieldRuntime.
+  ///
+  /// In en, this message translates to:
+  /// **'Runtime in minutes'**
+  String get adminMetadataFieldRuntime;
+
+  /// No description provided for @adminMetadataFieldPlaceOfBirth.
+  ///
+  /// In en, this message translates to:
+  /// **'Place of birth'**
+  String get adminMetadataFieldPlaceOfBirth;
+
+  /// No description provided for @adminMetadataFieldBirthDate.
+  ///
+  /// In en, this message translates to:
+  /// **'Birth date'**
+  String get adminMetadataFieldBirthDate;
+
+  /// No description provided for @adminMetadataFieldBirthYear.
+  ///
+  /// In en, this message translates to:
+  /// **'Birth year'**
+  String get adminMetadataFieldBirthYear;
+
+  /// No description provided for @adminMetadataFieldDeathDate.
+  ///
+  /// In en, this message translates to:
+  /// **'Death date'**
+  String get adminMetadataFieldDeathDate;
+
+  /// No description provided for @adminMetadataFieldAspectRatio.
+  ///
+  /// In en, this message translates to:
+  /// **'Original aspect ratio'**
+  String get adminMetadataFieldAspectRatio;
+
+  /// No description provided for @adminMetadataFieldAirsBeforeSeason.
+  ///
+  /// In en, this message translates to:
+  /// **'Airs before season'**
+  String get adminMetadataFieldAirsBeforeSeason;
+
+  /// No description provided for @adminMetadataFieldAirsAfterSeason.
+  ///
+  /// In en, this message translates to:
+  /// **'Airs after season'**
+  String get adminMetadataFieldAirsAfterSeason;
+
+  /// No description provided for @adminMetadataFieldAirsBeforeEpisode.
+  ///
+  /// In en, this message translates to:
+  /// **'Airs before episode'**
+  String get adminMetadataFieldAirsBeforeEpisode;
+
+  /// No description provided for @adminMetadataNamesHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Separate several names with a semicolon.'**
+  String get adminMetadataNamesHelp;
+
+  /// No description provided for @adminMetadataSectionRatings.
+  ///
+  /// In en, this message translates to:
+  /// **'Ratings'**
+  String get adminMetadataSectionRatings;
+
+  /// No description provided for @adminMetadataItemLocked.
+  ///
+  /// In en, this message translates to:
+  /// **'This item\'s metadata is locked. Unlock it before you identify it.'**
+  String get adminMetadataItemLocked;
+
+  /// No description provided for @adminMetadataNameOrIdRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a name or an external ID.'**
+  String get adminMetadataNameOrIdRequired;
+
+  /// No description provided for @adminLibMetadataReaders.
+  ///
+  /// In en, this message translates to:
+  /// **'Metadata readers'**
+  String get adminLibMetadataReaders;
+
+  /// No description provided for @adminLibSimilarProvidersFor.
+  ///
+  /// In en, this message translates to:
+  /// **'Similar item providers: {type}'**
+  String adminLibSimilarProvidersFor(String type);
+
+  /// No description provided for @adminLibMediaSegmentProviders.
+  ///
+  /// In en, this message translates to:
+  /// **'Media segment providers'**
+  String get adminLibMediaSegmentProviders;
+
+  /// No description provided for @adminLibEnableLibrary.
+  ///
+  /// In en, this message translates to:
+  /// **'Enable the library'**
+  String get adminLibEnableLibrary;
+
+  /// No description provided for @adminLibEnableLibraryHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Disabling the library hides it from all user views.'**
+  String get adminLibEnableLibraryHelp;
+
+  /// No description provided for @adminLibSaveLyricsWithMedia.
+  ///
+  /// In en, this message translates to:
+  /// **'Save lyrics into media folders'**
+  String get adminLibSaveLyricsWithMedia;
+
+  /// No description provided for @adminLibUseCustomTagDelimiters.
+  ///
+  /// In en, this message translates to:
+  /// **'Use custom tag delimiter'**
+  String get adminLibUseCustomTagDelimiters;
+
+  /// No description provided for @adminLibCustomTagDelimiters.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom tag delimiter'**
+  String get adminLibCustomTagDelimiters;
+
+  /// No description provided for @adminLibCustomTagDelimitersHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Characters to treat as delimiters that separate tags.'**
+  String get adminLibCustomTagDelimitersHelp;
+
+  /// No description provided for @adminLibDelimiterWhitelist.
+  ///
+  /// In en, this message translates to:
+  /// **'Delimiter whitelist'**
+  String get adminLibDelimiterWhitelist;
+
+  /// No description provided for @adminLibDelimiterWhitelistHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Items to leave out of tag splitting, one per line.'**
+  String get adminLibDelimiterWhitelistHelp;
+
+  /// No description provided for @adminLibDownloadLanguages.
+  ///
+  /// In en, this message translates to:
+  /// **'Download languages'**
+  String get adminLibDownloadLanguages;
+
+  /// No description provided for @adminLibraryFolderRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Add at least one folder to this library.'**
+  String get adminLibraryFolderRequired;
+
+  /// No description provided for @adminRenameLibraryWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'Renaming a library loses all of its metadata. Proceed with caution.'**
+  String get adminRenameLibraryWarning;
+
+  /// No description provided for @adminDeleteLibraryConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove the library \"{name}\"? Files on disk are not deleted.'**
+  String adminDeleteLibraryConfirm(String name);
+
+  /// No description provided for @adminDeleteLibraryLocations.
+  ///
+  /// In en, this message translates to:
+  /// **'These media locations will be removed from the library:'**
+  String get adminDeleteLibraryLocations;
+
+  /// No description provided for @adminRefreshMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh mode'**
+  String get adminRefreshMode;
+
+  /// No description provided for @adminRefreshModeScan.
+  ///
+  /// In en, this message translates to:
+  /// **'Scan for new and updated files'**
+  String get adminRefreshModeScan;
+
+  /// No description provided for @adminRefreshModeMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'Search for missing metadata'**
+  String get adminRefreshModeMissing;
+
+  /// No description provided for @adminReplaceTrickplayImages.
+  ///
+  /// In en, this message translates to:
+  /// **'Replace existing trickplay images'**
+  String get adminReplaceTrickplayImages;
+
+  /// No description provided for @adminRefreshDialogHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Metadata is refreshed based on the settings and internet services enabled in the dashboard.'**
+  String get adminRefreshDialogHelp;
+
+  /// No description provided for @adminActivityCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{shown} of {total}'**
+  String adminActivityCount(String shown, String total);
+
+  /// No description provided for @adminLiveTvTabSources.
+  ///
+  /// In en, this message translates to:
+  /// **'Tuners and guide'**
+  String get adminLiveTvTabSources;
+
+  /// No description provided for @adminLiveTvTabRecordings.
+  ///
+  /// In en, this message translates to:
+  /// **'Recordings'**
+  String get adminLiveTvTabRecordings;
+
+  /// No description provided for @adminLiveTvAddTuner.
+  ///
+  /// In en, this message translates to:
+  /// **'Add tuner device'**
+  String get adminLiveTvAddTuner;
+
+  /// No description provided for @adminLiveTvEditTuner.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit tuner device'**
+  String get adminLiveTvEditTuner;
+
+  /// No description provided for @adminLiveTvTunerType.
+  ///
+  /// In en, this message translates to:
+  /// **'Tuner type'**
+  String get adminLiveTvTunerType;
+
+  /// No description provided for @adminLiveTvDetectDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'Detect my devices'**
+  String get adminLiveTvDetectDevices;
+
+  /// No description provided for @adminLiveTvNoNewDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'No new devices found'**
+  String get adminLiveTvNoNewDevices;
+
+  /// No description provided for @adminLiveTvDrmNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Channels with DRM will not be imported.'**
+  String get adminLiveTvDrmNote;
+
+  /// No description provided for @adminLiveTvTunerSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Tuner saved'**
+  String get adminLiveTvTunerSaved;
+
+  /// No description provided for @adminLiveTvDeleteTuner.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete tuner device'**
+  String get adminLiveTvDeleteTuner;
+
+  /// No description provided for @adminLiveTvDeleteTunerConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Are you sure you want to delete this tuner device?'**
+  String get adminLiveTvDeleteTunerConfirm;
+
+  /// No description provided for @adminLiveTvDeleteProvider.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete guide provider'**
+  String get adminLiveTvDeleteProvider;
+
+  /// No description provided for @adminLiveTvDeleteProviderConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Are you sure you want to delete this guide provider?'**
+  String get adminLiveTvDeleteProviderConfirm;
+
+  /// No description provided for @adminLiveTvProviderSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Guide provider saved'**
+  String get adminLiveTvProviderSaved;
+
+  /// No description provided for @adminLiveTvAddProvider.
+  ///
+  /// In en, this message translates to:
+  /// **'Add provider'**
+  String get adminLiveTvAddProvider;
+
+  /// No description provided for @adminLiveTvRefreshGuide.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh guide data'**
+  String get adminLiveTvRefreshGuide;
+
+  /// No description provided for @adminLiveTvMapChannels.
+  ///
+  /// In en, this message translates to:
+  /// **'Map channels'**
+  String get adminLiveTvMapChannels;
+
+  /// No description provided for @adminLiveTvNoTunerChannels.
+  ///
+  /// In en, this message translates to:
+  /// **'No tuner channels found'**
+  String get adminLiveTvNoTunerChannels;
+
+  /// No description provided for @adminLiveTvXmltvPathHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'A path or URL to an XMLTV file. The server reads it and checks it for updates. You are responsible for creating and updating the file.'**
+  String get adminLiveTvXmltvPathHelp;
+
+  /// No description provided for @adminLiveTvSdCreateAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'Create an account at {url}'**
+  String adminLiveTvSdCreateAccount(String url);
+
+  /// No description provided for @adminLiveTvSdSignIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in'**
+  String get adminLiveTvSdSignIn;
+
+  /// No description provided for @adminLiveTvSdLineup.
+  ///
+  /// In en, this message translates to:
+  /// **'Lineup'**
+  String get adminLiveTvSdLineup;
+
+  /// No description provided for @adminLiveTvSdSelectLineup.
+  ///
+  /// In en, this message translates to:
+  /// **'Select a lineup. If none are listed, check your username, password and postal code.'**
+  String get adminLiveTvSdSelectLineup;
+
+  /// No description provided for @adminLiveTvGuideDays.
+  ///
+  /// In en, this message translates to:
+  /// **'Number of days of guide data to download'**
+  String get adminLiveTvGuideDays;
+
+  /// No description provided for @adminLiveTvGuideDaysHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'More days let you schedule further ahead and see more listings, but the download takes longer. Automatic picks a value from the number of channels.'**
+  String get adminLiveTvGuideDaysHelp;
+
+  /// No description provided for @adminLiveTvRecordingPath.
+  ///
+  /// In en, this message translates to:
+  /// **'Default recording path'**
+  String get adminLiveTvRecordingPath;
+
+  /// No description provided for @adminLiveTvRecordingPathHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Where recordings are saved. If empty, the server\'s program data folder is used.'**
+  String get adminLiveTvRecordingPathHelp;
+
+  /// No description provided for @adminLiveTvStartWhenPossible.
+  ///
+  /// In en, this message translates to:
+  /// **'Start when possible'**
+  String get adminLiveTvStartWhenPossible;
+
+  /// No description provided for @adminLiveTvStopWhenPossible.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop when possible'**
+  String get adminLiveTvStopWhenPossible;
+
+  /// No description provided for @adminLiveTvMinutesBefore.
+  ///
+  /// In en, this message translates to:
+  /// **'minutes before'**
+  String get adminLiveTvMinutesBefore;
+
+  /// No description provided for @adminLiveTvMinutesAfter.
+  ///
+  /// In en, this message translates to:
+  /// **'minutes after'**
+  String get adminLiveTvMinutesAfter;
+
+  /// No description provided for @adminLiveTvSectionGuide.
+  ///
+  /// In en, this message translates to:
+  /// **'Guide data'**
+  String get adminLiveTvSectionGuide;
+
+  /// No description provided for @adminLiveTvSectionDefaultRecording.
+  ///
+  /// In en, this message translates to:
+  /// **'Default recording settings'**
+  String get adminLiveTvSectionDefaultRecording;
+
+  /// No description provided for @adminLiveTvSectionMetadata.
+  ///
+  /// In en, this message translates to:
+  /// **'Recording metadata'**
+  String get adminLiveTvSectionMetadata;
+
+  /// No description provided for @adminUserLastActivity.
+  ///
+  /// In en, this message translates to:
+  /// **'Last activity {time}'**
+  String adminUserLastActivity(String time);
+
+  /// No description provided for @adminCurrentPassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Current password'**
+  String get adminCurrentPassword;
+
+  /// No description provided for @adminChannelAccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Channel access'**
+  String get adminChannelAccess;
+
+  /// No description provided for @adminDeviceAccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Device access'**
+  String get adminDeviceAccess;
+
+  /// No description provided for @adminDeleteFromAllLibraries.
+  ///
+  /// In en, this message translates to:
+  /// **'All libraries'**
+  String get adminDeleteFromAllLibraries;
+
+  /// No description provided for @adminUserDisabledBanner.
+  ///
+  /// In en, this message translates to:
+  /// **'This user is disabled. Turn off Disabled under Permissions to let them sign in again.'**
+  String get adminUserDisabledBanner;
+
+  /// No description provided for @adminNewPasswordEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'New password cannot be empty'**
+  String get adminNewPasswordEmpty;
+
+  /// No description provided for @adminScheduleStartBeforeEnd.
+  ///
+  /// In en, this message translates to:
+  /// **'The start time must be before the end time'**
+  String get adminScheduleStartBeforeEnd;
+
+  /// No description provided for @adminDashboardAlerts.
+  ///
+  /// In en, this message translates to:
+  /// **'Alerts'**
+  String get adminDashboardAlerts;
+
+  /// No description provided for @adminSessionGoHome.
+  ///
+  /// In en, this message translates to:
+  /// **'Go to home screen'**
+  String get adminSessionGoHome;
+
+  /// No description provided for @adminPlayMethodRemux.
+  ///
+  /// In en, this message translates to:
+  /// **'Remuxing'**
+  String get adminPlayMethodRemux;
+
+  /// No description provided for @adminPlayMethodDirectStream.
+  ///
+  /// In en, this message translates to:
+  /// **'Direct streaming'**
+  String get adminPlayMethodDirectStream;
+
+  /// No description provided for @adminPlayMethodDirectPlay.
+  ///
+  /// In en, this message translates to:
+  /// **'Direct playing'**
+  String get adminPlayMethodDirectPlay;
+
+  /// No description provided for @adminLogLevelTrace.
+  ///
+  /// In en, this message translates to:
+  /// **'Trace'**
+  String get adminLogLevelTrace;
+
+  /// No description provided for @adminLogLevelDebug.
+  ///
+  /// In en, this message translates to:
+  /// **'Debug'**
+  String get adminLogLevelDebug;
+
+  /// No description provided for @adminLogLevelInformation.
+  ///
+  /// In en, this message translates to:
+  /// **'Information'**
+  String get adminLogLevelInformation;
+
+  /// No description provided for @adminLogLevelWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'Warning'**
+  String get adminLogLevelWarning;
+
+  /// No description provided for @adminLogLevelError.
+  ///
+  /// In en, this message translates to:
+  /// **'Error'**
+  String get adminLogLevelError;
+
+  /// No description provided for @adminLogLevelCritical.
+  ///
+  /// In en, this message translates to:
+  /// **'Critical'**
+  String get adminLogLevelCritical;
+
+  /// No description provided for @adminLogLevelNone.
+  ///
+  /// In en, this message translates to:
+  /// **'None'**
+  String get adminLogLevelNone;
+
+  /// No description provided for @adminActivityAllUsers.
+  ///
+  /// In en, this message translates to:
+  /// **'All users'**
+  String get adminActivityAllUsers;
+
+  /// No description provided for @adminTaskLastRan.
+  ///
+  /// In en, this message translates to:
+  /// **'Last ran {time}, taking {duration}.'**
+  String adminTaskLastRan(String time, String duration);
+
+  /// No description provided for @adminTaskResultFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed'**
+  String get adminTaskResultFailed;
+
+  /// No description provided for @adminTaskResultCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancelled'**
+  String get adminTaskResultCancelled;
+
+  /// No description provided for @adminTaskResultAborted.
+  ///
+  /// In en, this message translates to:
+  /// **'Aborted by server shutdown'**
+  String get adminTaskResultAborted;
+
+  /// No description provided for @adminDurationSecondsShort.
+  ///
+  /// In en, this message translates to:
+  /// **'{seconds}s'**
+  String adminDurationSecondsShort(String seconds);
+
+  /// No description provided for @adminDeleteTaskTrigger.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete task trigger'**
+  String get adminDeleteTaskTrigger;
+
+  /// No description provided for @adminDeleteTaskTriggerConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Are you sure you want to delete this task trigger?'**
+  String get adminDeleteTaskTriggerConfirm;
+
+  /// No description provided for @adminTaskTriggerEveryMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'Every {minutes} minutes'**
+  String adminTaskTriggerEveryMinutes(String minutes);
+
+  /// No description provided for @adminTaskTriggerEveryHours.
+  ///
+  /// In en, this message translates to:
+  /// **'Every {hours} hours'**
+  String adminTaskTriggerEveryHours(String hours);
+
+  /// No description provided for @adminTaskMinutesValue.
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes} minutes'**
+  String adminTaskMinutesValue(String minutes);
+
+  /// No description provided for @adminTaskHoursValue.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours} hours'**
+  String adminTaskHoursValue(String hours);
+
+  /// No description provided for @adminTimeLimitHours.
+  ///
+  /// In en, this message translates to:
+  /// **'Time limit (hours)'**
+  String get adminTimeLimitHours;
+
+  /// No description provided for @adminTranscodingDecodingFor.
+  ///
+  /// In en, this message translates to:
+  /// **'Enable hardware decoding for'**
+  String get adminTranscodingDecodingFor;
+
+  /// No description provided for @adminTranscodingThreadCountHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'The most threads a transcode can use. Fewer threads lower CPU use but may be too slow for smooth playback.'**
+  String get adminTranscodingThreadCountHelp;
+
+  /// No description provided for @adminTranscodingThreadMax.
+  ///
+  /// In en, this message translates to:
+  /// **'Max'**
+  String get adminTranscodingThreadMax;
+
+  /// No description provided for @adminTranscodingFfmpegPath.
+  ///
+  /// In en, this message translates to:
+  /// **'FFmpeg path'**
+  String get adminTranscodingFfmpegPath;
+
+  /// No description provided for @adminTranscodingFfmpegPathHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'The FFmpeg the server runs. It is set on the server, not here.'**
+  String get adminTranscodingFfmpegPathHelp;
+
+  /// No description provided for @adminTranscodingAudioSeek.
+  ///
+  /// In en, this message translates to:
+  /// **'Audio seek strategy'**
+  String get adminTranscodingAudioSeek;
+
+  /// No description provided for @adminTranscodingAudioSeekHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'How the server handles audio when you seek in an HLS stream.'**
+  String get adminTranscodingAudioSeekHelp;
+
+  /// No description provided for @adminTranscodingTrimCopiedAudio.
+  ///
+  /// In en, this message translates to:
+  /// **'Trim copied audio'**
+  String get adminTranscodingTrimCopiedAudio;
+
+  /// No description provided for @adminTranscodingTranscodeAudio.
+  ///
+  /// In en, this message translates to:
+  /// **'Transcode audio'**
+  String get adminTranscodingTranscodeAudio;
+
+  /// No description provided for @adminResumeMinAudiobookMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'Minimum audiobook resume (minutes)'**
+  String get adminResumeMinAudiobookMinutes;
+
+  /// No description provided for @adminResumeMinAudiobookHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Audiobooks stopped before this time count as unplayed.'**
+  String get adminResumeMinAudiobookHelp;
+
+  /// No description provided for @adminResumeAudiobookRemaining.
+  ///
+  /// In en, this message translates to:
+  /// **'Audiobook remaining minutes to resume'**
+  String get adminResumeAudiobookRemaining;
+
+  /// No description provided for @adminResumeAudiobookRemainingHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Audiobooks stopped with less than this many minutes left count as played.'**
+  String get adminResumeAudiobookRemainingHelp;
+
+  /// No description provided for @adminBrandingSplashSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Splash screen'**
+  String get adminBrandingSplashSection;
+
+  /// No description provided for @adminBrandingSectionWebClient.
+  ///
+  /// In en, this message translates to:
+  /// **'Web client'**
+  String get adminBrandingSectionWebClient;
+
+  /// No description provided for @adminBrandingSplashSizeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom images should be in a 16x9 aspect ratio at a minimum size of 1920x1080.'**
+  String get adminBrandingSplashSizeHint;
+
+  /// No description provided for @adminNetworkingSectionServerAddress.
+  ///
+  /// In en, this message translates to:
+  /// **'Server address settings'**
+  String get adminNetworkingSectionServerAddress;
+
+  /// No description provided for @adminNetworkingSectionHttps.
+  ///
+  /// In en, this message translates to:
+  /// **'HTTPS settings'**
+  String get adminNetworkingSectionHttps;
+
+  /// No description provided for @adminNetworkingSectionRemoteAccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Remote access settings'**
+  String get adminNetworkingSectionRemoteAccess;
+
+  /// No description provided for @adminNetworkingSectionIpProtocols.
+  ///
+  /// In en, this message translates to:
+  /// **'IP protocols'**
+  String get adminNetworkingSectionIpProtocols;
+
+  /// No description provided for @adminNetworkingSectionDiscovery.
+  ///
+  /// In en, this message translates to:
+  /// **'Network discovery'**
+  String get adminNetworkingSectionDiscovery;
+
+  /// No description provided for @adminNetworkingSectionFirewall.
+  ///
+  /// In en, this message translates to:
+  /// **'Firewall and proxy settings'**
+  String get adminNetworkingSectionFirewall;
+
+  /// No description provided for @adminNetworkingLocalHttpPort.
+  ///
+  /// In en, this message translates to:
+  /// **'Local HTTP port number'**
+  String get adminNetworkingLocalHttpPort;
+
+  /// No description provided for @adminNetworkingLocalHttpPortHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'The TCP port number for the HTTP server.'**
+  String get adminNetworkingLocalHttpPortHelp;
+
+  /// No description provided for @adminNetworkingEnableHttpsHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Listen on the HTTPS port. A valid certificate must also be set for this to take effect.'**
+  String get adminNetworkingEnableHttpsHelp;
+
+  /// No description provided for @adminNetworkingLocalHttpsPort.
+  ///
+  /// In en, this message translates to:
+  /// **'Local HTTPS port number'**
+  String get adminNetworkingLocalHttpsPort;
+
+  /// No description provided for @adminNetworkingLocalHttpsPortHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'The TCP port number for the HTTPS server.'**
+  String get adminNetworkingLocalHttpsPortHelp;
+
+  /// No description provided for @adminNetworkingBaseUrlHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Adds a subdirectory to the server URL, for example https://example.com/jellyfin.'**
+  String get adminNetworkingBaseUrlHelp;
+
+  /// No description provided for @adminNetworkingBindAddress.
+  ///
+  /// In en, this message translates to:
+  /// **'Bind to local network address'**
+  String get adminNetworkingBindAddress;
+
+  /// No description provided for @adminNetworkingBindAddressHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Overrides the local IP address of the HTTP server. Leave it empty to bind to all addresses. A change needs a restart.'**
+  String get adminNetworkingBindAddressHelp;
+
+  /// No description provided for @adminNetworkingLanNetworksHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'IP addresses or IP/netmask entries of networks treated as local for bandwidth and remote access limits. Leave it empty to treat all RFC1918 addresses as local.'**
+  String get adminNetworkingLanNetworksHelp;
+
+  /// No description provided for @adminNetworkingKnownProxiesHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'IP addresses or host names of the proxies in front of this server. Needed to read X-Forwarded-For headers. A change needs a restart.'**
+  String get adminNetworkingKnownProxiesHelp;
+
+  /// No description provided for @adminNetworkingCustomCertPath.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom SSL certificate path'**
+  String get adminNetworkingCustomCertPath;
+
+  /// No description provided for @adminNetworkingCertPathHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Path to a PKCS #12 file with a certificate and private key, for TLS on a custom domain.'**
+  String get adminNetworkingCertPathHelp;
+
+  /// No description provided for @adminNetworkingCertPasswordHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the password if your certificate needs one.'**
+  String get adminNetworkingCertPasswordHelp;
+
+  /// No description provided for @adminNetworkingAllowRemote.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow remote connections to this server'**
+  String get adminNetworkingAllowRemote;
+
+  /// No description provided for @adminNetworkingAllowRemoteHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'When off, all remote connections are blocked.'**
+  String get adminNetworkingAllowRemoteHelp;
+
+  /// No description provided for @adminNetworkingRemoteIpFilterHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'IP addresses or IP/netmask entries of remote networks. Leave it empty to allow every remote address.'**
+  String get adminNetworkingRemoteIpFilterHelp;
+
+  /// No description provided for @adminNetworkingRemoteIpFilterMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Remote IP address filter mode'**
+  String get adminNetworkingRemoteIpFilterMode;
+
+  /// No description provided for @adminNetworkingPublicHttpPortHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'The public port mapped to the local HTTP port.'**
+  String get adminNetworkingPublicHttpPortHelp;
+
+  /// No description provided for @adminNetworkingPublicHttpsPortHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'The public port mapped to the local HTTPS port.'**
+  String get adminNetworkingPublicHttpsPortHelp;
+
+  /// No description provided for @adminNetworkingAutoDiscoveryLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Enable auto discovery'**
+  String get adminNetworkingAutoDiscoveryLabel;
+
+  /// No description provided for @adminNetworkingAutoDiscoveryHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Lets apps find this server on UDP port 7359.'**
+  String get adminNetworkingAutoDiscoveryHelp;
+
+  /// No description provided for @adminNetworkingSamePublishedUri.
+  ///
+  /// In en, this message translates to:
+  /// **'Use the same published server URI for internal and external access'**
+  String get adminNetworkingSamePublishedUri;
+
+  /// No description provided for @adminNetworkingPublishedUri.
+  ///
+  /// In en, this message translates to:
+  /// **'Published server URI'**
+  String get adminNetworkingPublishedUri;
+
+  /// No description provided for @adminNetworkingPublishedUriHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Overrides the URI the server gives out, based on the interface or the client IP address.'**
+  String get adminNetworkingPublishedUriHelp;
+
+  /// No description provided for @adminNetworkingInternalUri.
+  ///
+  /// In en, this message translates to:
+  /// **'Internal URI'**
+  String get adminNetworkingInternalUri;
+
+  /// No description provided for @adminNetworkingInternalUriHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Published server URI for internal access.'**
+  String get adminNetworkingInternalUriHelp;
+
+  /// No description provided for @adminNetworkingExternalUri.
+  ///
+  /// In en, this message translates to:
+  /// **'External URI'**
+  String get adminNetworkingExternalUri;
+
+  /// No description provided for @adminNetworkingExternalUriHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Published server URI for external access.'**
+  String get adminNetworkingExternalUriHelp;
+
+  /// No description provided for @adminNetworkingOtherPublishedUris.
+  ///
+  /// In en, this message translates to:
+  /// **'Other published URIs'**
+  String get adminNetworkingOtherPublishedUris;
+
+  /// No description provided for @adminNetworkingOtherPublishedUrisHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'URIs for one subnet or interface, written as subnet=URI.'**
+  String get adminNetworkingOtherPublishedUrisHelp;
+
+  /// No description provided for @adminBackupsHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Create and restore snapshots of your server. They can include the database, metadata, subtitles and trickplay images.'**
+  String get adminBackupsHelp;
+
+  /// No description provided for @adminBackupDisclaimer.
+  ///
+  /// In en, this message translates to:
+  /// **'Depending on the size of your library, the backup can take a while.'**
+  String get adminBackupDisclaimer;
+
+  /// No description provided for @adminBackupTasksWarningTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Scheduled tasks are running'**
+  String get adminBackupTasksWarningTitle;
+
+  /// No description provided for @adminBackupTasksWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop these tasks or wait for them to finish before you create a backup.'**
+  String get adminBackupTasksWarning;
+
+  /// No description provided for @adminBackupArchiveNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'The server could not find this backup archive.'**
+  String get adminBackupArchiveNotFound;
+
+  /// No description provided for @adminRestoreInProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore in progress'**
+  String get adminRestoreInProgress;
+
+  /// No description provided for @adminRestoreWaitingForServer.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the server to come back.'**
+  String get adminRestoreWaitingForServer;
+
+  /// No description provided for @adminRestoreSucceeded.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore completed'**
+  String get adminRestoreSucceeded;
+
+  /// No description provided for @adminLogWatch.
+  ///
+  /// In en, this message translates to:
+  /// **'Watch'**
+  String get adminLogWatch;
+
+  /// No description provided for @adminLogStopWatching.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop watching'**
+  String get adminLogStopWatching;
+
+  /// No description provided for @adminPluginInstallConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm plugin installation'**
+  String get adminPluginInstallConfirmTitle;
+
+  /// No description provided for @adminPluginInstallDisclaimer.
+  ///
+  /// In en, this message translates to:
+  /// **'Installing a third party plugin carries risks. It may contain unstable or malicious code, and it can change at any time. Only install plugins from authors you trust, and know what they can do, such as query outside services, slow down library scans or add background work.'**
+  String get adminPluginInstallDisclaimer;
+
+  /// No description provided for @adminGroupOverview.
+  ///
+  /// In en, this message translates to:
+  /// **'Overview'**
+  String get adminGroupOverview;
+
+  /// No description provided for @adminGroupLibrary.
+  ///
+  /// In en, this message translates to:
+  /// **'Library'**
+  String get adminGroupLibrary;
+
+  /// No description provided for @adminGroupPlayback.
+  ///
+  /// In en, this message translates to:
+  /// **'Playback'**
+  String get adminGroupPlayback;
+
+  /// No description provided for @adminGroupPeople.
+  ///
+  /// In en, this message translates to:
+  /// **'People'**
+  String get adminGroupPeople;
+
+  /// No description provided for @adminGroupSystem.
+  ///
+  /// In en, this message translates to:
+  /// **'System'**
+  String get adminGroupSystem;
+
+  /// No description provided for @adminAreasLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Admin areas'**
+  String get adminAreasLabel;
+
+  /// No description provided for @adminPagesLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Pages'**
+  String get adminPagesLabel;
+
+  /// No description provided for @adminPageDescDashboard.
+  ///
+  /// In en, this message translates to:
+  /// **'Server health, sessions and recent activity'**
+  String get adminPageDescDashboard;
+
+  /// No description provided for @adminPageDescAnalytics.
+  ///
+  /// In en, this message translates to:
+  /// **'Library sizes, codecs and formats'**
+  String get adminPageDescAnalytics;
+
+  /// No description provided for @adminPageDescActivity.
+  ///
+  /// In en, this message translates to:
+  /// **'Everything that happened on the server'**
+  String get adminPageDescActivity;
+
+  /// No description provided for @adminPageDescTasks.
+  ///
+  /// In en, this message translates to:
+  /// **'Scans, cleanups and their triggers'**
+  String get adminPageDescTasks;
+
+  /// No description provided for @adminPageDescLibraries.
+  ///
+  /// In en, this message translates to:
+  /// **'Folders, scanners and metadata fetchers'**
+  String get adminPageDescLibraries;
+
+  /// No description provided for @adminPageDescDisplay.
+  ///
+  /// In en, this message translates to:
+  /// **'How libraries show to users'**
+  String get adminPageDescDisplay;
+
+  /// No description provided for @adminPageDescMetadata.
+  ///
+  /// In en, this message translates to:
+  /// **'Default language, country and images'**
+  String get adminPageDescMetadata;
+
+  /// No description provided for @adminPageDescNfo.
+  ///
+  /// In en, this message translates to:
+  /// **'Kodi NFO reading and saving'**
+  String get adminPageDescNfo;
+
+  /// No description provided for @adminPageDescLiveTv.
+  ///
+  /// In en, this message translates to:
+  /// **'Tuners, guide data and recordings'**
+  String get adminPageDescLiveTv;
+
+  /// No description provided for @adminPageDescTranscoding.
+  ///
+  /// In en, this message translates to:
+  /// **'Hardware acceleration, encoders, tone mapping'**
+  String get adminPageDescTranscoding;
+
+  /// No description provided for @adminPageDescResume.
+  ///
+  /// In en, this message translates to:
+  /// **'When items count as started or played'**
+  String get adminPageDescResume;
+
+  /// No description provided for @adminPageDescStreaming.
+  ///
+  /// In en, this message translates to:
+  /// **'Remote bitrate limit'**
+  String get adminPageDescStreaming;
+
+  /// No description provided for @adminPageDescTrickplay.
+  ///
+  /// In en, this message translates to:
+  /// **'Seek preview thumbnails'**
+  String get adminPageDescTrickplay;
+
+  /// No description provided for @adminPageDescUsers.
+  ///
+  /// In en, this message translates to:
+  /// **'Accounts, access and parental control'**
+  String get adminPageDescUsers;
+
+  /// No description provided for @adminPageDescDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'Signed in devices and their names'**
+  String get adminPageDescDevices;
+
+  /// No description provided for @adminPageDescApiKeys.
+  ///
+  /// In en, this message translates to:
+  /// **'Keys for apps and scripts'**
+  String get adminPageDescApiKeys;
+
+  /// No description provided for @adminPageDescSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Server name, language, paths, performance'**
+  String get adminPageDescSettings;
+
+  /// No description provided for @adminPageDescBranding.
+  ///
+  /// In en, this message translates to:
+  /// **'Login message, custom CSS, splash screen'**
+  String get adminPageDescBranding;
+
+  /// No description provided for @adminPageDescNetworking.
+  ///
+  /// In en, this message translates to:
+  /// **'Ports, HTTPS, LAN and remote access'**
+  String get adminPageDescNetworking;
+
+  /// No description provided for @adminPageDescPlugins.
+  ///
+  /// In en, this message translates to:
+  /// **'Installed plugins and the catalog'**
+  String get adminPageDescPlugins;
+
+  /// No description provided for @adminPageDescRepositories.
+  ///
+  /// In en, this message translates to:
+  /// **'Where plugins come from'**
+  String get adminPageDescRepositories;
+
+  /// No description provided for @adminPageDescBackups.
+  ///
+  /// In en, this message translates to:
+  /// **'Create and restore server backups'**
+  String get adminPageDescBackups;
+
+  /// No description provided for @adminPageDescLogs.
+  ///
+  /// In en, this message translates to:
+  /// **'Server log files'**
+  String get adminPageDescLogs;
+
+  /// No description provided for @adminSearchSettingsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search {count} settings'**
+  String adminSearchSettingsHint(int count);
+
+  /// No description provided for @adminSearchNoResults.
+  ///
+  /// In en, this message translates to:
+  /// **'No settings match'**
+  String get adminSearchNoResults;
+
+  /// No description provided for @adminSearchClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear search'**
+  String get adminSearchClear;
+
+  /// No description provided for @adminUnsavedChanges.
+  ///
+  /// In en, this message translates to:
+  /// **'Unsaved changes'**
+  String get adminUnsavedChanges;
+
+  /// No description provided for @adminDiscard.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard'**
+  String get adminDiscard;
+
+  /// No description provided for @adminLeaveTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard unsaved changes?'**
+  String get adminLeaveTitle;
+
+  /// No description provided for @adminLeaveMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'The changes on this page haven\'t been saved yet.'**
+  String get adminLeaveMessage;
+
+  /// No description provided for @adminKeepEditing.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep editing'**
+  String get adminKeepEditing;
+
   /// No description provided for @adminDashboardLoadFailed.
   ///
   /// In en, this message translates to:
@@ -10593,12 +13389,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Failed scheduled tasks: {count}'**
   String adminFailedScheduledTasks(int count);
-
-  /// No description provided for @adminRecentAlertEntries.
-  ///
-  /// In en, this message translates to:
-  /// **'Recent warning/error entries: {count}'**
-  String adminRecentAlertEntries(int count);
 
   /// No description provided for @analyticsMediaDistribution.
   ///
@@ -10695,12 +13485,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Shutdown Server'**
   String get adminShutdownServer;
-
-  /// No description provided for @adminScanLibraries.
-  ///
-  /// In en, this message translates to:
-  /// **'Scan Libraries'**
-  String get adminScanLibraries;
 
   /// No description provided for @adminLibraryScanStarted.
   ///
@@ -10864,18 +13648,6 @@ abstract class AppLocalizations {
   /// **'Completion'**
   String get completion;
 
-  /// No description provided for @direct.
-  ///
-  /// In en, this message translates to:
-  /// **'Direct'**
-  String get direct;
-
-  /// No description provided for @adminDisconnect.
-  ///
-  /// In en, this message translates to:
-  /// **'Disconnect'**
-  String get adminDisconnect;
-
   /// No description provided for @adminClearDates.
   ///
   /// In en, this message translates to:
@@ -10951,7 +13723,7 @@ abstract class AppLocalizations {
   /// No description provided for @adminRemoveDeviceConfirm.
   ///
   /// In en, this message translates to:
-  /// **'Remove device \'{name}\'? The user will need to sign in again on this device.'**
+  /// **'Remove device \"{name}\"? The user will need to sign in again on this device.'**
   String adminRemoveDeviceConfirm(String name);
 
   /// No description provided for @adminDeleteAllDevices.
@@ -11098,18 +13870,6 @@ abstract class AppLocalizations {
   /// **'Failed to remove path: {error}'**
   String adminRemovePathFailed(String error);
 
-  /// No description provided for @adminLibraryOptionsSaved.
-  ///
-  /// In en, this message translates to:
-  /// **'Library options saved'**
-  String get adminLibraryOptionsSaved;
-
-  /// No description provided for @adminLibraryOptionsSaveFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Failed to save options: {error}'**
-  String adminLibraryOptionsSaveFailed(String error);
-
   /// No description provided for @adminLibraryLoadFailed.
   ///
   /// In en, this message translates to:
@@ -11133,12 +13893,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Browse server filesystem:'**
   String get adminBrowseFilesystem;
-
-  /// No description provided for @adminSaveOptions.
-  ///
-  /// In en, this message translates to:
-  /// **'Save Options'**
-  String get adminSaveOptions;
 
   /// No description provided for @adminPreferredMetadataLanguage.
   ///
@@ -11277,12 +14031,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Detect file changes and process them automatically.'**
   String get adminLibRealtimeMonitorHint;
-
-  /// No description provided for @adminLibArchiveMediaFiles.
-  ///
-  /// In en, this message translates to:
-  /// **'Treat archives as media files'**
-  String get adminLibArchiveMediaFiles;
 
   /// No description provided for @adminLibEnablePhotos.
   ///
@@ -11620,12 +14368,6 @@ abstract class AppLocalizations {
   /// **'Selected Paths:'**
   String get adminSelectedPaths;
 
-  /// No description provided for @adminNoPathsAdded.
-  ///
-  /// In en, this message translates to:
-  /// **'No paths added (can be added later)'**
-  String get adminNoPathsAdded;
-
   /// No description provided for @adminCreateLibrary.
   ///
   /// In en, this message translates to:
@@ -11728,29 +14470,11 @@ abstract class AppLocalizations {
   /// **'Username cannot be empty'**
   String get adminUsernameRequired;
 
-  /// No description provided for @adminNoProfileChanges.
-  ///
-  /// In en, this message translates to:
-  /// **'No profile changes to save'**
-  String get adminNoProfileChanges;
-
-  /// No description provided for @adminProfileSaved.
-  ///
-  /// In en, this message translates to:
-  /// **'Profile saved'**
-  String get adminProfileSaved;
-
   /// No description provided for @adminSaveFailed.
   ///
   /// In en, this message translates to:
   /// **'Failed to save: {error}'**
   String adminSaveFailed(String error);
-
-  /// No description provided for @adminPermissionsSaved.
-  ///
-  /// In en, this message translates to:
-  /// **'Permissions saved'**
-  String get adminPermissionsSaved;
 
   /// No description provided for @adminPasswordsMismatch.
   ///
@@ -11769,18 +14493,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Failed to load user'**
   String get adminUserLoadFailed;
-
-  /// No description provided for @adminBackToUsers.
-  ///
-  /// In en, this message translates to:
-  /// **'Back to Users'**
-  String get adminBackToUsers;
-
-  /// No description provided for @adminSaveProfile.
-  ///
-  /// In en, this message translates to:
-  /// **'Save Profile'**
-  String get adminSaveProfile;
 
   /// No description provided for @adminDeleteUser.
   ///
@@ -11842,12 +14554,6 @@ abstract class AppLocalizations {
   /// **'Force remote source transcoding'**
   String get adminForceRemoteTranscoding;
 
-  /// No description provided for @adminAllowContentDeletion.
-  ///
-  /// In en, this message translates to:
-  /// **'Allow content deletion'**
-  String get adminAllowContentDeletion;
-
   /// No description provided for @adminAllowContentDownloading.
   ///
   /// In en, this message translates to:
@@ -11877,12 +14583,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Allow remote access'**
   String get adminAllowRemoteAccess;
-
-  /// No description provided for @adminRemoteBitrateLimit.
-  ///
-  /// In en, this message translates to:
-  /// **'Remote client bitrate limit (bps)'**
-  String get adminRemoteBitrateLimit;
 
   /// No description provided for @adminLeaveEmptyNoLimit.
   ///
@@ -11926,23 +14626,11 @@ abstract class AppLocalizations {
   /// **'Allow lyric management'**
   String get adminAllowLyricManagement;
 
-  /// No description provided for @adminSavePermissions.
-  ///
-  /// In en, this message translates to:
-  /// **'Save Permissions'**
-  String get adminSavePermissions;
-
   /// No description provided for @adminEnableAllLibraryAccess.
   ///
   /// In en, this message translates to:
   /// **'Enable access to all libraries'**
   String get adminEnableAllLibraryAccess;
-
-  /// No description provided for @adminSaveAccess.
-  ///
-  /// In en, this message translates to:
-  /// **'Save Access'**
-  String get adminSaveAccess;
 
   /// No description provided for @adminChangePassword.
   ///
@@ -11997,12 +14685,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Library Access'**
   String get adminLibraryAccess;
-
-  /// No description provided for @adminDeviceAndChannelAccess.
-  ///
-  /// In en, this message translates to:
-  /// **'Device & Channel Access'**
-  String get adminDeviceAndChannelAccess;
 
   /// No description provided for @adminEnableAllDevices.
   ///
@@ -12214,18 +14896,6 @@ abstract class AppLocalizations {
   /// **'Add tag'**
   String get adminAddTag;
 
-  /// No description provided for @adminEnabledDevices.
-  ///
-  /// In en, this message translates to:
-  /// **'Enabled devices'**
-  String get adminEnabledDevices;
-
-  /// No description provided for @adminEnabledChannels.
-  ///
-  /// In en, this message translates to:
-  /// **'Enabled channels'**
-  String get adminEnabledChannels;
-
   /// No description provided for @adminAuthProvider.
   ///
   /// In en, this message translates to:
@@ -12417,12 +15087,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Create Backup'**
   String get adminBackupOptionsTitle;
-
-  /// No description provided for @adminBackupInclude.
-  ///
-  /// In en, this message translates to:
-  /// **'Choose what to include in the backup.'**
-  String get adminBackupInclude;
 
   /// No description provided for @adminBackupDatabase.
   ///
@@ -12676,12 +15340,6 @@ abstract class AppLocalizations {
   /// **'Trigger Type'**
   String get adminTriggerType;
 
-  /// No description provided for @adminTimeLimit.
-  ///
-  /// In en, this message translates to:
-  /// **'Time limit (optional)'**
-  String get adminTimeLimit;
-
   /// No description provided for @adminNoLimit.
   ///
   /// In en, this message translates to:
@@ -12819,12 +15477,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Updating \"{name}\" to v{version}...'**
   String adminPluginUpdating(String name, String version);
-
-  /// No description provided for @adminMissingAuthToken.
-  ///
-  /// In en, this message translates to:
-  /// **'Unable to open settings: missing auth token.'**
-  String get adminMissingAuthToken;
 
   /// No description provided for @adminPluginLoadFailed.
   ///
@@ -12988,12 +15640,6 @@ abstract class AppLocalizations {
   /// **'Slow response threshold (ms)'**
   String get adminSlowResponseThreshold;
 
-  /// No description provided for @adminBrandingSaved.
-  ///
-  /// In en, this message translates to:
-  /// **'Branding settings saved'**
-  String get adminBrandingSaved;
-
   /// No description provided for @adminBrandingLoadFailed.
   ///
   /// In en, this message translates to:
@@ -13030,12 +15676,6 @@ abstract class AppLocalizations {
   /// **'Enable splash screen'**
   String get adminEnableSplashScreen;
 
-  /// No description provided for @adminStreamingSaved.
-  ///
-  /// In en, this message translates to:
-  /// **'Streaming settings saved'**
-  String get adminStreamingSaved;
-
   /// No description provided for @adminStreamingLoadFailed.
   ///
   /// In en, this message translates to:
@@ -13060,23 +15700,11 @@ abstract class AppLocalizations {
   /// **'Leave empty or 0 for unlimited'**
   String get adminLeaveEmptyForUnlimited;
 
-  /// No description provided for @adminPlaybackSaved.
-  ///
-  /// In en, this message translates to:
-  /// **'Playback settings saved'**
-  String get adminPlaybackSaved;
-
   /// No description provided for @adminPlaybackLoadFailed.
   ///
   /// In en, this message translates to:
   /// **'Failed to load playback settings'**
   String get adminPlaybackLoadFailed;
-
-  /// No description provided for @adminPlaybackTranscoding.
-  ///
-  /// In en, this message translates to:
-  /// **'Playback / Transcoding'**
-  String get adminPlaybackTranscoding;
 
   /// No description provided for @adminHardwareAcceleration.
   ///
@@ -13149,12 +15777,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Throttle buffering'**
   String get adminThrottleBuffering;
-
-  /// No description provided for @adminTrickplaySaved.
-  ///
-  /// In en, this message translates to:
-  /// **'Trickplay settings saved'**
-  String get adminTrickplaySaved;
 
   /// No description provided for @adminTrickplayLoadFailed.
   ///
@@ -13240,12 +15862,6 @@ abstract class AppLocalizations {
   /// **'Process threads'**
   String get adminProcessThreads;
 
-  /// No description provided for @adminResumeSaved.
-  ///
-  /// In en, this message translates to:
-  /// **'Resume settings saved'**
-  String get adminResumeSaved;
-
   /// No description provided for @adminResumeLoadFailed.
   ///
   /// In en, this message translates to:
@@ -13305,12 +15921,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Maximum audiobook resume percentage'**
   String get adminMaxAudiobookResume;
-
-  /// No description provided for @adminNetworkingSaved.
-  ///
-  /// In en, this message translates to:
-  /// **'Networking settings saved. A server restart may be required.'**
-  String get adminNetworkingSaved;
 
   /// No description provided for @adminNetworkingLoadFailed.
   ///
@@ -13432,23 +16042,11 @@ abstract class AppLocalizations {
   /// **'Not set'**
   String get notSet;
 
-  /// No description provided for @adminMetadataSaved.
-  ///
-  /// In en, this message translates to:
-  /// **'Metadata saved'**
-  String get adminMetadataSaved;
-
   /// No description provided for @adminMetadataLoadFailed.
   ///
   /// In en, this message translates to:
   /// **'Failed to load metadata: {error}'**
   String adminMetadataLoadFailed(String error);
-
-  /// No description provided for @adminMetadataSaveFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Failed to save metadata: {error}'**
-  String adminMetadataSaveFailed(String error);
 
   /// No description provided for @adminRefreshMetadata.
   ///
@@ -13467,12 +16065,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Replace all metadata'**
   String get adminReplaceAllMetadata;
-
-  /// No description provided for @adminReplaceAllImages.
-  ///
-  /// In en, this message translates to:
-  /// **'Replace all images'**
-  String get adminReplaceAllImages;
 
   /// No description provided for @adminMetadataRefreshRequested.
   ///
@@ -13624,18 +16216,6 @@ abstract class AppLocalizations {
   /// **'Tuner discovery failed: {error}'**
   String adminTunerDiscoveryFailed(String error);
 
-  /// No description provided for @adminAddTuner.
-  ///
-  /// In en, this message translates to:
-  /// **'Add Tuner'**
-  String get adminAddTuner;
-
-  /// No description provided for @adminEditTuner.
-  ///
-  /// In en, this message translates to:
-  /// **'Edit Tuner'**
-  String get adminEditTuner;
-
   /// No description provided for @adminTunerTypeM3u.
   ///
   /// In en, this message translates to:
@@ -13732,12 +16312,6 @@ abstract class AppLocalizations {
   /// **'Read input at native frame rate'**
   String get adminTunerReadAtNativeFramerate;
 
-  /// No description provided for @adminEditProvider.
-  ///
-  /// In en, this message translates to:
-  /// **'Edit Provider'**
-  String get adminEditProvider;
-
   /// No description provided for @adminProviderXmltv.
   ///
   /// In en, this message translates to:
@@ -13822,65 +16396,11 @@ abstract class AppLocalizations {
   /// **'Postal code'**
   String get adminSdPostalCode;
 
-  /// No description provided for @adminSdGetListings.
-  ///
-  /// In en, this message translates to:
-  /// **'Get listings'**
-  String get adminSdGetListings;
-
-  /// No description provided for @adminSdListings.
-  ///
-  /// In en, this message translates to:
-  /// **'Listings'**
-  String get adminSdListings;
-
   /// No description provided for @adminEnableAllTuners.
   ///
   /// In en, this message translates to:
   /// **'Enable all tuners'**
   String get adminEnableAllTuners;
-
-  /// No description provided for @adminTunerType.
-  ///
-  /// In en, this message translates to:
-  /// **'Tuner Type'**
-  String get adminTunerType;
-
-  /// No description provided for @adminTunerAdded.
-  ///
-  /// In en, this message translates to:
-  /// **'Tuner added'**
-  String get adminTunerAdded;
-
-  /// No description provided for @adminTunerAddFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Failed to add tuner: {error}'**
-  String adminTunerAddFailed(String error);
-
-  /// No description provided for @adminAddGuideProvider.
-  ///
-  /// In en, this message translates to:
-  /// **'Add Guide Provider'**
-  String get adminAddGuideProvider;
-
-  /// No description provided for @adminProviderType.
-  ///
-  /// In en, this message translates to:
-  /// **'Provider Type'**
-  String get adminProviderType;
-
-  /// No description provided for @adminProviderAdded.
-  ///
-  /// In en, this message translates to:
-  /// **'Provider added'**
-  String get adminProviderAdded;
-
-  /// No description provided for @adminProviderAddFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Failed to add provider: {error}'**
-  String adminProviderAddFailed(String error);
 
   /// No description provided for @adminTunerRemoveFailed.
   ///
@@ -13888,53 +16408,11 @@ abstract class AppLocalizations {
   /// **'Failed to remove tuner: {error}'**
   String adminTunerRemoveFailed(String error);
 
-  /// No description provided for @adminTunerResetRequested.
-  ///
-  /// In en, this message translates to:
-  /// **'Tuner reset requested'**
-  String get adminTunerResetRequested;
-
-  /// No description provided for @adminTunerResetFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Failed to reset tuner: {error}'**
-  String adminTunerResetFailed(String error);
-
-  /// No description provided for @adminTunerResetNotSupported.
-  ///
-  /// In en, this message translates to:
-  /// **'This tuner type does not support resetting.'**
-  String get adminTunerResetNotSupported;
-
   /// No description provided for @adminProviderRemoveFailed.
   ///
   /// In en, this message translates to:
   /// **'Failed to remove provider: {error}'**
   String adminProviderRemoveFailed(String error);
-
-  /// No description provided for @adminRecordingSettings.
-  ///
-  /// In en, this message translates to:
-  /// **'Recording Settings'**
-  String get adminRecordingSettings;
-
-  /// No description provided for @adminPrePadding.
-  ///
-  /// In en, this message translates to:
-  /// **'Pre-padding (minutes)'**
-  String get adminPrePadding;
-
-  /// No description provided for @adminPostPadding.
-  ///
-  /// In en, this message translates to:
-  /// **'Post-padding (minutes)'**
-  String get adminPostPadding;
-
-  /// No description provided for @adminRecordingPath.
-  ///
-  /// In en, this message translates to:
-  /// **'Recording path'**
-  String get adminRecordingPath;
 
   /// No description provided for @adminSeriesRecordingPath.
   ///
@@ -13948,23 +16426,11 @@ abstract class AppLocalizations {
   /// **'Movie recording path'**
   String get adminMovieRecordingPath;
 
-  /// No description provided for @adminGuideDays.
-  ///
-  /// In en, this message translates to:
-  /// **'Guide data days'**
-  String get adminGuideDays;
-
   /// No description provided for @adminGuideDaysAuto.
   ///
   /// In en, this message translates to:
   /// **'Automatic'**
   String get adminGuideDaysAuto;
-
-  /// No description provided for @adminGuideDaysValue.
-  ///
-  /// In en, this message translates to:
-  /// **'{days} days'**
-  String adminGuideDaysValue(int days);
 
   /// No description provided for @adminRecordingPostProcessor.
   ///
@@ -13990,12 +16456,6 @@ abstract class AppLocalizations {
   /// **'Save recording images'**
   String get adminSaveRecordingImages;
 
-  /// No description provided for @adminLiveTvSectionTiming.
-  ///
-  /// In en, this message translates to:
-  /// **'Timing'**
-  String get adminLiveTvSectionTiming;
-
   /// No description provided for @adminLiveTvSectionPaths.
   ///
   /// In en, this message translates to:
@@ -14008,53 +16468,11 @@ abstract class AppLocalizations {
   /// **'Post-processing'**
   String get adminLiveTvSectionPostProcessing;
 
-  /// No description provided for @adminGuideDaysDisplay.
-  ///
-  /// In en, this message translates to:
-  /// **'Guide data: {value}'**
-  String adminGuideDaysDisplay(String value);
-
-  /// No description provided for @adminRecordingSettingsSaved.
-  ///
-  /// In en, this message translates to:
-  /// **'Recording settings saved'**
-  String get adminRecordingSettingsSaved;
-
   /// No description provided for @adminSettingsSaveFailed.
   ///
   /// In en, this message translates to:
   /// **'Failed to save settings: {error}'**
   String adminSettingsSaveFailed(String error);
-
-  /// No description provided for @adminSetChannelMappings.
-  ///
-  /// In en, this message translates to:
-  /// **'Set Channel Mappings'**
-  String get adminSetChannelMappings;
-
-  /// No description provided for @adminMappingJson.
-  ///
-  /// In en, this message translates to:
-  /// **'Mapping JSON'**
-  String get adminMappingJson;
-
-  /// No description provided for @adminMappingJsonHint.
-  ///
-  /// In en, this message translates to:
-  /// **'Example: mappings JSON payload'**
-  String get adminMappingJsonHint;
-
-  /// No description provided for @adminChannelMappingsUpdated.
-  ///
-  /// In en, this message translates to:
-  /// **'Channel mappings updated'**
-  String get adminChannelMappingsUpdated;
-
-  /// No description provided for @adminMappingsUpdateFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Failed to update mappings: {error}'**
-  String adminMappingsUpdateFailed(String error);
 
   /// No description provided for @adminLiveTvLoadFailed.
   ///
@@ -14080,12 +16498,6 @@ abstract class AppLocalizations {
   /// **'Guide Providers'**
   String get adminGuideProviders;
 
-  /// No description provided for @adminRefreshGuideData.
-  ///
-  /// In en, this message translates to:
-  /// **'Refresh Guide Data'**
-  String get adminRefreshGuideData;
-
   /// No description provided for @adminGuideRefreshStarted.
   ///
   /// In en, this message translates to:
@@ -14098,59 +16510,11 @@ abstract class AppLocalizations {
   /// **'Guide refresh task is not available on this server.'**
   String get adminGuideRefreshUnavailable;
 
-  /// No description provided for @adminAddProvider.
-  ///
-  /// In en, this message translates to:
-  /// **'Add Provider'**
-  String get adminAddProvider;
-
   /// No description provided for @adminNoListingProviders.
   ///
   /// In en, this message translates to:
   /// **'No listing providers configured'**
   String get adminNoListingProviders;
-
-  /// No description provided for @adminRecordingPathDisplay.
-  ///
-  /// In en, this message translates to:
-  /// **'Recording path: {path}'**
-  String adminRecordingPathDisplay(String path);
-
-  /// No description provided for @adminSeriesPathDisplay.
-  ///
-  /// In en, this message translates to:
-  /// **'Series path: {path}'**
-  String adminSeriesPathDisplay(String path);
-
-  /// No description provided for @adminPrePaddingDisplay.
-  ///
-  /// In en, this message translates to:
-  /// **'Pre-padding: {minutes} min'**
-  String adminPrePaddingDisplay(int minutes);
-
-  /// No description provided for @adminPostPaddingDisplay.
-  ///
-  /// In en, this message translates to:
-  /// **'Post-padding: {minutes} min'**
-  String adminPostPaddingDisplay(int minutes);
-
-  /// No description provided for @adminTunerDiscovery.
-  ///
-  /// In en, this message translates to:
-  /// **'Tuner Discovery'**
-  String get adminTunerDiscovery;
-
-  /// No description provided for @adminChannelMappings.
-  ///
-  /// In en, this message translates to:
-  /// **'Channel Mappings'**
-  String get adminChannelMappings;
-
-  /// No description provided for @adminNoDiscoveredTuners.
-  ///
-  /// In en, this message translates to:
-  /// **'No discovered tuners yet'**
-  String get adminNoDiscoveredTuners;
 
   /// No description provided for @adminSettingsSaved.
   ///
@@ -14188,12 +16552,6 @@ abstract class AppLocalizations {
   /// **'Restore backup {name} now?'**
   String adminRestoreConfirmMessage(String name);
 
-  /// No description provided for @adminRestoreRequested.
-  ///
-  /// In en, this message translates to:
-  /// **'Restore requested. Server restart may disconnect this session.'**
-  String get adminRestoreRequested;
-
   /// No description provided for @adminBackupsTitle.
   ///
   /// In en, this message translates to:
@@ -14212,35 +16570,11 @@ abstract class AppLocalizations {
   /// **'Unnamed Backup'**
   String get adminUnnamedBackup;
 
-  /// No description provided for @adminLiveTvNotAvailable.
-  ///
-  /// In en, this message translates to:
-  /// **'Live TV administration is not available on this server build.'**
-  String get adminLiveTvNotAvailable;
-
-  /// No description provided for @adminLiveTvTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Live TV Administration'**
-  String get adminLiveTvTitle;
-
   /// No description provided for @adminApply.
   ///
   /// In en, this message translates to:
   /// **'Apply'**
   String get adminApply;
-
-  /// No description provided for @adminNotSet.
-  ///
-  /// In en, this message translates to:
-  /// **'Not set'**
-  String get adminNotSet;
-
-  /// No description provided for @adminReset.
-  ///
-  /// In en, this message translates to:
-  /// **'Reset'**
-  String get adminReset;
 
   /// No description provided for @adminLogsTitle.
   ///
@@ -14529,12 +16863,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'3D format'**
   String get adminMetadataField3DFormat;
-
-  /// No description provided for @adminMetadataPersonKindUnknown.
-  ///
-  /// In en, this message translates to:
-  /// **'Unknown'**
-  String get adminMetadataPersonKindUnknown;
 
   /// No description provided for @adminMetadataPersonKindActor.
   ///
@@ -14859,12 +17187,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Thumb'**
   String get adminMetadataImageThumb;
-
-  /// No description provided for @adminMetadataRecursive.
-  ///
-  /// In en, this message translates to:
-  /// **'Recursive'**
-  String get adminMetadataRecursive;
 
   /// No description provided for @adminMetadataProvider.
   ///
@@ -15310,47 +17632,11 @@ abstract class AppLocalizations {
   /// **'Changes to networking settings may require a server restart.'**
   String get adminNetworkingRestartWarning;
 
-  /// No description provided for @adminNetworkingRemoteAccess.
-  ///
-  /// In en, this message translates to:
-  /// **'Enable remote access'**
-  String get adminNetworkingRemoteAccess;
-
-  /// No description provided for @adminNetworkingPorts.
-  ///
-  /// In en, this message translates to:
-  /// **'Ports'**
-  String get adminNetworkingPorts;
-
-  /// No description provided for @adminNetworkingHttpPort.
-  ///
-  /// In en, this message translates to:
-  /// **'HTTP port'**
-  String get adminNetworkingHttpPort;
-
-  /// No description provided for @adminNetworkingHttpsPort.
-  ///
-  /// In en, this message translates to:
-  /// **'HTTPS port'**
-  String get adminNetworkingHttpsPort;
-
   /// No description provided for @adminNetworkingEnableHttps.
   ///
   /// In en, this message translates to:
   /// **'Enable HTTPS'**
   String get adminNetworkingEnableHttps;
-
-  /// No description provided for @adminNetworkingLocalNetwork.
-  ///
-  /// In en, this message translates to:
-  /// **'Local Network'**
-  String get adminNetworkingLocalNetwork;
-
-  /// No description provided for @adminNetworkingLocalAddresses.
-  ///
-  /// In en, this message translates to:
-  /// **'Local network addresses'**
-  String get adminNetworkingLocalAddresses;
 
   /// No description provided for @adminNetworkingAddressHint.
   ///
@@ -15472,12 +17758,6 @@ abstract class AppLocalizations {
   /// **'Enable hardware encoding'**
   String get adminPlaybackEnableHwEncoding;
 
-  /// No description provided for @adminPlaybackEnableHwDecoding.
-  ///
-  /// In en, this message translates to:
-  /// **'Enable hardware decoding for:'**
-  String get adminPlaybackEnableHwDecoding;
-
   /// No description provided for @adminPlaybackQsvDevice.
   ///
   /// In en, this message translates to:
@@ -15495,12 +17775,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Prefer system native hardware decoder'**
   String get adminPlaybackPreferNativeDecoder;
-
-  /// No description provided for @adminPlaybackColorDepth.
-  ///
-  /// In en, this message translates to:
-  /// **'Hardware decoding color depth'**
-  String get adminPlaybackColorDepth;
 
   /// No description provided for @adminPlaybackColorDepth10Hevc.
   ///
@@ -15628,12 +17902,6 @@ abstract class AppLocalizations {
   /// **'VPP tone mapping contrast'**
   String get adminPlaybackVppTonemappingContrast;
 
-  /// No description provided for @adminPlaybackPresetsQuality.
-  ///
-  /// In en, this message translates to:
-  /// **'Presets & Quality'**
-  String get adminPlaybackPresetsQuality;
-
   /// No description provided for @adminPlaybackEncoderPreset.
   ///
   /// In en, this message translates to:
@@ -15741,18 +18009,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Audiobooks'**
   String get adminResumeAudiobooks;
-
-  /// No description provided for @adminResumeMinAudiobookPct.
-  ///
-  /// In en, this message translates to:
-  /// **'Minimum audiobook resume percentage'**
-  String get adminResumeMinAudiobookPct;
-
-  /// No description provided for @adminResumeMaxAudiobookPct.
-  ///
-  /// In en, this message translates to:
-  /// **'Maximum audiobook resume percentage'**
-  String get adminResumeMaxAudiobookPct;
 
   /// No description provided for @adminStreamingBitrateLimit.
   ///
@@ -15976,12 +18232,6 @@ abstract class AppLocalizations {
   /// **'Every {day} at {time}'**
   String adminTaskTriggerWeekly(String day, String time);
 
-  /// No description provided for @adminTaskTriggerInterval.
-  ///
-  /// In en, this message translates to:
-  /// **'Every {duration}'**
-  String adminTaskTriggerInterval(String duration);
-
   /// No description provided for @adminTaskTriggerStartup.
   ///
   /// In en, this message translates to:
@@ -16018,30 +18268,6 @@ abstract class AppLocalizations {
   /// **'Every hour'**
   String get adminTaskTriggerEveryHour;
 
-  /// No description provided for @adminTaskTriggerEvery6Hours.
-  ///
-  /// In en, this message translates to:
-  /// **'Every 6 hours'**
-  String get adminTaskTriggerEvery6Hours;
-
-  /// No description provided for @adminTaskTriggerEvery12Hours.
-  ///
-  /// In en, this message translates to:
-  /// **'Every 12 hours'**
-  String get adminTaskTriggerEvery12Hours;
-
-  /// No description provided for @adminTaskTriggerEvery24Hours.
-  ///
-  /// In en, this message translates to:
-  /// **'Every 24 hours'**
-  String get adminTaskTriggerEvery24Hours;
-
-  /// No description provided for @adminTaskTriggerEvery2Days.
-  ///
-  /// In en, this message translates to:
-  /// **'Every 2 days'**
-  String get adminTaskTriggerEvery2Days;
-
   /// No description provided for @adminTaskTriggerHours.
   ///
   /// In en, this message translates to:
@@ -16053,12 +18279,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Time'**
   String get adminTaskTriggerTime;
-
-  /// No description provided for @adminTaskTriggerNoLimit.
-  ///
-  /// In en, this message translates to:
-  /// **'No limit'**
-  String get adminTaskTriggerNoLimit;
 
   /// No description provided for @adminActivityJustNow.
   ///
@@ -16162,12 +18382,6 @@ abstract class AppLocalizations {
   /// **'e.g. /jellyfin'**
   String get adminNetworkingBaseUrlHint;
 
-  /// No description provided for @adminNetworkingHttps.
-  ///
-  /// In en, this message translates to:
-  /// **'HTTPS'**
-  String get adminNetworkingHttps;
-
   /// No description provided for @adminNetworkingPublicHttpPort.
   ///
   /// In en, this message translates to:
@@ -16192,12 +18406,6 @@ abstract class AppLocalizations {
   /// **'Certificate password'**
   String get adminNetworkingCertPassword;
 
-  /// No description provided for @adminNetworkingIpSettings.
-  ///
-  /// In en, this message translates to:
-  /// **'IP Settings'**
-  String get adminNetworkingIpSettings;
-
   /// No description provided for @adminNetworkingEnableIpv4.
   ///
   /// In en, this message translates to:
@@ -16210,47 +18418,11 @@ abstract class AppLocalizations {
   /// **'Enable IPv6'**
   String get adminNetworkingEnableIpv6;
 
-  /// No description provided for @adminNetworkingAutoDiscovery.
-  ///
-  /// In en, this message translates to:
-  /// **'Enable automatic port mapping'**
-  String get adminNetworkingAutoDiscovery;
-
   /// No description provided for @adminNetworkingLocalSubnets.
   ///
   /// In en, this message translates to:
   /// **'LAN networks'**
   String get adminNetworkingLocalSubnets;
-
-  /// No description provided for @adminNetworkingLocalSubnetsHint.
-  ///
-  /// In en, this message translates to:
-  /// **'Comma or line separated list of IP addresses or CIDR subnets treated as being on the local network.'**
-  String get adminNetworkingLocalSubnetsHint;
-
-  /// No description provided for @adminNetworkingPublishedUris.
-  ///
-  /// In en, this message translates to:
-  /// **'Published server URIs'**
-  String get adminNetworkingPublishedUris;
-
-  /// No description provided for @adminNetworkingPublishedUriHint.
-  ///
-  /// In en, this message translates to:
-  /// **'Map a subnet or address to a published URL, e.g. all=https://example.com'**
-  String get adminNetworkingPublishedUriHint;
-
-  /// No description provided for @adminNetworkingCertPath.
-  ///
-  /// In en, this message translates to:
-  /// **'Certificate path'**
-  String get adminNetworkingCertPath;
-
-  /// No description provided for @adminNetworkingRemoteIpFilter.
-  ///
-  /// In en, this message translates to:
-  /// **'Remote IP Filter'**
-  String get adminNetworkingRemoteIpFilter;
 
   /// No description provided for @adminNetworkingRemoteIpFilterLabel.
   ///
@@ -16467,12 +18639,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Failed to load settings'**
   String get adminSettingsLoadFailed;
-
-  /// No description provided for @adminDiscover.
-  ///
-  /// In en, this message translates to:
-  /// **'Discover'**
-  String get adminDiscover;
 
   /// No description provided for @adminChannelMappingsUpdateFailed.
   ///
@@ -16869,12 +19035,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Showing your downloads'**
   String get offlineBannerSubtitle;
-
-  /// No description provided for @offlineBannerAction.
-  ///
-  /// In en, this message translates to:
-  /// **'Downloads'**
-  String get offlineBannerAction;
 
   /// No description provided for @serverUnreachableBannerTitle.
   ///
@@ -17566,6 +19726,18 @@ abstract class AppLocalizations {
   /// **'Seek forward'**
   String get playerTooltipSeekForward;
 
+  /// Tooltip label for shrinking the video player into the mini player bar so the viewer can keep browsing
+  ///
+  /// In en, this message translates to:
+  /// **'Minimize player'**
+  String get playerTooltipMinimize;
+
+  /// Tooltip label for returning from the video mini player bar to the full player
+  ///
+  /// In en, this message translates to:
+  /// **'Open player'**
+  String get miniPlayerOpenPlayer;
+
   /// Context menu action to mark an item as watched
   ///
   /// In en, this message translates to:
@@ -17638,30 +19810,6 @@ abstract class AppLocalizations {
   /// **'Access the server administration panel'**
   String get settingsAdministrationSubtitle;
 
-  /// No description provided for @settingsAccountSecurity.
-  ///
-  /// In en, this message translates to:
-  /// **'Account & Security'**
-  String get settingsAccountSecurity;
-
-  /// No description provided for @settingsAccountSecuritySubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Authentication, PIN code, and parental controls'**
-  String get settingsAccountSecuritySubtitle;
-
-  /// No description provided for @settingsPersonalization.
-  ///
-  /// In en, this message translates to:
-  /// **'Personalization'**
-  String get settingsPersonalization;
-
-  /// No description provided for @settingsPersonalizationSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Theme, navigation, home rows, and library visibility'**
-  String get settingsPersonalizationSubtitle;
-
   /// No description provided for @settingsDynamicContent.
   ///
   /// In en, this message translates to:
@@ -17674,35 +19822,11 @@ abstract class AppLocalizations {
   /// **'Media Bar and visual overlays'**
   String get settingsDynamicContentSubtitle;
 
-  /// No description provided for @settingsPlaybackSyncplay.
-  ///
-  /// In en, this message translates to:
-  /// **'Playback & SyncPlay'**
-  String get settingsPlaybackSyncplay;
-
-  /// No description provided for @settingsPlaybackSyncplaySubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Audio/video settings, subtitles, downloads, and SyncPlay controls'**
-  String get settingsPlaybackSyncplaySubtitle;
-
-  /// No description provided for @settingsIntegrationsSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Plugin sync, Seerr, ratings, and more'**
-  String get settingsIntegrationsSubtitle;
-
   /// No description provided for @settingsAboutSubtitle.
   ///
   /// In en, this message translates to:
   /// **'App version, legal information, and credits'**
   String get settingsAboutSubtitle;
-
-  /// No description provided for @settingsAuthenticationSection.
-  ///
-  /// In en, this message translates to:
-  /// **'AUTHENTICATION'**
-  String get settingsAuthenticationSection;
 
   /// No description provided for @settingsSortServersBy.
   ///
@@ -17722,16 +19846,10 @@ abstract class AppLocalizations {
   /// **'Alphabetical'**
   String get settingsAlphabetical;
 
-  /// Section header for server connection settings
-  ///
-  /// In en, this message translates to:
-  /// **'CONNECTION'**
-  String get settingsConnectionSection;
-
   /// Setting to trust self-signed TLS certificates
   ///
   /// In en, this message translates to:
-  /// **'Allow self-signed certificates'**
+  /// **'Allow Self-Signed Certificates'**
   String get settingsAllowSelfSignedCerts;
 
   /// Description for the allow self-signed certificates setting
@@ -17746,11 +19864,143 @@ abstract class AppLocalizations {
   /// **'This server\'s certificate isn\'t trusted. If it\'s your own server and uses a self-signed or private certificate, you can allow it here.'**
   String get untrustedServerCertificate;
 
-  /// No description provided for @settingsPrivacyAndSafetySection.
+  /// Title of the dialog that imports a TLS client certificate for a server
   ///
   /// In en, this message translates to:
-  /// **'PRIVACY & SAFETY'**
-  String get settingsPrivacyAndSafetySection;
+  /// **'Client certificate'**
+  String get clientCertTitle;
+
+  /// Names the server host the client certificate will be presented to
+  ///
+  /// In en, this message translates to:
+  /// **'Certificate for {host}'**
+  String clientCertHost(String host);
+
+  /// Button that picks a .p12 or .pfx file
+  ///
+  /// In en, this message translates to:
+  /// **'Choose file'**
+  String get clientCertChooseFile;
+
+  /// Label for the password that unlocks the .p12 or .pfx file
+  ///
+  /// In en, this message translates to:
+  /// **'Certificate password'**
+  String get clientCertPassword;
+
+  /// Button on a TV that opens a one-time page a phone on the same network can send the certificate to
+  ///
+  /// In en, this message translates to:
+  /// **'Send from phone'**
+  String get clientCertStartUpload;
+
+  /// Shown under the QR code while the TV waits for the phone to send the certificate
+  ///
+  /// In en, this message translates to:
+  /// **'Scan this code with your phone, or open the address in its browser, then pick the file and enter its password.'**
+  String get clientCertUploadHint;
+
+  /// Button that closes the phone upload page before a certificate arrives
+  ///
+  /// In en, this message translates to:
+  /// **'Stop waiting'**
+  String get clientCertStopUpload;
+
+  /// Shown when the picked file has no contents
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t read the file. Try again.'**
+  String get clientCertNoFileData;
+
+  /// Shown when the file picker fails to open
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t open the file picker.'**
+  String get clientCertPickFailed;
+
+  /// Shown when the TV can't open the page the phone sends the certificate to
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t start the upload page. Try again.'**
+  String get clientCertUploadFailed;
+
+  /// Shown when there is no keychain or secret store to keep the certificate in
+  ///
+  /// In en, this message translates to:
+  /// **'This device has no secure storage, so the certificate can\'t be saved. On Linux, install libsecret and try again.'**
+  String get clientCertNoSecureStorage;
+
+  /// Shown when the file isn't a usable .p12 or .pfx
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t read that file as a certificate. Make sure it\'s a .p12 or .pfx.'**
+  String get clientCertDecodeFailed;
+
+  /// Shown when the password for the .p12 or .pfx file is wrong
+  ///
+  /// In en, this message translates to:
+  /// **'That password doesn\'t unlock this certificate.'**
+  String get clientCertWrongPassword;
+
+  /// Shown on the sign-in screens when the server turned the connection away for lack of a client certificate
+  ///
+  /// In en, this message translates to:
+  /// **'This server needs a client certificate (mTLS). Add one for this host to continue.'**
+  String get clientCertRequired;
+
+  /// Shown on the sign-in screen when the server turned the connection away and the stored certificate has expired
+  ///
+  /// In en, this message translates to:
+  /// **'The certificate for this server expired on {date}. Replace it to continue.'**
+  String clientCertExpired(String date);
+
+  /// Button that opens the certificate import from the add-server and sign-in screens
+  ///
+  /// In en, this message translates to:
+  /// **'Add client certificate'**
+  String get clientCertAddButton;
+
+  /// Settings entry that lists the imported client certificates
+  ///
+  /// In en, this message translates to:
+  /// **'Client certificates'**
+  String get settingsClientCertificates;
+
+  /// Subtitle for the client certificates settings entry
+  ///
+  /// In en, this message translates to:
+  /// **'Certificates this app presents to servers that require one (mTLS)'**
+  String get settingsClientCertificatesSubtitle;
+
+  /// Label for the name on a client certificate
+  ///
+  /// In en, this message translates to:
+  /// **'Subject'**
+  String get clientCertSubject;
+
+  /// When a client certificate stops being valid
+  ///
+  /// In en, this message translates to:
+  /// **'Expires {date}'**
+  String clientCertExpires(String date);
+
+  /// Button that imports a new certificate in place of the stored one for a host
+  ///
+  /// In en, this message translates to:
+  /// **'Replace'**
+  String get clientCertReplace;
+
+  /// Button that starts importing a certificate for a new host
+  ///
+  /// In en, this message translates to:
+  /// **'Add certificate'**
+  String get clientCertAdd;
+
+  /// Title of the prompt that asks which host a new certificate is for
+  ///
+  /// In en, this message translates to:
+  /// **'Which server host needs a certificate?'**
+  String get clientCertAddHostPrompt;
 
   /// Shown instead of a title whose rating the viewer has blocked. Deliberately says nothing about what the title is.
   ///
@@ -17770,53 +20020,11 @@ abstract class AppLocalizations {
   /// **'Only blocks itself'**
   String get blockedRatingsUnrankedSection;
 
-  /// No description provided for @settingsBlockedRatings.
-  ///
-  /// In en, this message translates to:
-  /// **'Blocked Ratings'**
-  String get settingsBlockedRatings;
-
-  /// No description provided for @settingsGeneralStyle.
-  ///
-  /// In en, this message translates to:
-  /// **'General Style'**
-  String get settingsGeneralStyle;
-
-  /// No description provided for @settingsGeneralStyleSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Theme accents, backdrops, and watched indicators'**
-  String get settingsGeneralStyleSubtitle;
-
-  /// No description provided for @settingsDetailsScreen.
-  ///
-  /// In en, this message translates to:
-  /// **'Details Screen'**
-  String get settingsDetailsScreen;
-
-  /// No description provided for @settingsDetailsScreenSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Style, background blur, and tab behavior'**
-  String get settingsDetailsScreenSubtitle;
-
   /// No description provided for @settingsHomePage.
   ///
   /// In en, this message translates to:
   /// **'Home Page'**
   String get settingsHomePage;
-
-  /// No description provided for @settingsHomePageSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Sections, image types, overlays, and media previews'**
-  String get settingsHomePageSubtitle;
-
-  /// No description provided for @settingsLibrariesSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Library visibility, folder view, and multi-server behavior'**
-  String get settingsLibrariesSubtitle;
 
   /// No description provided for @settingsTwentyFourHourClock.
   ///
@@ -17895,24 +20103,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Seasonal Surprise'**
   String get settingsSeasonalSurprise;
-
-  /// No description provided for @settingsMetadataAndRatings.
-  ///
-  /// In en, this message translates to:
-  /// **'Metadata & Ratings'**
-  String get settingsMetadataAndRatings;
-
-  /// No description provided for @settingsPluginScreenDescription.
-  ///
-  /// In en, this message translates to:
-  /// **'Moonbase powers server-side integrations including additional rating sources, Seerr requests, and synced preferences.'**
-  String get settingsPluginScreenDescription;
-
-  /// No description provided for @settingsOfflineDownloads.
-  ///
-  /// In en, this message translates to:
-  /// **'Offline Downloads'**
-  String get settingsOfflineDownloads;
 
   /// Settings toggle title. When on, retro games run through native libretro emulator cores instead of the EmulatorJS browser-based emulator.
   ///
@@ -18154,18 +20344,6 @@ abstract class AppLocalizations {
   /// **'Check for the latest Moonfin release'**
   String get settingsCheckForUpdatesSubtitle;
 
-  /// No description provided for @settingsPoweredByFlutter.
-  ///
-  /// In en, this message translates to:
-  /// **'Powered by Flutter'**
-  String get settingsPoweredByFlutter;
-
-  /// Plural label for number of license notices
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, one {# license notice} other {# license notices}}'**
-  String settingsLicenseNoticesCount(int count);
-
   /// Option label to show both progress bar and countdown timer on media segment countdown overlay
   ///
   /// In en, this message translates to:
@@ -18178,35 +20356,11 @@ abstract class AppLocalizations {
   /// **'Shuffle Content Type Filter'**
   String get settingsShuffleContentTypeFilter;
 
-  /// No description provided for @settingsVideoPlaybackPreferences.
-  ///
-  /// In en, this message translates to:
-  /// **'Video Playback Preferences'**
-  String get settingsVideoPlaybackPreferences;
-
-  /// No description provided for @settingsVideoPlaybackPreferencesSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Core video engine and streaming quality settings'**
-  String get settingsVideoPlaybackPreferencesSubtitle;
-
-  /// No description provided for @settingsAudioPreferences.
-  ///
-  /// In en, this message translates to:
-  /// **'Audio Preferences'**
-  String get settingsAudioPreferences;
-
   /// No description provided for @settingsAudioPreferencesSubtitle.
   ///
   /// In en, this message translates to:
   /// **'Audio tracks, processing, and passthrough options'**
   String get settingsAudioPreferencesSubtitle;
-
-  /// No description provided for @settingsAutomationAndQueue.
-  ///
-  /// In en, this message translates to:
-  /// **'Automation & Queue'**
-  String get settingsAutomationAndQueue;
 
   /// No description provided for @settingsAutomationAndQueueSubtitle.
   ///
@@ -18214,23 +20368,11 @@ abstract class AppLocalizations {
   /// **'Automated playback and sequencing'**
   String get settingsAutomationAndQueueSubtitle;
 
-  /// No description provided for @settingsOfflineDownloadsSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Download quality, storage limits, and queue size'**
-  String get settingsOfflineDownloadsSubtitle;
-
   /// No description provided for @settingsSyncplaySubtitle.
   ///
   /// In en, this message translates to:
   /// **'Synchronization logic for group sessions'**
   String get settingsSyncplaySubtitle;
-
-  /// No description provided for @settingsAdvancedOptionsSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Specialized player features. Use with caution, as some options may cause playback issues'**
-  String get settingsAdvancedOptionsSubtitle;
 
   /// No description provided for @settingsSkipIntrosAndOutros.
   ///
@@ -18313,7 +20455,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsPlayerZoomDescription.
   ///
   /// In en, this message translates to:
-  /// **'How video should be scaled to fit the screen.'**
+  /// **'How video is scaled to the screen. Zoom to Fill enlarges the picture until it fills the screen and cuts off the edges. It doesn\'t detect black bars.'**
   String get settingsPlayerZoomDescription;
 
   /// No description provided for @settingsPlaybackEngineAndroidTv.
@@ -18559,7 +20701,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsLiveTvDirect.
   ///
   /// In en, this message translates to:
-  /// **'Live TV Direct'**
+  /// **'Live TV Direct Play'**
   String get settingsLiveTvDirect;
 
   /// No description provided for @settingsLiveTvDirectSubtitle.
@@ -18733,7 +20875,7 @@ abstract class AppLocalizations {
   /// Setting title: skip silent audio segments during playback
   ///
   /// In en, this message translates to:
-  /// **'Skip silence'**
+  /// **'Skip Silence'**
   String get skipSilenceTitle;
 
   /// Setting subtitle for skip silence
@@ -18745,7 +20887,7 @@ abstract class AppLocalizations {
   /// Setting title: allow equalizer apps to attach to Media3
   ///
   /// In en, this message translates to:
-  /// **'Allow external audio effects'**
+  /// **'Allow External Audio Effects'**
   String get allowExternalAudioEffectsTitle;
 
   /// Setting subtitle for external audio effects
@@ -18769,7 +20911,7 @@ abstract class AppLocalizations {
   /// Setting title: enable tunneled video playback (advanced)
   ///
   /// In en, this message translates to:
-  /// **'Enable tunneling'**
+  /// **'Enable Tunneling'**
   String get enableTunnelingTitle;
 
   /// Setting subtitle for enable tunneling
@@ -18781,7 +20923,7 @@ abstract class AppLocalizations {
   /// Setting title: force DV P7 streams to the HDR10 strip path
   ///
   /// In en, this message translates to:
-  /// **'Always play Dolby Vision profile 7 as HDR10'**
+  /// **'Always Play Dolby Vision Profile 7 as HDR10'**
   String get mapDolbyVisionP7Title;
 
   /// Setting subtitle for forcing the DV P7 strip path
@@ -18793,7 +20935,7 @@ abstract class AppLocalizations {
   /// Setting title: apply colours/positioning from the subtitle track
   ///
   /// In en, this message translates to:
-  /// **'Use embedded subtitle styles'**
+  /// **'Use Embedded Subtitle Styles'**
   String get subtitlesUseEmbeddedStyles;
 
   /// Setting subtitle for embedded styles toggle
@@ -18805,7 +20947,7 @@ abstract class AppLocalizations {
   /// Setting title: apply font sizes from the subtitle track
   ///
   /// In en, this message translates to:
-  /// **'Use embedded subtitle font sizes'**
+  /// **'Use Embedded Subtitle Font Sizes'**
   String get subtitlesUseEmbeddedFontSizes;
 
   /// Setting subtitle for embedded font sizes toggle
@@ -18825,12 +20967,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Show details of the selected item at the top of Library pages.'**
   String get showMediaDetailsOnLibraryPageDescription;
-
-  /// Setting title to show/hide backdrops when browsing library pages
-  ///
-  /// In en, this message translates to:
-  /// **'Hide Backdrops while Browsing?'**
-  String get hideBackdropsInLibraries;
 
   /// Label for setting to toggle detailed or minimal subrow on library pages
   ///
@@ -18931,7 +21067,7 @@ abstract class AppLocalizations {
   /// No description provided for @savedThemesTitle.
   ///
   /// In en, this message translates to:
-  /// **'Saved themes'**
+  /// **'Saved Themes'**
   String get savedThemesTitle;
 
   /// No description provided for @savedThemesDescription.
@@ -19005,36 +21141,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Home Rows'**
   String get homeRowsSection;
-
-  /// No description provided for @homeRowDisplay.
-  ///
-  /// In en, this message translates to:
-  /// **'Home Row Display'**
-  String get homeRowDisplay;
-
-  /// No description provided for @homeRowSections.
-  ///
-  /// In en, this message translates to:
-  /// **'Home Row Sections'**
-  String get homeRowSections;
-
-  /// No description provided for @homeRowToggles.
-  ///
-  /// In en, this message translates to:
-  /// **'Home Row Toggles'**
-  String get homeRowToggles;
-
-  /// No description provided for @homeRowTogglesSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Enable or disable library-based home row categories'**
-  String get homeRowTogglesSubtitle;
-
-  /// No description provided for @homeRowTogglesDescription.
-  ///
-  /// In en, this message translates to:
-  /// **'Enable the following toggles to display the rows in Home Sections.'**
-  String get homeRowTogglesDescription;
 
   /// No description provided for @rowsType.
   ///
@@ -19405,13 +21511,13 @@ abstract class AppLocalizations {
   /// No description provided for @cardSize.
   ///
   /// In en, this message translates to:
-  /// **'Home Row Card Display Size'**
+  /// **'Card Size'**
   String get cardSize;
 
   /// No description provided for @externalPlayerApp.
   ///
   /// In en, this message translates to:
-  /// **'External player app'**
+  /// **'External Player App'**
   String get externalPlayerApp;
 
   /// No description provided for @externalPlayerAppDescription.
@@ -19507,7 +21613,7 @@ abstract class AppLocalizations {
   /// No description provided for @preferSoftwareDecoders.
   ///
   /// In en, this message translates to:
-  /// **'Prefer software decoders'**
+  /// **'Prefer Software Decoders'**
   String get preferSoftwareDecoders;
 
   /// No description provided for @preferSoftwareDecodersSubtitle.
@@ -19519,7 +21625,7 @@ abstract class AppLocalizations {
   /// No description provided for @useExternalPlayer.
   ///
   /// In en, this message translates to:
-  /// **'Always use external player'**
+  /// **'Always Use External Player'**
   String get useExternalPlayer;
 
   /// No description provided for @useExternalPlayerSubtitle.
@@ -19527,6 +21633,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Open video playback in your selected external app on Android TV.'**
   String get useExternalPlayerSubtitle;
+
+  /// Setting that limits the external player to Live TV channels
+  ///
+  /// In en, this message translates to:
+  /// **'Live TV Only'**
+  String get externalPlayerLiveTvOnly;
+
+  /// Description for the Live TV Only external player setting
+  ///
+  /// In en, this message translates to:
+  /// **'Use the external player for Live TV and keep everything else in the built-in player.'**
+  String get externalPlayerLiveTvOnlySubtitle;
 
   /// No description provided for @automaticQueuing.
   ///
@@ -19537,7 +21655,7 @@ abstract class AppLocalizations {
   /// No description provided for @preferSdhSubtitles.
   ///
   /// In en, this message translates to:
-  /// **'Prefer SDH subtitles'**
+  /// **'Prefer SDH Subtitles'**
   String get preferSdhSubtitles;
 
   /// No description provided for @preferSdhSubtitlesSubtitle.
@@ -19545,6 +21663,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Prioritize SDH/CC subtitle tracks when auto-selecting.'**
   String get preferSdhSubtitlesSubtitle;
+
+  /// No description provided for @preferTextSubtitles.
+  ///
+  /// In en, this message translates to:
+  /// **'Prefer Text Subtitles'**
+  String get preferTextSubtitles;
+
+  /// No description provided for @preferTextSubtitlesSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Prioritize text-based subtitles (SRT, VTT) over image-based formats (PGS, VobSub).'**
+  String get preferTextSubtitlesSubtitle;
+
+  /// No description provided for @preferExternalSubtitles.
+  ///
+  /// In en, this message translates to:
+  /// **'Prefer External Subtitles'**
+  String get preferExternalSubtitles;
+
+  /// No description provided for @preferExternalSubtitlesSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Prioritize external subtitle files over embedded tracks.'**
+  String get preferExternalSubtitlesSubtitle;
 
   /// No description provided for @webDiagnostics.
   ///
@@ -19882,18 +22024,6 @@ abstract class AppLocalizations {
   /// **'Watch with group'**
   String get watchWithGroup;
 
-  /// No description provided for @errors.
-  ///
-  /// In en, this message translates to:
-  /// **'Errors'**
-  String get errors;
-
-  /// No description provided for @warnings.
-  ///
-  /// In en, this message translates to:
-  /// **'Warnings'**
-  String get warnings;
-
   /// No description provided for @disk.
   ///
   /// In en, this message translates to:
@@ -19933,7 +22063,7 @@ abstract class AppLocalizations {
   /// Switch that shows a notification when the user unlocks a badge
   ///
   /// In en, this message translates to:
-  /// **'Unlock notifications'**
+  /// **'Unlock Notifications'**
   String get achievementsUnlockToasts;
 
   /// Subtitle of the unlock notifications switch
@@ -20647,7 +22777,7 @@ abstract class AppLocalizations {
   /// Navigation setting that adds a Friends button
   ///
   /// In en, this message translates to:
-  /// **'Show friends button'**
+  /// **'Show Friends Button'**
   String get friendsShowButton;
 
   /// Subtitle of the setting that adds a Friends button
@@ -20887,7 +23017,7 @@ abstract class AppLocalizations {
   /// Privacy setting that always shows the user as offline
   ///
   /// In en, this message translates to:
-  /// **'Appear offline'**
+  /// **'Appear Offline'**
   String get friendsAppearOffline;
 
   /// Subtitle of the Appear offline setting
@@ -20899,7 +23029,7 @@ abstract class AppLocalizations {
   /// Privacy setting that hides what is playing
   ///
   /// In en, this message translates to:
-  /// **'Hide what I\'m watching'**
+  /// **'Hide What I\'m Watching'**
   String get friendsHideNowPlaying;
 
   /// Subtitle of the Hide what I am watching setting
@@ -20911,7 +23041,7 @@ abstract class AppLocalizations {
   /// Privacy setting that hides the last played item while offline
   ///
   /// In en, this message translates to:
-  /// **'Hide my last watched'**
+  /// **'Hide My Last Watched'**
   String get friendsHideLastWatched;
 
   /// Subtitle of the Hide my last watched setting
@@ -20923,7 +23053,7 @@ abstract class AppLocalizations {
   /// Setting that shows a banner for new chat messages
   ///
   /// In en, this message translates to:
-  /// **'Message notifications'**
+  /// **'Message Notifications'**
   String get friendsMessageNotifications;
 
   /// Subtitle of the Message notifications setting
@@ -20935,7 +23065,7 @@ abstract class AppLocalizations {
   /// Setting that hides new message banners while a video or game plays
   ///
   /// In en, this message translates to:
-  /// **'Mute during playback'**
+  /// **'Mute During Playback'**
   String get friendsMuteDuringPlayback;
 
   /// Subtitle of the Mute during playback setting
@@ -21244,18 +23374,6 @@ abstract class AppLocalizations {
   /// **'No devices match the current filters'**
   String get adminNoDevicesMatchCurrentFilters;
 
-  /// No description provided for @passwordSet.
-  ///
-  /// In en, this message translates to:
-  /// **'Password set'**
-  String get passwordSet;
-
-  /// No description provided for @noPasswordConfigured.
-  ///
-  /// In en, this message translates to:
-  /// **'No password configured'**
-  String get noPasswordConfigured;
-
   /// No description provided for @remoteAccess.
   ///
   /// In en, this message translates to:
@@ -21327,6 +23445,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No libraries are available.'**
   String get analyticsNoLibrariesAvailable;
+
+  /// No description provided for @analyticsLibraryShare.
+  ///
+  /// In en, this message translates to:
+  /// **'Share of items by library'**
+  String get analyticsLibraryShare;
+
+  /// No description provided for @analyticsTopRating.
+  ///
+  /// In en, this message translates to:
+  /// **'Most common rating'**
+  String get analyticsTopRating;
+
+  /// No description provided for @analyticsTypicalRuntime.
+  ///
+  /// In en, this message translates to:
+  /// **'Typical runtime'**
+  String get analyticsTypicalRuntime;
+
+  /// No description provided for @analyticsShareOfItems.
+  ///
+  /// In en, this message translates to:
+  /// **'{percent}% of items'**
+  String analyticsShareOfItems(String percent);
 
   /// No description provided for @adminServerAdministrationTitle.
   ///
@@ -21406,42 +23548,6 @@ abstract class AppLocalizations {
   /// **'Needs Attention'**
   String get needsAttention;
 
-  /// No description provided for @adminDrawerSectionServer.
-  ///
-  /// In en, this message translates to:
-  /// **'Server'**
-  String get adminDrawerSectionServer;
-
-  /// No description provided for @adminDrawerSectionPlayback.
-  ///
-  /// In en, this message translates to:
-  /// **'Playback'**
-  String get adminDrawerSectionPlayback;
-
-  /// No description provided for @adminDrawerSectionDevices.
-  ///
-  /// In en, this message translates to:
-  /// **'Devices'**
-  String get adminDrawerSectionDevices;
-
-  /// No description provided for @adminDrawerSectionAdvanced.
-  ///
-  /// In en, this message translates to:
-  /// **'Advanced'**
-  String get adminDrawerSectionAdvanced;
-
-  /// No description provided for @adminDrawerSectionPlugins.
-  ///
-  /// In en, this message translates to:
-  /// **'Plugins'**
-  String get adminDrawerSectionPlugins;
-
-  /// No description provided for @adminDrawerSectionLiveTv.
-  ///
-  /// In en, this message translates to:
-  /// **'Live TV'**
-  String get adminDrawerSectionLiveTv;
-
   /// No description provided for @homeVideos.
   ///
   /// In en, this message translates to:
@@ -21465,18 +23571,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Mixed Movies & Shows'**
   String get mixedMoviesAndShows;
-
-  /// No description provided for @intelQuickSync.
-  ///
-  /// In en, this message translates to:
-  /// **'Intel Quick Sync'**
-  String get intelQuickSync;
-
-  /// No description provided for @rockchipMpp.
-  ///
-  /// In en, this message translates to:
-  /// **'Rockchip MPP'**
-  String get rockchipMpp;
 
   /// No description provided for @dolbyVision.
   ///
@@ -21615,12 +23709,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Missing'**
   String get missing;
-
-  /// No description provided for @transcodingLimits.
-  ///
-  /// In en, this message translates to:
-  /// **'Transcoding Limits'**
-  String get transcodingLimits;
 
   /// No description provided for @clearAllArtworkButton.
   ///
@@ -22114,12 +24202,6 @@ abstract class AppLocalizations {
   /// **'Delete'**
   String get audiobookDelete;
 
-  /// Title for the subtitle preferences settings section
-  ///
-  /// In en, this message translates to:
-  /// **'Subtitle Preferences'**
-  String get subtitlePreferences;
-
   /// Description for the subtitle preferences settings section
   ///
   /// In en, this message translates to:
@@ -22189,7 +24271,7 @@ abstract class AppLocalizations {
   /// Proactive warning message about server write access
   ///
   /// In en, this message translates to:
-  /// **'Your \'{libraryName}\' library is configured to save artwork directly into the media folders (\'Save artwork into media folders\' is enabled). However, Jellyfin has tested write access and does not have permission to write files into this directory:\n\n{failedPath}'**
+  /// **'Your \"{libraryName}\" library is configured to save artwork directly into the media folders (\'Save artwork into media folders\' is enabled). However, Jellyfin has tested write access and does not have permission to write files into this directory:\n\n{failedPath}'**
   String libraryWriteAccessProactiveBody(String libraryName, String failedPath);
 
   /// Reactive error warning message when artwork update fails
@@ -22197,12 +24279,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'It looks like Jellyfin failed to update the artwork. Your library is configured to save artwork directly into the media folders (\'Save artwork into media folders\' is enabled). This error typically occurs when the Jellyfin server process does not have permission to write files into your media directories.'**
   String get libraryWriteAccessReactiveBody;
-
-  /// No description provided for @externalLists.
-  ///
-  /// In en, this message translates to:
-  /// **'External Lists'**
-  String get externalLists;
 
   /// No description provided for @replay.
   ///
@@ -22501,6 +24577,12 @@ abstract class AppLocalizations {
   /// **'Direct play is not supported for this media format.'**
   String get transcodeDirectPlayError;
 
+  /// No description provided for @sortServerOrder.
+  ///
+  /// In en, this message translates to:
+  /// **'Server Order'**
+  String get sortServerOrder;
+
   /// No description provided for @sortAlphabetical.
   ///
   /// In en, this message translates to:
@@ -22728,42 +24810,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Year'**
   String get adminLabelYear;
-
-  /// Label for the IMDb identifier field in the Identify dialog. IMDb is a brand name and is normally left untranslated
-  ///
-  /// In en, this message translates to:
-  /// **'IMDb Id'**
-  String get adminLabelImdbId;
-
-  /// Label for the TheMovieDb movie identifier field in the Identify dialog. TheMovieDb is a brand name and is normally left untranslated
-  ///
-  /// In en, this message translates to:
-  /// **'TheMovieDb Movie Id'**
-  String get adminLabelTmdbMovieId;
-
-  /// Label for the TheMovieDb collection identifier field in the Identify dialog. TheMovieDb is a brand name and is normally left untranslated
-  ///
-  /// In en, this message translates to:
-  /// **'TheMovieDb Box Set Id'**
-  String get adminLabelTmdbBoxSetId;
-
-  /// Label for the TheTVDB collection identifier field in the Identify dialog. TheTVDB is a brand name and is normally left untranslated
-  ///
-  /// In en, this message translates to:
-  /// **'TheTVDB Box Set Id'**
-  String get adminLabelTvdbBoxSetId;
-
-  /// Label for the numeric TheTVDB identifier field in the Identify dialog. TheTVDB is a brand name and is normally left untranslated
-  ///
-  /// In en, this message translates to:
-  /// **'TheTVDB Numerical Id'**
-  String get adminLabelTvdbId;
-
-  /// Label for the TheTVDB slug identifier field in the Identify dialog. TheTVDB is a brand name and is normally left untranslated
-  ///
-  /// In en, this message translates to:
-  /// **'TheTVDB Slug Movie Id'**
-  String get adminLabelTvdbSlug;
 
   /// Checkbox label in the confirmation dialog shown before applying an identified metadata match
   ///
@@ -23014,7 +25060,7 @@ abstract class AppLocalizations {
   /// Selects how personal ratings are displayed and entered on media details.
   ///
   /// In en, this message translates to:
-  /// **'Personal rating style'**
+  /// **'Personal Rating Style'**
   String get personalRatingStyle;
 
   /// Personal rating style using like and dislike actions.
@@ -23248,7 +25294,7 @@ abstract class AppLocalizations {
   /// Setting title to hide media description on details screen
   ///
   /// In en, this message translates to:
-  /// **'Hide Media Description on Details Page'**
+  /// **'Hide Media Description'**
   String get hideDetailsMediaDescription;
 
   /// Description for setting to hide media description on details page
@@ -23260,7 +25306,7 @@ abstract class AppLocalizations {
   /// Setting title to replace thumbnails on Classic details page with series thumbnail
   ///
   /// In en, this message translates to:
-  /// **'Use Series Thumbnails on Details Page'**
+  /// **'Use Series Thumbnails'**
   String get detailUseSeriesThumbnails;
 
   /// Description for setting to use series thumbnails on Classic details page
@@ -23272,7 +25318,7 @@ abstract class AppLocalizations {
   /// Setting title to hide media description on home screen
   ///
   /// In en, this message translates to:
-  /// **'Hide Media Description on Home Screen'**
+  /// **'Hide Media Description'**
   String get hideHomeMediaDescription;
 
   /// Description for setting to hide media description on home screen
@@ -23500,7 +25546,7 @@ abstract class AppLocalizations {
   /// Setting that shows or hides the messages button in the menu
   ///
   /// In en, this message translates to:
-  /// **'Show messages button'**
+  /// **'Show Messages Button'**
   String get serverMessagesShowButton;
 
   /// Explains the setting that shows or hides the messages button
@@ -23581,6 +25627,42 @@ abstract class AppLocalizations {
   /// **'Auto-download stopped for {title}'**
   String autoDownloadStoppedFor(String title);
 
+  /// Settings section header for downloading the next episodes of a series after one is watched
+  ///
+  /// In en, this message translates to:
+  /// **'Smart downloads'**
+  String get smartDownloadsSection;
+
+  /// Switch that swaps a watched downloaded episode for the next episodes of the series
+  ///
+  /// In en, this message translates to:
+  /// **'Download Next Episodes'**
+  String get smartDownloadsEnable;
+
+  /// Explains the smart downloads switch, including that watched episodes are deleted
+  ///
+  /// In en, this message translates to:
+  /// **'When you finish an episode on any device, Moonfin downloads the next ones. Episodes it downloads are deleted once watched.'**
+  String get smartDownloadsEnableDescription;
+
+  /// Setting for how many unwatched episodes of a series stay downloaded after one is watched
+  ///
+  /// In en, this message translates to:
+  /// **'Episodes to Keep Downloaded'**
+  String get smartDownloadsKeepReady;
+
+  /// Subtitle under the episodes to keep ready setting
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Keeps the next episode downloaded} other{Keeps the next {count} episodes downloaded}}'**
+  String smartDownloadsKeepReadySubtitle(int count);
+
+  /// Shown after lowering the episodes to keep downloaded, explaining nothing is deleted
+  ///
+  /// In en, this message translates to:
+  /// **'Episodes already downloaded stay on your device. The new number applies to future downloads.'**
+  String get smartDownloadsKeepReadyLowered;
+
   /// Settings section header for auto-download subscriptions
   ///
   /// In en, this message translates to:
@@ -23590,7 +25672,7 @@ abstract class AppLocalizations {
   /// Master switch for auto-download subscriptions
   ///
   /// In en, this message translates to:
-  /// **'Enable automatic downloads'**
+  /// **'Enable Automatic Downloads'**
   String get autoDownloadEnable;
 
   /// Explains the master switch
@@ -23602,7 +25684,7 @@ abstract class AppLocalizations {
   /// Setting that caps how many unwatched episodes per series stay downloaded
   ///
   /// In en, this message translates to:
-  /// **'Keep unwatched episodes'**
+  /// **'Keep Unwatched Episodes'**
   String get autoDownloadKeepUnwatched;
 
   /// Option meaning no cap on kept unwatched episodes
@@ -23614,14 +25696,38 @@ abstract class AppLocalizations {
   /// Setting that picks how soon an auto-downloaded episode is removed after it was watched
   ///
   /// In en, this message translates to:
-  /// **'Delete downloaded episodes'**
+  /// **'Delete Downloaded Episodes'**
   String get autoDownloadDelete;
 
   /// Explains the delete-after-watching setting
   ///
   /// In en, this message translates to:
-  /// **'When to remove automatically downloaded episodes after you watch them'**
-  String get autoDownloadDeleteSubtitle;
+  /// **'When to remove episodes downloaded for series you follow, after you watch them'**
+  String get autoDownloadDeleteFollowedSubtitle;
+
+  /// Storage setting that picks how soon an episode or movie the user downloaded themselves is removed after it was watched
+  ///
+  /// In en, this message translates to:
+  /// **'Remove Watched Downloads'**
+  String get removeWatchedDownloads;
+
+  /// Explains the remove-watched-downloads setting
+  ///
+  /// In en, this message translates to:
+  /// **'When to remove episodes and movies you downloaded yourself. Only those you watch after turning this on are removed'**
+  String get removeWatchedDownloadsSubtitle;
+
+  /// Toggle on the download sheet that stops watched downloads of this title from being removed automatically
+  ///
+  /// In en, this message translates to:
+  /// **'Keep Downloaded'**
+  String get keepDownloaded;
+
+  /// Explains the keep-downloaded toggle
+  ///
+  /// In en, this message translates to:
+  /// **'Never remove this automatically after watching'**
+  String get keepDownloadedSubtitle;
 
   /// Delete-after-watching option: keep episodes
   ///
@@ -23650,7 +25756,7 @@ abstract class AppLocalizations {
   /// Setting that lets the system wake the app to check for new episodes
   ///
   /// In en, this message translates to:
-  /// **'Check in the background'**
+  /// **'Check in the Background'**
   String get autoDownloadBackgroundRefresh;
 
   /// Explains the background refresh setting
@@ -23674,7 +25780,7 @@ abstract class AppLocalizations {
   /// Button that runs a subscription check immediately
   ///
   /// In en, this message translates to:
-  /// **'Check now'**
+  /// **'Check Now'**
   String get autoDownloadCheckNow;
 
   /// Subtitle while a subscription check is running
@@ -23837,12 +25943,6 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{{name} needs {size}.} other{{count} episodes are waiting for space.}} Free up space or raise the download limit.'**
   String autoDownloadStorageFullBody(int count, String name, String size);
 
-  /// Section header in General Style settings for configuring motion and transition speeds
-  ///
-  /// In en, this message translates to:
-  /// **'Animation Speed'**
-  String get settingsAnimationSpeed;
-
   /// Setting title for adjusting the speed of page navigation transitions
   ///
   /// In en, this message translates to:
@@ -23948,7 +26048,7 @@ abstract class AppLocalizations {
   /// Apple TV settings label for how far a swipe on the Siri Remote touchpad moves the focus highlight
   ///
   /// In en, this message translates to:
-  /// **'Touchpad swipe sensitivity'**
+  /// **'Touchpad Swipe Sensitivity'**
   String get siriRemoteSwipeSensitivity;
 
   /// Apple TV settings subtitle for the Siri Remote touchpad swipe sensitivity option
@@ -23990,7 +26090,7 @@ abstract class AppLocalizations {
   /// iPhone playback setting that holds the picture back from the camera housing in landscape
   ///
   /// In en, this message translates to:
-  /// **'Keep video clear of the Dynamic Island'**
+  /// **'Keep Video Clear of the Dynamic Island'**
   String get keepVideoClearOfDynamicIsland;
 
   /// Description for the iPhone setting that keeps video clear of the Dynamic Island
@@ -24088,6 +26188,760 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'You'**
   String get navYou;
+
+  /// No description provided for @cinemaSkipPrerolls.
+  ///
+  /// In en, this message translates to:
+  /// **'Cinema Mode Skip Button'**
+  String get cinemaSkipPrerolls;
+
+  /// No description provided for @cinemaSkipPrerollsDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Show a Skip button during Cinema Mode trailers, commercials, and other pre-rolls.'**
+  String get cinemaSkipPrerollsDescription;
+
+  /// Settings entry and screen for options that shape the details page
+  ///
+  /// In en, this message translates to:
+  /// **'Details Page'**
+  String get detailsPage;
+
+  /// Settings root entry and screen for downloads, storage location and the image cache
+  ///
+  /// In en, this message translates to:
+  /// **'Storage & Downloads'**
+  String get storageAndDownloads;
+
+  /// Settings root entry and screen for connected integrations such as Seerr and Achievement Badges
+  ///
+  /// In en, this message translates to:
+  /// **'Integrations'**
+  String get integrations;
+
+  /// Settings screen for syncing settings through the Moonbase plugin
+  ///
+  /// In en, this message translates to:
+  /// **'Settings Sync'**
+  String get settingsSync;
+
+  /// Subtitle for the Settings Sync entry
+  ///
+  /// In en, this message translates to:
+  /// **'Moonbase plugin sync and customization profiles'**
+  String get settingsSyncSubtitle;
+
+  /// Settings screen for the navigation bar style and buttons
+  ///
+  /// In en, this message translates to:
+  /// **'Navigation Bar'**
+  String get navigationBar;
+
+  /// Settings entry and screen for turning Home rows on or off and ordering them
+  ///
+  /// In en, this message translates to:
+  /// **'Rows'**
+  String get homeRows;
+
+  /// Subtitle for the Home rows entry
+  ///
+  /// In en, this message translates to:
+  /// **'Turn rows on or off and change their order'**
+  String get homeRowsSubtitle;
+
+  /// Settings screen with sorting and content options for each Home row
+  ///
+  /// In en, this message translates to:
+  /// **'Row Options'**
+  String get rowOptions;
+
+  /// Subtitle for the Row Options entry
+  ///
+  /// In en, this message translates to:
+  /// **'Sorting and content for each row'**
+  String get rowOptionsSubtitle;
+
+  /// Settings entry and screen for choosing the image type of each Home row
+  ///
+  /// In en, this message translates to:
+  /// **'Image Type per Row'**
+  String get imageTypePerRow;
+
+  /// Section header on the Home Screen settings screen for rows that come from IMDb, TMDB, calendars, Seerr and custom lists
+  ///
+  /// In en, this message translates to:
+  /// **'External Sources'**
+  String get externalSources;
+
+  /// Settings screen for streaming limits, decoding, HDR and Dolby Vision
+  ///
+  /// In en, this message translates to:
+  /// **'Quality & Decoding'**
+  String get qualityAndDecoding;
+
+  /// Subtitle for the Quality & Decoding entry
+  ///
+  /// In en, this message translates to:
+  /// **'Bitrate, resolution, decoding, HDR, and Dolby Vision'**
+  String get qualityAndDecodingSubtitle;
+
+  /// Settings screen for media segment skipping, cinema mode and autoplay
+  ///
+  /// In en, this message translates to:
+  /// **'Skipping & Autoplay'**
+  String get skippingAndAutoplay;
+
+  /// Settings screen for advanced player routing, external players and mpv
+  ///
+  /// In en, this message translates to:
+  /// **'Advanced Playback'**
+  String get advancedPlayback;
+
+  /// Subtitle for the Advanced Playback entry
+  ///
+  /// In en, this message translates to:
+  /// **'Player routing, external players, and mpv'**
+  String get advancedPlaybackSubtitle;
+
+  /// Subtitle for the Account settings root entry
+  ///
+  /// In en, this message translates to:
+  /// **'Sign-in, PIN code, Kids Mode, parental controls, and settings sync'**
+  String get settingsAccountSubtitle;
+
+  /// Subtitle for the General settings root entry
+  ///
+  /// In en, this message translates to:
+  /// **'Language, clock, input, and performance'**
+  String get settingsGeneralSubtitle;
+
+  /// Subtitle for the Appearance settings root entry
+  ///
+  /// In en, this message translates to:
+  /// **'Navigation, home screen, libraries, details page, and themes'**
+  String get settingsAppearanceSubtitle;
+
+  /// Subtitle for the Home Screen entry on the Appearance settings screen
+  ///
+  /// In en, this message translates to:
+  /// **'Rows, media bar, looks, and external sources'**
+  String get settingsHomeScreenSubtitle;
+
+  /// Subtitle for the Libraries entry on the Appearance settings screen
+  ///
+  /// In en, this message translates to:
+  /// **'Library visibility, order, and library pages'**
+  String get settingsLibrariesEntrySubtitle;
+
+  /// Subtitle for the Details Page entry on the Appearance settings screen
+  ///
+  /// In en, this message translates to:
+  /// **'Layout, buttons, sections, ratings, and theme music'**
+  String get settingsDetailsPageSubtitle;
+
+  /// Subtitle for the Playback settings root entry
+  ///
+  /// In en, this message translates to:
+  /// **'Player, quality, audio, subtitles, skipping, and SyncPlay'**
+  String get settingsPlaybackSubtitle;
+
+  /// Subtitle for the Storage & Downloads settings root entry
+  ///
+  /// In en, this message translates to:
+  /// **'Downloads, storage location, and the image cache'**
+  String get settingsStorageSubtitle;
+
+  /// Subtitle for the Services settings root entry
+  ///
+  /// In en, this message translates to:
+  /// **'Seerr and Achievement Badges'**
+  String get settingsServicesSubtitle;
+
+  /// Section header on the Account settings screen
+  ///
+  /// In en, this message translates to:
+  /// **'Sign-in'**
+  String get settingsSignInSection;
+
+  /// Section header on the Account settings screen for Kids Mode and parental controls
+  ///
+  /// In en, this message translates to:
+  /// **'Family'**
+  String get settingsFamilySection;
+
+  /// Section header on the Account settings screen for server list and certificate options
+  ///
+  /// In en, this message translates to:
+  /// **'Servers'**
+  String get settingsServersSection;
+
+  /// Section header on the General settings screen
+  ///
+  /// In en, this message translates to:
+  /// **'Language'**
+  String get settingsLanguageSection;
+
+  /// Section header on the General settings screen for keyboard, remote and pointer options
+  ///
+  /// In en, this message translates to:
+  /// **'Input'**
+  String get settingsInputSection;
+
+  /// Section header on the Appearance settings screen for animation speeds
+  ///
+  /// In en, this message translates to:
+  /// **'Motion'**
+  String get settingsMotionSection;
+
+  /// Section header on the Home Screen settings screen for the rows, row options and media bar
+  ///
+  /// In en, this message translates to:
+  /// **'Contents'**
+  String get settingsContentsSection;
+
+  /// Section header on the Home Screen settings screen for how rows and cards look
+  ///
+  /// In en, this message translates to:
+  /// **'Looks'**
+  String get settingsLooksSection;
+
+  /// Section header on the Playback settings screen
+  ///
+  /// In en, this message translates to:
+  /// **'Audio & Subtitles'**
+  String get settingsAudioAndSubtitlesSection;
+
+  /// Section header on the Playback settings screen
+  ///
+  /// In en, this message translates to:
+  /// **'Skipping & Queue'**
+  String get settingsSkippingAndQueueSection;
+
+  /// Section header on the Playback settings screen for SyncPlay
+  ///
+  /// In en, this message translates to:
+  /// **'Watch Together'**
+  String get settingsWatchTogetherSection;
+
+  /// Section header on the Playback settings screen
+  ///
+  /// In en, this message translates to:
+  /// **'Advanced'**
+  String get settingsAdvancedSection;
+
+  /// Subtitle for the Player entry on the Playback settings screen
+  ///
+  /// In en, this message translates to:
+  /// **'Controls, seeking, player buttons, and trick play'**
+  String get playerSettingsSubtitle;
+
+  /// Label for sorting playlist items by release date
+  ///
+  /// In en, this message translates to:
+  /// **'Release Date'**
+  String get playlistSortReleaseDate;
+
+  /// Label for sorting playlist items by critic rating
+  ///
+  /// In en, this message translates to:
+  /// **'Critic Rating'**
+  String get playlistSortCriticRating;
+
+  /// Label for sorting playlist items by runtime
+  ///
+  /// In en, this message translates to:
+  /// **'Runtime'**
+  String get playlistSortRuntime;
+
+  /// Label for sorting playlist items by last played date
+  ///
+  /// In en, this message translates to:
+  /// **'Last Played'**
+  String get playlistSortLastPlayed;
+
+  /// Label for sorting playlist items by play count
+  ///
+  /// In en, this message translates to:
+  /// **'Play Count'**
+  String get playlistSortPlayCount;
+
+  /// Label for sorting playlist items randomly
+  ///
+  /// In en, this message translates to:
+  /// **'Random'**
+  String get playlistSortRandom;
+
+  /// Indicator of how many filters are currently active on a playlist
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 active} other{{count} active}}'**
+  String playlistFilterActiveCount(int count);
+
+  /// Empty state message shown when playlist filters match no items
+  ///
+  /// In en, this message translates to:
+  /// **'No tracks match the active filters'**
+  String get playlistNoMatchingTracks;
+
+  /// Sort option: the playlist's own track order
+  ///
+  /// In en, this message translates to:
+  /// **'Playlist Order'**
+  String get librarySortPlaylistOrder;
+
+  /// Sort option: when an item was added to the server library
+  ///
+  /// In en, this message translates to:
+  /// **'Date Added'**
+  String get librarySortDateAdded;
+
+  /// Sort option for series: when the newest episode was added
+  ///
+  /// In en, this message translates to:
+  /// **'Date Episode Added'**
+  String get librarySortDateEpisodeAdded;
+
+  /// Sort option: by parental (age) rating such as PG-13
+  ///
+  /// In en, this message translates to:
+  /// **'Parental Rating'**
+  String get librarySortParentalRating;
+
+  /// Sort option: by the viewer's own like or dislike
+  ///
+  /// In en, this message translates to:
+  /// **'My Rating'**
+  String get librarySortMyRating;
+
+  /// Sort option for music: by album artist
+  ///
+  /// In en, this message translates to:
+  /// **'Album Artist'**
+  String get librarySortAlbumArtist;
+
+  /// Sort option for music: by album name
+  ///
+  /// In en, this message translates to:
+  /// **'Album'**
+  String get librarySortAlbum;
+
+  /// Sort option for music: by track artist
+  ///
+  /// In en, this message translates to:
+  /// **'Artist'**
+  String get librarySortArtist;
+
+  /// Sort option for music: by track number
+  ///
+  /// In en, this message translates to:
+  /// **'Track Number'**
+  String get librarySortTrackNumber;
+
+  /// Sort option: by genre
+  ///
+  /// In en, this message translates to:
+  /// **'Genre'**
+  String get librarySortGenre;
+
+  /// Sort option for folder libraries: folders before files, then by name
+  ///
+  /// In en, this message translates to:
+  /// **'Folders First'**
+  String get librarySortFoldersFirst;
+
+  /// Sort option for music: by track or album length
+  ///
+  /// In en, this message translates to:
+  /// **'Length'**
+  String get librarySortLength;
+
+  /// Setting to show or hide the backdrop image behind the home screen
+  ///
+  /// In en, this message translates to:
+  /// **'Home Screen Backdrop'**
+  String get homeScreenBackdrop;
+
+  /// Setting to show or hide the backdrop image behind the item details screen
+  ///
+  /// In en, this message translates to:
+  /// **'Details Screen Backdrop'**
+  String get detailsScreenBackdrop;
+
+  /// Setting to show or hide backdrop images while browsing library pages
+  ///
+  /// In en, this message translates to:
+  /// **'Library Backdrops'**
+  String get libraryBackdrops;
+
+  /// Playback information row label: the Live TV channel being watched
+  ///
+  /// In en, this message translates to:
+  /// **'Channel'**
+  String get playbackInfoChannel;
+
+  /// Playback information row label: the Live TV program on now
+  ///
+  /// In en, this message translates to:
+  /// **'Program'**
+  String get playbackInfoProgram;
+
+  /// Playback information row label: why the server isn't sending the original file as is
+  ///
+  /// In en, this message translates to:
+  /// **'Why'**
+  String get playbackInfoWhy;
+
+  /// Playback information row label: the maximum streaming bitrate the user picked
+  ///
+  /// In en, this message translates to:
+  /// **'Quality Limit'**
+  String get playbackInfoQualityLimit;
+
+  /// Playback information row label: video frames per second
+  ///
+  /// In en, this message translates to:
+  /// **'Frame Rate'**
+  String get playbackInfoFrameRate;
+
+  /// Playback information row label: how the subtitles reach the player (embedded, external, burned in)
+  ///
+  /// In en, this message translates to:
+  /// **'Delivery'**
+  String get playbackInfoDelivery;
+
+  /// Playback information section header for the media file
+  ///
+  /// In en, this message translates to:
+  /// **'File'**
+  String get playbackInfoFile;
+
+  /// Playback information section header for details aimed at developers and testers
+  ///
+  /// In en, this message translates to:
+  /// **'Technical'**
+  String get playbackInfoTechnical;
+
+  /// Playback information row label: this device's model and operating system
+  ///
+  /// In en, this message translates to:
+  /// **'Device'**
+  String get playbackInfoDevice;
+
+  /// Playback information row label: where the sound goes, like HDMI or Bluetooth
+  ///
+  /// In en, this message translates to:
+  /// **'Audio Route'**
+  String get playbackInfoAudioRoute;
+
+  /// Playback information value: six channel surround audio
+  ///
+  /// In en, this message translates to:
+  /// **'5.1 surround'**
+  String get playbackInfoSurround51;
+
+  /// Playback information value: eight channel surround audio
+  ///
+  /// In en, this message translates to:
+  /// **'7.1 surround'**
+  String get playbackInfoSurround71;
+
+  /// Playback information value: an audio channel count with no common layout name
+  ///
+  /// In en, this message translates to:
+  /// **'{count} channels'**
+  String playbackInfoChannelCount(int count);
+
+  /// Playback information value: the server draws the subtitles into the video picture
+  ///
+  /// In en, this message translates to:
+  /// **'Burned in by the server'**
+  String get playbackInfoBurnedIn;
+
+  /// Playback information value: the bitrate being sent, with the file's own bitrate after it
+  ///
+  /// In en, this message translates to:
+  /// **'{value} (original {original})'**
+  String playbackInfoOriginal(String value, String original);
+
+  /// Playback information value: what the player gets, with what the file had before the server converted it
+  ///
+  /// In en, this message translates to:
+  /// **'{value} (converted from {source})'**
+  String playbackInfoConvertedFrom(String value, String source);
+
+  /// Playback information value: the resolution being sent, like 1080p (1920x1080, converted from 4K)
+  ///
+  /// In en, this message translates to:
+  /// **'{name} ({size}, converted from {source})'**
+  String playbackInfoResolutionConverted(
+    String name,
+    String size,
+    String source,
+  );
+
+  /// Playback information note under the play method for direct play
+  ///
+  /// In en, this message translates to:
+  /// **'Playing the original file as is.'**
+  String get playbackInfoNoteDirectPlay;
+
+  /// Playback information note under the play method for direct stream
+  ///
+  /// In en, this message translates to:
+  /// **'The server is repackaging the file without converting it.'**
+  String get playbackInfoNoteDirectStream;
+
+  /// Playback information note under the play method when only the video is transcoded
+  ///
+  /// In en, this message translates to:
+  /// **'The server is converting the video so this device can play it.'**
+  String get playbackInfoNoteTranscodeVideo;
+
+  /// Playback information note under the play method when only the audio is transcoded
+  ///
+  /// In en, this message translates to:
+  /// **'The server is converting the audio so this device can play it.'**
+  String get playbackInfoNoteTranscodeAudio;
+
+  /// Playback information note under the play method when the video and the audio are transcoded
+  ///
+  /// In en, this message translates to:
+  /// **'The server is converting the video and audio so this device can play it.'**
+  String get playbackInfoNoteTranscodeBoth;
+
+  /// Playback information note under the play method for a transcode when it isn't known what is converted
+  ///
+  /// In en, this message translates to:
+  /// **'The server is converting this file so this device can play it.'**
+  String get playbackInfoNoteTranscodeUnknown;
+
+  /// Playback information note under the play method when a download plays
+  ///
+  /// In en, this message translates to:
+  /// **'Playing a downloaded copy.'**
+  String get playbackInfoNoteOffline;
+
+  /// Playback information reason: a setting turned off direct play, so the server has to transcode
+  ///
+  /// In en, this message translates to:
+  /// **'Transcoding is forced in settings'**
+  String get playbackInfoWhyForced;
+
+  /// Playback information reason: the file's bitrate is over the streaming limit, used when the two numbers can't be shown
+  ///
+  /// In en, this message translates to:
+  /// **'The bitrate is above the streaming limit'**
+  String get playbackInfoWhyBitrate;
+
+  /// Playback information reason: the container format isn't supported, used when the file type isn't known
+  ///
+  /// In en, this message translates to:
+  /// **'This device can\'t play this file type'**
+  String get playbackInfoWhyContainer;
+
+  /// Playback information reason: the video format isn't supported, used when the server gives no detail or the detail isn't known
+  ///
+  /// In en, this message translates to:
+  /// **'This device can\'t play this video format'**
+  String get playbackInfoWhyVideo;
+
+  /// Playback information reason: the HDR format isn't supported, used when the HDR type isn't known
+  ///
+  /// In en, this message translates to:
+  /// **'This device can\'t display this HDR format'**
+  String get playbackInfoWhyHdr;
+
+  /// Playback information reason: the audio format isn't supported, used when the server gives no detail or the detail isn't known
+  ///
+  /// In en, this message translates to:
+  /// **'This device can\'t play this audio format'**
+  String get playbackInfoWhyAudio;
+
+  /// Playback information reason: the player can't show the subtitles, so the server draws them into the video, used when the subtitle format isn't known
+  ///
+  /// In en, this message translates to:
+  /// **'Subtitles are being burned into the video'**
+  String get playbackInfoWhySubtitles;
+
+  /// Playback information reason: any other server reason
+  ///
+  /// In en, this message translates to:
+  /// **'The file couldn\'t be played directly'**
+  String get playbackInfoWhyOther;
+
+  /// Playback information reason: the file's bitrate, like 68.4 Mbps, is over the streaming limit, like 20 Mbps
+  ///
+  /// In en, this message translates to:
+  /// **'{bitrate} is above the {limit} streaming limit'**
+  String playbackInfoWhyBitrateLimit(String bitrate, String limit);
+
+  /// Playback information reason: the container format, like MKV, isn't supported
+  ///
+  /// In en, this message translates to:
+  /// **'This device can\'t open {container} files'**
+  String playbackInfoWhyContainerName(String container);
+
+  /// Playback information reason: the video codec, like HEVC or AV1, isn't supported
+  ///
+  /// In en, this message translates to:
+  /// **'This device can\'t play {codec} video'**
+  String playbackInfoWhyVideoCodec(String codec);
+
+  /// Playback information reason: the video codec's profile, like HEVC Main 10, isn't supported
+  ///
+  /// In en, this message translates to:
+  /// **'This device can\'t play {codec} {profile} video'**
+  String playbackInfoWhyVideoProfile(String codec, String profile);
+
+  /// Playback information reason: the video codec's level, like HEVC level 5.1, isn't supported
+  ///
+  /// In en, this message translates to:
+  /// **'This device can\'t play {codec} level {level} video'**
+  String playbackInfoWhyVideoLevel(String codec, String level);
+
+  /// Playback information reason: the video bit depth, like 10-bit, isn't supported
+  ///
+  /// In en, this message translates to:
+  /// **'This device can\'t play {bits}-bit video'**
+  String playbackInfoWhyVideoBitDepth(int bits);
+
+  /// Playback information reason: the video resolution, like 4K or 1080p, isn't supported
+  ///
+  /// In en, this message translates to:
+  /// **'This device can\'t play {resolution} video'**
+  String playbackInfoWhyVideoResolution(String resolution);
+
+  /// Playback information reason: the video frame rate in frames per second, like 59.94, isn't supported
+  ///
+  /// In en, this message translates to:
+  /// **'This device can\'t play {fps} fps video'**
+  String playbackInfoWhyVideoFrameRate(String fps);
+
+  /// Playback information reason: interlaced video isn't supported
+  ///
+  /// In en, this message translates to:
+  /// **'This device can\'t play interlaced video'**
+  String get playbackInfoWhyInterlaced;
+
+  /// Playback information reason: anamorphic video isn't supported
+  ///
+  /// In en, this message translates to:
+  /// **'This device can\'t play anamorphic video'**
+  String get playbackInfoWhyAnamorphic;
+
+  /// Playback information reason: the HDR format, like Dolby Vision Profile 7 or HDR10+, isn't supported
+  ///
+  /// In en, this message translates to:
+  /// **'This device can\'t display {range}'**
+  String playbackInfoWhyHdrName(String range);
+
+  /// Playback information reason: the audio codec, like Dolby TrueHD or DTS, isn't supported
+  ///
+  /// In en, this message translates to:
+  /// **'This device can\'t play {format} audio'**
+  String playbackInfoWhyAudioCodec(String format);
+
+  /// Playback information reason: the full audio format, like Dolby TrueHD with Atmos or DTS-HD Master Audio, isn't supported
+  ///
+  /// In en, this message translates to:
+  /// **'This device can\'t play {fullFormat}'**
+  String playbackInfoWhyAudioProfile(String fullFormat);
+
+  /// Playback information reason: the audio channel layout, like 7.1 or 3-channel, isn't supported
+  ///
+  /// In en, this message translates to:
+  /// **'This device can\'t play {channels} audio'**
+  String playbackInfoWhyAudioChannels(String channels);
+
+  /// Playback information reason: the audio sample rate in kilohertz, like 96 or 44.1, isn't supported
+  ///
+  /// In en, this message translates to:
+  /// **'This device can\'t play {rate} kHz audio'**
+  String playbackInfoWhyAudioSampleRate(String rate);
+
+  /// Playback information reason: the audio bit depth, like 24-bit, isn't supported
+  ///
+  /// In en, this message translates to:
+  /// **'This device can\'t play {bits}-bit audio'**
+  String playbackInfoWhyAudioBitDepth(int bits);
+
+  /// Playback information reason: the picked audio track is an external file
+  ///
+  /// In en, this message translates to:
+  /// **'The audio track is in a separate file'**
+  String get playbackInfoWhyAudioExternal;
+
+  /// Playback information reason: the device can't switch to an audio track other than the first
+  ///
+  /// In en, this message translates to:
+  /// **'This device can only play the first audio track'**
+  String get playbackInfoWhySecondaryAudio;
+
+  /// Playback information reason: the player can't show this subtitle format, like PGS or ASS, so the server draws the subtitles into the video
+  ///
+  /// In en, this message translates to:
+  /// **'{format} subtitles are being burned into the video'**
+  String playbackInfoWhySubtitleFormat(String format);
+
+  /// Playback information row label: how many video frames the player skipped
+  ///
+  /// In en, this message translates to:
+  /// **'Dropped Frames'**
+  String get playbackInfoDroppedFrames;
+
+  /// Long-press menu action on a downloaded video: play it by streaming from the server instead of the downloaded copy, for example to get a higher quality than the download
+  ///
+  /// In en, this message translates to:
+  /// **'Play from Server'**
+  String get playFromServer;
+
+  /// Settings label on iPhone and iPad for choosing which player plays video
+  ///
+  /// In en, this message translates to:
+  /// **'Video player'**
+  String get settingsApplePlayerUi;
+
+  /// Settings description for the video player choice, listing what the native Apple style player lacks
+  ///
+  /// In en, this message translates to:
+  /// **'The native Apple style player has no casting, swipe gestures, orientation lock, audio delay or PiP button'**
+  String get settingsApplePlayerUiDescription;
+
+  /// Option for the regular Moonfin video player on iPhone and iPad
+  ///
+  /// In en, this message translates to:
+  /// **'Standard'**
+  String get settingsApplePlayerUiStandard;
+
+  /// Option for the native video player that the Apple TV app uses, offered on iPhone and iPad
+  ///
+  /// In en, this message translates to:
+  /// **'Native Apple style'**
+  String get settingsApplePlayerUiNative;
+
+  /// Settings label for where the play, skip and seek buttons sit in the video player
+  ///
+  /// In en, this message translates to:
+  /// **'Play buttons'**
+  String get playerTransportPosition;
+
+  /// Settings description for where the video player's play buttons sit
+  ///
+  /// In en, this message translates to:
+  /// **'Show play, skip and seek in the middle of the video or docked in the bottom bar'**
+  String get playerTransportPositionDescription;
+
+  /// Option that puts the play, skip and seek buttons in the middle of the video
+  ///
+  /// In en, this message translates to:
+  /// **'On screen'**
+  String get playerTransportOnScreen;
+
+  /// Option that puts the play, skip and seek buttons in the bottom bar with the other player buttons
+  ///
+  /// In en, this message translates to:
+  /// **'Docked'**
+  String get playerTransportDocked;
 }
 
 class _AppLocalizationsDelegate

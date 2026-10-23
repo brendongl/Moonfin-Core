@@ -43,8 +43,30 @@ void main() {
     expect(of(LogicalKeyboardKey.keyC), PlayerAction.toggleSubtitles);
     expect(of(LogicalKeyboardKey.keyF), PlayerAction.toggleFullscreen);
     expect(of(LogicalKeyboardKey.keyH), PlayerAction.stop);
+    expect(of(LogicalKeyboardKey.keyB), PlayerAction.recropBlackBars);
     expect(of(LogicalKeyboardKey.escape), PlayerAction.escape);
+    expect(of(LogicalKeyboardKey.backspace), PlayerAction.hideControls);
+    expect(of(LogicalKeyboardKey.delete), PlayerAction.hideControls);
     expect(of(LogicalKeyboardKey.mediaStop), PlayerAction.stop);
     expect(of(LogicalKeyboardKey.mediaTrackNext), PlayerAction.next);
+  });
+
+  // Issue #1335: skipping and moving between episodes work from a keyboard
+  // without media keys.
+  test('S skips and Shift+N and Shift+P move between items', () {
+    expect(
+      bindings.actionFor(LogicalKeyboardKey.keyS, shift: false),
+      PlayerAction.skipSegment,
+    );
+    expect(
+      bindings.actionFor(LogicalKeyboardKey.keyN, shift: true),
+      PlayerAction.next,
+    );
+    expect(
+      bindings.actionFor(LogicalKeyboardKey.keyP, shift: true),
+      PlayerAction.previous,
+    );
+    expect(bindings.actionFor(LogicalKeyboardKey.keyN, shift: false), isNull);
+    expect(bindings.actionFor(LogicalKeyboardKey.keyP, shift: false), isNull);
   });
 }

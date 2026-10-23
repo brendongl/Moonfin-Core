@@ -15,6 +15,9 @@ abstract class AdminSystemApi {
     int? limit,
     bool? hasUserId,
     DateTime? minDate,
+    DateTime? maxDate,
+    String? severity,
+    String? username,
   });
 
   /// Localization metadata used to populate admin dropdowns.

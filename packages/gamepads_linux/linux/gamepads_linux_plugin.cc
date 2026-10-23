@@ -2,6 +2,8 @@
 
 #include <flutter_linux/flutter_linux.h>
 
+#include <atomic>
+#include <cstdlib>
 #include <iostream>
 #include <map>
 #include <optional>
@@ -26,6 +28,16 @@ static FlMethodChannel* channel;
 bool keep_reading_events = false;
 std::map<std::string, gamepad::GamepadInfo> gamepads = {};
 
+// Steam Input reads the real controllers and hands the app a virtual one,
+// which it holds back while the Steam overlay is open. The real ones keep
+// reporting, so they're dropped the way SDL drops them. Steam sets these for
+// the apps it launches, and they don't change while the app runs.
+static const std::optional<std::vector<uint32_t>> steam_allowed =
+    parse_vid_pid_list(std::getenv("SDL_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT"));
+static const std::optional<std::vector<uint32_t>> steam_ignored =
+    parse_vid_pid_list(std::getenv("SDL_GAMECONTROLLER_IGNORE_DEVICES"));
+static std::atomic<int> steam_virtual_pads{0};
+
 static std::optional<std::string> parse_event_type(js_event event) {
   switch (event.type & ~JS_EVENT_INIT) {
     case JS_EVENT_BUTTON: {
@@ -46,6 +58,11 @@ static std::optional<std::string> parse_event_type(js_event event) {
 static void emit_gamepad_event(gamepad::GamepadInfo* gamepad,
                                const js_event& event) {
   if (channel) {
+    if (should_ignore_controller(gamepad->vendor_id, gamepad->product_id,
+                                 steam_allowed, steam_ignored,
+                                 steam_virtual_pads.load() > 0)) {
+      return;
+    }
     std::optional<std::string> type = parse_event_type(event);
     if (!type) {
       return;
@@ -151,12 +168,20 @@ void event_loop_start() {
           std::cout << "Gamepad connected " << key << " - " << info->name
                     << std::endl;
           gamepads[key] = *info;
+          if (is_steam_virtual_controller(info->vendor_id, info->product_id)) {
+            steam_virtual_pads++;
+          }
 
           std::thread input_thread(process_connection_event, &gamepads[key]);
           input_thread.detach();
         } else {
           std::cout << "Gamepad disconnected " << key << std::endl;
           if (existingGamepad) {
+            if (existingGamepad->alive &&
+                is_steam_virtual_controller(existingGamepad->vendor_id,
+                                            existingGamepad->product_id)) {
+              steam_virtual_pads--;
+            }
             gamepads[key].alive = false;
             gamepads.erase(key);
           }

@@ -6,6 +6,7 @@ import 'package:server_core/server_core.dart';
 import '../models/aggregated_item.dart';
 import '../repositories/user_views_repository.dart';
 import '../utils/blocked_ratings.dart';
+import '../utils/genre_browse_utils.dart';
 import '../utils/playlist_utils.dart';
 
 class BreadcrumbEntry {
@@ -176,7 +177,7 @@ class FolderBrowseViewModel extends ChangeNotifier {
     try {
       await _fetchPage(currentFolderId, _rawItemsFetched);
       if (!_disposed && _rawItemsFetched <= prevRawFetched) {
-        _totalCount = _items.length;
+        _totalCount = _rawItemsFetched;
         _hasMoreFromPageSize = false;
       }
     } catch (_) {}
@@ -201,10 +202,14 @@ class FolderBrowseViewModel extends ChangeNotifier {
   }
 
   Future<void> _fetchPage(String parentId, int startIndex) async {
-    final response = await _fetchItemsWithFallback(
-      parentId: parentId,
-      startIndex: startIndex,
-    );
+    final responses = await Future.wait([
+      _fetchItemsWithFallback(parentId: parentId, startIndex: startIndex),
+      if (startIndex == 0) _fetchDirectories(parentId),
+    ]);
+    final response = responses.first;
+    final directories = startIndex == 0
+        ? (responses.last['Items'] as List?) ?? const []
+        : const [];
 
     final rawItems = (response['Items'] as List?) ?? [];
     _rawItemsFetched += rawItems.length;
@@ -219,7 +224,10 @@ class FolderBrowseViewModel extends ChangeNotifier {
       _totalCount = loadedCount + (_hasMoreFromPageSize ? 1 : 0);
     }
 
-    final mapped = rawItems.cast<Map<String, dynamic>>().map((raw) {
+    final mapped = [
+      ...directories,
+      ...rawItems,
+    ].cast<Map<String, dynamic>>().map((raw) {
       return AggregatedItem(
         id: raw['Id']?.toString() ?? '',
         serverId: (_serverId != null && _serverId.isNotEmpty)
@@ -231,8 +239,8 @@ class FolderBrowseViewModel extends ChangeNotifier {
 
     final filtered = await _filterItemsForFolder(mapped);
 
-    // The server orders directories first and each group by name, across the
-    // whole folder rather than a page at a time, so pages only ever append.
+    // Directories all arrive with the first page and the rest follow by name a
+    // page at a time, so pages only ever append.
     if (startIndex == 0) {
       _items = filtered;
     } else {
@@ -248,7 +256,8 @@ class FolderBrowseViewModel extends ChangeNotifier {
       return await _client.itemsApi.getItems(
         parentId: parentId,
         recursive: false,
-        sortBy: 'IsFolder,SortName',
+        excludeItemTypes: kDirectoryItemTypes,
+        sortBy: 'SortName',
         sortOrder: 'Ascending',
         startIndex: startIndex,
         limit: _pageSize,
@@ -264,6 +273,7 @@ class FolderBrowseViewModel extends ChangeNotifier {
       return await _client.itemsApi.getItems(
         parentId: parentId,
         recursive: false,
+        excludeItemTypes: kDirectoryItemTypes,
         sortBy: 'SortName',
         sortOrder: 'Ascending',
         startIndex: startIndex,
@@ -274,6 +284,20 @@ class FolderBrowseViewModel extends ChangeNotifier {
         enableTotalRecordCount: false,
       );
     }
+  }
+
+  Future<Map<String, dynamic>> _fetchDirectories(String parentId) {
+    return _client.itemsApi.getItems(
+      parentId: parentId,
+      recursive: false,
+      includeItemTypes: kDirectoryItemTypes,
+      sortBy: 'SortName',
+      sortOrder: 'Ascending',
+      fields: _fields,
+      enableImageTypes: _imageTypes,
+      imageTypeLimit: _imageTypeLimit,
+      enableTotalRecordCount: false,
+    );
   }
 
   bool isNavigableFolder(AggregatedItem item) {

@@ -8504,7 +8504,6 @@
     "adminGeneralDisplayLanguage": "Prednostni jezik prikaza",
     "offlineBannerTitle": "Niste povezani",
     "offlineBannerSubtitle": "Prikazani so vaši prenosi",
-    "offlineBannerAction": "Prenosi",
     "serverUnreachableBannerTitle": "Strežnik ni dosegljiv",
     "serverUnreachableBannerSubtitle": "Predvajanje iz prenosov, dokler se ne vrne",
     "contextMenuHideFromContinueWatching": "Skrij iz Nadaljuj z gledanjem",

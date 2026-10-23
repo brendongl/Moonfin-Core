@@ -272,5 +272,9 @@ void main() {
       expect(containers, contains('mp4'));
       expect(containers, contains('ts'));
     });
+
+    test('names MPEG-TS the way Emby labels a live channel too', () {
+      expect(media3DirectPlayVideoContainers.split(','), contains('mpegts'));
+    });
   });
 }

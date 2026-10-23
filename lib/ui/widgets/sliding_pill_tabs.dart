@@ -53,6 +53,9 @@ class SlidingPillTabs extends StatefulWidget {
   /// Left D-pad from the first segment; e.g. hop to the sidebar.
   final VoidCallback? onExitLeft;
 
+  /// Right D-pad from the last segment, to a control beside the strip.
+  final VoidCallback? onExitRight;
+
   /// Where the strip sits once it has hugged its content. Search lines it up
   /// under the field on the left, a panel centres it over its list.
   final Alignment alignment;
@@ -65,6 +68,7 @@ class SlidingPillTabs extends StatefulWidget {
     this.focusNode,
     this.onVerticalNavigation,
     this.onExitLeft,
+    this.onExitRight,
     this.alignment = Alignment.centerLeft,
   });
 
@@ -245,14 +249,14 @@ class _SlidingPillTabsState extends State<SlidingPillTabs> {
       if (movesToNextIndex) {
         if (index < widget.labels.length - 1) {
           widget.onChanged(index + 1);
-        } else if (isRtl && widget.onExitLeft != null) {
-          widget.onExitLeft!();
+        } else {
+          (isRtl ? widget.onExitLeft : widget.onExitRight)?.call();
         }
       } else {
         if (index > 0) {
           widget.onChanged(index - 1);
-        } else if (!isRtl && widget.onExitLeft != null) {
-          widget.onExitLeft!();
+        } else {
+          (isRtl ? widget.onExitRight : widget.onExitLeft)?.call();
         }
       }
       return KeyEventResult.handled;

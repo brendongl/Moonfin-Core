@@ -13,6 +13,9 @@ enum PlayerAction {
   next,
   previous,
 
+  /// Press the skip button while the player is offering one.
+  skipSegment,
+
   /// Seek that grows while the key is held.
   seekBack,
   seekForward,
@@ -33,8 +36,15 @@ enum PlayerAction {
   /// Leave fullscreen where there is one to leave, otherwise stop.
   escape,
 
+  /// Hide the Next Up card, a skip prompt, an open panel or the controls,
+  /// one at a time.
+  hideControls,
+
   /// Show the controls, or play/pause while they are showing.
   showControlsOrPlayPause,
+
+  /// Run letterbox crop detection now.
+  recropBlackBars,
 }
 
 /// One key, optionally with Shift.
@@ -65,8 +75,15 @@ class PlayerKeyBindings {
       KeyBinding(LogicalKeyboardKey.keyH),
       KeyBinding(LogicalKeyboardKey.mediaStop),
     ],
-    PlayerAction.next: [KeyBinding(LogicalKeyboardKey.mediaTrackNext)],
-    PlayerAction.previous: [KeyBinding(LogicalKeyboardKey.mediaTrackPrevious)],
+    PlayerAction.next: [
+      KeyBinding(LogicalKeyboardKey.mediaTrackNext),
+      KeyBinding(LogicalKeyboardKey.keyN, shift: true),
+    ],
+    PlayerAction.previous: [
+      KeyBinding(LogicalKeyboardKey.mediaTrackPrevious),
+      KeyBinding(LogicalKeyboardKey.keyP, shift: true),
+    ],
+    PlayerAction.skipSegment: [KeyBinding(LogicalKeyboardKey.keyS)],
     PlayerAction.seekBack: [
       KeyBinding(LogicalKeyboardKey.arrowLeft),
       KeyBinding(LogicalKeyboardKey.keyJ),
@@ -88,10 +105,15 @@ class PlayerKeyBindings {
     PlayerAction.mpvStats: [KeyBinding(LogicalKeyboardKey.keyI, shift: true)],
     PlayerAction.toggleFullscreen: [KeyBinding(LogicalKeyboardKey.keyF)],
     PlayerAction.escape: [KeyBinding(LogicalKeyboardKey.escape)],
+    PlayerAction.hideControls: [
+      KeyBinding(LogicalKeyboardKey.backspace),
+      KeyBinding(LogicalKeyboardKey.delete),
+    ],
     PlayerAction.showControlsOrPlayPause: [
       KeyBinding(LogicalKeyboardKey.enter),
       KeyBinding(LogicalKeyboardKey.select),
     ],
+    PlayerAction.recropBlackBars: [KeyBinding(LogicalKeyboardKey.keyB)],
   });
 
   List<KeyBinding> keysFor(PlayerAction action) =>

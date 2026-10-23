@@ -3,29 +3,15 @@ import 'package:moonfin_design/moonfin_design.dart';
 
 import '../../../l10n/app_localizations.dart';
 
-/// Small glyph chip identifying a card as a book, an audiobook, or a comic.
-/// Solid scrim colors (no glass) so rows of cards stay cheap on TV GPUs.
-class BookFormatBadge extends StatelessWidget {
-  final bool isAudiobook;
-  final bool isComic;
-
-  const BookFormatBadge({
-    super.key,
-    this.isAudiobook = false,
-    this.isComic = false,
-  });
+/// Small glyph chip marking a card as a comic. Solid scrim colors (no glass)
+/// so a grid of cards stays cheap on TV GPUs.
+class BookComicBadge extends StatelessWidget {
+  const BookComicBadge({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final (label, icon) = isComic
-        ? (l10n.bookFormatComic, Icons.auto_stories_rounded)
-        : (isAudiobook
-            ? (l10n.bookFormatAudiobook, Icons.headphones_rounded)
-            : (l10n.bookFormatBook, Icons.menu_book_rounded));
-
     return Semantics(
-      label: label,
+      label: AppLocalizations.of(context).bookFormatComic,
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: AppColorScheme.scrim.withValues(alpha: 0.72),
@@ -34,39 +20,9 @@ class BookFormatBadge extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
           child: Icon(
-            icon,
+            Icons.auto_stories_rounded,
             size: 12,
             color: AppColorScheme.onBadge,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Compact text chip layered on a card image, e.g. "6h 12m left" on
-/// audiobooks. Solid scrim background, theme badge foreground.
-class BookProgressChip extends StatelessWidget {
-  final String label;
-
-  const BookProgressChip({super.key, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppColorScheme.scrim.withValues(alpha: 0.78),
-        borderRadius: AppRadius.circular(4),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: AppColorScheme.onBadge,
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.2,
           ),
         ),
       ),
@@ -80,4 +36,22 @@ String formatBookDuration(Duration duration) {
   final minutes = duration.inMinutes % 60;
   if (hours > 0) return '${hours}h ${minutes}m';
   return '${minutes}m';
+}
+
+/// How far along a title is, "34% read" for books and "6h 12m left" for
+/// audiobooks, or an audiobook's whole runtime before it's started. Null when
+/// there's nothing to show.
+String? bookProgressMeta(
+  AppLocalizations l10n, {
+  required bool isAudiobook,
+  required double playedPercentage,
+  Duration? remaining,
+}) {
+  if (isAudiobook) {
+    if (remaining == null) return null;
+    final label = formatBookDuration(remaining);
+    return playedPercentage > 0 ? l10n.bookTimeLeft(label) : label;
+  }
+  if (playedPercentage <= 0) return null;
+  return l10n.bookPercentRead(playedPercentage.round());
 }

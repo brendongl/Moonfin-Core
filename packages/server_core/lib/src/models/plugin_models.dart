@@ -59,6 +59,9 @@ class PluginInfo {
   final bool hasImage;
   final PluginStatus status;
 
+  /// Emby's image tag. Jellyfin sends HasImage instead.
+  final String? imageTag;
+
   const PluginInfo({
     required this.name,
     this.version = '',
@@ -68,6 +71,7 @@ class PluginInfo {
     this.canUninstall = false,
     this.hasImage = false,
     this.status = PluginStatus.active,
+    this.imageTag,
   });
 
   factory PluginInfo.fromJson(Map<String, dynamic> json) => PluginInfo(
@@ -79,8 +83,9 @@ class PluginInfo {
         description: json['Description'] as String? ?? '',
         id: json['Id'] as String? ?? '',
         canUninstall: json['CanUninstall'] as bool? ?? false,
-        hasImage: json['HasImage'] as bool? ?? false,
+        hasImage: json['HasImage'] as bool? ?? json['ImageTag'] != null,
         status: parsePluginStatus(json['Status'] as String?),
+        imageTag: json['ImageTag'] as String?,
       );
 }
 
@@ -94,6 +99,9 @@ class PackageInfo {
   final List<VersionInfo> versions;
   final String? imageUrl;
 
+  /// Emby plugins that need Premiere after a trial.
+  final bool isPremium;
+
   const PackageInfo({
     required this.name,
     this.description = '',
@@ -103,20 +111,26 @@ class PackageInfo {
     this.id = '',
     this.versions = const [],
     this.imageUrl,
+    this.isPremium = false,
   });
 
   factory PackageInfo.fromJson(Map<String, dynamic> json) => PackageInfo(
         name: json['name'] as String? ?? '',
-        description: json['description'] as String? ?? '',
+        description: json['description'] as String? ??
+            json['shortDescription'] as String? ??
+            '',
         overview: json['overview'] as String? ?? '',
         owner: json['owner'] as String? ?? '',
         category: json['category'] as String? ?? '',
-        id: json['guid'] as String? ?? '',
+        // Emby's catalog sends some ids in upper case, and installed plugin
+        // ids are always lower case.
+        id: (json['guid'] as String? ?? '').toLowerCase(),
         versions: (json['versions'] as List<dynamic>?)
                 ?.map((e) => VersionInfo.fromJson(e as Map<String, dynamic>))
                 .toList() ??
             const [],
-        imageUrl: json['imageUrl'] as String?,
+        imageUrl: json['imageUrl'] as String? ?? json['thumbImage'] as String?,
+        isPremium: json['isPremium'] as bool? ?? false,
       );
 }
 
@@ -130,6 +144,9 @@ class VersionInfo {
   final String repositoryName;
   final String repositoryUrl;
 
+  /// Emby's release channel (Release, Beta, Dev), which an install sends back.
+  final String? classification;
+
   const VersionInfo({
     this.version = '',
     this.changelog,
@@ -139,17 +156,20 @@ class VersionInfo {
     this.timestamp,
     this.repositoryName = '',
     this.repositoryUrl = '',
+    this.classification,
   });
 
   factory VersionInfo.fromJson(Map<String, dynamic> json) => VersionInfo(
-        version: json['version'] as String? ?? '',
-        changelog: json['changelog'] as String?,
+        version: json['version'] as String? ?? json['versionStr'] as String? ?? '',
+        changelog:
+            json['changelog'] as String? ?? json['description'] as String?,
         targetAbi: json['targetAbi'] as String?,
         sourceUrl: json['sourceUrl'] as String?,
         checksum: json['checksum'] as String?,
         timestamp: json['timestamp'] as String?,
         repositoryName: json['repositoryName'] as String? ?? '',
         repositoryUrl: json['repositoryUrl'] as String? ?? '',
+        classification: json['classification'] as String?,
       );
 }
 

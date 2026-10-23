@@ -16,13 +16,20 @@ abstract class AdminPluginsApi {
 
   Future<List<PackageInfo>> getAvailablePackages();
 
+  /// GET /web/ConfigurationPages: the settings pages plugins register, each
+  /// with `Name`, `PluginId` and `EnableInMainMenu`.
+  Future<List<Map<String, dynamic>>> getConfigurationPages();
+
   Future<PackageInfo?> getPackageInfo(String name, {String? assemblyGuid});
 
+  /// [updateClass] is the version's release channel. Emby looks the version
+  /// up in it, Jellyfin ignores it.
   Future<void> installPackage(
     String name, {
     String? assemblyGuid,
     String? version,
     String? repositoryUrl,
+    String? updateClass,
   });
 
   Future<void> cancelPackageInstallation(String packageId);

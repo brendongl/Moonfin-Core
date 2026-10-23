@@ -89,6 +89,7 @@ class _HomeRowsImageTypeScreenState extends State<HomeRowsImageTypeScreen> {
         HomeSectionType.genres => l10n.genres,
         HomeSectionType.studios => l10n.studios,
         HomeSectionType.liveTv => l10n.liveTV,
+        HomeSectionType.onNow => l10n.onNow,
         HomeSectionType.seerrShortcuts => l10n.seerrShortcutsRow,
         HomeSectionType.seerrRecentRequests => l10n.recentRequests,
         HomeSectionType.seerrWatchlist => l10n.yourWatchlist,
@@ -170,7 +171,7 @@ class _HomeRowsImageTypeScreenState extends State<HomeRowsImageTypeScreen> {
     return withCleanSettingsTypography(
       context,
       Scaffold(
-        appBar: buildSettingsAppBar(context, Text(l10n.perRowImageType)),
+        appBar: buildSettingsAppBar(context, Text(l10n.imageTypePerRow)),
         body: ListView(
           children: [
             SettingsSectionHeader(l10n.images),

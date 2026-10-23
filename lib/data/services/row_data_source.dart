@@ -2297,7 +2297,7 @@ class RowDataSource {
                 'Type': item.type,
                 'Overview': '',
                 'PosterPath': item.posterUrl ?? '',
-                'BackdropPath': item.backdropUrl ?? item.posterUrl ?? '',
+                'BackdropPath': item.backdropUrl ?? '',
                 'ProductionYear': item.year,
                 'SeerrMediaType': item.type == 'Series' ? 'tv' : 'movie',
                 'UserRating': item.userRating ?? '',
@@ -2324,6 +2324,15 @@ class RowDataSource {
             rowType: HomeRowType.pluginDynamic,
           );
         }
+
+      // Seerr sliders load through the Seerr repository on Home, since they
+      // come from Seerr rather than from the media server.
+      case HomeSectionPluginSource.seerr:
+        return HomeRow(
+          id: rowId,
+          title: title,
+          rowType: HomeRowType.pluginDynamic,
+        );
     }
   }
 

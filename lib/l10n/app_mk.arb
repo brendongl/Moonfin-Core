@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "Претпочитан јазик за приказ",
     "offlineBannerTitle": "Не сте поврзани",
     "offlineBannerSubtitle": "Се прикажуваат вашите преземања",
-    "offlineBannerAction": "Преземања",
     "serverUnreachableBannerTitle": "Не може да се пристапи до вашиот сервер",
     "serverUnreachableBannerSubtitle": "Се пушта од преземањата додека не се врати",
     "contextMenuHideFromContinueWatching": "Скриј од „Продолжи со гледање“",

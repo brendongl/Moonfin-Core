@@ -13,11 +13,14 @@ import 'package:moonfin/data/services/plugin_sync_service.dart';
 import 'package:moonfin/data/services/row_data_source.dart';
 import 'package:moonfin/data/services/server_messages_service.dart';
 import 'package:moonfin/l10n/app_localizations.dart';
+import 'package:moonfin/preference/preference_constants.dart';
 import 'package:moonfin/preference/seerr_preferences.dart';
 import 'package:moonfin/preference/user_preferences.dart';
 import 'package:moonfin/ui/screens/browse/book_browse_screen.dart';
-import 'package:moonfin/ui/widgets/book/book_segmented_control.dart';
+import 'package:moonfin/ui/widgets/book/book_browse_nav.dart';
+import 'package:moonfin/ui/widgets/sliding_pill_tabs.dart';
 import 'package:moonfin/ui/widgets/book/discover/book_discover_tab.dart';
+import 'package:moonfin/ui/widgets/left_sidebar.dart';
 import 'package:moonfin/ui/widgets/navigation_layout.dart';
 import 'package:moonfin/util/game_library.dart';
 import 'package:moonfin/util/platform_detection.dart';
@@ -91,6 +94,16 @@ class _FakeItemsApi extends Fake implements ItemsApi {
       Future.value(const {'Items': <dynamic>[], 'TotalRecordCount': 0});
 }
 
+class _OneBookItemsApi extends Fake implements ItemsApi {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => Future.value(const {
+    'Items': [
+      {'Id': 'book-1', 'Name': 'Dune', 'Type': 'Book', 'ServerId': 'server'},
+    ],
+    'TotalRecordCount': 1,
+  });
+}
+
 void main() {
   late UserPreferences prefs;
 
@@ -147,7 +160,7 @@ void main() {
   testWidgets('the Discover tab is offered by default', (tester) async {
     await pumpScreen(tester);
 
-    expect(find.byType(BookSegmentedControl), findsOneWidget);
+    expect(find.byType(SlidingPillTabs), findsOneWidget);
   });
 
   testWidgets('turning the preference off removes the tab control and Discover',
@@ -155,7 +168,7 @@ void main() {
     await prefs.set(UserPreferences.showBookDiscoverTab, false);
     await pumpScreen(tester);
 
-    expect(find.byType(BookSegmentedControl), findsNothing);
+    expect(find.byType(SlidingPillTabs), findsNothing);
     // A bare else fallback would still render Discover for any non-zero tab
     // index, so this half is the regression that matters.
     expect(find.byType(BookDiscoverTab), findsNothing);
@@ -165,11 +178,106 @@ void main() {
       (tester) async {
     await prefs.set(UserPreferences.showBookDiscoverTab, false);
     await pumpScreen(tester);
-    expect(find.byType(BookSegmentedControl), findsNothing);
+    expect(find.byType(SlidingPillTabs), findsNothing);
 
     await prefs.set(UserPreferences.showBookDiscoverTab, true);
     await tester.pumpAndSettle();
 
-    expect(find.byType(BookSegmentedControl), findsOneWidget);
+    expect(find.byType(SlidingPillTabs), findsOneWidget);
+  });
+
+  testWidgets('the sidebar moves the rail past it on wide layouts',
+      (tester) async {
+    PlatformDetection.setInterfaceLayout(InterfaceLayout.desktop);
+    await prefs.set(UserPreferences.navbarPosition, NavbarPosition.left);
+    await pumpScreen(tester);
+
+    expect(
+      tester.getTopLeft(find.byType(BookLibraryRail)).dx,
+      closeTo(52, 1.0),
+    );
+  });
+
+  testWidgets('wide layouts offer Discover in the rail, behind the setting',
+      (tester) async {
+    PlatformDetection.setInterfaceLayout(InterfaceLayout.desktop);
+    await pumpScreen(tester);
+
+    final discover = find.descendant(
+      of: find.byType(BookLibraryRail),
+      matching: find.text('Discover'),
+    );
+    expect(discover, findsOneWidget);
+    expect(find.byType(SlidingPillTabs), findsNothing);
+
+    await tester.tap(discover);
+    await tester.pumpAndSettle();
+    expect(find.byType(BookDiscoverTab), findsOneWidget);
+
+    await prefs.set(UserPreferences.showBookDiscoverTab, false);
+    await tester.pumpAndSettle();
+    expect(discover, findsNothing);
+    expect(find.byType(BookDiscoverTab), findsNothing);
+  });
+
+  testWidgets('phones keep the tab control at the edge with the sidebar on',
+      (tester) async {
+    await prefs.set(UserPreferences.navbarPosition, NavbarPosition.left);
+    await pumpScreen(tester);
+
+    expect(tester.getTopLeft(find.byType(SlidingPillTabs)).dx, 16);
+  });
+
+  group('focus on wide layouts', () {
+    Future<void> pumpWithBook(WidgetTester tester) async {
+      when(() => GetIt.instance<MediaServerClient>().itemsApi)
+          .thenReturn(_OneBookItemsApi());
+      PlatformDetection.setInterfaceLayout(InterfaceLayout.desktop);
+      await prefs.set(UserPreferences.navbarPosition, NavbarPosition.left);
+      await pumpScreen(tester);
+    }
+
+    String? focused() => FocusManager.instance.primaryFocus?.debugLabel;
+    const continueRow = 'LockedFocusRow:books_lib-1_resume';
+
+    Future<void> somethingChanges(WidgetTester tester) async {
+      await prefs.set(UserPreferences.osdLockEnabled, true);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('the content takes focus once it loads, not the sidebar', (
+      tester,
+    ) async {
+      await pumpWithBook(tester);
+
+      expect(focused(), continueRow);
+      expect(LeftSidebar.isFocusedNotifier.value, isFalse);
+    });
+
+    testWidgets('an update leaves focus where the viewer put it', (
+      tester,
+    ) async {
+      await pumpWithBook(tester);
+      FocusManager.instance.rootScope.descendants
+          .firstWhere((node) => node.debugLabel == 'bookRail:scope:all')
+          .requestFocus();
+      await tester.pump();
+
+      await somethingChanges(tester);
+
+      expect(focused(), 'bookRail:scope:all');
+    });
+
+    testWidgets('focus that falls off the page comes back to the content', (
+      tester,
+    ) async {
+      await pumpWithBook(tester);
+      FocusManager.instance.primaryFocus!.unfocus();
+      await tester.pump();
+
+      await somethingChanges(tester);
+
+      expect(focused(), continueRow);
+    });
   });
 }

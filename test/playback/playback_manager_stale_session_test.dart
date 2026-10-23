@@ -758,6 +758,34 @@ void main() {
     }
   });
 
+  test('a transcode that can\'t show the video stops', () async {
+    final backend = _TestBackend();
+    final resolver = _TestResolver()..playMethod = StreamPlayMethod.transcode;
+    final service = _TestService();
+    final manager = _manager(backend, resolver, service);
+
+    try {
+      await manager.playItems(<dynamic>[
+        <String, dynamic>{'Id': 'vc1', 'Type': 'Movie'},
+      ]);
+      final stopsBefore = backend.stopCalls;
+      backend.emitError(<String, dynamic>{
+        'event': 'playerError',
+        'recoverable': true,
+        'kind': 'unsupported_video',
+        'message': 'The stream has no video track the player can read',
+      });
+      await pumpEventQueue(times: 10);
+
+      expect(resolver.calls, 1);
+      expect(backend.stopCalls, greaterThan(stopsBefore));
+      expect(manager.bringupState.phase, PlaybackBringupPhase.failed);
+      expect(manager.bringupState.error, unsupportedVideoError);
+    } finally {
+      manager.dispose();
+    }
+  });
+
   test(
     'already-transcoded audio is retried after vetoing its selected codec',
     () async {

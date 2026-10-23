@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "Бажана мова відображення",
     "offlineBannerTitle": "Ви офлайн",
     "offlineBannerSubtitle": "Показуємо ваші завантаження",
-    "offlineBannerAction": "Завантаження",
     "serverUnreachableBannerTitle": "Не вдається зв'язатися з вашим сервером",
     "serverUnreachableBannerSubtitle": "Відтворюємо із завантажень, доки він не повернеться",
     "contextMenuHideFromContinueWatching": "Приховати з «Продовжити перегляд»",

@@ -30,6 +30,7 @@ class _Api extends Fake implements SessionApi {
   @override
   Future<List<Map<String, dynamic>>> getSessions({
     String? controllableByUserId,
+    int? activeWithinSeconds,
   }) async {
     sessionFetches++;
     final snapshot = List<Map<String, dynamic>>.of(sessions);

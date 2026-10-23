@@ -5,6 +5,7 @@ import 'package:logger/logger.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../sipflix/sipflix_credential_vault.dart';
+import '../../util/network_errors.dart';
 import '../models/login_state.dart';
 import '../models/user.dart';
 import '../store/authentication_store.dart';
@@ -42,7 +43,7 @@ class AuthRepository {
         username,
         password,
       );
-      return _handleAuthResult(
+      return await _handleAuthResult(
         result: result,
         client: client,
         serverId: serverId,
@@ -66,7 +67,7 @@ class AuthRepository {
     _stateController.add(const Authenticating());
     try {
       final result = await client.authApi.authenticateWithQuickConnect(secret);
-      return _handleAuthResult(
+      return await _handleAuthResult(
         result: result,
         client: client,
         serverId: serverId,
@@ -154,8 +155,18 @@ class AuthRepository {
   }
 
   LoginState _handleDioError(DioException e) {
+    if (isClientCertificateRejected(e)) {
+      const state = ClientCertificateRequired();
+      _stateController.add(state);
+      return state;
+    }
     if (isUntrustedCertificate(e)) {
       const state = UntrustedCertificate();
+      _stateController.add(state);
+      return state;
+    }
+    if (isSignInForbidden(e)) {
+      const state = SignInForbidden();
       _stateController.add(state);
       return state;
     }

@@ -304,7 +304,27 @@ object Media3Bridge {
 
         if (call.method == "setAllowUntrustedTls") {
             val args = call.arguments as? Map<*, *>
-            InsecureTls.setAllowed(args?.get("enabled") as? Boolean ?: false)
+            TlsPolicy.setAllowUntrusted(args?.get("enabled") as? Boolean ?: false)
+            result.success(null)
+            return
+        }
+
+        if (call.method == "setClientCertificates") {
+            val certificates = (call.argument<List<Map<String, String>>>("certificates") ?: emptyList())
+                .mapNotNull { item ->
+                    TlsPolicy.ClientCertificate(
+                        host = item["host"] ?: return@mapNotNull null,
+                        chainPem = item["chainPem"] ?: return@mapNotNull null,
+                        keyPem = item["keyPem"] ?: return@mapNotNull null,
+                    )
+                }
+            if (TlsPolicy.setClientCertificates(certificates)) {
+                try {
+                    ClientCertificateVault.save(appContext, certificates)
+                } catch (_: Exception) {
+                    // They still apply until the process ends.
+                }
+            }
             result.success(null)
             return
         }
@@ -419,6 +439,9 @@ object Media3Bridge {
             "setLetterboxCrop",
             "setAudioTrack",
             "setSubtitleTrack",
+            "setSecondarySubtitle",
+            "setSecondarySubtitleDelay",
+            "configureSecondarySubtitleStyle",
             "setClosedCaptionTrack",
             "disableSubtitleTrack",
             "setAudioDelay",

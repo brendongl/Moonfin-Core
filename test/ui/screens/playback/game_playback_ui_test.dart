@@ -1,9 +1,52 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_it/get_it.dart';
+import 'package:jellyfin_preference/jellyfin_preference.dart';
+import 'package:moonfin/preference/preference_constants.dart';
+import 'package:moonfin/preference/user_preferences.dart';
 import 'package:moonfin/ui/screens/playback/game_playback_ui.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('game orientation', () {
+    test('maps each choice to the device orientations it allows', () {
+      expect(deviceOrientationsFor(GamePlaybackOrientation.landscape), [
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+      expect(deviceOrientationsFor(GamePlaybackOrientation.portrait), [
+        DeviceOrientation.portraitUp,
+      ]);
+      expect(
+        deviceOrientationsFor(GamePlaybackOrientation.auto),
+        DeviceOrientation.values,
+      );
+    });
+
+    test('is landscape without preferences and stored otherwise', () async {
+      expect(
+        currentGamePlaybackOrientation(),
+        GamePlaybackOrientation.landscape,
+      );
+      SharedPreferences.setMockInitialValues({
+        'pref_game_playback_orientation': 'portrait',
+      });
+      final store = PreferenceStore();
+      await store.init();
+      GetIt.instance.registerSingleton<PreferenceStore>(store);
+      GetIt.instance.registerSingleton<UserPreferences>(UserPreferences(store));
+      addTearDown(GetIt.instance.reset);
+      expect(
+        currentGamePlaybackOrientation(),
+        GamePlaybackOrientation.portrait,
+      );
+      await saveGamePlaybackOrientation(GamePlaybackOrientation.auto);
+      expect(currentGamePlaybackOrientation(), GamePlaybackOrientation.auto);
+    });
+  });
 
   group('wrapGamePlaybackMenuSelection', () {
     test('wraps forward and backward through index-driven menus', () {

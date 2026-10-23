@@ -3,6 +3,7 @@ import 'package:get_it/get_it.dart';
 import 'package:moonfin_design/moonfin_design.dart';
 
 import '../../../util/language_codes.dart';
+import '../../../util/remote_subtitle_labels.dart';
 import '../../../preference/preference_constants.dart';
 import '../../../preference/user_preferences.dart';
 import '../../../sipflix/sipflix_settings_mode.dart';
@@ -33,7 +34,7 @@ class SubtitleSettingsScreen extends StatelessWidget {
     return withCleanSettingsTypography(
       context,
       Scaffold(
-        appBar: buildSettingsAppBar(context, Text(l10n.subtitlePreferences)),
+        appBar: buildSettingsAppBar(context, Text(l10n.subtitles)),
         body: ListenableBuilder(
           listenable: prefs,
           builder: (context, _) {
@@ -72,6 +73,18 @@ class SubtitleSettingsScreen extends StatelessWidget {
                         SubtitleMode.none => l10n.subtitleModeNoneDescription,
                       },
                     ),
+                    if (SipflixSettingsMode.advanced)
+                      MultiSelectPreferenceTile(
+                        preference: UserPreferences.subtitleDownloadLanguages,
+                        title: l10n.subtitleDownloadLanguages,
+                        description: l10n.subtitleDownloadLanguagesDescription,
+                        icon: Icons.download,
+                        // Every language, since the providers cover far more
+                        // than the app is translated into.
+                        options: kIso6392Languages,
+                        emptyLabel: l10n.auto,
+                        maxSelected: maxSubtitleDownloadLanguages,
+                      ),
                   ],
                 ),
                 if (showStreamSettings) ...[
@@ -84,20 +97,42 @@ class SubtitleSettingsScreen extends StatelessWidget {
                         icon: Icons.language,
                         options: langOptions,
                       ),
-                      if (advanced) ...[
+                      if (PlatformDetection.isAndroid)
+                        StringPickerPreferenceTile(
+                          preference: UserPreferences
+                              .preferredSecondarySubtitleLanguage,
+                          title: l10n.preferredSecondarySubtitleLanguage,
+                          icon: Icons.language,
+                          options: langOptions,
+                        ),
+                      if (SipflixSettingsMode.advanced)
                         StringPickerPreferenceTile(
                           preference: UserPreferences.fallbackSubtitleLanguage,
                           title: l10n.fallbackSubtitleLanguage,
                           icon: Icons.language,
                           options: langOptions,
                         ),
+                      if (SipflixSettingsMode.advanced)
                         SwitchPreferenceTile(
                           preference: UserPreferences.preferSdhSubtitles,
                           title: l10n.preferSdhSubtitles,
                           subtitle: l10n.preferSdhSubtitlesSubtitle,
                           icon: Icons.hearing,
                         ),
-                      ],
+                      if (SipflixSettingsMode.advanced)
+                        SwitchPreferenceTile(
+                          preference: UserPreferences.preferTextSubtitles,
+                          title: l10n.preferTextSubtitles,
+                          subtitle: l10n.preferTextSubtitlesSubtitle,
+                          icon: Icons.subtitles,
+                        ),
+                      if (SipflixSettingsMode.advanced)
+                        SwitchPreferenceTile(
+                          preference: UserPreferences.preferExternalSubtitles,
+                          title: l10n.preferExternalSubtitles,
+                          subtitle: l10n.preferExternalSubtitlesSubtitle,
+                          icon: Icons.file_download,
+                        ),
                     ],
                   ),
                   SettingsSectionHeader(l10n.subtitleCustomization),
@@ -146,20 +181,23 @@ class SubtitleSettingsScreen extends StatelessWidget {
                         },
                       ),
                       if (PlatformDetection.isAndroid && advanced) ...[
-                        SwitchPreferenceTile(
-                          preference:
-                              UserPreferences.subtitlesUseEmbeddedStyles,
-                          title: l10n.subtitlesUseEmbeddedStyles,
-                          subtitle: l10n.subtitlesUseEmbeddedStylesSubtitle,
-                          icon: Icons.format_paint,
-                        ),
-                        SwitchPreferenceTile(
-                          preference:
-                              UserPreferences.subtitlesUseEmbeddedFontSizes,
-                          title: l10n.subtitlesUseEmbeddedFontSizes,
-                          subtitle: l10n.subtitlesUseEmbeddedFontSizesSubtitle,
-                          icon: Icons.format_size,
-                        ),
+                        if (SipflixSettingsMode.advanced)
+                          SwitchPreferenceTile(
+                            preference:
+                                UserPreferences.subtitlesUseEmbeddedStyles,
+                            title: l10n.subtitlesUseEmbeddedStyles,
+                            subtitle: l10n.subtitlesUseEmbeddedStylesSubtitle,
+                            icon: Icons.format_paint,
+                          ),
+                        if (SipflixSettingsMode.advanced)
+                          SwitchPreferenceTile(
+                            preference:
+                                UserPreferences.subtitlesUseEmbeddedFontSizes,
+                            title: l10n.subtitlesUseEmbeddedFontSizes,
+                            subtitle:
+                                l10n.subtitlesUseEmbeddedFontSizesSubtitle,
+                            icon: Icons.format_size,
+                          ),
                       ],
                     ],
                   ),
@@ -167,18 +205,20 @@ class SubtitleSettingsScreen extends StatelessWidget {
                     SettingsSectionHeader(l10n.subtitleRendering),
                     adaptiveListSection(
                       children: [
-                        SwitchPreferenceTile(
-                          preference: UserPreferences.pgsDirectPlay,
-                          title: l10n.pgsDirectPlay,
-                          subtitle: l10n.directPlayPgsSubtitles,
-                          icon: Icons.image,
-                        ),
-                        SwitchPreferenceTile(
-                          preference: UserPreferences.assDirectPlay,
-                          title: l10n.assSsaDirectPlay,
-                          subtitle: l10n.directPlayAssSsaSubtitles,
-                          icon: Icons.text_snippet,
-                        ),
+                        if (SipflixSettingsMode.advanced)
+                          SwitchPreferenceTile(
+                            preference: UserPreferences.pgsDirectPlay,
+                            title: l10n.pgsDirectPlay,
+                            subtitle: l10n.directPlayPgsSubtitles,
+                            icon: Icons.image,
+                          ),
+                        if (SipflixSettingsMode.advanced)
+                          SwitchPreferenceTile(
+                            preference: UserPreferences.assDirectPlay,
+                            title: l10n.assSsaDirectPlay,
+                            subtitle: l10n.directPlayAssSsaSubtitles,
+                            icon: Icons.text_snippet,
+                          ),
                       ],
                     ),
                   ],

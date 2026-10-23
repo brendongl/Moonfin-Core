@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'insecure_certificates.dart';
+import 'package:server_core/server_core.dart';
 
 void configureHttpOverrides() {
   // Some strict or older Nginx reverse proxies on 443 abort the handshake unless
@@ -27,6 +27,7 @@ class _MoonfinHttpOverrides extends HttpOverrides {
     // (self-signed / private-CA servers). The flag is read on every failed
     // handshake, so the toggle applies live without reinstalling the override.
     client.badCertificateCallback = (_, _, _) => gAllowSelfSignedCertificates;
+    applyClientCertificates(client, fallback: secContext);
     return client;
   }
 }

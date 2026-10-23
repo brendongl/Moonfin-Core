@@ -18,46 +18,27 @@ class JellyfinAdminLiveTvApi implements AdminLiveTvApi {
 
   @override
   Future<List<Map<String, dynamic>>> getTunerHostTypes() async {
-    final response = await _getWithFallback([
-      '/LiveTv/TunerHosts/Types',
-    ]);
+    final response = await _dio.get('/LiveTv/TunerHosts/Types');
     return _asList(response.data);
   }
 
   @override
   Future<Map<String, dynamic>> addTunerHost(Map<String, dynamic> tunerInfo) async {
-    final response = await _postWithFallback([
-      '/LiveTv/TunerHosts',
-      '/LiveTv/Tuners',
-    ], data: tunerInfo);
+    final response = await _dio.post('/LiveTv/TunerHosts', data: tunerInfo);
     return _asMap(response.data);
   }
 
   @override
   Future<void> removeTunerHost(String id) async {
-    await _deleteWithFallback(
-      [
-        '/LiveTv/TunerHosts',
-      ],
-      queryParameters: {'id': id},
-    );
-  }
-
-  @override
-  Future<void> resetTuner(String tunerId) async {
-    await _postWithFallback([
-      '/LiveTv/TunerHosts/$tunerId/Reset',
-      '/LiveTv/Tuners/$tunerId/Reset',
-      '/LiveTv/Tuners/$tunerId/ResetTuner',
-    ]);
+    await _dio.delete('/LiveTv/TunerHosts', queryParameters: {'id': id});
   }
 
   @override
   Future<List<Map<String, dynamic>>> discoverTuners() async {
-    final response = await _getWithFallback([
+    final response = await _dio.get(
       '/LiveTv/Tuners/Discover',
-      '/LiveTv/TunerHosts/Discover',
-    ]);
+      queryParameters: {'NewDevicesOnly': true},
+    );
     return _asList(response.data);
   }
 
@@ -72,58 +53,51 @@ class JellyfinAdminLiveTvApi implements AdminLiveTvApi {
   }
 
   @override
+  Future<Map<String, dynamic>> getDefaultListingProvider() async {
+    final response = await _dio.get('/LiveTv/ListingProviders/Default');
+    return _asMap(response.data);
+  }
+
+  @override
   Future<Map<String, dynamic>> addListingProvider(
     Map<String, dynamic> providerInfo, {
     bool validateLogin = false,
     bool validateListings = false,
   }) async {
-    final query = <String, dynamic>{
-      if (validateLogin) 'validateLogin': true,
-      if (validateListings) 'validateListings': true,
-    };
-    final response = await _postWithFallback(
-      [
-        '/LiveTv/ListingProviders',
-        '/LiveTv/Listings/Providers',
-      ],
+    final response = await _dio.post(
+      '/LiveTv/ListingProviders',
       data: providerInfo,
-      queryParameters: query.isEmpty ? null : query,
+      queryParameters: {
+        if (validateLogin) 'ValidateLogin': true,
+        if (validateListings) 'ValidateListings': true,
+      },
     );
     return _asMap(response.data);
   }
 
   @override
   Future<void> removeListingProvider(String id) async {
-    await _deleteWithFallback(
-      [
-        '/LiveTv/ListingProviders',
-      ],
-      queryParameters: {'id': id},
-    );
+    await _dio.delete('/LiveTv/ListingProviders', queryParameters: {'id': id});
   }
 
   @override
   Future<List<Map<String, dynamic>>> getSchedulesDirectCountries() async {
-    final response = await _getWithFallback([
-      '/LiveTv/ListingProviders/SchedulesDirect/Countries',
-    ]);
+    final response =
+        await _dio.get('/LiveTv/ListingProviders/SchedulesDirect/Countries');
     final data = response.data;
     final countries = <Map<String, dynamic>>[];
-    // The server groups countries by region, so flatten every region's list
-    // into a single ordered set of {ShortName, FullName} entries.
+    // The server passes the Schedules Direct reply through, a map of region
+    // to [{shortName, fullName}]. The ZZZ region is left out.
     if (data is Map) {
-      for (final region in data.values) {
-        if (region is List) {
-          countries.addAll(
-            region.whereType<Map>().map((e) => e.cast<String, dynamic>()),
-          );
-        }
-      }
-    } else if (data is List) {
-      countries.addAll(
-        data.whereType<Map>().map((e) => e.cast<String, dynamic>()),
-      );
+      data.forEach((region, list) {
+        if (region == 'ZZZ' || list is! List) return;
+        countries.addAll(
+          list.whereType<Map>().map((e) => e.cast<String, dynamic>()),
+        );
+      });
     }
+    String name(Map<String, dynamic> c) => c['fullName']?.toString() ?? '';
+    countries.sort((a, b) => name(a).compareTo(name(b)));
     return countries;
   }
 
@@ -133,51 +107,57 @@ class JellyfinAdminLiveTvApi implements AdminLiveTvApi {
     required String location,
     required String country,
   }) async {
-    final response = await _getWithFallback(
-      ['/LiveTv/ListingProviders/Lineups'],
+    final response = await _dio.get(
+      '/LiveTv/ListingProviders/Lineups',
       queryParameters: {
-        if (providerId != null && providerId.isNotEmpty) 'id': providerId,
-        'location': location,
-        'country': country,
+        if (providerId != null && providerId.isNotEmpty) 'Id': providerId,
+        'Location': location,
+        'Country': country,
       },
     );
     return _asList(response.data);
   }
 
   @override
-  Future<void> setChannelMappings(Map<String, dynamic> mappings) async {
-    await _postWithFallback([
+  Future<Map<String, dynamic>> getChannelMappingOptions(String providerId) async {
+    final response = await _dio.get(
+      '/LiveTv/ChannelMappingOptions',
+      queryParameters: {'providerId': providerId},
+    );
+    return _asMap(response.data);
+  }
+
+  @override
+  Future<Map<String, dynamic>> setChannelMapping(
+    String providerId,
+    String tunerChannelId,
+    String providerChannelId,
+  ) async {
+    final response = await _dio.post(
       '/LiveTv/ChannelMappings',
-      '/LiveTv/Channels/Mappings',
-    ], data: mappings);
+      data: {
+        'ProviderId': providerId,
+        'TunerChannelId': tunerChannelId,
+        'ProviderChannelId': providerChannelId,
+      },
+    );
+    return _asMap(response.data);
   }
 
   @override
   Future<Map<String, dynamic>> getLiveTvConfiguration() async {
-    final response = await _getWithFallback([
-      '/System/Configuration/livetv',
-      '/System/Configuration/LiveTv',
-    ]);
+    final response = await _dio.get('/System/Configuration/livetv');
     return _asMap(response.data);
   }
 
   @override
   Future<void> updateLiveTvConfiguration(Map<String, dynamic> config) async {
-    await _postWithFallback([
-      '/System/Configuration/livetv',
-      '/System/Configuration/LiveTv',
-    ], data: config);
+    await _dio.post('/System/Configuration/livetv', data: config);
   }
 
   List<Map<String, dynamic>> _asList(dynamic data) {
     if (data is List) {
       return data.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList();
-    }
-    if (data is Map<String, dynamic>) {
-      final items = data['Items'] ?? data['items'] ?? data['TunerHosts'] ?? data['Providers'];
-      if (items is List) {
-        return items.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList();
-      }
     }
     return const [];
   }
@@ -185,67 +165,5 @@ class JellyfinAdminLiveTvApi implements AdminLiveTvApi {
   Map<String, dynamic> _asMap(dynamic data) {
     if (data is Map<String, dynamic>) return data;
     return const {};
-  }
-
-  Future<Response<dynamic>> _getWithFallback(
-    List<String> paths, {
-    Map<String, dynamic>? queryParameters,
-  }) async {
-    DioException? lastDioError;
-    for (final path in paths) {
-      try {
-        return await _dio.get(path, queryParameters: queryParameters);
-      } on DioException catch (e) {
-        final status = e.response?.statusCode;
-        if (status == 404 || status == 405 || status == 501) {
-          lastDioError = e;
-          continue;
-        }
-        rethrow;
-      }
-    }
-    throw lastDioError ?? StateError('No live TV endpoint responded');
-  }
-
-  Future<Response<dynamic>> _postWithFallback(
-    List<String> paths, {
-    Object? data,
-    Map<String, dynamic>? queryParameters,
-  }) async {
-    DioException? lastDioError;
-    for (final path in paths) {
-      try {
-        return await _dio.post(path, data: data, queryParameters: queryParameters);
-      } on DioException catch (e) {
-        final status = e.response?.statusCode;
-        if (status == 404 || status == 405 || status == 501) {
-          lastDioError = e;
-          continue;
-        }
-        rethrow;
-      }
-    }
-    throw lastDioError ?? StateError('No live TV endpoint responded');
-  }
-
-  Future<void> _deleteWithFallback(
-    List<String> paths, {
-    Map<String, dynamic>? queryParameters,
-  }) async {
-    DioException? lastDioError;
-    for (final path in paths) {
-      try {
-        await _dio.delete(path, queryParameters: queryParameters);
-        return;
-      } on DioException catch (e) {
-        final status = e.response?.statusCode;
-        if (status == 404 || status == 405 || status == 501) {
-          lastDioError = e;
-          continue;
-        }
-        rethrow;
-      }
-    }
-    throw lastDioError ?? StateError('No live TV endpoint responded');
   }
 }

@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
-import 'package:moonfin_design/moonfin_design.dart';
 import 'package:server_core/server_core.dart';
 
+import '../admin_draft.dart';
 import '../widgets/admin_form_styles.dart';
 import '../widgets/filesystem_browser.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../../util/error_message.dart';
+import 'admin_number_input.dart';
 
 class AdminPlaybackSettingsScreen extends StatefulWidget {
   const AdminPlaybackSettingsScreen({super.key});
@@ -17,37 +18,45 @@ class AdminPlaybackSettingsScreen extends StatefulWidget {
 }
 
 class _AdminPlaybackSettingsScreenState
-    extends State<AdminPlaybackSettingsScreen> {
+    extends State<AdminPlaybackSettingsScreen>
+    with AdminDraftHost {
   late final AdminSystemApi _api;
   Map<String, dynamic>? _config;
   bool _loading = true;
-  bool _saving = false;
   String? _error;
   String? _browsingField;
+  // Bumped when the folder browser picks a path, so its field shows it.
+  int _picks = 0;
 
+  // 'none' is localized at build.
   static const _hwAccelOptions = [
-    ('none', 'none'),
+    ('none', ''),
     ('amf', 'AMD AMF'),
-    ('vaapi', 'VA-API'),
-    ('qsv', 'qsv'),
-    ('nvenc', 'NVIDIA NVENC'),
-    ('v4l2m2m', 'V4L2'),
-    ('rkmpp', 'rkmpp'),
-    ('videotoolbox', 'VideoToolbox'),
+    ('nvenc', 'Nvidia NVENC'),
+    ('qsv', 'Intel Quicksync (QSV)'),
+    ('vaapi', 'Video Acceleration API (VAAPI)'),
+    ('rkmpp', 'Rockchip MPP (RKMPP)'),
+    ('videotoolbox', 'Apple VideoToolBox'),
+    ('v4l2m2m', 'Video4Linux2 (V4L2)'),
   ];
 
+  // Each codec and the hardware types that can decode it.
   static const _hwDecodeCodecs = [
-    ('h264', 'H.264'),
-    ('hevc', 'HEVC'),
-    ('mpeg2video', 'MPEG-2'),
-    ('vc1', 'VC-1'),
-    ('vp8', 'VP8'),
-    ('vp9', 'VP9'),
-    ('av1', 'AV1'),
+    ('h264', 'H.264', ['amf', 'nvenc', 'qsv', 'vaapi', 'rkmpp', 'videotoolbox', 'v4l2m2m']),
+    ('hevc', 'HEVC', ['amf', 'nvenc', 'qsv', 'vaapi', 'rkmpp', 'videotoolbox']),
+    ('mpeg1video', 'MPEG-1', ['rkmpp']),
+    ('mpeg2video', 'MPEG-2', ['amf', 'nvenc', 'qsv', 'vaapi', 'rkmpp']),
+    ('mpeg4', 'MPEG-4', ['nvenc', 'rkmpp']),
+    ('vc1', 'VC-1', ['amf', 'nvenc', 'qsv', 'vaapi']),
+    ('vp8', 'VP8', ['nvenc', 'qsv', 'vaapi', 'rkmpp', 'videotoolbox']),
+    ('vp9', 'VP9', ['amf', 'nvenc', 'qsv', 'vaapi', 'rkmpp', 'videotoolbox']),
+    ('av1', 'AV1', ['amf', 'nvenc', 'qsv', 'vaapi', 'rkmpp', 'videotoolbox']),
   ];
+  static const _tenBitTypes = ['amf', 'nvenc', 'qsv', 'vaapi', 'rkmpp'];
+  static const _rextTypes = ['nvenc', 'qsv', 'vaapi'];
+  static const _hwaTypes = ['amf', 'nvenc', 'qsv', 'vaapi', 'rkmpp', 'videotoolbox'];
 
-  // Dropdown option lists (value, display label). "Auto"/"None" sentinels use
-  // the server's own empty-string / literal values so the round-trip is exact.
+  // Values are the server's lowercase/PascalCase enum names, sent as is.
   static const _tonemapAlgorithms = [
     ('none', 'None'),
     ('clip', 'Clip'),
@@ -71,16 +80,15 @@ class _AdminPlaybackSettingsScreenState
     ('pc', 'PC'),
   ];
   static const _encoderPresets = [
-    ('', 'Auto'),
-    ('veryslow', 'veryslow'),
-    ('slower', 'slower'),
-    ('slow', 'slow'),
-    ('medium', 'medium'),
-    ('fast', 'fast'),
-    ('faster', 'faster'),
-    ('veryfast', 'veryfast'),
-    ('superfast', 'superfast'),
-    ('ultrafast', 'ultrafast'),
+    'veryslow',
+    'slower',
+    'slow',
+    'medium',
+    'fast',
+    'faster',
+    'veryfast',
+    'superfast',
+    'ultrafast',
   ];
   static const _deinterlaceMethods = [
     ('yadif', 'YADIF'),
@@ -101,18 +109,27 @@ class _AdminPlaybackSettingsScreenState
     _load();
   }
 
+  Future<Map<String, dynamic>> _fetch() => _api.getNamedConfiguration('encoding');
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final config = await _api.getNamedConfiguration('encoding');
+      final config = await _fetch();
       if (!mounted) return;
       setState(() {
         _config = config;
         _loading = false;
       });
+      hostDraft(
+        AdminDraft.single(
+          working: config,
+          reload: _fetch,
+          post: (value) => _api.updateNamedConfiguration('encoding', value),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -122,32 +139,9 @@ class _AdminPlaybackSettingsScreenState
     }
   }
 
-  Future<void> _save() async {
-    if (_config == null) return;
-    setState(() => _saving = true);
-    try {
-      await _api.updateNamedConfiguration('encoding', _config!);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppLocalizations.of(context).adminPlaybackSaved)),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        final l10n = AppLocalizations.of(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.adminSettingsSaveFailed(describeError(e, l10n)))),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  List<String> _getHardwareDecodingCodecs() {
-    final raw = _config!['HardwareDecodingCodecs'];
-    if (raw is List) return List<String>.from(raw);
-    return [];
+  void _set(String key, Object? value) {
+    setState(() => _config![key] = value);
+    edited();
   }
 
   @override
@@ -174,307 +168,413 @@ class _AdminPlaybackSettingsScreenState
       );
     }
 
-    final currentAccel =
-        _config!['HardwareAccelerationType']?.toString() ?? 'none';
+    // A missing type counts as none.
+    final type = _config!['HardwareAccelerationType']?.toString() ?? '';
+    final accel = type.isEmpty ? 'none' : type;
+    final isHwa = _hwaTypes.contains(accel);
+    final qsvOrVaapi = accel == 'qsv' || accel == 'vaapi';
+    final codecs = _hwDecodeCodecs.where((c) => c.$3.contains(accel)).toList();
+
+    final toneMapping = [
+      if (qsvOrVaapi) ...[
+        _switch('EnableVppTonemapping', l10n.adminPlaybackEnableVppTonemapping),
+        _number('VppTonemappingBrightness',
+            l10n.adminPlaybackVppTonemappingBrightness,
+            fallback: 16, max: 100, decimal: true),
+        _number('VppTonemappingContrast',
+            l10n.adminPlaybackVppTonemappingContrast,
+            fallback: 1, min: 1, max: 2, decimal: true),
+      ],
+      if (accel == 'videotoolbox')
+        _switch('EnableVideoToolboxTonemapping',
+            l10n.adminPlaybackEnableVtTonemapping),
+      if (accel == 'none' || isHwa) ...[
+        if (isHwa)
+          _switch('EnableTonemapping', l10n.adminPlaybackEnableTonemapping),
+        _dropdown('TonemappingAlgorithm',
+            l10n.adminPlaybackTonemappingAlgorithm, _tonemapAlgorithms),
+        if (isHwa)
+          _dropdown('TonemappingMode', l10n.adminPlaybackTonemappingMode,
+              _tonemapModes),
+        _dropdown('TonemappingRange', l10n.adminPlaybackTonemappingRange,
+            _tonemapRanges),
+        _number('TonemappingDesat', l10n.adminPlaybackTonemappingDesat,
+            fallback: 0, decimal: true),
+        _number('TonemappingPeak', l10n.adminPlaybackTonemappingPeak,
+            fallback: 100, decimal: true),
+        _number('TonemappingParam', l10n.adminPlaybackTonemappingParam,
+            fallback: 0, decimal: true),
+      ],
+    ];
 
     return ListView(
-      padding: EdgeInsets.fromLTRB(16, 16, 16, bottomSafe + 40),
+      padding: EdgeInsets.fromLTRB(16, 20, 16, bottomSafe + 40),
       children: [
         adminScreenHeader(
           context,
-          title: l10n.adminPlaybackTranscoding,
-          subtitle: l10n.adminPlaybackHwAccel,
+          title: l10n.adminDrawerTranscoding,
           icon: Icons.swap_horiz,
         ),
-        _sectionHeader(l10n.adminPlaybackHwAccel),
-        DropdownButtonFormField<String>(
-          initialValue: _hwAccelOptions.any((o) => o.$1 == currentAccel)
-              ? currentAccel
-              : 'none',
-          decoration:
-              adminInputDecoration(label: l10n.adminPlaybackHwAccelLabel),
-          items: _hwAccelOptions
-              .map(
-                (o) => DropdownMenuItem(
-                  value: o.$1,
-                  child: Text(_hwAccelLabel(o.$1, o.$2, l10n)),
+        draftKeyed(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              adminSection(
+                context,
+                title: l10n.adminPlaybackHwAccel,
+                icon: Icons.memory,
+                children: [
+                  _dropdown(
+                    'HardwareAccelerationType',
+                    l10n.adminPlaybackHwAccelLabel,
+                    [
+                      for (final o in _hwAccelOptions)
+                        (o.$1, o.$1 == 'none' ? l10n.none : o.$2),
+                    ],
+                  ),
+                  if (accel != 'none')
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: Text(
+                        l10n.adminPlaybackHwAccelWarning,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context).colorScheme.error,
+                            ),
+                      ),
+                    ),
+                  if (accel == 'vaapi')
+                    _text('VaapiDevice', l10n.adminPlaybackVaapiDevice,
+                        hint: '/dev/dri/renderD128'),
+                  if (accel == 'qsv')
+                    _text('QsvDevice', l10n.adminPlaybackQsvDevice),
+                  if (accel != 'none' && codecs.isNotEmpty)
+                    _codecChips(l10n, codecs),
+                  if (_tenBitTypes.contains(accel)) ...[
+                    _switch('EnableDecodingColorDepth10Hevc',
+                        l10n.adminPlaybackColorDepth10Hevc),
+                    _switch('EnableDecodingColorDepth10Vp9',
+                        l10n.adminPlaybackColorDepth10Vp9),
+                  ],
+                  if (_rextTypes.contains(accel)) ...[
+                    _switch('EnableDecodingColorDepth10HevcRext',
+                        l10n.adminPlaybackColorDepth10HevcRext),
+                    _switch('EnableDecodingColorDepth12HevcRext',
+                        l10n.adminPlaybackColorDepth12HevcRext),
+                  ],
+                  if (accel == 'nvenc')
+                    _switch('EnableEnhancedNvdecDecoder',
+                        l10n.adminPlaybackEnhancedNvdec),
+                  if (accel == 'qsv')
+                    _switch('PreferSystemNativeHwDecoder',
+                        l10n.adminPlaybackPreferNativeDecoder),
+                ],
+              ),
+              if (accel != 'none')
+                adminSection(
+                  context,
+                  title: l10n.adminPlaybackHwEncodingSection,
+                  icon: Icons.developer_board,
+                  children: [
+                    _switch('EnableHardwareEncoding',
+                        l10n.adminPlaybackEnableHwEncoding),
+                    if (qsvOrVaapi) ...[
+                      _switch('EnableIntelLowPowerH264HwEncoder',
+                          l10n.adminPlaybackIntelLowPowerH264),
+                      _switch('EnableIntelLowPowerHevcHwEncoder',
+                          l10n.adminPlaybackIntelLowPowerHevc),
+                    ],
+                  ],
                 ),
-              )
-              .toList(),
-          onChanged: (v) =>
-              setState(() => _config!['HardwareAccelerationType'] = v),
-        ),
-        if (currentAccel == 'vaapi') ...[
-          const SizedBox(height: 12),
-          _textField('VaapiDevice', l10n.adminPlaybackVaapiDevice,
-              hint: '/dev/dri/renderD128'),
-        ],
-        const SizedBox(height: 16),
-        _switchTile('EnableHardwareEncoding', l10n.adminPlaybackEnableHwEncoding),
-        const SizedBox(height: 8),
-        Text(l10n.adminPlaybackEnableHwDecoding,
-            style: Theme.of(context).textTheme.titleSmall),
-        ..._buildCodecToggles(),
-        if (currentAccel == 'qsv') ...[
-          const SizedBox(height: 12),
-          _textField('QsvDevice', l10n.adminPlaybackQsvDevice),
-        ],
-        if (currentAccel == 'nvenc')
-          _switchTile(
-              'EnableEnhancedNvdecDecoder', l10n.adminPlaybackEnhancedNvdec),
-        if (currentAccel != 'none')
-          _switchTile('PreferSystemNativeHwDecoder',
-              l10n.adminPlaybackPreferNativeDecoder),
-        const SizedBox(height: 8),
-        Text(l10n.adminPlaybackColorDepth,
-            style: Theme.of(context).textTheme.titleSmall),
-        _switchTile(
-            'EnableDecodingColorDepth10Hevc', l10n.adminPlaybackColorDepth10Hevc),
-        _switchTile(
-            'EnableDecodingColorDepth10Vp9', l10n.adminPlaybackColorDepth10Vp9),
-        _switchTile('EnableDecodingColorDepth10HevcRext',
-            l10n.adminPlaybackColorDepth10HevcRext),
-        _switchTile('EnableDecodingColorDepth12HevcRext',
-            l10n.adminPlaybackColorDepth12HevcRext),
-        const Divider(height: 32),
-        _sectionHeader(l10n.adminPlaybackHwEncodingSection),
-        _switchTile('AllowHevcEncoding', l10n.adminPlaybackAllowHevcEncoding),
-        _switchTile('AllowAv1Encoding', l10n.adminPlaybackAllowAv1Encoding),
-        if (currentAccel == 'qsv' || currentAccel == 'vaapi') ...[
-          _switchTile('EnableIntelLowPowerH264HwEncoder',
-              l10n.adminPlaybackIntelLowPowerH264),
-          _switchTile('EnableIntelLowPowerHevcHwEncoder',
-              l10n.adminPlaybackIntelLowPowerHevc),
-        ],
-        const Divider(height: 32),
-        _sectionHeader(l10n.adminPlaybackToneMapping),
-        _switchTile('EnableTonemapping', l10n.adminPlaybackEnableTonemapping),
-        if (currentAccel == 'qsv' || currentAccel == 'vaapi')
-          _switchTile(
-              'EnableVppTonemapping', l10n.adminPlaybackEnableVppTonemapping),
-        if (currentAccel == 'videotoolbox')
-          _switchTile('EnableVideoToolboxTonemapping',
-              l10n.adminPlaybackEnableVtTonemapping),
-        const SizedBox(height: 12),
-        _dropdownField('TonemappingAlgorithm',
-            l10n.adminPlaybackTonemappingAlgorithm, _tonemapAlgorithms),
-        const SizedBox(height: 12),
-        _dropdownField('TonemappingMode', l10n.adminPlaybackTonemappingMode,
-            _tonemapModes),
-        const SizedBox(height: 12),
-        _dropdownField('TonemappingRange', l10n.adminPlaybackTonemappingRange,
-            _tonemapRanges),
-        const SizedBox(height: 12),
-        _doubleField('TonemappingDesat', l10n.adminPlaybackTonemappingDesat),
-        const SizedBox(height: 12),
-        _doubleField('TonemappingPeak', l10n.adminPlaybackTonemappingPeak),
-        const SizedBox(height: 12),
-        _doubleField('TonemappingParam', l10n.adminPlaybackTonemappingParam),
-        if (currentAccel == 'qsv' || currentAccel == 'vaapi') ...[
-          const SizedBox(height: 12),
-          _doubleField('VppTonemappingBrightness',
-              l10n.adminPlaybackVppTonemappingBrightness),
-          const SizedBox(height: 12),
-          _doubleField('VppTonemappingContrast',
-              l10n.adminPlaybackVppTonemappingContrast),
-        ],
-        const Divider(height: 32),
-        _sectionHeader(l10n.adminPlaybackPresetsQuality),
-        _dropdownField('EncoderPreset', l10n.adminPlaybackEncoderPreset,
-            _encoderPresets),
-        const SizedBox(height: 12),
-        _intField('H264Crf', l10n.adminPlaybackH264Crf),
-        const SizedBox(height: 12),
-        _intField('H265Crf', l10n.adminPlaybackH265Crf),
-        const SizedBox(height: 12),
-        _dropdownField('DeinterlaceMethod',
-            l10n.adminPlaybackDeinterlaceMethod, _deinterlaceMethods),
-        _switchTile(
-            'DeinterlaceDoubleRate', l10n.adminPlaybackDeinterlaceDoubleRate),
-        const Divider(height: 32),
-        _sectionHeader(l10n.adminPlaybackAudioSection),
-        _switchTile('EnableAudioVbr', l10n.adminPlaybackEnableAudioVbr),
-        const SizedBox(height: 12),
-        _doubleField('DownMixAudioBoost', l10n.adminPlaybackDownmixBoost),
-        const SizedBox(height: 12),
-        _dropdownField('DownMixStereoAlgorithm',
-            l10n.adminPlaybackDownmixAlgorithm, _downmixAlgorithms),
-        const SizedBox(height: 12),
-        _intField('MaxMuxingQueueSize', l10n.adminPlaybackMaxMuxingQueue),
-        const Divider(height: 32),
-        _sectionHeader(l10n.adminPlaybackEncoding),
-        _intField('EncodingThreadCount', l10n.adminPlaybackEncodingThreads,
-            subtitle: l10n.adminPlaybackAutomatic),
-        const SizedBox(height: 12),
-        _pathField('TranscodingTempPath', l10n.adminPlaybackTranscodeTempPath),
-        const SizedBox(height: 12),
-        _switchTile('EnableFallbackFont', l10n.adminPlaybackFallbackFont),
-        if (_config!['EnableFallbackFont'] == true) ...[
-          const SizedBox(height: 8),
-          _pathField('FallbackFontPath', l10n.adminPlaybackFallbackFontPath),
-        ],
-        const SizedBox(height: 8),
-        _switchTile('EnableSubtitleExtraction',
-            l10n.adminPlaybackEnableSubtitleExtraction),
-        const Divider(height: 32),
-        _sectionHeader(l10n.adminPlaybackStreaming),
-        _switchTile(
-            'EnableSegmentDeletion', l10n.adminPlaybackSegmentDeletion),
-        const SizedBox(height: 8),
-        _intField('SegmentKeepSeconds', l10n.adminPlaybackSegmentKeep),
-        const SizedBox(height: 12),
-        _switchTile('EnableThrottling', l10n.adminPlaybackThrottleBuffering),
-        const SizedBox(height: 8),
-        _intField('ThrottleDelaySeconds', l10n.adminPlaybackThrottleDelay),
-        const SizedBox(height: AppSpacing.spaceXl),
-        adminSaveButton(
-          label: l10n.save,
-          saving: _saving,
-          onPressed: _save,
+              adminSection(
+                context,
+                title: l10n.adminPlaybackEncoding,
+                icon: Icons.movie_filter_outlined,
+                children: [
+                  _switch('AllowHevcEncoding', l10n.adminPlaybackAllowHevcEncoding),
+                  _switch('AllowAv1Encoding', l10n.adminPlaybackAllowAv1Encoding),
+                  _dropdown('EncoderPreset', l10n.adminPlaybackEncoderPreset, [
+                    ('auto', l10n.adminPlaybackAutoOption),
+                    for (final p in _encoderPresets) (p, p),
+                  ]),
+                  _number('H265Crf', l10n.adminPlaybackH265Crf,
+                      fallback: 28, max: 51),
+                  _number('H264Crf', l10n.adminPlaybackH264Crf,
+                      fallback: 23, max: 51),
+                  // -1 and 0 both let FFmpeg pick, shown as Auto and Max.
+                  _dropdown(
+                    'EncodingThreadCount',
+                    l10n.adminPlaybackEncodingThreads,
+                    [
+                      (-1, l10n.adminPlaybackAutoOption),
+                      for (var i = 1; i <= 16; i++) (i, '$i'),
+                      (0, l10n.adminTranscodingThreadMax),
+                    ],
+                    helper: l10n.adminTranscodingThreadCountHelp,
+                  ),
+                  _dropdown('DeinterlaceMethod',
+                      l10n.adminPlaybackDeinterlaceMethod, _deinterlaceMethods),
+                  _switch('DeinterlaceDoubleRate',
+                      l10n.adminPlaybackDeinterlaceDoubleRate),
+                ],
+              ),
+              if (toneMapping.isNotEmpty)
+                adminSection(
+                  context,
+                  title: l10n.adminPlaybackToneMapping,
+                  icon: Icons.hdr_on_outlined,
+                  children: toneMapping,
+                ),
+              adminSection(
+                context,
+                title: l10n.adminPlaybackAudioSection,
+                icon: Icons.graphic_eq,
+                children: [
+                  _switch('EnableAudioVbr', l10n.adminPlaybackEnableAudioVbr),
+                  _number('DownMixAudioBoost', l10n.adminPlaybackDownmixBoost,
+                      fallback: 2, min: 0.5, max: 3, decimal: true),
+                  _dropdown('DownMixStereoAlgorithm',
+                      l10n.adminPlaybackDownmixAlgorithm, _downmixAlgorithms),
+                  _dropdown(
+                    'HlsAudioSeekStrategy',
+                    l10n.adminTranscodingAudioSeek,
+                    [
+                      ('TrimCopiedAudio', l10n.adminTranscodingTrimCopiedAudio),
+                      ('TranscodeAudio', l10n.adminTranscodingTranscodeAudio),
+                    ],
+                    helper: l10n.adminTranscodingAudioSeekHelp,
+                  ),
+                  _number('MaxMuxingQueueSize', l10n.adminPlaybackMaxMuxingQueue,
+                      fallback: 2048),
+                ],
+              ),
+              adminSection(
+                context,
+                title: l10n.adminGeneralSectionPaths,
+                icon: Icons.folder_outlined,
+                children: [
+                  _keyed(
+                    'EncoderAppPathDisplay',
+                    adminFieldRow(
+                      label: l10n.adminTranscodingFfmpegPath,
+                      helper: l10n.adminTranscodingFfmpegPathHelp,
+                      anchor: 'transcoding.EncoderAppPathDisplay',
+                      child: TextFormField(
+                        initialValue:
+                            _config!['EncoderAppPathDisplay']?.toString() ?? '',
+                        enabled: false,
+                        decoration: adminInputDecoration(),
+                      ),
+                    ),
+                  ),
+                  _pathField('TranscodingTempPath',
+                      l10n.adminPlaybackTranscodeTempPath,
+                      writable: true),
+                  _pathField(
+                      'FallbackFontPath', l10n.adminPlaybackFallbackFontPath),
+                  _switch('EnableFallbackFont', l10n.adminPlaybackFallbackFont),
+                ],
+              ),
+              adminSection(
+                context,
+                title: l10n.adminPlaybackStreaming,
+                icon: Icons.stream,
+                children: [
+                  _switch('EnableSubtitleExtraction',
+                      l10n.adminPlaybackEnableSubtitleExtraction),
+                  _switch('EnableThrottling', l10n.adminPlaybackThrottleBuffering),
+                  _switch('EnableSegmentDeletion',
+                      l10n.adminPlaybackSegmentDeletion),
+                  _number('ThrottleDelaySeconds', l10n.adminPlaybackThrottleDelay,
+                      fallback: 180, min: 10, max: 3600),
+                  _number('SegmentKeepSeconds', l10n.adminPlaybackSegmentKeep,
+                      fallback: 720, min: 10, max: 3600),
+                ],
+              ),
+            ],
+          ),
         ),
       ],
     );
   }
 
-  List<Widget> _buildCodecToggles() {
-    final enabled = _getHardwareDecodingCodecs();
-    return _hwDecodeCodecs.map((codec) {
-      return SwitchListTile.adaptive(
-        title: Text(codec.$2),
-        dense: true,
-        value: enabled.contains(codec.$1),
-        onChanged: (v) {
-          setState(() {
-            final codecs = _getHardwareDecodingCodecs();
-            if (v) {
-              codecs.add(codec.$1);
-            } else {
-              codecs.remove(codec.$1);
-            }
-            _config!['HardwareDecodingCodecs'] = codecs;
-          });
-        },
-      );
-    }).toList();
-  }
+  /// Rows come and go with the hardware type, so each is keyed by its config
+  /// key. Otherwise a text field's state moves to the row that takes its slot.
+  Widget _keyed(String key, Widget row) =>
+      KeyedSubtree(key: ValueKey(key), child: row);
 
-  String _hwAccelLabel(String value, String fallback, AppLocalizations l10n) {
-    switch (value) {
-      case 'none':
-        return l10n.none;
-      case 'qsv':
-        return l10n.intelQuickSync;
-      case 'rkmpp':
-        return l10n.rockchipMpp;
-      default:
-        return fallback;
-    }
-  }
-
-  Widget _sectionHeader(String text) {
-    return adminSectionLabel(context, text);
-  }
-
-  Widget _textField(String key, String label, {String? hint}) {
-    return TextFormField(
-      initialValue: _config![key]?.toString() ?? '',
-      decoration: adminInputDecoration(label: label, hint: hint),
-      onChanged: (v) => _config![key] = v,
-    );
-  }
-
-  Widget _intField(String key, String label, {String? subtitle}) {
-    return TextFormField(
-      initialValue: (_config![key] as num?)?.toString() ?? '0',
-      decoration: adminInputDecoration(label: label, helper: subtitle),
-      keyboardType: TextInputType.number,
-      onChanged: (v) => _config![key] = int.tryParse(v) ?? 0,
-    );
-  }
-
-  Widget _switchTile(String key, String title) {
-    return adminSwitchRow(
-      title: title,
-      value: _config![key] as bool? ?? false,
-      onChanged: (v) => setState(() => _config![key] = v),
-    );
-  }
-
-  Widget _doubleField(String key, String label) {
-    return TextFormField(
-      initialValue: (_config![key] as num?)?.toString() ?? '',
-      decoration: adminInputDecoration(label: label),
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      onChanged: (v) {
-        final parsed = double.tryParse(v);
-        if (parsed != null) _config![key] = parsed;
-      },
-    );
-  }
-
-  Widget _dropdownField(
-    String key,
-    String label,
-    List<(String, String)> options,
+  Widget _codecChips(
+    AppLocalizations l10n,
+    List<(String, String, List<String>)> codecs,
   ) {
-    final current = _config![key]?.toString() ?? '';
-    final value =
-        options.any((o) => o.$1 == current) ? current : options.first.$1;
-    return DropdownButtonFormField<String>(
-      initialValue: value,
-      decoration: adminInputDecoration(label: label),
-      items: options
-          .map((o) => DropdownMenuItem(value: o.$1, child: Text(o.$2)))
-          .toList(),
-      onChanged: (v) => setState(() => _config![key] = v),
-    );
-  }
-
-  Widget _pathField(String key, String label) {
-    final l10n = AppLocalizations.of(context);
-    final isBrowsing = _browsingField == key;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
+    final raw = _config!['HardwareDecodingCodecs'];
+    final enabled = raw is List ? raw.map((e) => e.toString()).toList() : <String>[];
+    return _keyed(
+      'HardwareDecodingCodecs',
+      adminFieldRow(
+        label: l10n.adminTranscodingDecodingFor,
+        anchor: 'transcoding.HardwareDecodingCodecs',
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
           children: [
-            Expanded(
-              child: TextFormField(
-                key: ValueKey(_config![key]),
-                initialValue: _config![key]?.toString() ?? '',
-                decoration: InputDecoration(
-                  labelText: label,
-                  border: const OutlineInputBorder(),
+            for (final c in codecs)
+              FilterChip(
+                label: Text(c.$2),
+                selected: enabled.contains(c.$1),
+                onSelected: (on) => _set(
+                  'HardwareDecodingCodecs',
+                  on
+                      ? [...enabled, c.$1]
+                      : enabled.where((e) => e != c.$1).toList(),
                 ),
-                onChanged: (v) => _config![key] = v,
               ),
-            ),
-            const SizedBox(width: 8),
-            IconButton(
-              icon: Icon(isBrowsing ? Icons.close : Icons.folder_open),
-              tooltip: isBrowsing ? l10n.adminCloseBrowser : l10n.adminBrowse,
-              onPressed: () => setState(() {
-                _browsingField = isBrowsing ? null : key;
-              }),
-            ),
           ],
         ),
-        if (isBrowsing) ...[
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 300,
-            child: FilesystemBrowser(
-              initialPath: _config![key]?.toString(),
-              onPathSelected: (path) {
-                setState(() {
-                  _config![key] = path;
-                  _browsingField = null;
-                });
-              },
+      ),
+    );
+  }
+
+  Widget _text(String key, String label, {String? hint}) {
+    return _keyed(
+      key,
+      adminFieldRow(
+        label: label,
+        anchor: 'transcoding.$key',
+        child: TextFormField(
+          initialValue: _config![key]?.toString() ?? '',
+          decoration: adminInputDecoration(hint: hint),
+          onChanged: (v) {
+            _config![key] = v;
+            edited();
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _number(
+    String key,
+    String label, {
+    required num fallback,
+    num min = 0,
+    num? max,
+    bool decimal = false,
+  }) {
+    return _keyed(
+      key,
+      adminFieldRow(
+        label: label,
+        anchor: 'transcoding.$key',
+        child: adminNumberInput(
+          text: _config![key]?.toString() ?? '',
+          fallback: fallback,
+          min: min,
+          max: max,
+          decimal: decimal,
+          onChanged: (n) {
+            _config![key] = n;
+            edited();
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _switch(String key, String title) {
+    return _keyed(
+      key,
+      adminSwitchRow(
+        title: title,
+        anchor: 'transcoding.$key',
+        value: _config![key] as bool? ?? false,
+        onChanged: (v) => _set(key, v),
+      ),
+    );
+  }
+
+  Widget _dropdown<T>(
+    String key,
+    String label,
+    List<(T, String)> options, {
+    String? helper,
+  }) {
+    final current = _config![key];
+    final known = options.any((o) => o.$1 == current);
+    return _keyed(
+      key,
+      adminFieldRow(
+        label: label,
+        helper: helper,
+        anchor: 'transcoding.$key',
+        child: DropdownButtonFormField<T>(
+          initialValue: current is T ? current : null,
+          isExpanded: true,
+          decoration: adminInputDecoration(),
+          items: [
+            for (final o in options)
+              DropdownMenuItem(value: o.$1, child: Text(o.$2)),
+            // A value this list doesn't know stays as is, so saving keeps it.
+            if (current is T && !known)
+              DropdownMenuItem(value: current, child: Text('$current')),
+          ],
+          onChanged: (v) => _set(key, v),
+        ),
+      ),
+    );
+  }
+
+  Widget _pathField(String key, String label, {bool writable = false}) {
+    final l10n = AppLocalizations.of(context);
+    final isBrowsing = _browsingField == key;
+    return _keyed(
+      key,
+      adminFieldRow(
+        label: label,
+        anchor: 'transcoding.$key',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    key: ValueKey(_picks),
+                    initialValue: _config![key]?.toString() ?? '',
+                    decoration: adminInputDecoration(),
+                    onChanged: (v) {
+                      _config![key] = v;
+                      edited();
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: Icon(isBrowsing ? Icons.close : Icons.folder_open),
+                  tooltip: isBrowsing ? l10n.adminCloseBrowser : l10n.adminBrowse,
+                  onPressed: () => setState(() {
+                    _browsingField = isBrowsing ? null : key;
+                  }),
+                ),
+              ],
             ),
-          ),
-        ],
-      ],
+            if (isBrowsing) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 300,
+                child: FilesystemBrowser(
+                  initialPath: _config![key]?.toString(),
+                  validateWritable: writable,
+                  onPathSelected: (path) {
+                    _browsingField = null;
+                    _picks++;
+                    _set(key, path);
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

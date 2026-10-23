@@ -15,12 +15,18 @@ import 'offline_stream_resolver.dart';
 class LocalFirstMediaStreamResolver extends MediaStreamResolver {
   final MediaStreamResolver _inner;
   final OfflineStreamResolver _offline;
+  final Future<void> Function(String itemId)? _restoreSubtitles;
+  final bool Function()? _streamFromServer;
 
   LocalFirstMediaStreamResolver({
     required MediaStreamResolver inner,
     required OfflineStreamResolver offline,
+    Future<void> Function(String itemId)? restoreSubtitles,
+    bool Function()? streamFromServer,
   }) : _inner = inner,
-       _offline = offline;
+       _offline = offline,
+       _restoreSubtitles = restoreSubtitles,
+       _streamFromServer = streamFromServer;
 
   @override
   Future<StreamResolutionResult> resolve(
@@ -38,7 +44,13 @@ class LocalFirstMediaStreamResolver extends MediaStreamResolver {
     // Only substitute the local copy on direct-play-eligible requests.
     // Force-transcode requests disable direct play and should keep streaming.
     if (enableDirectPlay) {
-      final local = await _tryResolveLocal(mediaItem, mediaSourceId);
+      // A play from server pick skips the download, unless the server is out
+      // of reach and the download is the only copy left.
+      final skipLocal =
+          (_streamFromServer?.call() ?? false) && !shouldUseOfflineCatalog();
+      final local = skipLocal
+          ? null
+          : await _tryResolveLocal(mediaItem, mediaSourceId);
       if (local != null) return local;
       // With no local copy and no server, the network resolve below just
       // burns through its timeouts before failing anyway. TV now has both
@@ -70,6 +82,7 @@ class LocalFirstMediaStreamResolver extends MediaStreamResolver {
   ) async {
     try {
       final itemId = MediaStreamResolver.extractItemId(mediaItem);
+      await _restoreMissingSubtitles(itemId);
       final local = await _offline.resolve(itemId);
       if (local == null) return null;
 
@@ -130,6 +143,17 @@ class LocalFirstMediaStreamResolver extends MediaStreamResolver {
     } catch (_) {
       return null;
     }
+  }
+
+  // Fills in subtitle files an earlier download missed. The wait is capped so
+  // a slow server extraction finishes in the background instead of holding
+  // up playback.
+  Future<void> _restoreMissingSubtitles(String itemId) async {
+    final restore = _restoreSubtitles;
+    if (restore == null || shouldUseOfflineCatalog()) return;
+    try {
+      await restore(itemId).timeout(const Duration(seconds: 5));
+    } catch (_) {}
   }
 
   String? _containerOf(String path) {

@@ -148,4 +148,107 @@ void main() {
       );
     });
   });
+
+  group('serverDisplayAddress', () {
+    test('preserves a Unicode hostname entered by the user', () {
+      expect(
+        serverDisplayAddress(
+          enteredAddress: 'https://bücher.de',
+          resolvedAddress: 'https://xn--bcher-kva.de',
+        ),
+        'https://bücher.de',
+      );
+      expect(
+        serverDisplayAddress(
+          enteredAddress: 'media.bücher.de',
+          resolvedAddress: 'https://media.xn--bcher-kva.de:8443/jellyfin',
+        ),
+        'https://media.bücher.de:8443/jellyfin',
+      );
+    });
+
+    test('does not decode explicitly entered Punycode', () {
+      expect(
+        serverDisplayAddress(
+          enteredAddress: 'https://xn--80ak6aa92e.com',
+          resolvedAddress: 'https://xn--80ak6aa92e.com',
+        ),
+        isNull,
+      );
+    });
+
+    test('does not carry an entered hostname across a redirect', () {
+      expect(
+        serverDisplayAddress(
+          enteredAddress: 'https://bücher.de',
+          resolvedAddress: 'https://example.com',
+        ),
+        isNull,
+      );
+    });
+
+    test('has nothing to keep for a plain ASCII address', () {
+      expect(
+        serverDisplayAddress(
+          enteredAddress: '192.168.1.5:8096',
+          resolvedAddress: 'http://192.168.1.5:8096',
+        ),
+        isNull,
+      );
+      expect(
+        serverDisplayAddress(
+          enteredAddress: 'media.example.com',
+          resolvedAddress: 'https://media.example.com',
+        ),
+        isNull,
+      );
+    });
+  });
+
+  group('quickConnectApprovalUrl', () {
+    test('points at the web client with the code filled in', () {
+      expect(
+        quickConnectApprovalUrl('https://media.example.com', '123456'),
+        'https://media.example.com/web/#/quickconnect?code=123456',
+      );
+    });
+
+    test('drops the spaces the screen puts in the code', () {
+      expect(
+        quickConnectApprovalUrl('https://media.example.com', '123 456'),
+        'https://media.example.com/web/#/quickconnect?code=123456',
+      );
+    });
+
+    test('keeps a reverse proxy base path', () {
+      expect(
+        quickConnectApprovalUrl('https://example.com/jellyfin/', '123456'),
+        'https://example.com/jellyfin/web/#/quickconnect?code=123456',
+      );
+    });
+
+    test('does not double a web client path already on the address', () {
+      expect(
+        quickConnectApprovalUrl(
+          'https://media.example.com/web/index.html',
+          '123456',
+        ),
+        'https://media.example.com/web/#/quickconnect?code=123456',
+      );
+    });
+
+    test('keeps a non default port', () {
+      expect(
+        quickConnectApprovalUrl('http://192.168.1.10:8096', '123456'),
+        'http://192.168.1.10:8096/web/#/quickconnect?code=123456',
+      );
+    });
+
+    test('is null without an address or a code', () {
+      expect(quickConnectApprovalUrl('', '123456'), isNull);
+      expect(quickConnectApprovalUrl('  ', '123456'), isNull);
+      expect(quickConnectApprovalUrl('https://media.example.com', ''), isNull);
+      expect(quickConnectApprovalUrl('https://media.example.com', ' '), isNull);
+    });
+  });
 }

@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "Gustong wika ng display",
     "offlineBannerTitle": "Offline ka",
     "offlineBannerSubtitle": "Ipinapakita ang iyong mga download",
-    "offlineBannerAction": "Mga Download",
     "serverUnreachableBannerTitle": "Hindi maabot ang iyong server",
     "serverUnreachableBannerSubtitle": "Nagpe-play mula sa mga download hanggang sa bumalik ito",
     "contextMenuHideFromContinueWatching": "Itago mula sa Continue Watching",

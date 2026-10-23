@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "Idioma de visualización preferido",
     "offlineBannerTitle": "Non tes conexión",
     "offlineBannerSubtitle": "Móstranse as túas descargas",
-    "offlineBannerAction": "Descargas",
     "serverUnreachableBannerTitle": "Non se pode conectar co teu servidor",
     "serverUnreachableBannerSubtitle": "Reproducindo desde as descargas ata que volva",
     "contextMenuHideFromContinueWatching": "Ocultar de Seguir vendo",

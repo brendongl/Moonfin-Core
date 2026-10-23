@@ -471,10 +471,45 @@ void _coreOptionDefaultsTests() {
       expect(withCoreOptionDefaults('snes9x', null), isNull);
     });
 
+    test('melonDS reads the touch pad unless the user chose otherwise', () {
+      expect(
+        withCoreOptionDefaults('melonds', null)!['melonds_touch_mode'],
+        'Touch',
+      );
+      expect(
+        withCoreOptionDefaults('melonds', {
+          'melonds_touch_mode': 'Mouse',
+        })!['melonds_touch_mode'],
+        'Mouse',
+      );
+    });
+
+    test('Windows defaults N64 to the software renderer', () {
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      final merged = withCoreOptionDefaults(n64, {
+        'mupen64plus-rsp-plugin': 'hle',
+      })!;
+      expect(merged['mupen64plus-rdp-plugin'], 'angrylion');
+      expect(merged['mupen64plus-rsp-plugin'], 'hle');
+      expect(merged[cacheKey], '1500');
+    });
+
+    test('other platforms keep the core renderer defaults', () {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      final merged = withCoreOptionDefaults(n64, null)!;
+      expect(merged.containsKey('mupen64plus-rdp-plugin'), isFalse);
+      expect(merged.containsKey('mupen64plus-rsp-plugin'), isFalse);
+    });
+
     test('every defaulted core is actually in the catalog', () {
       // A typo in a core id would silently never apply.
       final ids = gameCoreCatalog.map((c) => c.coreId).toSet();
-      for (final coreId in coreOptionDefaults.keys) {
+      for (final coreId in [
+        ...coreOptionDefaults.keys,
+        ...windowsCoreOptionDefaults.keys,
+      ]) {
         expect(ids, contains(coreId), reason: '$coreId is not a known core');
       }
     });

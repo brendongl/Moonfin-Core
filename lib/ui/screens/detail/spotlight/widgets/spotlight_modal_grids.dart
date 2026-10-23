@@ -132,6 +132,7 @@ class SpotlightMediaGridSection extends StatelessWidget {
   final FocusNode? firstFocusNode;
   final ValueChanged<AggregatedItem> onItemTap;
   final Map<int, int>? seerrSeasonStatus;
+  final String? currentItemId;
 
   const SpotlightMediaGridSection({
     super.key,
@@ -143,6 +144,7 @@ class SpotlightMediaGridSection extends StatelessWidget {
     this.landscapeCells = false,
     this.firstFocusNode,
     this.seerrSeasonStatus,
+    this.currentItemId,
   });
 
   @override
@@ -202,6 +204,7 @@ class SpotlightMediaGridSection extends StatelessWidget {
                     return MediaCard(
                       key: ValueKey(cellKeys[i]),
                       title: entry.name,
+                      subtitle: entry.personRole,
                       titleColor: titleColor,
                       imageUrl: spotlightItemImageUrl(imageApi, entry),
                       width: metrics.cellWidth,
@@ -232,6 +235,24 @@ class SpotlightMediaGridSection extends StatelessWidget {
                             child: SeerrStatusDot(
                               status: seasonSeerrStatus,
                               size: 18,
+                            ),
+                          ),
+                        if (entry.id == currentItemId)
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  borderRadius:
+                                      ThemeRegistry.active.borders.cardRadius,
+                                  border: Border.all(
+                                    color: isNeon
+                                        ? const Color(0xFF00FFFF)
+                                        : AppColorScheme.accent
+                                              .withValues(alpha: 0.7),
+                                    width: 1.5,
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                       ],

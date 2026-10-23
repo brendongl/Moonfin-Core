@@ -2828,9 +2828,9 @@
     "@fit": {
         "description": "Zoom mode: fit"
     },
-    "autoCrop": "Auto Crop",
+    "autoCrop": "Zoom to Fill",
     "@autoCrop": {
-        "description": "Zoom mode: auto crop"
+        "description": "Zoom mode: scales the video to fill the screen and cuts off the edges. It doesn't detect or remove black bars."
     },
     "stretch": "Stretch",
     "@stretch": {
@@ -6593,7 +6593,7 @@
     "settingsDoNothing": "Do Nothing",
     "settingsMaxBitrateDescription": "Cap the streaming bitrate. Content above this threshold will be transcoded to fit.",
     "settingsMaxResolutionDescription": "Limit the maximum resolution the player will request. Higher-resolution content will be transcoded down.",
-    "settingsPlayerZoomDescription": "How video should be scaled to fit the screen.",
+    "settingsPlayerZoomDescription": "How video is scaled to the screen. Zoom to Fill enlarges the picture until it fills the screen and cuts off the edges. It doesn't detect black bars.",
     "settingsPlaybackEngineAndroidTv": "Playback Engine (Android TV)",
     "settingsPlaybackEngineAndroidTvDescription": "Choose the default playback engine on Android TV devices. Changes apply to the next playback session.",
     "settingsPlaybackEngineMedia3Recommended": "Media3 (recommended)",
@@ -6634,7 +6634,7 @@
             }
         }
     },
-    "settingsLiveTvDirect": "Live TV Direct",
+    "settingsLiveTvDirect": "Live TV Direct Play",
     "settingsLiveTvDirectSubtitle": "Enable direct play for Live TV",
     "settingsOpenGroups": "Open Groups",
     "settingsOpenGroupsSubtitle": "Create, join, or manage SyncPlay groups",
@@ -8957,7 +8957,6 @@
     "adminGeneralDisplayLanguage": "Preferred display language",
     "offlineBannerTitle": "You're offline",
     "offlineBannerSubtitle": "Showing your downloads",
-    "offlineBannerAction": "Downloads",
     "serverUnreachableBannerTitle": "Can't reach your server",
     "serverUnreachableBannerSubtitle": "Playing from downloads until it's back",
     "contextMenuHideFromContinueWatching": "Hide from Continue Watching",
@@ -12133,10 +12132,6 @@
     "autoDownloadDelete": "Delete downloaded episodes",
     "@autoDownloadDelete": {
         "description": "Setting that picks how soon an auto-downloaded episode is removed after it was watched"
-    },
-    "autoDownloadDeleteSubtitle": "When to remove automatically downloaded episodes after you watch them",
-    "@autoDownloadDeleteSubtitle": {
-        "description": "Explains the delete-after-watching setting"
     },
     "autoDownloadDeleteNever": "Never",
     "@autoDownloadDeleteNever": {

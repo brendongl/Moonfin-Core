@@ -33,9 +33,12 @@ class JellyfinMediaServerClient extends MediaServerClient {
   @override
   final DeviceInfo deviceInfo;
 
+  /// [interceptors] run after the client's own, so a test or a diagnostics
+  /// harness sees each request as sent, auth header included.
   JellyfinMediaServerClient({
     required String baseUrl,
     required this.deviceInfo,
+    List<Interceptor> interceptors = const [],
   }) : _dio = Dio(BaseOptions(
          baseUrl: baseUrl,
          followRedirects: false,
@@ -47,6 +50,7 @@ class JellyfinMediaServerClient extends MediaServerClient {
     _baseUrl = baseUrl;
     configureServerDio(_dio);
     _setupInterceptors();
+    _dio.interceptors.addAll(interceptors);
   }
 
   late String _baseUrl;

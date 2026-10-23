@@ -162,7 +162,7 @@ void openBottomNavTab(BuildContext context, BottomNavTab tab) {
 /// arrival otherwise.
 void openBottomNavHome(BuildContext context, {required bool alreadyHome}) {
   if (alreadyHome) {
-    homeRefreshBus.request();
+    homeRefreshBus.request(newMediaBar: true);
     return;
   }
   homeRefreshBus.requestAfterNavigation();

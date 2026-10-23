@@ -307,6 +307,145 @@ void main() {
     await sub.cancel();
   });
 
+  test("deleting a download tells listeners it's gone", () async {
+    final item = AggregatedItem(
+      id: itemId,
+      serverId: 'http://127.0.0.1:1',
+      rawData: itemData,
+    );
+    await service.downloadItem(item);
+    await pumpEventQueue();
+    expect(service.activeDownloads[itemId], isNotNull);
+    // Notifies are throttled, so let the download's own ones land first.
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+
+    var notifications = 0;
+    service.addListener(() => notifications++);
+
+    expect(await service.deleteDownloadedFiles(item), isTrue);
+
+    expect(service.activeDownloads[itemId], isNull);
+    await _waitFor(() => notifications > 0);
+  });
+
+  group('movie folder year', () {
+    Map<String, dynamic> movieData(String id, String name, int year) => {
+      ...itemData,
+      'Id': id,
+      'Name': name,
+      'ProductionYear': year,
+    };
+
+    // A failed download removes its empty folder, so the folders are listed
+    // while the download is parked right after creating it.
+    Future<List<String>> movieFoldersFor(Map<String, dynamic> data) async {
+      final repo = _GatedOfflineRepository(db);
+      GetIt.instance.unregister<OfflineRepository>();
+      GetIt.instance.registerSingleton<OfflineRepository>(repo);
+      service.dispose();
+      service = DownloadService(
+        _FakeClient(_FakeItemsApi(data)),
+        DownloadNotificationService(),
+      );
+      final done = service.downloadItem(
+        AggregatedItem(
+          id: data['Id'] as String,
+          serverId: 'http://127.0.0.1:1',
+          rawData: data,
+        ),
+      );
+      await _waitFor(() => repo.upsertCalls == 1);
+      final folders = Directory('${tempDir.path}/Movies')
+          .listSync()
+          .map((entry) => entry.path.split(Platform.pathSeparator).last)
+          .toList();
+      repo.upsertGate.complete();
+      await done;
+      return folders;
+    }
+
+    test('a name that already ends in the year gets it once', () async {
+      expect(
+        await movieFoldersFor(
+          movieData('unmatched', 'Test Movie (2024)', 2024),
+        ),
+        ['Test Movie (2024)'],
+      );
+    });
+
+    test('a name without the year still gets it', () async {
+      expect(await movieFoldersFor(movieData('matched', 'Elf', 2003)), [
+        'Elf (2003)',
+      ]);
+    });
+
+    test('delete clears the doubled year folder older builds made', () async {
+      final doubled = Directory(
+        '${tempDir.path}/Movies/Test Movie (2024) (2024)',
+      );
+      await doubled.create(recursive: true);
+      await File('${doubled.path}/Test Movie (2024).mkv').writeAsString('x');
+      final otherTitle = Directory('${tempDir.path}/Movies/Elf (2003) (2003)');
+      await otherTitle.create(recursive: true);
+
+      Future<void> delete(String id, String name, int year) =>
+          service.deleteDownloadedFiles(
+            AggregatedItem(
+              id: id,
+              serverId: 'http://127.0.0.1:1',
+              rawData: movieData(id, name, year),
+            ),
+          );
+      await delete('unmatched', 'Test Movie (2024)', 2024);
+      await delete('matched', 'Elf', 2003);
+
+      expect(doubled.existsSync(), isFalse);
+      expect(
+        otherTitle.existsSync(),
+        isTrue,
+        reason: 'a movie named without its year owns no doubled folder',
+      );
+    });
+
+    test('delete keeps a doubled year folder another download is in', () async {
+      final doubled = Directory(
+        '${tempDir.path}/Movies/Test Movie (2024) (2024)',
+      );
+      await doubled.create(recursive: true);
+      final otherFile = File('${doubled.path}/Test Movie (2024).mkv');
+      await otherFile.writeAsString('x');
+      // The fake repository lists no rows, and the folder check needs them.
+      GetIt.instance.unregister<OfflineRepository>();
+      GetIt.instance.registerSingleton<OfflineRepository>(
+        OfflineRepository(db),
+      );
+      // The same title from a second server, saved there by an older build.
+      await db
+          .into(db.downloadedItems)
+          .insert(
+            DownloadedItemsCompanion.insert(
+              itemId: 'other-server-copy',
+              serverId: 'http://127.0.0.2:1',
+              type: 'Movie',
+              name: 'Test Movie (2024)',
+              metadataJson: '{}',
+              downloadStatus: 2,
+              localFilePath: Value(otherFile.path),
+            ),
+          );
+
+      await service.deleteDownloadedFiles(
+        AggregatedItem(
+          id: 'unmatched',
+          serverId: 'http://127.0.0.1:1',
+          rawData: movieData('unmatched', 'Test Movie (2024)', 2024),
+        ),
+      );
+
+      expect(otherFile.existsSync(), isTrue);
+    });
+  });
+
   test('limits queued downloads to the configured concurrency', () async {
     await prefs.set(UserPreferences.downloadConcurrentCount, 2);
     final itemsApi = _BlockingItemsApi();

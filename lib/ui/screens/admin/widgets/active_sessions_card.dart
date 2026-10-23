@@ -1,83 +1,48 @@
-import 'dart:async';
 import 'package:moonfin_design/moonfin_design.dart';
 
 import 'package:flutter/material.dart';
-import 'package:get_it/get_it.dart';
-import 'package:server_core/server_core.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../data/services/socket_handler.dart';
 import '../../../../l10n/app_localizations.dart';
-import '../../../util/error_message.dart';
+import '../providers/admin_user_providers.dart';
 import 'admin_form_styles.dart';
 import 'session_detail_sheet.dart';
 
-class ActiveSessionsCard extends StatefulWidget {
+/// The play method to show for [session]: 'Remux', 'DirectStream',
+/// 'Transcode', 'DirectPlay', or null when nothing plays.
+String? displayPlayMethod(Map<String, dynamic> session) {
+  if (session['NowPlayingItem'] == null) return null;
+  final transcoding = session['TranscodingInfo'] as Map<String, dynamic>?;
+  final videoDirect = transcoding?['IsVideoDirect'] == true;
+  if ((videoDirect || transcoding?['VideoCodec'] == null) &&
+      transcoding?['IsAudioDirect'] == true) {
+    return 'Remux';
+  }
+  if (videoDirect) return 'DirectStream';
+  return switch ((session['PlayState'] as Map?)?['PlayMethod']) {
+    'Transcode' => 'Transcode',
+    // A DirectStream play method shows as direct play too.
+    'DirectStream' || 'DirectPlay' => 'DirectPlay',
+    _ => null,
+  };
+}
+
+String playMethodLabel(String? method, AppLocalizations l10n) =>
+    switch (method) {
+      'Remux' => l10n.adminPlayMethodRemux,
+      'DirectStream' => l10n.adminPlayMethodDirectStream,
+      'Transcode' => l10n.transcoding,
+      _ => l10n.adminPlayMethodDirectPlay,
+    };
+
+class ActiveSessionsCard extends ConsumerStatefulWidget {
   const ActiveSessionsCard({super.key});
 
   @override
-  State<ActiveSessionsCard> createState() => _ActiveSessionsCardState();
+  ConsumerState<ActiveSessionsCard> createState() => _ActiveSessionsCardState();
 }
 
-class _ActiveSessionsCardState extends State<ActiveSessionsCard> {
-  late final SessionApi _sessionApi;
-  List<Map<String, dynamic>> _sessions = [];
-  bool _loading = true;
-  bool _fetching = false;
-  String? _error;
-  Timer? _timer;
-  StreamSubscription<ServerWebSocketMessage>? _socketSubscription;
-
-  @override
-  void initState() {
-    super.initState();
-    _sessionApi = GetIt.instance<MediaServerClient>().sessionApi;
-    _load();
-    _timer = Timer.periodic(const Duration(seconds: 30), (_) => _load());
-    _socketSubscription = GetIt.instance<SocketHandler>().events.listen((event) {
-      switch (event) {
-        case SessionEndedMessage():
-        case PlayMessage():
-        case PlaystateMessage():
-        case GeneralCommandMessage():
-          _load();
-        case ServerEventMessage(:final type)
-            when type == 'SessionsStart' || type == 'SessionsStop':
-          _load();
-        default:
-          break;
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _socketSubscription?.cancel();
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _load() async {
-    if (_fetching) return;
-    _fetching = true;
-    try {
-      final sessions = await _sessionApi.getSessions();
-      if (!mounted) return;
-      setState(() {
-        _sessions = sessions;
-        _loading = false;
-        _error = null;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = describeError(e, AppLocalizations.of(context));
-        _loading = false;
-      });
-    } finally {
-      _fetching = false;
-    }
-  }
-
+class _ActiveSessionsCardState extends ConsumerState<ActiveSessionsCard> {
   void _openDetail(Map<String, dynamic> session) {
     showModalBottomSheet<void>(
       context: context,
@@ -91,6 +56,11 @@ class _ActiveSessionsCardState extends State<ActiveSessionsCard> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
+    // Kept current by the server's Sessions feed, so nothing polls here.
+    final sessionsAsync = ref.watch(adminSessionsProvider);
+    final sessions = sessionsAsync.valueOrNull ?? const <Map<String, dynamic>>[];
+    final loading = sessionsAsync.isLoading && !sessionsAsync.hasValue;
+    final failed = sessionsAsync.hasError && !sessionsAsync.hasValue;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -100,13 +70,13 @@ class _ActiveSessionsCardState extends State<ActiveSessionsCard> {
               child: adminSectionLabel(context, l10n.adminActiveSessions,
                   icon: Icons.people),
             ),
-            if (_loading)
+            if (loading)
               const SizedBox(
                   width: 18,
                   height: 18,
                   child: CircularProgressIndicator(strokeWidth: 2))
             else
-              Text('${_sessions.length}', style: theme.textTheme.titleLarge),
+              Text('${sessions.length}', style: theme.textTheme.titleLarge),
             const SizedBox(width: AppSpacing.spaceXs),
           ],
         ),
@@ -121,24 +91,27 @@ class _ActiveSessionsCardState extends State<ActiveSessionsCard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (_error != null)
+                  if (failed)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Column(
                   children: [
                     Text(l10n.adminSessionsLoadFailed, style: theme.textTheme.bodySmall),
                     const SizedBox(height: 6),
-                    TextButton(onPressed: _load, child: Text(l10n.retry)),
+                    TextButton(
+                      onPressed: () => ref.invalidate(adminSessionsProvider),
+                      child: Text(l10n.retry),
+                    ),
                   ],
                 ),
               )
-            else if (!_loading && _sessions.isEmpty)
+            else if (!loading && sessions.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 24),
                 child: Center(child: Text(l10n.adminNoActiveSessions)),
               )
             else
-              ..._sessions.map((session) {
+              ...sessions.map((session) {
                 final userName =
                     session['UserName'] as String? ?? l10n.unknown;
                 final client = session['Client'] as String? ?? '';
@@ -148,8 +121,6 @@ class _ActiveSessionsCardState extends State<ActiveSessionsCard> {
                 final playState =
                     session['PlayState'] as Map<String, dynamic>?;
                 final isPaused = playState?['IsPaused'] as bool? ?? false;
-                final transcodingInfo =
-                    session['TranscodingInfo'] as Map<String, dynamic>?;
                 final runTimeTicks =
                     (nowPlaying?['RunTimeTicks'] as num?)?.toDouble() ?? 0;
                 final positionTicks =
@@ -216,11 +187,7 @@ class _ActiveSessionsCardState extends State<ActiveSessionsCard> {
                               ),
                             ),
                             const SizedBox(width: 8),
-                            _playMethodBadge(
-                                transcodingInfo,
-                                isPaused,
-                                nowPlaying != null,
-                                theme),
+                            _playMethodBadge(session, isPaused, theme),
                             const SizedBox(width: 4),
                             Icon(Icons.chevron_right,
                                 size: 16,
@@ -280,17 +247,17 @@ class _ActiveSessionsCardState extends State<ActiveSessionsCard> {
   }
 
   Widget _playMethodBadge(
-    Map<String, dynamic>? transcodingInfo,
+    Map<String, dynamic> session,
     bool isPaused,
-    bool isPlaying,
     ThemeData theme,
   ) {
     final l10n = AppLocalizations.of(context);
+    final method = displayPlayMethod(session);
     final IconData icon;
     final String label;
     final Color bg;
     final Color fg;
-    if (!isPlaying) {
+    if (session['NowPlayingItem'] == null) {
       icon = Icons.stop_circle_outlined;
       label = l10n.idle;
       bg = theme.colorScheme.surfaceContainerHighest;
@@ -300,8 +267,8 @@ class _ActiveSessionsCardState extends State<ActiveSessionsCard> {
       label = l10n.paused;
       bg = theme.colorScheme.surfaceContainerHighest;
       fg = theme.colorScheme.onSurfaceVariant;
-    } else if (transcodingInfo != null) {
-      final bitrate = transcodingInfo['Bitrate'] as int?;
+    } else if (method == 'Transcode') {
+      final bitrate = (session['TranscodingInfo'] as Map?)?['Bitrate'] as int?;
       final mbps = bitrate != null
           ? ' ${(bitrate / 1000000).toStringAsFixed(1)}M'
           : '';
@@ -310,8 +277,8 @@ class _ActiveSessionsCardState extends State<ActiveSessionsCard> {
       bg = theme.colorScheme.secondaryContainer;
       fg = theme.colorScheme.onSecondaryContainer;
     } else {
-      icon = Icons.play_arrow;
-      label = l10n.direct;
+      icon = method == 'DirectPlay' ? Icons.play_arrow : Icons.sync_alt;
+      label = playMethodLabel(method, l10n);
       bg = theme.colorScheme.primaryContainer;
       fg = theme.colorScheme.onPrimaryContainer;
     }

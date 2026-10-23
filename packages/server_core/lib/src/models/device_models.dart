@@ -9,6 +9,9 @@ class DeviceInfoDto {
   final DateTime? dateLastActivity;
   final String? iconUrl;
 
+  /// The id the client reported, on Emby, where [id] is a server number.
+  final String? reportedDeviceId;
+
   const DeviceInfoDto({
     required this.id,
     this.name,
@@ -19,6 +22,7 @@ class DeviceInfoDto {
     this.lastUserId,
     this.dateLastActivity,
     this.iconUrl,
+    this.reportedDeviceId,
   });
 
   String get displayName => customName ?? name ?? id;
@@ -35,6 +39,7 @@ class DeviceInfoDto {
             ? DateTime.tryParse(json['DateLastActivity'] as String)
             : null,
         iconUrl: json['IconUrl'] as String?,
+        reportedDeviceId: json['ReportedDeviceId'] as String?,
       );
 }
 

@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "Предпочитаемый язык интерфейса",
     "offlineBannerTitle": "Нет подключения",
     "offlineBannerSubtitle": "Показаны ваши загрузки",
-    "offlineBannerAction": "Загрузки",
     "serverUnreachableBannerTitle": "Сервер недоступен",
     "serverUnreachableBannerSubtitle": "Пока он не восстановится, воспроизводятся загрузки",
     "contextMenuHideFromContinueWatching": "Скрыть из «Продолжить просмотр»",

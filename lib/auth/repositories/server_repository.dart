@@ -4,20 +4,23 @@ import 'package:dio/dio.dart';
 import 'package:server_core/server_core.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../data/services/client_certificate_service.dart';
 import '../../data/services/media_server_client_factory.dart';
 import '../../util/server_url.dart';
 import '../models/server.dart';
 import '../models/server_addition_state.dart';
 import '../store/authentication_store.dart';
+import '../store/client_certificate_store.dart';
 
 class ServerRepository {
   final AuthenticationStore _authStore;
   final MediaServerClientFactory _clientFactory;
+  final ClientCertificateStore? _certStore;
 
   final List<Server> _servers = [];
   final _stateController = StreamController<ServerAdditionState>.broadcast();
 
-  ServerRepository(this._authStore, this._clientFactory);
+  ServerRepository(this._authStore, this._clientFactory, [this._certStore]);
 
   List<Server> get servers => List.unmodifiable(_servers);
   Stream<ServerAdditionState> get additionState => _stateController.stream;
@@ -105,6 +108,7 @@ class ServerRepository {
   }
 
   Future<Server?> addServer(String address) async {
+    final enteredAddress = address;
     address = normalizeServerBaseUrl(address.trim());
     if (address.isEmpty) {
       return null;
@@ -118,6 +122,8 @@ class ServerRepository {
     int? lastStatusCode;
     String? lastErrorMessage;
     String? untrustedCandidate;
+    String? clientCertCandidate;
+    String? possibleClientCertCandidate;
 
     for (final candidate in candidates) {
       try {
@@ -131,8 +137,14 @@ class ServerRepository {
         );
         if (existingIndex >= 0) {
           final existing = _servers[existingIndex];
+          final displayAddress = serverDisplayAddress(
+            enteredAddress: enteredAddress,
+            resolvedAddress: existing.address,
+          );
           final updated = existing.copyWith(
             name: info['ServerName'] as String? ?? existing.name,
+            displayAddress: displayAddress,
+            clearDisplayAddress: displayAddress == null,
             version: info['Version'] as String? ?? existing.version,
             serverType: serverType,
             dateLastAccessed: DateTime.now(),
@@ -145,10 +157,15 @@ class ServerRepository {
           return updated;
         }
 
+        final displayAddress = serverDisplayAddress(
+          enteredAddress: enteredAddress,
+          resolvedAddress: serverAddress,
+        );
         final server = Server(
           id: const Uuid().v4(),
-          name: info['ServerName'] as String? ?? address,
+          name: info['ServerName'] as String? ?? displayAddress ?? address,
           address: serverAddress,
+          displayAddress: displayAddress,
           version: info['Version'] as String? ?? '',
           serverType: serverType,
           loginDisclaimer: info['LoginDisclaimer'] as String?,
@@ -169,6 +186,10 @@ class ServerRepository {
         lastStatusCode = status;
         lastErrorMessage = detail;
         if (isUntrustedCertificate(e)) untrustedCandidate ??= candidate;
+        if (isClientCertificateRejected(e)) clientCertCandidate ??= candidate;
+        if (candidate.startsWith('https:') && _reachedServer(e)) {
+          possibleClientCertCandidate ??= candidate;
+        }
       } catch (e) {
         lastCandidate = candidate;
         lastErrorType = 'exception';
@@ -184,6 +205,8 @@ class ServerRepository {
       lastStatusCode: lastStatusCode,
       lastErrorMessage: lastErrorMessage,
       untrustedCandidate: untrustedCandidate,
+      clientCertCandidate: clientCertCandidate,
+      possibleClientCertCandidate: possibleClientCertCandidate,
     );
     _lastFailure = failure;
     _stateController.add(failure);
@@ -199,9 +222,18 @@ class ServerRepository {
   }
 
   Future<void> deleteServer(String serverId) async {
+    final removed = getServer(serverId);
     _servers.removeWhere((s) => s.id == serverId);
     _clientFactory.removeClient(serverId);
     await _authStore.removeServer(serverId);
+    final certStore = _certStore;
+    if (removed == null || certStore == null) return;
+    final host = Uri.tryParse(removed.address)?.host ?? '';
+    if (clientCertificateFor(host) == null ||
+        _servers.any((s) => Uri.tryParse(s.address)?.host == host)) {
+      return;
+    }
+    await removeClientCertificate(certStore, host);
   }
 
   Future<(Map<String, dynamic>, ServerType, String)> _probeServer(
@@ -231,6 +263,29 @@ class ServerRepository {
       dio.close();
     }
   }
+
+  /// Whether [e] came after something answered at the address. A refused,
+  /// unreachable, timed out or unresolved connection means nothing is
+  /// listening there. The OS message is localised, so it goes by errno.
+  static bool _reachedServer(DioException e) {
+    if (e.type == DioExceptionType.connectionTimeout) return false;
+    final reason = '${e.error}';
+    if (reason.contains('Failed host lookup')) return false;
+    final errno = int.tryParse(
+      _errnoPattern.firstMatch(reason)?.group(1) ?? '',
+    );
+    return errno == null || !_unreachableErrnos.contains(errno);
+  }
+
+  static final _errnoPattern = RegExp(r'errno = (\d+)');
+
+  /// Connection refused, network down, network or host unreachable and timed
+  /// out, as Linux and Android, Apple platforms and Windows number them.
+  static const _unreachableErrnos = {
+    111, 100, 101, 113, 110, // Linux, Android
+    61, 50, 51, 65, 60, // macOS, iOS
+    10061, 10050, 10051, 10065, 10060, 1225, 1231, 1232, // Windows
+  };
 
   List<String> _buildCandidates(String address) {
     final candidates = <String>{};

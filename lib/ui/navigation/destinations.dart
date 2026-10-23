@@ -141,8 +141,17 @@ class Destinations {
   static const adminLogs = '/admin/logs';
   static const adminLogsFile = '/admin/logs/:fileName';
   static const adminLiveTv = '/admin/live-tv';
+  static const adminLiveTvChannels = '/admin/live-tv-channels';
   static const adminAnalytics = '/admin/analytics';
+  static const adminAnalyticsItems = '/admin/analytics/items';
   static const adminMetadataEdit = '/admin/metadata/:itemId';
+  static const adminPremiere = '/admin/premiere';
+  static const adminDatabase = '/admin/database';
+  static const adminCinemaIntros = '/admin/cinema-intros';
+  static const adminDlna = '/admin/dlna';
+  static const adminCameraUpload = '/admin/camera-upload';
+  static const adminConversions = '/admin/conversions';
+  static const adminGroup = '/admin/group/:groupId';
 
   // Settings
   static const settings = '/settings';
@@ -372,6 +381,7 @@ class Destinations {
   static String adminLogFile(String fileName) =>
       '/admin/logs/${Uri.encodeComponent(fileName)}';
   static String adminMetadata(String itemId) => '/admin/metadata/$itemId';
+  static String adminGroupPath(String groupId) => '/admin/group/$groupId';
 
   /// Whether [path] is one of the full-screen player routes: video, audio,
   /// the reader and its overlays, live TV, or a game.
@@ -387,6 +397,22 @@ class Destinations {
   /// photo or a trailer.
   static bool routeReadsBackKey(String path) =>
       path == videoPlayer || path.startsWith('/game-player/');
+
+  /// The player routes that play through the shared playback manager, so
+  /// opening one replaces whatever it was playing. The trailer, photo, book
+  /// and game screens bring their own players.
+  static bool playsThroughPlaybackManager(String path) =>
+      path == videoPlayer ||
+      path == audioPlayer ||
+      path == externalPlayer ||
+      path == liveTvPlayer;
+
+  /// Where signing out or switching user lands, with nobody signed in yet.
+  static bool isSignedOutRoute(String path) =>
+      path == startup ||
+      path == serverSelect ||
+      path == server ||
+      path == login;
 
   static String seerrBrowseWith({
     required String filterId,

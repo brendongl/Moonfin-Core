@@ -5,8 +5,8 @@ import 'package:mocktail/mocktail.dart';
 import 'package:moonfin/data/models/home_row.dart';
 import 'package:moonfin/data/services/row_data_source.dart';
 import 'package:moonfin/data/viewmodels/book_browse_view_model.dart';
+import 'package:moonfin/data/viewmodels/classic_book_browse_view_model.dart';
 import 'package:moonfin/preference/user_preferences.dart';
-import 'package:moonfin/ui/widgets/book/book_scope_filter.dart';
 import 'package:server_core/server_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -66,9 +66,14 @@ class _FakeItemsApi extends Fake implements ItemsApi {
     if (types.isNotEmpty && typedQueriesReturnNothing) {
       return Future.value(empty);
     }
-    final matching = types.isEmpty
-        ? items
-        : items.where((it) => types.contains(it['Type'])).toList();
+    // Like the server, People only come back when the query asks for them.
+    final withPeople =
+        (named[#fields] as String? ?? '').split(',').contains('People');
+    final matching = [
+      for (final it in items)
+        if (types.isEmpty || types.contains(it['Type']))
+          withPeople ? it : (Map.of(it)..remove('People')),
+    ];
     return Future.value({
       'Items': limit == null ? matching : matching.take(limit).toList(),
       'TotalRecordCount': matching.length,
@@ -109,37 +114,13 @@ void main() {
     collectionType: 'books',
   );
 
-  HomeRow rowWithId(String id) =>
-      HomeRow(id: id, title: '', rowType: HomeRowType.latestMedia);
-
-  test('the comics scope keeps every shelf on its own id', () async {
-    final vm = buildVm();
-    await vm.load();
-    vm.setScope(BookScope.comics);
-
-    final ids = vm.rows.map((r) => r.id).toList();
-    expect(
-      ids.length,
-      ids.toSet().length,
-      reason: 'two shelves sharing an id share a GlobalKey and crash',
-    );
-  });
-
-  test('a comic reaches the all titles shelf', () async {
+  test('comics are counted apart from books', () async {
     final vm = buildVm();
     await vm.load();
 
-    final all = vm.rows.firstWhere((r) => r.id == 'allTitles_lib-1');
-    expect(all.items.map((i) => i.id), contains('c1'));
-  });
-
-  test('comics rows ask the grid for a type the server knows', () {
-    final vm = buildVm();
-    for (final id in ['latestComics_lib-1', 'allComics_lib-1']) {
-      final types = vm.seeAllTypesFor(rowWithId(id));
-      expect(types, isNot(contains('Comic')));
-      expect(types, contains('Book'));
-    }
+    expect(vm.titleCount, 3);
+    expect(vm.bookCount, 2);
+    expect(vm.comicCount, 1);
   });
 
   test('a typed query that answers is not asked twice', () async {
@@ -166,14 +147,117 @@ void main() {
     expect(itemsApi.untypedCalls, 1);
   });
 
+  test('ebook authors are counted from the people on the titles', () async {
+    Map<String, dynamic> withAuthor(Map<String, dynamic> book, String name) => {
+      ...book,
+      'People': [
+        {'Id': 'p-$name', 'Name': name, 'Type': 'Author'},
+      ],
+    };
+    itemsApi = _FakeItemsApi([
+      withAuthor(_book('b1', 'Alpha'), 'Ann Author'),
+      withAuthor(_book('b2', 'Beta'), 'Bo Writer'),
+      withAuthor(_book('b3', 'Gamma'), 'Ann Author'),
+    ]);
+    when(() => client.itemsApi).thenReturn(itemsApi);
+    final vm = buildVm();
+    await vm.load();
+
+    expect(vm.authorCount, 2);
+  });
+
+  group('title grid', () {
+    Future<List<String>> paneIds(BookBrowseViewModel vm) async {
+      await vm.reloadPane();
+      return vm.paneItems.map((i) => i.id).toList();
+    }
+
+    test('the books scope leaves comics out', () async {
+      final vm = buildVm();
+      await vm.load();
+      vm.setScope(BookScope.books);
+
+      expect(await paneIds(vm), ['b1', 'b2']);
+    });
+
+    test('the comics scope holds only comics', () async {
+      final vm = buildVm();
+      await vm.load();
+      vm.setScope(BookScope.comics);
+
+      expect(await paneIds(vm), ['c1']);
+    });
+
+    test('a typed query that matches nothing pages untyped', () async {
+      itemsApi.typedQueriesReturnNothing = true;
+      final vm = buildVm();
+      await vm.load();
+
+      expect(await paneIds(vm), containsAll(['b1', 'b2', 'c1']));
+      expect(vm.paneHasMore, isFalse);
+    });
+  });
+
   test('responses missing their fields leave the screen empty', () async {
     itemsApi.bareResponses = true;
     final vm = buildVm();
     await vm.load();
 
     expect(vm.isLoading, isFalse);
-    expect(vm.rows, isEmpty);
+    expect(vm.paneItems, isEmpty);
     expect(vm.bookCount, 0);
     expect(vm.comicCount, 0);
+  });
+
+  group('Classic', () {
+    ClassicBookBrowseViewModel buildClassicVm() => ClassicBookBrowseViewModel(
+      libraryId: 'lib-1',
+      dataSource: RowDataSource(client),
+      client: client,
+      collectionType: 'books',
+    );
+
+    test('the comics scope keeps every shelf on its own id', () async {
+      final vm = buildClassicVm();
+      await vm.load();
+      vm.setScope(BookScope.comics);
+
+      final ids = vm.rows.map((r) => r.id).toList();
+      expect(
+        ids.length,
+        ids.toSet().length,
+        reason: 'two shelves sharing an id share a GlobalKey and crash',
+      );
+    });
+
+    test('a comic reaches the all titles shelf', () async {
+      final vm = buildClassicVm();
+      await vm.load();
+
+      final all = vm.rows.firstWhere((r) => r.id == 'allTitles_lib-1');
+      expect(all.items.map((i) => i.id), contains('c1'));
+    });
+
+    test('comics rows ask the grid for a type the server knows', () {
+      final vm = buildClassicVm();
+      for (final id in ['latestComics_lib-1', 'allComics_lib-1']) {
+        final types = vm.seeAllTypesFor(
+          HomeRow(id: id, title: '', rowType: HomeRowType.latestMedia),
+        );
+        expect(types, isNot(contains('Comic')));
+        expect(types, contains('Book'));
+      }
+    });
+
+    test('responses missing their fields leave the screen empty', () async {
+      itemsApi.bareResponses = true;
+      final vm = buildClassicVm();
+      await vm.load();
+
+      expect(vm.isLoading, isFalse);
+      expect(vm.rows, isEmpty);
+      expect(vm.bookCount, 0);
+      expect(vm.comicCount, 0);
+    });
   });
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:moonfin_design/moonfin_design.dart';
 
 import '../../../widgets/adaptive/adaptive_glass.dart';
+import 'admin_settings_search.dart';
 
 /// Shared presentation helpers for the admin form screens. They wrap the
 /// existing raw-map form logic in an inset-grouped glass aesthetic without
@@ -209,34 +210,49 @@ Widget adminCodeDropdown({
   required String current,
   required Iterable<(String?, String?)> rawItems,
   required ValueChanged<String?> onChanged,
+  String? helper,
+  String? anchor,
 }) {
   final seen = <String>{};
   final items = <(String, String)>[];
   for (final e in rawItems) {
     final code = e.$1;
     final name = e.$2;
-    if (code == null || name == null) continue;
+    // Jellyfin 12.2 lists 302 cultures with an empty two-letter code. A
+    // second '' item next to the default trips DropdownButton's
+    // one-item-per-value assert.
+    if (code == null || code.isEmpty || name == null) continue;
     if (!seen.add(code)) continue;
     items.add((code, name));
   }
   if (items.isEmpty) {
-    return TextFormField(
-      initialValue: current,
-      decoration: adminInputDecoration(label: label),
-      onChanged: onChanged,
+    return adminFieldRow(
+      label: label,
+      helper: helper,
+      anchor: anchor,
+      child: TextFormField(
+        initialValue: current,
+        decoration: adminInputDecoration(),
+        onChanged: onChanged,
+      ),
     );
   }
   final hasCurrent = current.isEmpty || items.any((e) => e.$1 == current);
-  return DropdownButtonFormField<String>(
-    initialValue: current,
-    isExpanded: true,
-    decoration: adminInputDecoration(label: label),
-    items: [
-      DropdownMenuItem(value: '', child: Text(defaultLabel)),
-      ...items.map((e) => DropdownMenuItem(value: e.$1, child: Text(e.$2))),
-      if (!hasCurrent) DropdownMenuItem(value: current, child: Text(current)),
-    ],
-    onChanged: onChanged,
+  return adminFieldRow(
+    label: label,
+    helper: helper,
+    anchor: anchor,
+    child: DropdownButtonFormField<String>(
+      initialValue: current,
+      isExpanded: true,
+      decoration: adminInputDecoration(),
+      items: [
+        DropdownMenuItem(value: '', child: Text(defaultLabel)),
+        ...items.map((e) => DropdownMenuItem(value: e.$1, child: Text(e.$2))),
+        if (!hasCurrent) DropdownMenuItem(value: current, child: Text(current)),
+      ],
+      onChanged: onChanged,
+    ),
   );
 }
 
@@ -245,8 +261,9 @@ Widget adminSwitchRow({
   String? subtitle,
   required bool value,
   required ValueChanged<bool> onChanged,
+  String? anchor,
 }) {
-  return SwitchListTile.adaptive(
+  final row = SwitchListTile.adaptive(
     title: Text(
       title,
       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
@@ -267,6 +284,59 @@ Widget adminSwitchRow({
     ),
     onChanged: onChanged,
   );
+  return anchor == null ? row : AdminSettingAnchor(id: anchor, child: row);
+}
+
+/// A setting row with the label and its help on the left and the control on
+/// the right, stacked when the content is narrower than 720 px. Sits in an
+/// [adminGlassGroup] beside switch rows.
+Widget adminFieldRow({
+  required String label,
+  String? helper,
+  required Widget child,
+  String? anchor,
+}) {
+  final onSurface = AppColorScheme.onSurface;
+  final text = Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+      if (helper != null) ...[
+        const SizedBox(height: 2),
+        Text(
+          helper,
+          style: TextStyle(
+            fontSize: 12,
+            height: 1.35,
+            color: onSurface.withValues(alpha: 0.55),
+          ),
+        ),
+      ],
+    ],
+  );
+  final row = Padding(
+    padding: const EdgeInsets.symmetric(
+      horizontal: AppSpacing.spaceLg,
+      vertical: AppSpacing.spaceMd,
+    ),
+    child: LayoutBuilder(
+      builder: (context, constraints) => constraints.maxWidth >= 720
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(flex: 10, child: text),
+                const SizedBox(width: AppSpacing.spaceXl),
+                Expanded(flex: 12, child: child),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [text, const SizedBox(height: AppSpacing.spaceSm), child],
+            ),
+    ),
+  );
+  return anchor == null ? row : AdminSettingAnchor(id: anchor, child: row);
 }
 
 /// Full-width accent action button with a spinner while [saving].

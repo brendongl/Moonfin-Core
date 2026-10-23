@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get_it/get_it.dart';
@@ -11,6 +9,31 @@ import '../../../navigation/destinations.dart';
 import '../providers/admin_user_providers.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../../util/error_message.dart';
+import '../widgets/activity_log_ui.dart';
+import '../widgets/admin_form_styles.dart';
+
+/// A run time in the short units the activity page uses, e.g. "2h 5m".
+String taskDurationText(Duration d, AppLocalizations l10n) {
+  final seconds = l10n.adminDurationSecondsShort('${d.inSeconds.remainder(60)}');
+  if (d.inHours > 0) {
+    return '${l10n.adminActivityHoursShort(d.inHours)} '
+        '${l10n.adminActivityMinutesShort(d.inMinutes.remainder(60))}';
+  }
+  if (d.inMinutes > 0) {
+    return '${l10n.adminActivityMinutesShort(d.inMinutes)} $seconds';
+  }
+  return seconds;
+}
+
+/// The words added after the last run for a run that didn't complete, null
+/// for a completed one.
+String? taskResultSuffix(String status, AppLocalizations l10n) =>
+    switch (status) {
+      'Failed' => l10n.adminTaskResultFailed,
+      'Cancelled' => l10n.adminTaskResultCancelled,
+      'Aborted' => l10n.adminTaskResultAborted,
+      _ => null,
+    };
 
 class AdminTasksScreen extends ConsumerStatefulWidget {
   const AdminTasksScreen({super.key});
@@ -20,25 +43,10 @@ class AdminTasksScreen extends ConsumerStatefulWidget {
 }
 
 class _AdminTasksScreenState extends ConsumerState<AdminTasksScreen> {
-  Timer? _refreshTimer;
   String? _categoryFilter;
 
   AdminTasksApi get _api =>
       GetIt.instance<MediaServerClient>().adminTasksApi;
-
-  @override
-  void initState() {
-    super.initState();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      ref.invalidate(adminTasksProvider);
-    });
-  }
-
-  @override
-  void dispose() {
-    _refreshTimer?.cancel();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -63,7 +71,8 @@ class _AdminTasksScreenState extends ConsumerState<AdminTasksScreen> {
       data: (tasks) {
         final grouped = <String, List<TaskInfo>>{};
         for (final task in tasks) {
-          final category = task.category ?? 'Other';
+          final category = task.category;
+          if (category == null) continue;
           grouped.putIfAbsent(category, () => []).add(task);
         }
         final categories = grouped.keys.toList()..sort();
@@ -76,9 +85,18 @@ class _AdminTasksScreenState extends ConsumerState<AdminTasksScreen> {
         }
 
         return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+              child: adminScreenHeader(
+                context,
+                title: l10n.adminDrawerScheduledTasks,
+                icon: Icons.schedule,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Wrap(
@@ -107,7 +125,7 @@ class _AdminTasksScreenState extends ConsumerState<AdminTasksScreen> {
               child: visibleCategories.isEmpty
                   ? Center(child: Text(l10n.adminTasksNoFilterMatch))
                   : ListView.builder(
-                      padding: const EdgeInsets.only(bottom: 80),
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 80),
                       itemCount: visibleCategories.length,
                       itemBuilder: (context, index) {
                         final category = visibleCategories[index];
@@ -132,7 +150,6 @@ class _AdminTasksScreenState extends ConsumerState<AdminTasksScreen> {
   Future<void> _startTask(String taskId) async {
     try {
       await _api.startTask(taskId);
-      ref.invalidate(adminTasksProvider);
     } catch (e) {
       if (mounted) {
         final l10n = AppLocalizations.of(context);
@@ -145,7 +162,6 @@ class _AdminTasksScreenState extends ConsumerState<AdminTasksScreen> {
   Future<void> _stopTask(String taskId) async {
     try {
       await _api.stopTask(taskId);
-      ref.invalidate(adminTasksProvider);
     } catch (e) {
       if (mounted) {
         final l10n = AppLocalizations.of(context);
@@ -173,41 +189,18 @@ class _CategorySection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return adminSection(
+      context,
+      title: category,
+      icon: Icons.folder_outlined,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
-          child: Row(
-            children: [
-              Container(
-                width: 3,
-                height: 14,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primary,
-                  borderRadius: AppRadius.circular(2),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                category.toUpperCase(),
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.primary,
-                  letterSpacing: 1.0,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
+        for (final task in tasks)
+          _TaskRow(
+            task: task,
+            onStart: () => onStart(task.id),
+            onStop: () => onStop(task.id),
+            onTap: () => onTap(task),
           ),
-        ),
-        ...tasks.map((task) => _TaskRow(
-              task: task,
-              onStart: () => onStart(task.id),
-              onStop: () => onStop(task.id),
-              onTap: () => onTap(task),
-            )),
-        const Divider(height: 1),
       ],
     );
   }
@@ -269,25 +262,28 @@ class _TaskRow extends StatelessWidget {
             ),
           ] else if (result != null) ...[
             const SizedBox(height: 2),
-            Row(
-              children: [
-                Icon(
-                  _resultIcon(result.status),
-                  size: 14,
-                  color: _resultColor(result.status, theme),
-                ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    _resultText(result),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: _resultColor(result.status, theme),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+            Text.rich(
+              TextSpan(
+                text: l10n.adminTaskLastRan(
+                  activityTimeAgo(result.endTime, l10n, compact: false),
+                  taskDurationText(
+                    result.endTime.difference(result.startTime),
+                    l10n,
                   ),
                 ),
-              ],
+                children: [
+                  if (taskResultSuffix(result.status, l10n) case final suffix?)
+                    TextSpan(
+                      text: ' ($suffix)',
+                      style: TextStyle(color: _resultColor(result.status, theme)),
+                    ),
+                ],
+              ),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ] else
             Text(
@@ -323,7 +319,7 @@ class _TaskRow extends StatelessWidget {
     }
     if (task.state == 'Cancelling') {
       return Icon(Icons.stop_circle_outlined,
-          color: AppColorScheme.statusPending, size: 22);
+          color: AppColorScheme.recordingScheduled, size: 22);
     }
     final result = task.lastExecutionResult;
     if (result == null) {
@@ -359,37 +355,9 @@ class _TaskRow extends StatelessWidget {
         return theme.colorScheme.error;
       case 'Cancelled':
       case 'Aborted':
-        return AppColorScheme.statusPending;
+        return AppColorScheme.recordingScheduled;
       default:
         return theme.colorScheme.onSurfaceVariant;
     }
-  }
-
-  String _resultText(TaskResult result) {
-    final duration = result.endTime.difference(result.startTime);
-    final durationStr = _formatDuration(duration);
-    final timeAgo = _timeAgo(result.endTime);
-    if (result.status == 'Failed' && result.errorMessage != null) {
-      return 'Failed $timeAgo ($durationStr) — ${result.errorMessage}';
-    }
-    return '${result.status} $timeAgo ($durationStr)';
-  }
-
-  String _formatDuration(Duration d) {
-    if (d.inHours > 0) {
-      return '${d.inHours}h ${d.inMinutes.remainder(60)}m';
-    }
-    if (d.inMinutes > 0) {
-      return '${d.inMinutes}m ${d.inSeconds.remainder(60)}s';
-    }
-    return '${d.inSeconds}s';
-  }
-
-  String _timeAgo(DateTime dt) {
-    final diff = DateTime.now().difference(dt);
-    if (diff.inDays > 0) return '${diff.inDays}d ago';
-    if (diff.inHours > 0) return '${diff.inHours}h ago';
-    if (diff.inMinutes > 0) return '${diff.inMinutes}m ago';
-    return 'just now';
   }
 }

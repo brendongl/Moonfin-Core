@@ -1,4 +1,5 @@
 import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 fun pubspecValue(rootDir: File, key: String): String? {
     val pubspec = rootDir.resolve("../pubspec.yaml")
@@ -60,10 +61,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
 
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
-    }
-
     defaultConfig {
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
@@ -119,7 +116,9 @@ android {
             ndk { abiFilters += tvAbis }
             manifestPlaceholders["appName"] =
                 if (testIdSuffix.isEmpty()) baseAppName else "$baseAppName Test"
-            // Impeller off on TV: the GLES fallback stutters on TV-box GPUs.
+            // Impeller off by default on TV: the GLES fallback stutters on
+            // TV-box GPUs. MoonfinApplication turns it on for boxes where it
+            // runs on Vulkan.
             manifestPlaceholders["enableImpeller"] = "false"
         }
         create("androidTv-beta") {
@@ -177,18 +176,24 @@ android {
 
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget = JvmTarget.JVM_11
+    }
+}
+
 flutter {
     source = "../.."
 }
 
 dependencies {
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
-    implementation("com.google.android.gms:play-services-cast-framework:22.0.0")
+    implementation("com.google.android.gms:play-services-cast-framework:22.3.1")
     implementation("eu.simonbinder:sqlite3-native-library:3.52.0")
     implementation("androidx.tvprovider:tvprovider:1.1.0")
-    implementation("androidx.work:work-runtime-ktx:2.10.1")
+    implementation("androidx.work:work-runtime-ktx:2.12.0")
 }
 
 val flutterApkOutputDir = layout.buildDirectory.dir("app/outputs/flutter-apk")

@@ -8922,7 +8922,6 @@
     },
     "offlineBannerTitle": "Çevrimdışısın",
     "offlineBannerSubtitle": "İndirdikleriniz gösteriliyor",
-    "offlineBannerAction": "İndirilenler",
     "serverUnreachableBannerTitle": "Sunucuya erişilemiyor",
     "serverUnreachableBannerSubtitle": "Bağlantı geri gelene kadar indirilenlerden oynatılıyor",
     "imdbTop250Movies": "IMDB En İyi 250 Film",

@@ -34,37 +34,36 @@ class _AdminWebSocketHandlerState extends ConsumerState<AdminWebSocketHandler> {
   }
 
   void _onEvent(ServerWebSocketMessage event) {
+    // Task and session lists follow their own feeds (adminTasksProvider,
+    // adminSessionsProvider), so only the one-off events are handled here.
     switch (event) {
       case LibraryChangedMessage():
         ref.invalidate(adminLibrariesProvider);
-      case SessionEndedMessage():
-        ref.invalidate(adminNotificationSummaryProvider);
-      case ScheduledTaskEndedMessage():
-        ref.invalidate(adminTasksProvider);
-        ref.invalidate(adminNotificationSummaryProvider);
+      // Anything can change across a restart, so every cached list is dropped.
+      case ServerRestartingMessage():
+      case ServerShuttingDownMessage():
+        ref
+          ..invalidate(adminInstalledPluginsProvider)
+          ..invalidate(adminAvailablePackagesProvider)
+          ..invalidate(adminRepositoriesProvider)
+          ..invalidate(adminUsersListProvider)
+          ..invalidate(adminLibrariesProvider)
+          ..invalidate(adminDevicesProvider)
+          ..invalidate(adminNotificationSummaryProvider);
       case ServerEventMessage(:final type):
         switch (type) {
-          case 'SessionsStart':
-          case 'SessionsStop':
-            ref.invalidate(adminNotificationSummaryProvider);
-          case 'ScheduledTasksInfoStart':
-          case 'ScheduledTasksInfoStop':
-            ref.invalidate(adminTasksProvider);
-            ref.invalidate(adminNotificationSummaryProvider);
           case 'PackageInstallationCompleted':
           case 'PackageInstallationFailed':
-          case 'PluginInstalled':
-          case 'PluginUninstalled':
+          case 'PackageInstallationCancelled':
+          case 'PackageUninstalled':
+          case 'RestartRequired':
             ref.invalidate(adminInstalledPluginsProvider);
             ref.invalidate(adminAvailablePackagesProvider);
             ref.invalidate(adminRepositoriesProvider);
             ref.invalidate(adminNotificationSummaryProvider);
-          case 'UserCreated':
           case 'UserDeleted':
           case 'UserUpdated':
             ref.invalidate(adminUsersListProvider);
-          case 'ActivityLogEntry':
-            ref.invalidate(adminNotificationSummaryProvider);
           default:
             break;
         }

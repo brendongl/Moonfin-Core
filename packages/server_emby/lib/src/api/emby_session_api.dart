@@ -12,9 +12,13 @@ class EmbySessionApi implements SessionApi {
   }
 
   @override
-  Future<List<Map<String, dynamic>>> getSessions({String? controllableByUserId}) async {
+  Future<List<Map<String, dynamic>>> getSessions({
+    String? controllableByUserId,
+    int? activeWithinSeconds,
+  }) async {
     final response = await _dio.get('/Sessions', queryParameters: {
       'ControllableByUserId': ?controllableByUserId,
+      'ActiveWithinSeconds': ?activeWithinSeconds,
     });
     return (response.data as List).cast<Map<String, dynamic>>();
   }

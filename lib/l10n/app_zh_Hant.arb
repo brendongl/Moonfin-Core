@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "偏好的顯示語言",
     "offlineBannerTitle": "您目前離線",
     "offlineBannerSubtitle": "正在顯示您的下載內容",
-    "offlineBannerAction": "下載",
     "serverUnreachableBannerTitle": "無法連線到您的伺服器",
     "serverUnreachableBannerSubtitle": "在伺服器恢復前將播放下載的內容",
     "contextMenuHideFromContinueWatching": "從「繼續觀看」中隱藏",

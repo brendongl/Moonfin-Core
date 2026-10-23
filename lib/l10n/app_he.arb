@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "שפת תצוגה מועדפת",
     "offlineBannerTitle": "אתה במצב לא מקוון",
     "offlineBannerSubtitle": "מוצגות ההורדות שלך",
-    "offlineBannerAction": "הורדות",
     "serverUnreachableBannerTitle": "לא ניתן להגיע לשרת שלך",
     "serverUnreachableBannerSubtitle": "מפעיל מההורדות עד שיחזור",
     "contextMenuHideFromContinueWatching": "הסתר מ\"המשך לצפות\"",

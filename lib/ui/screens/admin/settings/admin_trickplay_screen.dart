@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
-import 'package:moonfin_design/moonfin_design.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../../../l10n/app_localizations.dart';
 import '../../../util/error_message.dart';
 import '../../../widgets/adaptive/adaptive_slider.dart';
+import '../admin_draft.dart';
 import '../widgets/admin_form_styles.dart';
+import 'admin_number_input.dart';
 
 class AdminTrickplayScreen extends StatefulWidget {
   const AdminTrickplayScreen({super.key});
@@ -15,15 +16,12 @@ class AdminTrickplayScreen extends StatefulWidget {
   State<AdminTrickplayScreen> createState() => _AdminTrickplayScreenState();
 }
 
-class _AdminTrickplayScreenState extends State<AdminTrickplayScreen> {
+class _AdminTrickplayScreenState extends State<AdminTrickplayScreen>
+    with AdminDraftHost {
   late final AdminSystemApi _api;
   Map<String, dynamic>? _config;
   bool _loading = true;
-  bool _saving = false;
   String? _error;
-
-  static const _scanBehaviorKeys = ['NonBlocking', 'Blocking'];
-  static const _priorityKeys = ['High', 'AboveNormal', 'Normal', 'BelowNormal', 'Idle'];
 
   List<(String, String)> _scanBehaviors(AppLocalizations l10n) => [
     ('NonBlocking', l10n.adminTrickplayNonBlocking),
@@ -52,12 +50,19 @@ class _AdminTrickplayScreenState extends State<AdminTrickplayScreen> {
     });
     try {
       final config = await _api.getServerConfiguration();
+      config['TrickplayOptions'] ??= <String, dynamic>{};
       if (!mounted) return;
       setState(() {
         _config = config;
-        _config!['TrickplayOptions'] ??= <String, dynamic>{};
         _loading = false;
       });
+      hostDraft(
+        AdminDraft.single(
+          working: config,
+          reload: _api.getServerConfiguration,
+          post: _api.updateServerConfiguration,
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -67,39 +72,20 @@ class _AdminTrickplayScreenState extends State<AdminTrickplayScreen> {
     }
   }
 
-  Future<void> _save() async {
-    if (_config == null) return;
-    setState(() => _saving = true);
-    try {
-      await _api.updateServerConfiguration(_config!);
-      if (mounted) {
-        final l10n = AppLocalizations.of(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.adminTrickplaySaved)),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        final l10n = AppLocalizations.of(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.adminSettingsSaveFailed(describeError(e, l10n)))),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
+  /// Edited in place. The draft then sees TrickplayOptions changed and lays
+  /// the whole object over the fresh config at save.
   Map<String, dynamic> get _opts =>
       _config!['TrickplayOptions'] as Map<String, dynamic>;
 
-  int _intOpt(String key, [int fallback = 0]) =>
+  void _set(String key, Object? value) {
+    setState(() => _opts[key] = value);
+    edited();
+  }
+
+  int _intOpt(String key, int fallback) =>
       (_opts[key] as num?)?.toInt() ?? fallback;
 
   bool _boolOpt(String key) => _opts[key] as bool? ?? false;
-
-  String _strOpt(String key, [String fallback = '']) =>
-      _opts[key]?.toString() ?? fallback;
 
   String _widthResolutionsText() {
     final raw = _opts['WidthResolutions'];
@@ -129,11 +115,8 @@ class _AdminTrickplayScreenState extends State<AdminTrickplayScreen> {
       );
     }
 
-    final scanBehaviors = _scanBehaviors(l10n);
-    final priorities = _priorities(l10n);
-
     return ListView(
-      padding: EdgeInsets.fromLTRB(16, 16, 16, bottomSafe + 40),
+      padding: EdgeInsets.fromLTRB(16, 20, 16, bottomSafe + 40),
       children: [
         adminScreenHeader(
           context,
@@ -141,149 +124,179 @@ class _AdminTrickplayScreenState extends State<AdminTrickplayScreen> {
           subtitle: l10n.adminTrickplayDescription,
           icon: Icons.view_comfy,
         ),
-        adminSection(
-          context,
-          title: l10n.general,
-          icon: Icons.tune,
-          children: [
-            adminSwitchRow(
-              title: l10n.adminTrickplayHwAccel,
-              value: _boolOpt('EnableHwAcceleration'),
-              onChanged: (v) =>
-                  setState(() => _opts['EnableHwAcceleration'] = v),
-            ),
-            adminSwitchRow(
-              title: l10n.adminTrickplayHwEncoding,
-              value: _boolOpt('EnableHwEncoding'),
-              onChanged: (v) => setState(() => _opts['EnableHwEncoding'] = v),
-            ),
-            adminSwitchRow(
-              title: l10n.adminTrickplayKeyFrameOnly,
-              subtitle: l10n.adminTrickplayKeyFrameOnlySubtitle,
-              value: _boolOpt('EnableKeyFrameOnlyExtraction'),
-              onChanged: (v) =>
-                  setState(() => _opts['EnableKeyFrameOnlyExtraction'] = v),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.spaceLg),
-        DropdownButtonFormField<String>(
-          initialValue: _scanBehaviorKeys.contains(_strOpt('ScanBehavior', 'NonBlocking'))
-              ? _strOpt('ScanBehavior', 'NonBlocking')
-              : 'NonBlocking',
-          decoration: adminInputDecoration(label: l10n.adminTrickplayScanBehavior),
-          items: scanBehaviors
-              .map((o) => DropdownMenuItem(value: o.$1, child: Text(o.$2)))
-              .toList(),
-          onChanged: (v) => setState(() => _opts['ScanBehavior'] = v),
-        ),
-        const SizedBox(height: 12),
-        DropdownButtonFormField<String>(
-          initialValue: _priorityKeys.contains(_strOpt('ProcessPriority', 'BelowNormal'))
-              ? _strOpt('ProcessPriority', 'BelowNormal')
-              : 'BelowNormal',
-          decoration:
-              adminInputDecoration(label: l10n.adminTrickplayProcessPriority),
-          items: priorities
-              .map((o) => DropdownMenuItem(value: o.$1, child: Text(o.$2)))
-              .toList(),
-          onChanged: (v) => setState(() => _opts['ProcessPriority'] = v),
-        ),
-        adminSectionLabel(context, l10n.adminTrickplayImageSettings,
-            icon: Icons.image_outlined),
-        _intField('Interval', l10n.adminTrickplayInterval, fallback: 10000,
-            subtitle: l10n.adminTrickplayIntervalSubtitle),
-        const SizedBox(height: 12),
-        TextFormField(
-          initialValue: _widthResolutionsText(),
-          decoration: adminInputDecoration(
-            label: l10n.adminTrickplayWidthResolutions,
-            helper: l10n.adminTrickplayWidthResolutionsHint,
+        draftKeyed(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              adminSection(
+                context,
+                title: l10n.general,
+                icon: Icons.tune,
+                children: [
+                  _switch('EnableHwAcceleration', l10n.adminTrickplayHwAccel),
+                  _switch('EnableHwEncoding', l10n.adminTrickplayHwEncoding),
+                  _switch(
+                    'EnableKeyFrameOnlyExtraction',
+                    l10n.adminTrickplayKeyFrameOnly,
+                    subtitle: l10n.adminTrickplayKeyFrameOnlySubtitle,
+                  ),
+                  _dropdown('ScanBehavior', l10n.adminTrickplayScanBehavior,
+                      _scanBehaviors(l10n), 'NonBlocking'),
+                  _dropdown('ProcessPriority',
+                      l10n.adminTrickplayProcessPriority, _priorities(l10n),
+                      'BelowNormal'),
+                ],
+              ),
+              adminSection(
+                context,
+                title: l10n.adminTrickplayImageSettings,
+                icon: Icons.image_outlined,
+                children: [
+                  _number('Interval', l10n.adminTrickplayInterval,
+                      fallback: 10000,
+                      min: 1,
+                      helper: l10n.adminTrickplayIntervalSubtitle),
+                  adminFieldRow(
+                    label: l10n.adminTrickplayWidthResolutions,
+                    helper: l10n.adminTrickplayWidthResolutionsHint,
+                    anchor: 'trickplay.WidthResolutions',
+                    child: TextFormField(
+                      initialValue: _widthResolutionsText(),
+                      decoration: adminInputDecoration(),
+                      onChanged: (v) {
+                        _opts['WidthResolutions'] = v
+                            .split(',')
+                            .map((s) => int.tryParse(s.trim()))
+                            .where((n) => n != null && n > 0)
+                            .toList();
+                        edited();
+                      },
+                    ),
+                  ),
+                  _number('TileWidth', l10n.adminTrickplayTileWidth,
+                      fallback: 10, min: 1),
+                  _number('TileHeight', l10n.adminTrickplayTileHeight,
+                      fallback: 10, min: 1),
+                ],
+              ),
+              adminSection(
+                context,
+                title: l10n.adminTrickplayQuality,
+                icon: Icons.high_quality_outlined,
+                children: [
+                  _slider('Qscale', l10n.adminTrickplayQScale,
+                      min: 2, max: 31, fallback: 4,
+                      helper: l10n.adminTrickplayQScaleSubtitle),
+                  _slider('JpegQuality', l10n.adminTrickplayJpegQuality,
+                      min: 1, max: 100, fallback: 90),
+                ],
+              ),
+              adminSection(
+                context,
+                title: l10n.adminTrickplayProcessing,
+                icon: Icons.memory,
+                children: [
+                  _number('ProcessThreads', l10n.adminTrickplayProcessThreads,
+                      fallback: 1, helper: l10n.adminPlaybackAutomatic),
+                ],
+              ),
+            ],
           ),
-          onChanged: (v) {
-            _opts['WidthResolutions'] = v
-                .split(',')
-                .map((s) => int.tryParse(s.trim()))
-                .where((n) => n != null && n > 0)
-                .toList();
-          },
         ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _intField('TileWidth', l10n.adminTrickplayTileWidth, fallback: 10),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _intField('TileHeight', l10n.adminTrickplayTileHeight, fallback: 10),
-            ),
-          ],
-        ),
-        adminSectionLabel(context, l10n.adminTrickplayQuality,
-            icon: Icons.high_quality_outlined),
-        _sliderField('Qscale', l10n.adminTrickplayQScale, min: 2, max: 31, fallback: 4,
-            subtitle: l10n.adminTrickplayQScaleSubtitle),
-        const SizedBox(height: 16),
-        _sliderField('JpegQuality', l10n.adminTrickplayJpegQuality, min: 1, max: 100,
-            fallback: 90),
-        adminSectionLabel(context, l10n.adminTrickplayProcessing,
-            icon: Icons.memory),
-        _intField('ProcessThreads', l10n.adminTrickplayProcessThreads, fallback: 1,
-            subtitle: l10n.adminPlaybackAutomatic),
-        const SizedBox(height: AppSpacing.spaceXl),
-        adminSaveButton(label: l10n.save, saving: _saving, onPressed: _save),
       ],
     );
   }
 
-  Widget _intField(String key, String label,
-      {int fallback = 0, String? subtitle}) {
-    return TextFormField(
-      initialValue: _intOpt(key, fallback).toString(),
-      decoration: adminInputDecoration(label: label, helper: subtitle),
-      keyboardType: TextInputType.number,
-      onChanged: (v) => _opts[key] = int.tryParse(v) ?? fallback,
+  Widget _switch(String key, String title, {String? subtitle}) {
+    return adminSwitchRow(
+      title: title,
+      subtitle: subtitle,
+      anchor: 'trickplay.$key',
+      value: _boolOpt(key),
+      onChanged: (v) => _set(key, v),
     );
   }
 
-  Widget _sliderField(
+  Widget _dropdown(
+    String key,
+    String label,
+    List<(String, String)> options,
+    String fallback,
+  ) {
+    final current = _opts[key]?.toString() ?? fallback;
+    return adminFieldRow(
+      label: label,
+      anchor: 'trickplay.$key',
+      child: DropdownButtonFormField<String>(
+        initialValue:
+            options.any((o) => o.$1 == current) ? current : fallback,
+        isExpanded: true,
+        decoration: adminInputDecoration(),
+        items: options
+            .map((o) => DropdownMenuItem(value: o.$1, child: Text(o.$2)))
+            .toList(),
+        onChanged: (v) => _set(key, v),
+      ),
+    );
+  }
+
+  /// Empty text writes [fallback], the default.
+  Widget _number(
     String key,
     String label, {
-    required double min,
-    required double max,
-    int fallback = 0,
-    String? subtitle,
+    required int fallback,
+    int min = 0,
+    String? helper,
   }) {
-    final value =
-        _intOpt(key, fallback).clamp(min.toInt(), max.toInt()).toDouble();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: Theme.of(context).textTheme.bodyLarge),
-        if (subtitle != null)
-          Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
-        Row(
-          children: [
-            Expanded(
-              child: adaptiveSlider(
-                value: value,
-                min: min,
-                max: max,
-                divisions: (max - min).toInt(),
-                label: value.toInt().toString(),
-                onChanged: (v) => setState(() => _opts[key] = v.toInt()),
-              ),
+    return adminFieldRow(
+      label: label,
+      helper: helper,
+      anchor: 'trickplay.$key',
+      child: adminNumberInput(
+        text: _intOpt(key, fallback).toString(),
+        fallback: fallback,
+        min: min,
+        onChanged: (n) {
+          _opts[key] = n;
+          edited();
+        },
+      ),
+    );
+  }
+
+  Widget _slider(
+    String key,
+    String label, {
+    required int min,
+    required int max,
+    required int fallback,
+    String? helper,
+  }) {
+    final value = _intOpt(key, fallback).clamp(min, max);
+    return adminFieldRow(
+      label: label,
+      helper: helper,
+      anchor: 'trickplay.$key',
+      child: Row(
+        children: [
+          Expanded(
+            child: adaptiveSlider(
+              value: value.toDouble(),
+              min: min.toDouble(),
+              max: max.toDouble(),
+              divisions: max - min,
+              label: '$value',
+              onChanged: (v) => _set(key, v.round()),
             ),
-            SizedBox(
-              width: 40,
-              child: Text('${value.toInt()}',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyMedium),
-            ),
-          ],
-        ),
-      ],
+          ),
+          SizedBox(
+            width: 40,
+            child: Text('$value',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium),
+          ),
+        ],
+      ),
     );
   }
 }

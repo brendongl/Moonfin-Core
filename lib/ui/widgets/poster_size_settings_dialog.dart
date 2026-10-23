@@ -31,7 +31,9 @@ class _PosterSizeSettingsDialogState extends State<PosterSizeSettingsDialog> {
     final l10n = AppLocalizations.of(context);
     final posterSizePreference =
         widget.posterSizePreference ?? UserPreferences.posterSize;
-    final currentSize = widget.prefs.get(posterSizePreference);
+    final currentSize = widget.posterSizePreference == null
+        ? widget.prefs.get(posterSizePreference)
+        : widget.prefs.resolveScreenPosterSize(posterSizePreference);
     final currentImageType = widget.imageTypePreference != null
         ? widget.prefs.get(widget.imageTypePreference!)
         : null;
@@ -92,7 +94,7 @@ class _PosterSizeSettingsDialogState extends State<PosterSizeSettingsDialog> {
                   ),
                 ),
               ),
-              for (final size in PosterSize.values)
+              for (final size in PosterSize.gridValues)
                 _posterSizeTile(size, currentSize == size),
             ],
           ],
@@ -146,7 +148,7 @@ class _PosterSizeSettingsDialogState extends State<PosterSizeSettingsDialog> {
       PosterSize.small => 'Small',
       PosterSize.medium => 'Medium',
       PosterSize.large => 'Large',
-      PosterSize.extraLarge => 'Extra Large',
+      PosterSize.extraLarge || PosterSize.grandparents => 'Extra Large',
     };
     return InkWell(
       onTap: () {

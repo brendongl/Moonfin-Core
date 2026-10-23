@@ -27,6 +27,90 @@ abstract class MediaStreamResolver {
     return mediaItem.id as String;
   }
 
+  /// Whether [mediaItem] is a live TV channel, read from the item's `Type`
+  /// or from a wrapped item's `rawData`.
+  static bool isLiveTvItem(dynamic mediaItem) {
+    if (mediaItem == null) return false;
+    try {
+      final Map? map = mediaItem is Map
+          ? mediaItem
+          : (mediaItem as dynamic).rawData as Map?;
+      final type = map?['Type']?.toString();
+      return type == 'TvChannel' || type == 'LiveTvChannel';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Emby's live HLS only works with MPEG-TS segments. With fragmented MP4 the
+  /// playlist lists every segment with a zero duration and no init section,
+  /// and an AAC channel fails outright because ffmpeg copies the ADTS stream
+  /// into fMP4 without a bitstream filter. The Apple profiles lead with fMP4
+  /// and the server takes the first entry it can satisfy, so a channel gets the
+  /// MPEG-TS entries moved ahead of it. Jellyfin handles fMP4 live playlists
+  /// fine, so only Emby needs this.
+  static Map<String, dynamic>? preferMpegTsHlsForLive(
+    Map<String, dynamic>? deviceProfile, {
+    required bool isLiveChannel,
+  }) {
+    if (deviceProfile == null || !isLiveChannel) return deviceProfile;
+    final profiles = deviceProfile['TranscodingProfiles'];
+    if (profiles is! List) return deviceProfile;
+
+    bool isMpegTsVideoHls(dynamic entry) =>
+        _isVideoHls(entry) &&
+        entry['Container']?.toString().toLowerCase() == 'ts';
+
+    final firstVideoHls = profiles.indexWhere(_isVideoHls);
+    if (firstVideoHls == -1 || isMpegTsVideoHls(profiles[firstVideoHls])) {
+      return deviceProfile;
+    }
+    final mpegTsEntries = profiles.where(isMpegTsVideoHls).toList();
+    if (mpegTsEntries.isEmpty) return deviceProfile;
+    final others = profiles.where((e) => !isMpegTsVideoHls(e)).toList();
+    return <String, dynamic>{
+      ...deviceProfile,
+      'TranscodingProfiles': [
+        ...others.take(firstVideoHls),
+        ...mpegTsEntries,
+        ...others.skip(firstVideoHls),
+      ],
+    };
+  }
+
+  /// Jellyfin and Emby cut 6 s segments for a stream copy when the user agent
+  /// looks like AVPlayer, and hold live.m3u8 until three of them exist. Behind
+  /// a tuner that reads at native frame rate that wait runs past AVPlayer's
+  /// 20 s playlist timeout. Asking for two 3 s segments gets the playlist back
+  /// well before that. A value the profile already sets is kept.
+  static Map<String, dynamic>? shortenLiveHlsStartup(
+    Map<String, dynamic>? deviceProfile, {
+    required bool isLiveChannel,
+  }) {
+    if (deviceProfile == null || !isLiveChannel) return deviceProfile;
+    final profiles = deviceProfile['TranscodingProfiles'];
+    if (profiles is! List || !profiles.any(_isVideoHls)) return deviceProfile;
+    return <String, dynamic>{
+      ...deviceProfile,
+      'TranscodingProfiles': [
+        for (final entry in profiles)
+          if (_isVideoHls(entry))
+            <String, dynamic>{
+              'SegmentLength': 3,
+              'MinSegments': 2,
+              ...Map<String, dynamic>.from(entry as Map),
+            }
+          else
+            entry,
+      ],
+    };
+  }
+
+  static bool _isVideoHls(dynamic entry) =>
+      entry is Map &&
+      entry['Type']?.toString() == 'Video' &&
+      entry['Protocol']?.toString().toLowerCase() == 'hls';
+
   static String? resolveStaticMediaSourceId(
     dynamic mediaItem,
     String? mediaSourceId,
@@ -59,10 +143,70 @@ abstract class MediaStreamResolver {
     return sources.map(_mediaSourceId).toSet();
   }
 
+  /// Whether a PlaybackInfo pinned to [mediaSourceId] that failed may retry
+  /// with no id and take the server's own pick. An id the item does not list
+  /// is stale. A single version item gets the same title back either way,
+  /// which matters when the server swaps the source, like the live stream of
+  /// a recording that is still being written. Several versions keep the
+  /// caller's explicit pick.
+  static bool canRetryWithoutMediaSourceId(
+    dynamic mediaItem,
+    String? mediaSourceId,
+  ) {
+    if (mediaSourceId == null || mediaSourceId.isEmpty) return false;
+    final staticIds = staticMediaSourceIds(mediaItem);
+    return staticIds.isNotEmpty &&
+        (staticIds.length == 1 || !staticIds.contains(mediaSourceId));
+  }
+
+  /// Whether [mediaSourceId] names the item's only cached source and that
+  /// source lists no media streams.
+  ///
+  /// An Emby channel item, like one from a plugin's virtual library, caches a
+  /// bare placeholder source. PlaybackInfo probes the real file and returns it
+  /// under a different id, while asking for the placeholder by id gets back
+  /// only the placeholder, which the server can do nothing with but transcode,
+  /// and that transcode fails. With a single version there is no pick to keep,
+  /// so the id is better left off for the server to answer with its default.
+  /// A live TV channel's source has no streams until it's tuned, and an item
+  /// that lists its own streams was probed, so both keep their id.
+  static bool isStreamlessStaticSource(
+    dynamic mediaItem,
+    String? mediaSourceId,
+  ) {
+    if (mediaSourceId == null ||
+        mediaSourceId.isEmpty ||
+        isLiveTvItem(mediaItem) ||
+        (_itemMediaStreams(mediaItem)?.isNotEmpty ?? false)) {
+      return false;
+    }
+    final sources = _staticMediaSources(mediaItem);
+    if (sources == null || sources.length != 1) return false;
+    final source = sources.first;
+    if (_mediaSourceId(source) != mediaSourceId) return false;
+    try {
+      final streams = source is Map
+          ? source['MediaStreams'] as List<dynamic>?
+          : source.mediaStreams as List<dynamic>?;
+      return streams == null || streams.isEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static List<dynamic>? _staticMediaSources(dynamic mediaItem) {
     if (mediaItem is Map) return mediaItem['MediaSources'] as List<dynamic>?;
     try {
       return mediaItem.mediaSources as List<dynamic>?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static List<dynamic>? _itemMediaStreams(dynamic mediaItem) {
+    if (mediaItem is Map) return mediaItem['MediaStreams'] as List<dynamic>?;
+    try {
+      return mediaItem.mediaStreams as List<dynamic>?;
     } catch (_) {
       return null;
     }
@@ -255,6 +399,53 @@ abstract class MediaStreamResolver {
         isDefault: stream['IsDefault'] as bool? ?? false,
         isForced: stream['IsForced'] as bool? ?? false,
         streamIndex: stream['Index'] as int?,
+      ));
+    }
+    return subs;
+  }
+
+  /// Embedded SRT and WebVTT tracks the server can also hand out as a file,
+  /// for the secondary subtitle overlay, which fetches its track itself. Kept
+  /// apart from [extractExternalSubtitles] so the primary subtitle paths keep
+  /// treating these tracks as embedded.
+  static List<ExternalSubtitle> extractEmbeddedTextSubtitles(
+    List<Map<String, dynamic>> mediaStreams,
+    String baseUrl, {
+    required String itemId,
+    required String mediaSourceId,
+  }) {
+    if (itemId.isEmpty || mediaSourceId.isEmpty) return const [];
+    final base = Uri.parse(baseUrl.endsWith('/') ? baseUrl : '$baseUrl/');
+    final subs = <ExternalSubtitle>[];
+    for (final stream in mediaStreams) {
+      if (stream['Type'] != 'Subtitle') continue;
+      final deliveryUrl = (stream['DeliveryUrl'] as String?)?.trim();
+      if (deliveryUrl != null && deliveryUrl.isNotEmpty) continue;
+      if (stream['SupportsExternalStream'] != true) continue;
+      final index = stream['Index'];
+      if (index is! int) continue;
+      final codec = (stream['Codec'] as String?)?.trim().toLowerCase();
+      final extension = switch (codec) {
+        'srt' || 'subrip' => 'srt',
+        'vtt' || 'webvtt' => 'vtt',
+        _ => null,
+      };
+      if (extension == null) continue;
+      subs.add(ExternalSubtitle(
+        deliveryUrl: base
+            .resolve(
+              'Videos/${Uri.encodeComponent(itemId)}/'
+              '${Uri.encodeComponent(mediaSourceId)}/Subtitles/$index/0/'
+              'Stream.$extension',
+            )
+            .toString(),
+        title: stream['DisplayTitle'] as String? ??
+            stream['Title'] as String?,
+        language: stream['Language'] as String?,
+        codec: codec!,
+        isDefault: stream['IsDefault'] as bool? ?? false,
+        isForced: stream['IsForced'] as bool? ?? false,
+        streamIndex: index,
       ));
     }
     return subs;

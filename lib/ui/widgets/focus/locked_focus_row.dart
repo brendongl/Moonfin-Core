@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
@@ -235,12 +236,39 @@ class LockedFocusRowState<T> extends State<LockedFocusRow<T>> {
 
   void _scrollToIndex(int index) {
     if (!_scrollController.hasClients) return;
+    final drift = _layoutDrift();
     scrollListToIndex(
       _scrollController,
       index,
       itemExtent: widget.itemExtent + widget.itemSpacing,
-      leadingPadding: widget.leadingPadding,
-    );
+      leadingPadding: widget.leadingPadding + drift,
+    ).whenComplete(() {
+      // The glide itself can leave a card behind mid-shrink, so check again
+      // once it stops.
+      if (mounted &&
+          index == _focusedIndex &&
+          (_layoutDrift() - drift).abs() > 1) {
+        _scrollToIndex(index);
+      }
+    });
+  }
+
+  /// How far the built cards sit from where [LockedFocusRow.itemExtent] puts
+  /// them. A card that grows on focus can scroll out of the list's cache
+  /// before it has shrunk back, and the list keeps that in-between width for
+  /// every card after it until the row scrolls back to its start.
+  double _layoutDrift() {
+    final stride = widget.itemExtent + widget.itemSpacing;
+    final leading = Directionality.of(context) == TextDirection.rtl
+        ? widget.padding.right
+        : widget.padding.left;
+    for (var i = 0; i < _itemKeys.length; i++) {
+      final box = _itemKeys[i].currentContext?.findRenderObject();
+      if (box is! RenderBox || !box.attached || !box.hasSize) continue;
+      final reveal = RenderAbstractViewport.of(box).getOffsetToReveal(box, 0);
+      return reveal.offset - leading - i * stride;
+    }
+    return 0;
   }
 
   KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {

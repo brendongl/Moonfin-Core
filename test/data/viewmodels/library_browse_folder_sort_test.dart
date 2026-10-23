@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jellyfin_preference/jellyfin_preference.dart';
 import 'package:moonfin/data/repositories/mdblist_repository.dart';
+import 'package:moonfin/data/utils/genre_browse_utils.dart';
+import 'package:moonfin/data/viewmodels/folder_browse_view_model.dart';
 import 'package:moonfin/data/viewmodels/library_browse_view_model.dart';
 import 'package:moonfin/preference/preference_constants.dart';
 import 'package:moonfin/preference/user_preferences.dart';
@@ -11,6 +13,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 class _FakeItemsApi implements ItemsApi {
   final List<String?> requestedSorts = <String?>[];
   final List<bool?> requestedRecursive = <bool?>[];
+  final List<List<String>?> requestedIncludes = <List<String>?>[];
+  final List<List<String>?> requestedExcludes = <List<String>?>[];
 
   @override
   Future<Map<String, dynamic>> getItems({
@@ -61,6 +65,20 @@ class _FakeItemsApi implements ItemsApi {
   }) async {
     requestedSorts.add(sortBy);
     requestedRecursive.add(recursive);
+    requestedIncludes.add(includeItemTypes);
+    requestedExcludes.add(excludeItemTypes);
+    if (includeItemTypes?.contains('Folder') ?? false) {
+      return <String, dynamic>{
+        'Items': [
+          <String, dynamic>{
+            'Id': 'folder',
+            'Name': 'Phase One',
+            'Type': 'Folder',
+            'IsFolder': true,
+          },
+        ],
+      };
+    }
     return <String, dynamic>{
       'TotalRecordCount': 2,
       'Items': [
@@ -142,7 +160,32 @@ void main() {
     await vm.load();
 
     expect(vm.sortBy, LibrarySortBy.foldersFirst);
-    expect(api.requestedSorts.first, 'IsFolder,SortName');
+    expect(api.requestedSorts, everyElement('SortName'));
+  });
+
+  test('folders first lists plain folders ahead of shows and movies, which '
+      'keep their name order', () async {
+    final api = _FakeItemsApi();
+    final vm = await _viewModel(api);
+
+    await vm.load();
+
+    expect(api.requestedExcludes.first, containsAll(kDirectoryItemTypes));
+    expect(api.requestedIncludes.last, kDirectoryItemTypes);
+    expect(vm.items.map((item) => item.id), ['folder', 'series', 'movie']);
+    expect(vm.totalCount, 3);
+  });
+
+  test('a sub-folder lists plain folders ahead of shows and movies, which '
+      'keep their name order', () async {
+    final api = _FakeItemsApi();
+    final vm = FolderBrowseViewModel(_FakeClient(api));
+
+    await vm.loadFolder('marvel');
+
+    expect(api.requestedSorts, everyElement('SortName'));
+    expect(vm.items.map((item) => item.id), ['folder', 'series', 'movie']);
+    expect(vm.hasMore, isFalse);
   });
 
   test('a premiere date sort stays picked when the library opens again', () async {

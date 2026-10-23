@@ -118,6 +118,36 @@ public final class NativeGameChannel: NSObject, FlutterStreamHandler {
       let mask = (args["mask"] as? NSNumber)?.uint16Value ?? 0
       session?.input.setDartMask(mask)
       result(nil)
+    case "setPadState":
+      session?.input.setDartPadState(
+        lx: (args["lx"] as? NSNumber)?.int16Value ?? 0,
+        ly: (args["ly"] as? NSNumber)?.int16Value ?? 0,
+        rx: (args["rx"] as? NSNumber)?.int16Value ?? 0,
+        ry: (args["ry"] as? NSNumber)?.int16Value ?? 0,
+        l2: (args["l2"] as? NSNumber)?.uint16Value ?? 0,
+        r2: (args["r2"] as? NSNumber)?.uint16Value ?? 0)
+      result(nil)
+    case "setPointer":
+      session?.input.setPointer(
+        pressed: (args["pressed"] as? Bool) ?? false,
+        x: (args["x"] as? NSNumber)?.int16Value ?? 0,
+        y: (args["y"] as? NSNumber)?.int16Value ?? 0)
+      result(nil)
+    case "analogStickPorts":
+      result(session?.analogStickPorts() ?? 0)
+    case "getControllerTypes":
+      result(session?.controllerTypes() ?? [])
+    case "setControllerType":
+      let port = (args["port"] as? NSNumber)?.intValue ?? 0
+      let device = (args["deviceType"] as? NSNumber)?.intValue ?? 1
+      if session?.setControllerType(port: port, device: device) == true {
+        result(nil)
+      } else {
+        result(FlutterError(
+          code: "controller_type_failed",
+          message: "The core rejected device type \(device) for port \(port).",
+          details: nil))
+      }
     default:
       result(FlutterMethodNotImplemented)
     }

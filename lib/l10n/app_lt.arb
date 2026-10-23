@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "Pageidaujama rodymo kalba",
     "offlineBannerTitle": "Esate neprisijungę",
     "offlineBannerSubtitle": "Rodomi jūsų atsisiuntimai",
-    "offlineBannerAction": "Atsisiuntimai",
     "serverUnreachableBannerTitle": "Nepavyksta pasiekti serverio",
     "serverUnreachableBannerSubtitle": "Kol serveris neveikia, leidžiama iš atsisiuntimų",
     "contextMenuHideFromContinueWatching": "Slėpti iš „Tęsti žiūrėjimą“",

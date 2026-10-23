@@ -10,6 +10,7 @@ import 'package:server_core/server_core.dart';
 
 import '../../../data/viewmodels/live_tv_guide_view_model.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../widgets/emby_premiere_dialog.dart';
 import '../../util/error_message.dart';
 import '../../../util/platform_detection.dart';
 import '../../../util/tv_ui_scale.dart';
@@ -23,6 +24,7 @@ import '../../widgets/overlay_sheet.dart';
 import '../../widgets/focus/request_initial_focus.dart';
 import '../../../util/focus/dpad_keys.dart';
 import '../../../util/focus/key_event_utils.dart';
+import '../../../playback/external_player_policy.dart';
 import '../../../preference/user_preferences.dart';
 import '../../../preference/preference_constants.dart';
 import '../../../util/clock_format.dart';
@@ -36,6 +38,7 @@ import 'guide/guide_cell.dart';
 import 'guide/guide_layout_profile.dart';
 import 'guide/guide_selection.dart';
 import 'guide/guide_window.dart';
+import 'live_tv_channel_player_loader.dart';
 
 // Start fetching the next batch of channel programs this many rows before the
 // lazily-loaded edge, so rows are usually populated by the time they're visible.
@@ -56,20 +59,6 @@ const _kMiniPlayerHeight = 168.0;
 // never moves under an in-progress navigation.
 const _kReanchorInputQuiet = Duration(seconds: 1);
 
-/// The transport keys a TV remote offers for paging; `lib/util/focus/` has no
-/// shared helper for them.
-final Set<LogicalKeyboardKey> _kPageForwardKeys = <LogicalKeyboardKey>{
-  LogicalKeyboardKey.mediaFastForward,
-  LogicalKeyboardKey.mediaTrackNext,
-  LogicalKeyboardKey.pageDown,
-};
-
-final Set<LogicalKeyboardKey> _kPageBackKeys = <LogicalKeyboardKey>{
-  LogicalKeyboardKey.mediaRewind,
-  LogicalKeyboardKey.mediaTrackPrevious,
-  LogicalKeyboardKey.pageUp,
-};
-
 /// Indices of the controls row's buttons, left to right. LEFT/RIGHT walk this
 /// range, so a button added to the row must take the next index in order.
 const int _kWindowBarPrevious = 0;
@@ -79,13 +68,6 @@ const int _kWindowBarSort = 3;
 const int _kWindowBarDate = 4;
 const int _kWindowBarRecordings = 5;
 const int _kWindowBarLast = _kWindowBarRecordings;
-
-/// 1 pages a viewport of rows forward, -1 back, 0 when the key doesn't page.
-int _pageRowDirection(LogicalKeyboardKey key) {
-  if (_kPageForwardKeys.contains(key)) return 1;
-  if (_kPageBackKeys.contains(key)) return -1;
-  return 0;
-}
 
 /// Handed to an embedded [LiveTvGuideScreen] so its host's [PopScope] can
 /// offer it a back press before closing the guide outright.
@@ -1360,7 +1342,7 @@ class _LiveTvGuideScreenState extends State<LiveTvGuideScreen>
             logoUrl: logoUrl,
             channelName: channel.name,
             channelNumber: channel.number,
-            nowTitle: now?.name,
+            nowTitle: now?.titleWithEpisode,
             nowProgress: now?.progressAt(t) ?? 0,
             remainingLabel: now == null
                 ? null
@@ -1368,7 +1350,8 @@ class _LiveTvGuideScreenState extends State<LiveTvGuideScreen>
             nextLabel: next == null
                 ? null
                 : AppLocalizations.of(context)
-                      .guideNextProgram(_formatTime(next.startDate), next.name),
+                      .guideNextProgram(
+                        _formatTime(next.startDate), next.titleWithEpisode),
             isLive: isLive,
             apple: _apple,
             onTap: () => _watchChannel(channel.id),
@@ -1830,7 +1813,7 @@ class _LiveTvGuideScreenState extends State<LiveTvGuideScreen>
       onPressed: () => _watchChannel(channel.id),
       onKeyEvent: (_, event) {
         if (!event.isActionable) return KeyEventResult.ignored;
-        final pageDirection = _pageRowDirection(event.logicalKey);
+        final pageDirection = event.logicalKey.pageDirection;
         if (pageDirection != 0) {
           _onNavigationKey();
           _focusChannelRow(
@@ -2432,9 +2415,15 @@ class _LiveTvGuideScreenState extends State<LiveTvGuideScreen>
     final index = channels.indexWhere((channel) => channel.id == channelId);
     if (index < 0) return;
     _vm.resetWindowOnExit(windowStart: guideLeftEdge(DateTime.now()));
+    // With the setting off nothing is awaited, so the built-in player still
+    // opens on this frame.
+    final external =
+        ExternalPlayerPolicy.isEnabled &&
+        await queueChannelForExternalPlayer(channels[index]);
+    if (!mounted) return;
     await context.push(
-      Destinations.liveTvPlayer,
-      extra: {'channels': channels, 'startIndex': index},
+      external ? Destinations.externalPlayer : Destinations.liveTvPlayer,
+      extra: external ? null : {'channels': channels, 'startIndex': index},
     );
     if (!mounted) return;
     await _vm.reloadIfStale(
@@ -2622,9 +2611,13 @@ class _LiveTvGuideScreenState extends State<LiveTvGuideScreen>
                         ),
                       ),
                     );
-                  } catch (_) {
+                  } catch (e) {
                     dialogActionInProgress = false;
                     if (!pageContext.mounted) return;
+                    if (isPremiereError(e)) {
+                      await showPremiereRequiredDialog(pageContext);
+                      return;
+                    }
                     ScaffoldMessenger.of(pageContext).showSnackBar(
                       SnackBar(
                         content: Text(
@@ -3065,7 +3058,7 @@ class _GuideProgramRowState extends State<_GuideProgramRow> {
     if (!event.isActionable) return KeyEventResult.ignored;
 
     final key = event.logicalKey;
-    final pageDirection = _pageRowDirection(key);
+    final pageDirection = key.pageDirection;
     if (pageDirection != 0) {
       widget.onNavigationKey();
       widget.onPageRows(widget.rowIndex, pageDirection);
@@ -3184,6 +3177,7 @@ class _GuideProgramRowState extends State<_GuideProgramRow> {
         listenable: widget.horizontalController,
         builder: (_, _) => EpgProgramCell(
           title: program?.name ?? '',
+          episodeLine: program?.episodeLine,
           rating: program?.officialRating,
           tags:
               program?.categoryTags.map(widget.filterLabel).toList() ??

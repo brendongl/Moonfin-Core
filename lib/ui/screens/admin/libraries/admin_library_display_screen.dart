@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
-import 'package:moonfin_design/moonfin_design.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../../../l10n/app_localizations.dart';
 import '../../../util/error_message.dart';
+import '../admin_draft.dart';
 import '../widgets/admin_form_styles.dart';
 
 /// Server-wide library display settings (folder view, collection grouping,
 /// external suggestions) plus the date-added behavior from the named `metadata`
-/// configuration. Mirrors jellyfin-web's Libraries > Display page.
+/// configuration.
 class AdminLibraryDisplayScreen extends StatefulWidget {
   const AdminLibraryDisplayScreen({super.key});
 
@@ -18,12 +18,12 @@ class AdminLibraryDisplayScreen extends StatefulWidget {
       _AdminLibraryDisplayScreenState();
 }
 
-class _AdminLibraryDisplayScreenState extends State<AdminLibraryDisplayScreen> {
+class _AdminLibraryDisplayScreenState extends State<AdminLibraryDisplayScreen>
+    with AdminDraftHost {
   late final AdminSystemApi _api;
   Map<String, dynamic>? _config;
-  Map<String, dynamic> _metadata = const {};
+  Map<String, dynamic>? _metadata;
   bool _loading = true;
-  bool _saving = false;
   String? _error;
 
   @override
@@ -40,15 +40,27 @@ class _AdminLibraryDisplayScreenState extends State<AdminLibraryDisplayScreen> {
     });
     try {
       final config = await _api.getServerConfiguration();
-      final metadata = await _api
-          .getNamedConfiguration('metadata')
-          .catchError((_) => <String, dynamic>{});
+      // No fallback, because saving a blank metadata config would flip the
+      // date added behavior to the server default.
+      final metadata = await _api.getNamedConfiguration('metadata');
       if (!mounted) return;
       setState(() {
         _config = config;
         _metadata = metadata;
         _loading = false;
       });
+      hostDraft(AdminDraft({
+        'config': AdminDraftTarget(
+          working: config,
+          reload: _api.getServerConfiguration,
+          post: _api.updateServerConfiguration,
+        ),
+        'metadata': AdminDraftTarget(
+          working: metadata,
+          reload: () => _api.getNamedConfiguration('metadata'),
+          post: (value) => _api.updateNamedConfiguration('metadata', value),
+        ),
+      }));
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -58,36 +70,17 @@ class _AdminLibraryDisplayScreenState extends State<AdminLibraryDisplayScreen> {
     }
   }
 
-  Future<void> _save() async {
-    if (_config == null) return;
-    setState(() => _saving = true);
-    try {
-      await _api.updateServerConfiguration(_config!);
-      await _api.updateNamedConfiguration('metadata', _metadata);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppLocalizations.of(context).adminSettingsSaved)),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        final l10n = AppLocalizations.of(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(l10n.adminSettingsSaveFailed(describeError(e, l10n))),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+  void _set(Map<String, dynamic> target, String key, Object? value) {
+    setState(() => target[key] = value);
+    edited();
   }
 
-  Widget _switchTile(String key, String title) {
+  Widget _switchTile(String key, String title, {bool fallback = false}) {
     return adminSwitchRow(
       title: title,
-      value: _config![key] as bool? ?? false,
-      onChanged: (v) => setState(() => _config![key] = v),
+      anchor: 'display.$key',
+      value: _config![key] as bool? ?? fallback,
+      onChanged: (v) => _set(_config!, key, v),
     );
   }
 
@@ -95,7 +88,7 @@ class _AdminLibraryDisplayScreenState extends State<AdminLibraryDisplayScreen> {
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
     final l10n = AppLocalizations.of(context);
-    if (_error != null || _config == null) {
+    if (_error != null || _config == null || _metadata == null) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -113,7 +106,9 @@ class _AdminLibraryDisplayScreenState extends State<AdminLibraryDisplayScreen> {
     }
 
     final bottomSafe = MediaQuery.of(context).padding.bottom;
-    final useFileTime = _metadata['UseFileCreationTimeForDateAdded'] as bool? ?? false;
+    // The server default is true when the key is missing.
+    final useFileTime =
+        _metadata!['UseFileCreationTimeForDateAdded'] as bool? ?? true;
     return ListView(
       padding: EdgeInsets.fromLTRB(16, 20, 16, bottomSafe + 40),
       children: [
@@ -122,36 +117,56 @@ class _AdminLibraryDisplayScreenState extends State<AdminLibraryDisplayScreen> {
           title: l10n.adminLibDisplayTitle,
           icon: Icons.grid_view,
         ),
-        adminSection(
-          context,
-          title: l10n.adminLibDisplaySection,
-          icon: Icons.tune,
-          children: [
-            _switchTile('EnableFolderView', l10n.adminLibFolderView),
-            _switchTile(
-                'DisplaySpecialsWithinSeasons', l10n.adminLibSpecialsInSeasons),
-            _switchTile(
-                'EnableGroupingMoviesIntoCollections', l10n.adminLibGroupMovies),
-            _switchTile(
-                'EnableGroupingShowsIntoCollections', l10n.adminLibGroupShows),
-            _switchTile('EnableExternalContentInSuggestions',
-                l10n.adminLibExternalSuggestions),
-          ],
+        draftKeyed(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              adminSection(
+                context,
+                title: l10n.adminLibDateAddedSection,
+                icon: Icons.event_outlined,
+                children: [
+                  adminFieldRow(
+                    label: l10n.adminLibDateAddedLabel,
+                    anchor: 'display.UseFileCreationTimeForDateAdded',
+                    child: DropdownButtonFormField<bool>(
+                      initialValue: useFileTime,
+                      isExpanded: true,
+                      decoration: adminInputDecoration(),
+                      items: [
+                        DropdownMenuItem(
+                            value: false,
+                            child: Text(l10n.adminLibDateAddedImport)),
+                        DropdownMenuItem(
+                            value: true, child: Text(l10n.adminLibDateAddedFile)),
+                      ],
+                      onChanged: (v) => _set(_metadata!,
+                          'UseFileCreationTimeForDateAdded', v ?? true),
+                    ),
+                  ),
+                ],
+              ),
+              adminSection(
+                context,
+                title: l10n.adminLibDisplaySection,
+                icon: Icons.tune,
+                children: [
+                  _switchTile('EnableFolderView', l10n.adminLibFolderView),
+                  _switchTile('DisplaySpecialsWithinSeasons',
+                      l10n.adminLibSpecialsInSeasons,
+                      fallback: true),
+                  _switchTile('EnableGroupingMoviesIntoCollections',
+                      l10n.adminLibGroupMovies),
+                  _switchTile('EnableGroupingShowsIntoCollections',
+                      l10n.adminLibGroupShows),
+                  _switchTile('EnableExternalContentInSuggestions',
+                      l10n.adminLibExternalSuggestions,
+                      fallback: true),
+                ],
+              ),
+            ],
+          ),
         ),
-        adminSectionLabel(context, l10n.adminLibDateAddedSection,
-            icon: Icons.event_outlined),
-        DropdownButtonFormField<bool>(
-          initialValue: useFileTime,
-          decoration: adminInputDecoration(label: l10n.adminLibDateAddedLabel),
-          items: [
-            DropdownMenuItem(value: false, child: Text(l10n.adminLibDateAddedImport)),
-            DropdownMenuItem(value: true, child: Text(l10n.adminLibDateAddedFile)),
-          ],
-          onChanged: (v) => setState(
-              () => _metadata['UseFileCreationTimeForDateAdded'] = v ?? false),
-        ),
-        const SizedBox(height: AppSpacing.spaceXl),
-        adminSaveButton(label: l10n.save, saving: _saving, onPressed: _save),
       ],
     );
   }

@@ -5,16 +5,6 @@ import '../../../../l10n/app_localizations.dart';
 import '../providers/admin_media_analytics_provider.dart';
 import 'admin_form_styles.dart';
 
-const _dashboardMetricKeys = <String>[
-  'movies',
-  'series',
-  'episodes',
-  'albums',
-  'songs',
-  'books',
-  'collections',
-];
-
 class AdminMediaSummarySection extends StatelessWidget {
   final AdminMediaCountSummary summary;
   final String? title;
@@ -27,7 +17,7 @@ class AdminMediaSummarySection extends StatelessWidget {
     required this.summary,
     this.title,
     this.subtitle,
-    this.metricKeys = _dashboardMetricKeys,
+    this.metricKeys = adminDashboardMetricKeys,
     this.onOpenAnalytics,
   });
 
@@ -39,77 +29,79 @@ class AdminMediaSummarySection extends StatelessWidget {
         ? title!
         : l10n.adminMediaOverview;
 
-    return adminGlassGroup(
-      context,
+    final metrics = adminMediaMetrics
+        .where((metric) => metricKeys.contains(metric.key))
+        .where((metric) => summary.countFor(metric.key) > 0)
+        .toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+        Row(
+          children: [
+            Expanded(
+              child: adminSectionLabel(context, resolvedTitle,
+                  icon: Icons.perm_media_outlined),
+            ),
+            if (onOpenAnalytics != null)
+              TextButton.icon(
+                onPressed: onOpenAnalytics,
+                icon: const Icon(Icons.insights_outlined, size: 18),
+                label: Text(l10n.analytics),
+              ),
+          ],
+        ),
+        adminGlassGroup(
+          context,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  if ((subtitle ?? '').isNotEmpty) ...[
+                    Text(
+                      subtitle!,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+                  LayoutBuilder(
+                  builder: (context, constraints) {
+                    final maxWidth = constraints.maxWidth;
+                    const spacing = 12.0;
+                    final columns = maxWidth >= 900
+                        ? 4
+                        : maxWidth >= 640
+                            ? 3
+                            : maxWidth >= 420
+                                ? 2
+                                : 1;
+                    final tileWidth = (maxWidth - ((columns - 1) * spacing)) / columns;
+
+                    return Wrap(
+                      spacing: spacing,
+                      runSpacing: spacing,
                       children: [
-                        Text(resolvedTitle, style: theme.textTheme.titleLarge),
-                        if ((subtitle ?? '').isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            subtitle!,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
+                        for (final metric in metrics)
+                          SizedBox(
+                            width: tileWidth,
+                            child: _AdminMediaMetricTile(
+                              metric: metric,
+                              value: summary.countFor(metric.key),
+                              onTap: onOpenAnalytics,
                             ),
                           ),
-                        ],
                       ],
-                    ),
+                    );
+                    },
                   ),
-                  if (onOpenAnalytics != null)
-                    FilledButton.tonalIcon(
-                      onPressed: onOpenAnalytics,
-                      icon: const Icon(Icons.insights_outlined),
-                      label: Text(l10n.analytics),
-                    ),
                 ],
               ),
-              const SizedBox(height: 14),
-              LayoutBuilder(
-              builder: (context, constraints) {
-                final maxWidth = constraints.maxWidth;
-                const spacing = 12.0;
-                final columns = maxWidth >= 900
-                    ? 4
-                    : maxWidth >= 640
-                        ? 3
-                        : maxWidth >= 420
-                            ? 2
-                            : 1;
-                final tileWidth = (maxWidth - ((columns - 1) * spacing)) / columns;
-
-                return Wrap(
-                  spacing: spacing,
-                  runSpacing: spacing,
-                  children: [
-                    for (final metric in adminMediaMetrics.where(
-                      (metric) => metricKeys.contains(metric.key),
-                    ))
-                      SizedBox(
-                        width: tileWidth,
-                        child: _AdminMediaMetricTile(
-                          metric: metric,
-                          value: summary.countFor(metric.key),
-                          onTap: onOpenAnalytics,
-                        ),
-                      ),
-                  ],
-                );
-                },
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ],
     );

@@ -11,6 +11,7 @@ import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get_it/get_it.dart';
 import 'package:path/path.dart' as p;
+import 'package:playback_core/playback_core.dart' show MediaStreamResolver;
 import 'package:server_core/server_core.dart';
 import 'package:uuid/uuid.dart';
 
@@ -23,17 +24,20 @@ import '../../util/disk_free_space.dart';
 import '../../util/download_grouping.dart' show downloadNotificationLabel;
 import '../../util/download_utils.dart';
 import '../../util/platform_detection.dart';
+import '../../util/server_url.dart';
 import '../database/offline_database.dart';
 import '../models/aggregated_item.dart';
 import '../models/download_quality.dart';
 import '../models/download_source.dart';
 import 'auto_download_downloader.dart';
 import '../repositories/offline_repository.dart';
+import '../utils/next_up_enrichment.dart';
 import 'background_download_coordinator.dart';
 import 'book_reader_service.dart';
 import 'download_notification_service.dart';
 import 'legacy_download_engine.dart';
 import 'media3_transmux_downloader.dart';
+import 'media_server_client_factory.dart';
 import 'media_store_service.dart';
 import 'storage_path_service.dart';
 import 'web_download_helper.dart';
@@ -278,11 +282,19 @@ class _NeverStartedException implements Exception {}
 enum _DownloadActivityPhase { start, progress, stop }
 
 class _QueuedDownload {
-  _QueuedDownload(this.item, this.quality, this.source);
+  _QueuedDownload(
+    this.item,
+    this.quality,
+    this.source,
+    this.mediaSourceId,
+    this.audioStreamIndex,
+  );
 
   final AggregatedItem item;
   final DownloadQuality quality;
   final DownloadSource source;
+  final String? mediaSourceId;
+  final int? audioStreamIndex;
   final Completer<void> completer = Completer<void>();
 }
 
@@ -324,6 +336,7 @@ class DownloadService extends ChangeNotifier implements AutoDownloadDownloader {
   final Map<String, double> _serverTranscodeProgress = {};
   final Map<String, int> _transcodeEtaSeconds = {};
   final Map<String, TransferRateTracker> _transferRates = {};
+  final Set<String> _subtitleRepairsTried = {};
 
   Timer? _rateRefreshTimer;
   static const _rateStaleAfter = Duration(seconds: 5);
@@ -519,7 +532,14 @@ class DownloadService extends ChangeNotifier implements AutoDownloadDownloader {
   String? _legacyTlsRawCache;
   bool _legacyTlsResult = false;
 
+  late final String _serverHost = Uri.tryParse(_client.baseUrl)?.host ?? '';
+
+  ClientCertificateMaterial? get _clientCertificate =>
+      clientCertificateFor(_serverHost);
+
   bool get _serverNeedsLegacyTls {
+    // A background URLSession can't answer a client certificate challenge.
+    if (PlatformDetection.isIOS && _clientCertificate != null) return true;
     final raw = _prefs.get(UserPreferences.legacyDownloadEngineServers);
     if (raw != _legacyTlsRawCache) {
       _legacyTlsRawCache = raw;
@@ -594,6 +614,8 @@ class DownloadService extends ChangeNotifier implements AutoDownloadDownloader {
         queued.item,
         quality: queued.quality,
         source: queued.source,
+        mediaSourceId: queued.mediaSourceId,
+        audioStreamIndex: queued.audioStreamIndex,
       );
       if (!queued.completer.isCompleted) queued.completer.complete();
     } catch (error, stackTrace) {
@@ -930,17 +952,15 @@ class DownloadService extends ChangeNotifier implements AutoDownloadDownloader {
   }
 
   Future<Set<String>> _relatedImageIds(AggregatedItem item) async {
-    final allItems = await _offlineRepo.getItems();
-
     switch (item.type) {
       case 'Season':
-        return allItems
+        return (await _offlineRepo.getItems())
             .where((row) => row.itemId == item.id || row.seasonId == item.id)
             .map((row) => row.itemId)
             .toSet();
 
       case 'Series':
-        return allItems
+        return (await _offlineRepo.getItems())
             .where((row) => row.itemId == item.id || row.seriesId == item.id)
             .map((row) => row.itemId)
             .toSet();
@@ -1064,12 +1084,19 @@ class DownloadService extends ChangeNotifier implements AutoDownloadDownloader {
     return name.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_').trim();
   }
 
+  // An unmatched movie is named after its folder, year included.
+  bool _nameEndsWithYear(AggregatedItem item) =>
+      item.productionYear != null &&
+      _sanitizePath(item.name).endsWith('(${item.productionYear})');
+
   String _buildSubFolder(AggregatedItem item) {
     switch (item.type) {
       case 'Movie':
         final year = item.productionYear;
         final title = _sanitizePath(item.name);
-        return year != null ? 'Movies/$title ($year)' : 'Movies/$title';
+        return year == null || _nameEndsWithYear(item)
+            ? 'Movies/$title'
+            : 'Movies/$title ($year)';
 
       case 'Audio':
         final artist = _sanitizePath(
@@ -1213,6 +1240,13 @@ class DownloadService extends ChangeNotifier implements AutoDownloadDownloader {
         ? fileName.substring(0, extensionIndex)
         : fileName;
 
+    // Subtitles go first since iOS can suspend a backgrounded app before the
+    // later steps get their turn.
+    await runBestEffort(
+      _downloadExternalSubtitles(item, dir, fileNameBase),
+      const Duration(seconds: 30),
+    );
+
     await runBestEffort(
       _populateOfflineAssets(item),
       const Duration(seconds: 30),
@@ -1246,11 +1280,6 @@ class DownloadService extends ChangeNotifier implements AutoDownloadDownloader {
         const Duration(seconds: 10),
       );
     }
-
-    await runBestEffort(
-      _downloadExternalSubtitles(item, dir, fileNameBase),
-      const Duration(seconds: 30),
-    );
   }
 
   String _newTaskId(String itemId) =>
@@ -1832,9 +1861,15 @@ class DownloadService extends ChangeNotifier implements AutoDownloadDownloader {
   }
 
   String? _primaryMediaSourceId(AggregatedItem item) {
-    return item.mediaSources.isNotEmpty
+    final id = item.mediaSources.isNotEmpty
         ? item.mediaSources.first['Id']?.toString()
         : null;
+    // A channel item's lone placeholder source fails every download endpoint
+    // when named, while the server finds the real file on its own without it.
+    if (MediaStreamResolver.isStreamlessStaticSource(item.rawData, id)) {
+      return null;
+    }
+    return id;
   }
 
   String _encodeQuery(Map<String, String> params) {
@@ -1856,13 +1891,14 @@ class DownloadService extends ChangeNotifier implements AutoDownloadDownloader {
       if (isStatic) 'Static': 'true',
       if (includeMediaSourceId && mediaSourceId != null)
         'MediaSourceId': mediaSourceId,
-      if (_client.accessToken != null) 'ApiKey': _client.accessToken!,
+      if (_client.accessToken != null)
+        _client.serverType.tokenQueryParam: _client.accessToken!,
     };
   }
 
-  String _buildDirectItemFileUrl(String itemId, AggregatedItem item) {
+  String _buildDirectItemFileUrl(AggregatedItem item) {
     final query = _encodeQuery(_baseDownloadParams(item));
-    return '${_client.baseUrl}/Items/$itemId/File${query.isEmpty ? '' : '?$query'}';
+    return '${_client.baseUrl}/Items/${mediaSourceItemId(item)}/File${query.isEmpty ? '' : '?$query'}';
   }
 
   String _buildStaticVideoStreamUrl(String itemId, AggregatedItem item) {
@@ -1883,8 +1919,8 @@ class DownloadService extends ChangeNotifier implements AutoDownloadDownloader {
       else ...[
         if (_usesAudioDownloadEndpoint(item))
           _buildAudioDownloadUrl(item.id, item),
-        _buildDirectItemDownloadUrl(item.id, item),
-        _buildDirectItemFileUrl(item.id, item),
+        _buildDirectItemDownloadUrl(item),
+        _buildDirectItemFileUrl(item),
         _buildStaticVideoStreamUrl(item.id, item),
       ],
     ];
@@ -2107,11 +2143,15 @@ class DownloadService extends ChangeNotifier implements AutoDownloadDownloader {
     return '${_client.baseUrl}/Audio/$itemId/stream?$query';
   }
 
-  String _buildDirectItemDownloadUrl(String itemId, AggregatedItem item) {
+  String _buildDirectItemDownloadUrl(AggregatedItem item) {
+    // Emby picks the version from MediaSourceId, not from the path.
     final query = _encodeQuery(
-      _baseDownloadParams(item, includeMediaSourceId: false),
+      _baseDownloadParams(
+        item,
+        includeMediaSourceId: item.mediaSources.length > 1,
+      ),
     );
-    return '${_client.baseUrl}/Items/$itemId/Download${query.isEmpty ? '' : '?$query'}';
+    return '${_client.baseUrl}/Items/${mediaSourceItemId(item)}/Download${query.isEmpty ? '' : '?$query'}';
   }
 
   String _buildDownloadUrl(
@@ -2119,9 +2159,10 @@ class DownloadService extends ChangeNotifier implements AutoDownloadDownloader {
     AggregatedItem item,
     DownloadQuality quality, {
     String? playSessionId,
+    int? audioStreamIndex,
   }) {
     if (!quality.isTranscoded || !_supportsTranscodedDownload(item.type)) {
-      return _buildDirectItemDownloadUrl(itemId, item);
+      return _buildDirectItemDownloadUrl(item);
     }
 
     final baseUrl = _client.baseUrl;
@@ -2143,6 +2184,12 @@ class DownloadService extends ChangeNotifier implements AutoDownloadDownloader {
     if (quality.audioChannels != null) {
       params['audioChannels'] = quality.audioChannels.toString();
     }
+    final audioIndex = transcodeAudioStreamIndex(
+      item,
+      audioStreamIndex,
+      _prefs,
+    );
+    if (audioIndex != null) params['AudioStreamIndex'] = audioIndex.toString();
     if (playSessionId != null) {
       params['PlaySessionId'] = playSessionId;
       params['DeviceId'] = _client.deviceInfo.id;
@@ -2173,15 +2220,26 @@ class DownloadService extends ChangeNotifier implements AutoDownloadDownloader {
     }
   }
 
+  /// [mediaSourceId] picks one version of a multi-version item, the server's
+  /// default when null. [audioStreamIndex] picks the audio track a transcode
+  /// keeps, the audio language settings' choice when null.
   Future<void> downloadItem(
     AggregatedItem item, {
     DownloadQuality quality = DownloadQuality.original,
     DownloadSource source = DownloadSource.manual,
+    String? mediaSourceId,
+    int? audioStreamIndex,
   }) {
     // Browser downloads are delegated to the platform and do not have a
     // process-owned transfer to schedule.
     if (PlatformDetection.isWeb) {
-      return _downloadItemNow(item, quality: quality, source: source);
+      return _downloadItemNow(
+        item,
+        quality: quality,
+        source: source,
+        mediaSourceId: mediaSourceId,
+        audioStreamIndex: audioStreamIndex,
+      );
     }
 
     if (_cancelAllRequested) {
@@ -2198,7 +2256,13 @@ class DownloadService extends ChangeNotifier implements AutoDownloadDownloader {
     final active = _activeDownloads[item.id];
     if (active != null && active.error == null) return Future.value();
 
-    final queued = _QueuedDownload(item, quality, source);
+    final queued = _QueuedDownload(
+      item,
+      quality,
+      source,
+      mediaSourceId,
+      audioStreamIndex,
+    );
     _sources[item.id] = source;
     _pendingDownloadByItemId[item.id] = queued;
     _pendingDownloads.addLast(queued);
@@ -2220,11 +2284,21 @@ class DownloadService extends ChangeNotifier implements AutoDownloadDownloader {
     AggregatedItem item, {
     DownloadQuality quality = DownloadQuality.original,
     DownloadSource source = DownloadSource.manual,
+    String? mediaSourceId,
+    int? audioStreamIndex,
   }) async {
     if (PlatformDetection.isWeb) {
       try {
-        final fullItem = await _ensureFullItem(item);
-        final url = _buildDownloadUrl(item.id, fullItem, quality);
+        final fullItem = withPreferredMediaSource(
+          await _ensureFullItem(item),
+          mediaSourceId,
+        );
+        final url = _buildDownloadUrl(
+          item.id,
+          fullItem,
+          quality,
+          audioStreamIndex: audioStreamIndex,
+        );
         final fileName = _buildFileName(fullItem, quality);
         triggerBrowserDownload(url, fileName);
       } catch (e) {
@@ -2309,7 +2383,10 @@ class DownloadService extends ChangeNotifier implements AutoDownloadDownloader {
     if (preparationCancelled()) return;
 
     try {
-      final fullItem = await _ensureFullItem(item);
+      final fullItem = withPreferredMediaSource(
+        await _ensureFullItem(item),
+        mediaSourceId,
+      );
       if (preparationCancelled()) return;
       final estimatedSize = estimateDownloadSizeBytes(fullItem, quality);
       final refusal = await _storageRefusal(estimatedSize);
@@ -2449,6 +2526,7 @@ class DownloadService extends ChangeNotifier implements AutoDownloadDownloader {
         fullItem,
         quality,
         playSessionId: transcodePlaySessionId,
+        audioStreamIndex: audioStreamIndex,
       );
       if (transcodePlaySessionId != null) {
         _startTranscodeStatusPolling(item.id, transcodePlaySessionId);
@@ -2584,6 +2662,7 @@ class DownloadService extends ChangeNotifier implements AutoDownloadDownloader {
           cancelToken: cancelToken,
           estimatedSize: estimatedSize,
           onReceiveProgress: onReceiveProgress,
+          clientCertificate: _clientCertificate,
         );
       }
 
@@ -2957,6 +3036,20 @@ class DownloadService extends ChangeNotifier implements AutoDownloadDownloader {
     return _toItems(data['Items'] as List?);
   }
 
+  @override
+  String get serverBaseUrl => _client.baseUrl;
+
+  @override
+  Future<List<AggregatedItem>> fetchRecentlyPlayedEpisodes({
+    DateTime? playedAfter,
+  }) => readRecentlyPlayedEpisodes((startIndex) async {
+    final raw = await fetchRecentlyPlayedEpisodeItems(
+      _client,
+      startIndex: startIndex,
+    );
+    return (read: raw.length, items: _toItems(raw));
+  }, playedAfter: playedAfter);
+
   List<AggregatedItem> _toItems(List? rawItems) {
     if (rawItems == null) return const [];
     final serverId = _client.baseUrl;
@@ -3029,6 +3122,36 @@ class DownloadService extends ChangeNotifier implements AutoDownloadDownloader {
 
   @override
   Future<bool> deleteDownloadedFiles(AggregatedItem item) async {
+    // Read before the rows go: a season or series takes its episodes along.
+    final removedIds = await _relatedImageIds(item);
+    final deleted = await _deleteDownloadedFiles(item);
+    if (deleted) {
+      for (final id in removedIds) {
+        await _prefs.forgetDownloadKept(_serverId, id);
+      }
+    }
+    return deleted;
+  }
+
+  /// Falls back to the base url without a factory, like serverIdOf does for
+  /// a client it doesn't know.
+  String get _serverId =>
+      GetIt.instance.isRegistered<MediaServerClientFactory>()
+      ? GetIt.instance<MediaServerClientFactory>().serverIdOf(_client)
+      : _client.baseUrl;
+
+  /// [deleteDownloadedFiles] for a download of [serverId], refused when this
+  /// service talks to another server: a pass planned before a server switch
+  /// must not act on the new server's rows.
+  Future<bool> deleteServerDownload(
+    AggregatedItem item, {
+    required String serverId,
+  }) async {
+    if (_serverId != serverId) return false;
+    return deleteDownloadedFiles(item);
+  }
+
+  Future<bool> _deleteDownloadedFiles(AggregatedItem item) async {
     // Drop any finished (complete or errored) active entry so a fresh
     // downloadItem call isn't blocked by stale in-memory state.
     final active = _activeDownloads[item.id];
@@ -3040,10 +3163,27 @@ class DownloadService extends ChangeNotifier implements AutoDownloadDownloader {
       final subFolder = _buildSubFolder(item);
       final targetDir = Directory('${downloadsDir.path}/$subFolder');
       final imageDir = await _storagePath.getImageCacheDir();
+      final ownRow = await _ownRow(item.id);
+      if (item.type != 'Season' && item.type != 'Series') {
+        await _deleteStoredFile(ownRow);
+      }
 
       switch (item.type) {
         case 'Movie':
-          if (await targetDir.exists()) await targetDir.delete(recursive: true);
+          if (await targetDir.exists() &&
+              !await _holdsOtherDownloads(targetDir, item.id)) {
+            await targetDir.delete(recursive: true);
+          }
+          // Older builds added the year to these names a second time.
+          if (_nameEndsWithYear(item)) {
+            final doubledYearDir = Directory(
+              '${targetDir.path} (${item.productionYear})',
+            );
+            if (await doubledYearDir.exists() &&
+                !await _holdsOtherDownloads(doubledYearDir, item.id)) {
+              await doubledYearDir.delete(recursive: true);
+            }
+          }
           await _deleteItemImages(item.id, imageDir);
           await _offlineRepo.deleteItem(item.id);
           return true;
@@ -3098,7 +3238,50 @@ class DownloadService extends ChangeNotifier implements AutoDownloadDownloader {
       }
     } catch (_) {
       return false;
+    } finally {
+      // Download buttons only re-check their offline state on a notify.
+      notifyListeners();
     }
+  }
+
+  /// This server's row for [itemId]. Emby ids are plain numbers, so another
+  /// server's download can share one.
+  Future<DownloadedItem?> _ownRow(String itemId) async {
+    for (final row in await _offlineRepo.getItemsWithId(itemId)) {
+      if (isStoredServer(
+        row.serverId,
+        serverId: _serverId,
+        baseUrl: _client.baseUrl,
+      )) {
+        return row;
+      }
+    }
+    return null;
+  }
+
+  /// Deletes the file the row says it downloaded, with its subtitles and the
+  /// folders it leaves empty. The other paths are built from the item's
+  /// current metadata, which a refresh may have renamed since (a "TBA"
+  /// episode title, a corrected year). A failure fails the delete, so the
+  /// row stays and a later delete can retry the file.
+  Future<void> _deleteStoredFile(DownloadedItem? row) async {
+    final path = row?.localFilePath;
+    if (path == null || path.isEmpty) return;
+    await _deleteFileArtifacts(path);
+  }
+
+  /// Whether another download's file sits under [dir], which a movie's
+  /// folder can share: the same title and year from a second server or a
+  /// second library.
+  Future<bool> _holdsOtherDownloads(Directory dir, String itemId) async {
+    final prefix = '${dir.path}/';
+    for (final row in await _offlineRepo.getItems()) {
+      final path = row.localFilePath;
+      if (row.itemId != itemId && path != null && path.startsWith(prefix)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   Future<void> _deleteItemImages(String itemId, Directory imageDir) async {
@@ -3359,30 +3542,59 @@ class DownloadService extends ChangeNotifier implements AutoDownloadDownloader {
     final authOptions = Options(headers: _buildAuthHeaders());
     for (final stream in streams) {
       if (stream['Type'] != 'Subtitle') continue;
-      // External files download as-is. Embedded text subs that the server can
-      // extract also get saved as sidecars, which is the only subtitle path a
-      // transcoded download has since the transcoded file carries none.
+      // External files download as-is. Embedded text and PGS subs the server
+      // can extract also get saved as sidecars, which is the only subtitle
+      // path a transcoded download has since the transcoded file carries none.
       final isExternal = stream['IsExternal'] == true;
       final supportsExternal = stream['SupportsExternalStream'] == true;
-      if (!isExternal && !supportsExternal) continue;
-      final index = stream['Index'] as int? ?? 0;
       final ext = canonicalSubtitleCodec(stream['Codec'] as String?);
+      final isPgs = ext == 'pgssub';
+      // Emby flags embedded PGS as not extractable but serves it as .sup, and
+      // answers .pgssub with an empty file. Jellyfin only takes .pgssub.
+      if (!isExternal && !supportsExternal && !isPgs) continue;
+      final index = stream['Index'] as int? ?? 0;
+      final format = isPgs && _client.serverType == ServerType.emby
+          ? 'sup'
+          : ext;
       // DeliveryUrl is computed by the server during PlaybackInfo and is often
       // absent from the plain item metadata. Fall back to the stable subtitle
       // stream endpoint so offline downloads match the streaming path.
       var deliveryUrl = stream['DeliveryUrl'] as String?;
       if (deliveryUrl == null || deliveryUrl.isEmpty) {
         deliveryUrl =
-            '/Videos/${item.id}/$mediaSourceId/Subtitles/$index/0/Stream.$ext';
+            '/Videos/${item.id}/$mediaSourceId/Subtitles/$index/0/Stream.$format';
       }
       final subUrl = deliveryUrl.startsWith('http')
           ? deliveryUrl
           : '${_client.baseUrl}$deliveryUrl';
       final subPath = '${dir.path}/${fileNameBase}_sub_$index.$ext';
+      if (await File(subPath).exists()) continue;
       try {
         await _downloadDio.download(subUrl, subPath, options: authOptions);
       } catch (_) {}
     }
+  }
+
+  /// Fetches the subtitle files a finished download should have but doesn't,
+  /// which repairs downloads whose subtitle step never ran. Each item is
+  /// checked once per run so a server that can't serve one isn't asked on
+  /// every play.
+  Future<void> restoreMissingSubtitles(String itemId) async {
+    final row = await _offlineRepo.getItem(itemId);
+    final path = row?.localFilePath;
+    if (row == null || row.downloadStatus != 2 || path == null) return;
+    if (!_subtitleRepairsTried.add(itemId)) return;
+    final file = File(path);
+    if (!await file.exists()) return;
+    await _downloadExternalSubtitles(
+      AggregatedItem(
+        id: itemId,
+        serverId: row.serverId,
+        rawData: _offlineRepo.rowToRawData(row),
+      ),
+      file.parent,
+      _fileNameBaseFromPath(path),
+    );
   }
 
   void cancelDownload(String itemId) {

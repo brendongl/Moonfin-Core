@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:moonfin_design/moonfin_design.dart';
 
 import '../../../l10n/app_localizations.dart';
+import '../../../playback/letterbox_croppers.dart';
 import '../../../playback/player_key_bindings.dart';
 import '../../../util/focus/key_event_utils.dart';
 import '../../../util/platform_detection.dart';
@@ -130,8 +131,14 @@ List<KeyboardShortcutSection> keyboardShortcutSections(
                   ? l10n.shortcutLeaveFullscreenOrStop
                   : l10n.shortcutStopPlayback,
             ),
+            player([PlayerAction.hideControls], l10n.shortcutHideControls),
             player([PlayerAction.next], l10n.shortcutNextItem),
             player([PlayerAction.previous], l10n.shortcutPreviousItem),
+            // Enter presses the skip button too while one is showing.
+            player([
+              PlayerAction.skipSegment,
+              PlayerAction.showControlsOrPlayPause,
+            ], l10n.shortcutSkipSegment),
           ],
           // Seeking and speed.
           [
@@ -164,6 +171,10 @@ List<KeyboardShortcutSection> keyboardShortcutSections(
             player([PlayerAction.playbackInfo], l10n.shortcutPlaybackInfo),
             if (PlatformDetection.isWindows)
               player([PlayerAction.mpvStats], l10n.shortcutMpvStats),
+            if (letterboxCropAvailable())
+              player([
+                PlayerAction.recropBlackBars,
+              ], l10n.shortcutRecropBlackBars),
           ],
         ],
       ),
@@ -222,6 +233,8 @@ String keyBindingLabel(KeyBinding binding, AppLocalizations l10n) {
     LogicalKeyboardKey.space => l10n.keyNameSpace,
     LogicalKeyboardKey.enter || LogicalKeyboardKey.select => l10n.keyNameEnter,
     LogicalKeyboardKey.escape => l10n.keyNameEsc,
+    LogicalKeyboardKey.backspace => l10n.keyNameBackspace,
+    LogicalKeyboardKey.delete => l10n.keyNameDelete,
     LogicalKeyboardKey.arrowLeft => '←',
     LogicalKeyboardKey.arrowRight => '→',
     LogicalKeyboardKey.arrowUp => '↑',

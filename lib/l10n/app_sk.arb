@@ -8504,7 +8504,6 @@
     "adminGeneralDisplayLanguage": "Preferovaný jazyk zobrazenia",
     "offlineBannerTitle": "Ste offline",
     "offlineBannerSubtitle": "Zobrazujú sa vaše stiahnuté položky",
-    "offlineBannerAction": "Stiahnuté",
     "serverUnreachableBannerTitle": "Server je nedostupný",
     "serverUnreachableBannerSubtitle": "Prehráva sa zo stiahnutých položiek, kým sa server nevráti",
     "contextMenuHideFromContinueWatching": "Skryť z Pokračovať v sledovaní",

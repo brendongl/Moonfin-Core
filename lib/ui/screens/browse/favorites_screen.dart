@@ -28,6 +28,7 @@ import '../../widgets/quick_return_wrapper.dart';
 import '../../widgets/rating_display.dart';
 import '../../widgets/sliding_pill_tabs.dart';
 import '../../widgets/skeleton/skeleton_library_grid.dart';
+import '../detail/playlist_sort_filter_bar.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../util/error_message.dart';
 
@@ -1252,7 +1253,7 @@ class _SortDialogState extends State<_SortDialog> {
             _sectionHeader(AppLocalizations.of(context).sortBy),
             for (final option in LibrarySortBy.itemsApiValues)
               _radioTile(
-                label: option.displayName,
+                label: librarySortLabel(option, AppLocalizations.of(context)),
                 selected: vm.sortBy == option,
                 trailing: vm.sortBy == option
                     ? IconButton(
@@ -1382,7 +1383,7 @@ class _DisplaySettingsDialogState extends State<_DisplaySettingsDialog> {
             if (vm.imageType != ImageType.banner) ...[
               Divider(color: dividerColor),
               _sectionHeader(AppLocalizations.of(context).posterSize),
-              for (final size in PosterSize.values)
+              for (final size in PosterSize.gridValues)
                 _posterSizeRadioTile(vm, size),
             ],
           ],
@@ -1451,7 +1452,7 @@ class _DisplaySettingsDialogState extends State<_DisplaySettingsDialog> {
       PosterSize.small => l10n.small,
       PosterSize.medium => l10n.medium,
       PosterSize.large => l10n.large,
-      PosterSize.extraLarge => l10n.extraLarge,
+      PosterSize.extraLarge || PosterSize.grandparents => l10n.extraLarge,
     };
     return InkWell(
       onTap: () => vm.setPosterSize(size),

@@ -25,8 +25,8 @@ import AppKit
 /// - Adopted: a session the engine owns and publishes from its own player,
 ///   used for music. Only the command handlers move onto it.
 ///
-/// On iOS audio_service owns the shared centers, so there only the adopted
-/// mode does anything.
+/// On iOS audio_service owns the shared centers, so there only the session
+/// modes do anything.
 @MainActor
 final class NowPlayingController {
     var onPlay: (@MainActor () -> Void)?
@@ -124,6 +124,20 @@ final class NowPlayingController {
             // The engine asked before any handler was on, and a session with
             // none isn't eligible to be Now Playing.
             adopted?.becomeActiveIfPossible()
+        }
+    #endif
+
+    #if os(iOS)
+        /// Takes Now Playing back once Picture in Picture or another app has had
+        /// it. Re-activating the same session doesn't win it back, and neither
+        /// does the player resuming, but a fresh session for the player does.
+        func reclaim() {
+            guard let player = attachedPlayer else {
+                session?.becomeActiveIfPossible()
+                return
+            }
+            attachedPlayer = nil
+            attach(player: player)
         }
     #endif
 
@@ -342,7 +356,7 @@ final class NowPlayingController {
         }
         artworkURLString = urlString
         Task { @MainActor [weak self] in
-            guard let (data, _) = try? await URLSession.shared.data(from: url) else { return }
+            guard let (data, _) = try? await MoonfinURLSession.shared.data(from: url) else { return }
             self?.applyArtworkData(data, for: urlString)
         }
     }

@@ -111,6 +111,27 @@ abstract class NativeGamePlayer {
   /// Sends the current RetroPad button mask for a port. Used by the desktop
   /// keyboard path, where input comes from Flutter rather than a native source.
   Future<void> setInput(int port, int mask);
+
+  /// Analog sticks and trigger pressures for a port, from the on-screen pad.
+  /// Axes are -32767..32767 and triggers 0..0x7fff. A level, not an edge: send
+  /// zeros on release. A no-op where the host has no analog path.
+  Future<void> setPadState(
+    int port,
+    int lx,
+    int ly,
+    int rx,
+    int ry, {
+    int l2 = 0,
+    int r2 = 0,
+  });
+
+  /// Bitmask of ports the core reads an analog stick on (bit N = port N), so a
+  /// touch stick can fall back to d-pad bits on the others. 0 where unknown.
+  Future<int> analogStickPorts();
+
+  /// Touchscreen pointer for a port: [x]/[y] are -32767..32767 across the
+  /// whole video frame. A level: send pressed=false on finger-up.
+  Future<void> setPointer(int port, bool pressed, int x, int y);
   Future<List<GameCoreOption>> getOptions();
 
   /// Reads [corePath]'s options without loading a game, so a core that will
@@ -254,6 +275,50 @@ class MethodChannelGamePlayer implements NativeGamePlayer {
       await _control.invokeMethod<void>('setInput', {
         'port': port,
         'mask': mask,
+      });
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> setPadState(
+    int port,
+    int lx,
+    int ly,
+    int rx,
+    int ry, {
+    int l2 = 0,
+    int r2 = 0,
+  }) async {
+    try {
+      await _control.invokeMethod<void>('setPadState', {
+        'port': port,
+        'lx': lx,
+        'ly': ly,
+        'rx': rx,
+        'ry': ry,
+        'l2': l2,
+        'r2': r2,
+      });
+    } catch (_) {}
+  }
+
+  @override
+  Future<int> analogStickPorts() async {
+    try {
+      return await _control.invokeMethod<int>('analogStickPorts') ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  @override
+  Future<void> setPointer(int port, bool pressed, int x, int y) async {
+    try {
+      await _control.invokeMethod<void>('setPointer', {
+        'port': port,
+        'pressed': pressed,
+        'x': x,
+        'y': y,
       });
     } catch (_) {}
   }

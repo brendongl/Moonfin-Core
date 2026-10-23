@@ -21,6 +21,9 @@ abstract class ServerWebSocketClient {
   /// Reconnects straight away instead of waiting out the backoff, for when
   /// the app or the network comes back.
   void retryNow();
+
+  /// Sends one message to the server, dropped unless the socket is open.
+  void send(String messageType, [Object? data]);
   void dispose();
 
   factory ServerWebSocketClient.forServer(MediaServerClient client) {
@@ -191,7 +194,15 @@ abstract class _ReconnectingWebSocketClient implements ServerWebSocketClient {
 
   void emit(ServerWebSocketMessage message) => _messageController.add(message);
 
-  void sendKeepAlive() => channel?.sink.add('{"MessageType":"KeepAlive"}');
+  void sendKeepAlive() => send('KeepAlive');
+
+  @override
+  void send(String messageType, [Object? data]) {
+    // Held feeds are asked for again once the socket opens, so anything sent
+    // while it's still opening would reach the server twice.
+    if (_connecting) return;
+    channel?.sink.add(jsonEncode({'MessageType': messageType, 'Data': ?data}));
+  }
 
   @override
   Future<void> disconnect() async {
@@ -313,11 +324,37 @@ class SocketHandler {
 
   Stream<void> get connections => _connectionController.stream;
 
+  /// How many listeners hold each feed, e.g. `Sessions` or `ScheduledTasksInfo`.
+  final _feeds = <String, int>{};
+
+  /// Starts a periodic server feed (`<feed>Start` with `0,1000`). Counted, so
+  /// the feed stops only when its last holder lets go.
+  void subscribe(String feed) {
+    final count = _feeds[feed] ?? 0;
+    _feeds[feed] = count + 1;
+    if (count == 0) _wsClient?.send('${feed}Start', '0,1000');
+  }
+
+  void unsubscribe(String feed) {
+    final count = _feeds[feed] ?? 0;
+    if (count <= 1) {
+      if (_feeds.remove(feed) != null) _wsClient?.send('${feed}Stop');
+    } else {
+      _feeds[feed] = count - 1;
+    }
+  }
+
   void connectTo(MediaServerClient client) {
     disconnect();
     _wsClient = _clientFactory(client);
     _forwardSub = _wsClient!.messages.listen(_eventController.add);
-    _connectionSub = _wsClient!.connections.listen(_connectionController.add);
+    _connectionSub = _wsClient!.connections.listen((_) {
+      // A new socket starts with no feeds, so the held ones are asked for again.
+      for (final feed in _feeds.keys) {
+        _wsClient?.send('${feed}Start', '0,1000');
+      }
+      _connectionController.add(null);
+    });
     _wsClient!.connect();
   }
 

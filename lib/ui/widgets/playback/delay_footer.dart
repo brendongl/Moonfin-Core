@@ -55,8 +55,6 @@ class _DelayFooterState extends State<DelayFooter> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(height: 1, color: Colors.white.withValues(alpha: 0.08)),
-          const SizedBox(height: 10),
           Row(
             children: [
               Text(
@@ -100,6 +98,7 @@ class _DelayFooterState extends State<DelayFooter> {
               ),
               const Spacer(),
               OutlinedButton(
+                autofocus: true,
                 onPressed: () {
                   setState(() => _delay = 0.0);
                   widget.onDelayChanged(0.0);

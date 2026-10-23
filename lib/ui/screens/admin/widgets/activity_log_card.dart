@@ -6,60 +6,37 @@ import '../../../../l10n/app_localizations.dart';
 import 'admin_form_styles.dart';
 import 'activity_log_ui.dart';
 
+/// A dashboard log panel: the entries of one query, each opening the activity
+/// page in the matching view through [onOpen].
 class ActivityLogCard extends StatelessWidget {
-  final ActivityLogResult activityLog;
+  final String title;
+  final IconData icon;
+  final List<ActivityLogEntry> entries;
+  final bool showOverview;
+  final VoidCallback onOpen;
 
-  const ActivityLogCard({super.key, required this.activityLog});
+  const ActivityLogCard({
+    super.key,
+    required this.title,
+    required this.icon,
+    required this.entries,
+    required this.onOpen,
+    this.showOverview = true,
+  });
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    final items = activityLog.items;
-    final errorCount =
-        items.where((e) => e.severity.toLowerCase() == 'error').length;
-    final warnCount = items.where((e) {
-      final s = e.severity.toLowerCase();
-      return s == 'warning' || s == 'warn';
-    }).length;
-    final listItems = buildActivityListItems(items, l10n);
+    final listItems = buildActivityListItems(entries, l10n);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
           children: [
-            Expanded(
-              child: adminSectionLabel(context, l10n.adminRecentActivity,
-                  icon: Icons.history),
-            ),
-            if (errorCount > 0) ...[
-              Icon(Icons.error_outline,
-                  size: 14, color: theme.colorScheme.error),
-              const SizedBox(width: 3),
-              Text(
-                '$errorCount',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: theme.colorScheme.error,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(width: 8),
-            ],
-            if (warnCount > 0) ...[
-              const Icon(Icons.warning_amber, size: 14, color: Colors.orange),
-              const SizedBox(width: 3),
-              Text(
-                '$warnCount',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Colors.orange,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-            const SizedBox(width: AppSpacing.spaceXs),
+            Expanded(child: adminSectionLabel(context, title, icon: icon)),
+            TextButton(onPressed: onOpen, child: Text(l10n.seeAll)),
           ],
         ),
         adminGlassGroup(
@@ -73,11 +50,10 @@ class ActivityLogCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (items.isEmpty)
+                  if (entries.isEmpty)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 24),
-                      child:
-                          Center(child: Text(l10n.adminNoRecentActivity)),
+                      child: Center(child: Text(l10n.adminNoRecentActivity)),
                     )
                   else
                     for (final item in listItems)
@@ -110,59 +86,63 @@ class ActivityLogCard extends StatelessWidget {
 
   Widget _entryRow(ActivityLogEntry entry, ThemeData theme, AppLocalizations l10n) {
     final (rail, icon) = activitySeverityIndicator(entry.severity, theme);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(
-              width: 3,
-              margin: const EdgeInsets.only(right: 10),
-              decoration: BoxDecoration(
-                color: rail,
-                borderRadius: AppRadius.circular(2),
+    return InkWell(
+      onTap: onOpen,
+      borderRadius: AppRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                width: 3,
+                margin: const EdgeInsets.only(right: 10),
+                decoration: BoxDecoration(
+                  color: rail,
+                  borderRadius: AppRadius.circular(2),
+                ),
               ),
-            ),
-            icon,
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    entry.name,
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(fontWeight: FontWeight.w500),
-                  ),
-                  if ((entry.shortOverview ?? '').trim().isNotEmpty)
+              icon,
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                     Text(
-                      entry.shortOverview!,
+                      entry.name,
                       overflow: TextOverflow.ellipsis,
                       maxLines: 1,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                        fontSize: 11,
-                      ),
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(fontWeight: FontWeight.w500),
                     ),
-                ],
+                    if (showOverview &&
+                        (entry.shortOverview ?? '').trim().isNotEmpty)
+                      Text(
+                        entry.shortOverview!,
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          fontSize: 11,
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              activityTimeAgo(entry.date, l10n),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                fontSize: 11,
+              const SizedBox(width: 8),
+              Text(
+                activityTimeAgo(entry.date, l10n),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontSize: 11,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
-
 }

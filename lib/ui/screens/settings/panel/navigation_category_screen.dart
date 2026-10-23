@@ -36,12 +36,15 @@ class _NavigationCategoryScreenState extends State<_NavigationCategoryScreen> {
       ).resolvePins(prefs.get(UserPreferences.bottomNavbarTabs));
 
   String _bottomTabsSummary(AppLocalizations l10n, UserPreferences prefs) {
-    final labels =
-        _barTabs(prefs).map((t) => bottomNavTabLabel(l10n, t)).join(', ');
+    final labels = _barTabs(prefs)
+        .map((t) => bottomNavTabLabel(l10n, t))
+        .join(', ');
     final raw = prefs.get(UserPreferences.bottomNavbarTabs);
     if (!isAutomaticBottomNavTabs(raw)) return labels;
-    return [l10n.bottomNavbarTabsAutomatic, if (labels.isNotEmpty) labels]
-        .join(' · ');
+    return [
+      l10n.bottomNavbarTabsAutomatic,
+      if (labels.isNotEmpty) labels,
+    ].join(' · ');
   }
 
   @override
@@ -64,7 +67,7 @@ class _NavigationCategoryScreenState extends State<_NavigationCategoryScreen> {
       });
     }
     return Scaffold(
-      appBar: buildSettingsAppBar(context, Text(l10n.navigation)),
+      appBar: buildSettingsAppBar(context, Text(l10n.navigationBar)),
       body: ListView(
         children: [
           _SectionHeader(l10n.appearance),
@@ -220,6 +223,13 @@ class _NavigationCategoryScreenState extends State<_NavigationCategoryScreen> {
                       icon: Icons.video_library,
                       onChanged: _pushPersonalizationSync,
                     ),
+                  SwitchPreferenceTile(
+                    preference: UserPreferences.showSyncPlayButton,
+                    title: l10n.settingsSyncplayButton,
+                    subtitle: l10n.settingsSyncplayButtonSubtitle,
+                    icon: Icons.groups,
+                    onChanged: _pushPersonalizationSync,
+                  ),
                   if (!onBar.contains(BottomNavTab.folders))
                     SwitchPreferenceTile(
                       key: const ValueKey(BottomNavTab.folders),
@@ -230,8 +240,7 @@ class _NavigationCategoryScreenState extends State<_NavigationCategoryScreen> {
                       onChanged: _pushPersonalizationSync,
                     ),
                   // Sipflix fork: Seerr is retired on Sipflix.
-                  if (SipflixSettingsMode.showRetired &&
-                      seerrEnabledOnAccount &&
+                  if (seerrEnabledOnAccount &&
                       _syncService.seerrAvailable &&
                       !onBar.contains(BottomNavTab.discover))
                     SwitchPreferenceTile(

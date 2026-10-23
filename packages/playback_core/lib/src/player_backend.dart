@@ -2,6 +2,18 @@ import 'letterbox_crop.dart';
 
 enum SubtitleRendererMode { native, assOverlay }
 
+/// The part of a live stream that can be sought back into, on the same clock
+/// as the player's position: from the oldest moment the stream still keeps to
+/// its live edge.
+class LiveSeekWindow {
+  const LiveSeekWindow({required this.start, required this.edge});
+
+  final Duration start;
+  final Duration edge;
+
+  Duration get length => edge - start;
+}
+
 /// A caption track the player found inside the video itself, like the CEA-608
 /// captions broadcasters carry in H.264 SEI data.
 ///
@@ -49,6 +61,15 @@ class EmbeddedCaptionTrack {
   }
 }
 
+/// Whether the chosen external subtitle is still being prepared, retries
+/// included. False also covers a canceled or failed load, so it doesn't mean
+/// the subtitle arrived, and it never waits for a cue to show. Backends opt in
+/// by implementing this interface.
+abstract interface class SubtitleLoadingBackend {
+  bool get isSubtitleLoading;
+  Stream<bool> get subtitleLoadingStream;
+}
+
 abstract class PlayerBackend {
   Future<void> play(
     dynamic mediaItem, {
@@ -94,6 +115,16 @@ abstract class PlayerBackend {
     String? externalSubtitleUrl,
   });
   Future<void> disableSubtitleTrack();
+
+  /// Selects an independent text sidecar for the Android Media3 overlay.
+  /// Backends without a separate subtitle layer leave it disabled.
+  Future<void> setSecondarySubtitle({String? url, String? codec}) async {}
+  Future<void> setSecondarySubtitleDelay(double seconds) async {}
+  Future<void> configureSecondarySubtitleStyle({
+    double? fontSize,
+    double? verticalOffset,
+    int? textColor,
+  }) async {}
   Future<void> waitForTracksReady();
   Future<void> waitForEmbeddedSubtitleCount(int count);
   Future<void> setVolume(double volume);
@@ -162,6 +193,10 @@ abstract class PlayerBackend {
   /// that is never coming.
   Future<bool> resumeLiveEdge() async => false;
 
+  /// Where a live stream can be sought within, or null when it keeps nothing
+  /// to go back to, as a tuner's raw transport stream doesn't.
+  LiveSeekWindow? get liveSeekWindow => null;
+
   /// Fires when the player's own track list changes. Captions carried inside
   /// the video turn up part way through playback, so a menu built when the
   /// stream started has to be rebuilt when this fires.
@@ -189,8 +224,8 @@ abstract class PlayerBackend {
 
   /// Detect encoded letterbox and crop it. Cover-zoom is not this.
   ///
-  /// Desktop libmpv ships a cropper. Media3 / Aether / Tizen / HTML return
-  /// [UnsupportedLetterboxCropper] until they implement [LetterboxCropper].
+  /// Desktop libmpv and Android Media3 ship a cropper. Aether / Tizen / HTML
+  /// return [UnsupportedLetterboxCropper] until they implement [LetterboxCropper].
   LetterboxCropper get letterboxCropper => const UnsupportedLetterboxCropper();
 
   bool get supportsLetterboxCrop => letterboxCropper.isSupported;

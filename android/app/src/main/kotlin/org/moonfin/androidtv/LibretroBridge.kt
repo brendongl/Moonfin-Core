@@ -56,6 +56,11 @@ class LibretroBridge(
   private val pulseMasks = IntArray(MAX_PORTS)
   private val methodMasks = IntArray(MAX_PORTS)
   private val publishedMasks = IntArray(MAX_PORTS)
+  // Analog axes (lx ly rx ry l2 r2) from physical pads and from Dart's touch
+  // sticks, merged per stick in publishPadState so a touch stick never
+  // overwrites a deflected physical one.
+  private val physicalAnalog = Array(MAX_PORTS) { IntArray(6) }
+  private val methodAnalog = Array(MAX_PORTS) { IntArray(6) }
   private var physicalControllerCount = 0
   // Whether physicalControllerCount is standing in for a portless
   // remote/keyboard rather than a real controller holding a port. Dart uses
@@ -206,6 +211,28 @@ class LibretroBridge(
         }
         result.success(null)
       }
+      "setPadState" -> {
+        val port = (args["port"] as? Int) ?: 0
+        if (isValidPort(port)) {
+          val m = methodAnalog[port]
+          for ((i, key) in ANALOG_KEYS.withIndex()) m[i] = (args[key] as? Int) ?: 0
+          publishPadState(port)
+        }
+        result.success(null)
+      }
+      "setPointer" -> {
+        val port = (args["port"] as? Int) ?: 0
+        if (isValidPort(port)) {
+          nativeSetPointer(
+            port,
+            (args["pressed"] as? Boolean) ?: false,
+            (args["x"] as? Int) ?: 0,
+            (args["y"] as? Int) ?: 0,
+          )
+        }
+        result.success(null)
+      }
+      "analogStickPorts" -> result.success(analogStickPorts())
       else -> result.notImplemented()
     }
   }
@@ -482,6 +509,8 @@ class LibretroBridge(
       physicalMasks[port] = 0
       pulseMasks[port] = 0
       methodMasks[port] = 0
+      physicalAnalog[port].fill(0)
+      methodAnalog[port].fill(0)
       applyMask(port)
     }
   }
@@ -491,6 +520,32 @@ class LibretroBridge(
     pulseMasks.fill(0)
     methodMasks.fill(0)
     publishedMasks.fill(0)
+    for (port in 0 until MAX_PORTS) {
+      physicalAnalog[port].fill(0)
+      methodAnalog[port].fill(0)
+    }
+  }
+
+  // One nativeSetPadState for the merged mask and analog state of a port. A
+  // physical stick wins while deflected and Dart's touch stick fills in when it
+  // is centred. Triggers merge the same way, one each.
+  private fun publishPadState(port: Int) {
+    val desired = physicalMasks[port] or pulseMasks[port] or methodMasks[port]
+    publishedMasks[port] = desired
+    val p = physicalAnalog[port]
+    val m = methodAnalog[port]
+    val left = p[0] != 0 || p[1] != 0
+    val right = p[2] != 0 || p[3] != 0
+    nativeSetPadState(
+      port,
+      desired,
+      if (left) p[0] else m[0],
+      if (left) p[1] else m[1],
+      if (right) p[2] else m[2],
+      if (right) p[3] else m[3],
+      if (p[4] != 0) p[4] else m[4],
+      if (p[5] != 0) p[5] else m[5],
+    )
   }
 
   private fun isValidPort(port: Int): Boolean = port in 0 until MAX_PORTS
@@ -554,9 +609,14 @@ class LibretroBridge(
     if (!isValidPort(port)) return
     val changed = physicalMasks[port] xor mask
     physicalMasks[port] = mask
-    val desired = physicalMasks[port] or pulseMasks[port] or methodMasks[port]
-    publishedMasks[port] = desired
-    nativeSetPadState(port, desired, lx, ly, rx, ry, l2, r2)
+    val p = physicalAnalog[port]
+    p[0] = lx
+    p[1] = ly
+    p[2] = rx
+    p[3] = ry
+    p[4] = l2
+    p[5] = r2
+    publishPadState(port)
     if (!overlayOpen || changed == 0) return
     var remaining = changed
     while (remaining != 0) {
@@ -741,6 +801,7 @@ class LibretroBridge(
   private external fun nativeStop()
   private external fun nativeSetFastForward(factor: Int)
   private external fun nativeSetMask(port: Int, mask: Int)
+  private external fun nativeSetPointer(port: Int, pressed: Boolean, x: Int, y: Int)
   private external fun nativeSetPadState(
     port: Int, mask: Int, lx: Int, ly: Int, rx: Int, ry: Int, l2: Int, r2: Int)
   private external fun nativeReadAudio(buffer: ShortArray, frames: Int): Int
@@ -755,6 +816,8 @@ class LibretroBridge(
   private external fun nativeSetOption(id: String, value: String)
 
   companion object {
+    // Argument names of the Dart setPadState call, in physicalAnalog order.
+    private val ANALOG_KEYS = arrayOf("lx", "ly", "rx", "ry", "l2", "r2")
     private const val TAG = "LibretroBridge"
     private const val MAX_PORTS = 4
 

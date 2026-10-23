@@ -20,9 +20,20 @@ class UntrustedCertificate extends LoginState {
   const UntrustedCertificate();
 }
 
+class ClientCertificateRequired extends LoginState {
+  const ClientCertificateRequired();
+}
+
 class VersionNotSupported extends LoginState {
   final Server server;
   const VersionNotSupported({required this.server});
+}
+
+/// The server refused the sign in with a 403: the account can't be used right
+/// now. Jellyfin doesn't say why outside development, and it can be the user's
+/// access schedule, a disabled account or a lockout.
+class SignInForbidden extends LoginState {
+  const SignInForbidden();
 }
 
 class ApiClientError extends LoginState {

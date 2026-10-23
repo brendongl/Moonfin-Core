@@ -6,6 +6,7 @@ import '../../l10n/current_app_localizations.dart';
 import '../../preference/user_preferences.dart';
 import '../models/aggregated_item.dart';
 import '../models/home_row.dart';
+import '../repositories/item_mutation_repository.dart';
 import '../services/row_data_source.dart';
 
 class MusicBrowseViewModel extends ChangeNotifier {
@@ -40,6 +41,22 @@ class MusicBrowseViewModel extends ChangeNotifier {
     return null;
   }
 
+  /// Whether [featuredItem] is something played recently rather than the
+  /// first item of whatever row came back.
+  bool get featuredIsRecent =>
+      _rows.any((r) => r.id.startsWith('lastPlayed_') && r.items.isNotEmpty);
+
+  /// The album behind [featuredItem], loaded by [loadFeaturedAlbum].
+  AggregatedItem? _featuredAlbum;
+  AggregatedItem? get featuredAlbum => _featuredAlbum;
+
+  /// [featuredAlbum]'s songs in album order.
+  List<AggregatedItem> _featuredTracks = const [];
+  List<AggregatedItem> get featuredTracks => _featuredTracks;
+
+  List<AggregatedItem> _genres = const [];
+  List<AggregatedItem> get genres => _genres;
+
   String get _serverId => _client.baseUrl;
   ImageApi get imageApi => _dataSource.imageApi;
 
@@ -49,6 +66,20 @@ class MusicBrowseViewModel extends ChangeNotifier {
     required MediaServerClient client,
   }) : _dataSource = dataSource,
        _client = client;
+
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
+  // The screen can close while a load is still running.
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
+  }
 
   void setFocusedItem(AggregatedItem? item) {
     _focusedItem = item;
@@ -156,6 +187,97 @@ class MusicBrowseViewModel extends ChangeNotifier {
     await load();
   }
 
+  /// Loads the album behind [featuredItem] with its songs: the item itself
+  /// when it's an album, a song's album otherwise.
+  Future<void> loadFeaturedAlbum() async {
+    final featured = featuredItem;
+    final albumId = featured?.type == 'MusicAlbum'
+        ? featured!.id
+        : featured?.albumId;
+    if (albumId == null || albumId.isEmpty) {
+      _featuredAlbum = null;
+      _featuredTracks = const [];
+      notifyListeners();
+      return;
+    }
+    try {
+      final (album, tracks) = await (
+        _client.itemsApi.getItem(albumId),
+        _client.itemsApi.getItems(
+          parentId: albumId,
+          includeItemTypes: const ['Audio'],
+          sortBy: 'ParentIndexNumber,IndexNumber,SortName',
+          fields: 'PrimaryImageAspectRatio,BasicSyncInfo',
+        ),
+      ).wait;
+      _featuredAlbum = AggregatedItem(
+        id: albumId,
+        serverId: _serverId,
+        rawData: album,
+      );
+      _featuredTracks = _itemsOf(tracks);
+    } catch (e) {
+      debugPrint('Failed to load the featured album: $e');
+    }
+    notifyListeners();
+  }
+
+  Future<void> loadGenres() async {
+    try {
+      _genres = _itemsOf(
+        await _client.itemsApi.getGenres(
+          parentId: libraryId,
+          userId: _client.userId,
+          sortBy: 'SortName',
+          sortOrder: 'Ascending',
+          recursive: true,
+          limit: 8,
+        ),
+      );
+    } catch (e) {
+      debugPrint('Failed to load music genres: $e');
+    }
+    notifyListeners();
+  }
+
+  Future<void> setFeaturedAlbumFavorite(bool isFavorite) async {
+    final album = _featuredAlbum;
+    if (album == null) return;
+    try {
+      await GetIt.instance<ItemMutationRepository>().setFavorite(
+        album.id,
+        isFavorite: isFavorite,
+      );
+    } catch (e) {
+      debugPrint('Failed to update the featured album favorite: $e');
+      return;
+    }
+    final userData = (album.rawData['UserData'] as Map?)
+        ?.cast<String, dynamic>();
+    _featuredAlbum = AggregatedItem(
+      id: album.id,
+      serverId: album.serverId,
+      rawData: {
+        ...album.rawData,
+        'UserData': {...?userData, 'IsFavorite': isFavorite},
+      },
+    );
+    notifyListeners();
+  }
+
+  List<AggregatedItem> _itemsOf(Map<String, dynamic> response) =>
+      ((response['Items'] as List?) ?? const [])
+          .whereType<Map>()
+          .map(
+            (raw) => AggregatedItem(
+              id: raw['Id']?.toString() ?? '',
+              serverId: _serverId,
+              rawData: raw.cast<String, dynamic>(),
+            ),
+          )
+          .where((item) => item.id.isNotEmpty)
+          .toList();
+
   String getMusicSubtitle(AggregatedItem item) {
     switch (item.type) {
       case 'Audio':
@@ -179,20 +301,20 @@ class MusicBrowseViewModel extends ChangeNotifier {
     }
   }
 
-  String? getMusicImageUrl(AggregatedItem item) {
+  String? getMusicImageUrl(AggregatedItem item, {int maxHeight = 300}) {
     final albumPrimaryTag = item.rawData['AlbumPrimaryImageTag'] as String?;
     final albumId = item.rawData['AlbumId']?.toString();
     if (item.type == 'Audio' && albumPrimaryTag != null && albumId != null) {
       return imageApi.getPrimaryImageUrl(
         albumId,
-        maxHeight: 300,
+        maxHeight: maxHeight,
         tag: albumPrimaryTag,
       );
     }
     if (item.primaryImageTag != null) {
       return imageApi.getPrimaryImageUrl(
         item.id,
-        maxHeight: 300,
+        maxHeight: maxHeight,
         tag: item.primaryImageTag,
       );
     }
@@ -204,7 +326,7 @@ class MusicBrowseViewModel extends ChangeNotifier {
     if (parentPrimaryTag != null && parentPrimaryId != null) {
       return imageApi.getPrimaryImageUrl(
         parentPrimaryId,
-        maxHeight: 300,
+        maxHeight: maxHeight,
         tag: parentPrimaryTag,
       );
     }

@@ -66,6 +66,20 @@ enum PlaybackEnginePreference {
   mpv,
 }
 
+/// Which player plays video on iPhone and iPad. Native is the player the
+/// Apple TV app uses.
+enum ApplePlayerUi {
+  flutter,
+  native,
+}
+
+/// Where the play, skip and seek buttons sit on phones, tablets and desktop.
+/// TVs always dock them, since the remote walks the bottom row.
+enum PlayerTransportPosition {
+  onScreen,
+  docked,
+}
+
 enum DolbyVisionFallbackBehavior {
   ask,
   hdr10Fallback,
@@ -122,11 +136,17 @@ enum PosterSize {
   small(portraitHeight: 120, landscapeHeight: 88),
   medium(portraitHeight: 150, landscapeHeight: 110),
   large(portraitHeight: 180, landscapeHeight: 132),
-  extraLarge(portraitHeight: 210, landscapeHeight: 154);
+  extraLarge(portraitHeight: 210, landscapeHeight: 154),
+  grandparents(portraitHeight: 300, landscapeHeight: 220);
 
   const PosterSize({required this.portraitHeight, required this.landscapeHeight});
   final int portraitHeight;
   final int landscapeHeight;
+
+  /// Every size but Grandparents, which only the Classic home rows draw.
+  static const gridValues = [small, medium, large, extraLarge];
+
+  PosterSize get upToExtraLarge => this == grandparents ? extraLarge : this;
 }
 
 enum FavoritesViewStyle {
@@ -187,6 +207,28 @@ enum AutoHdrSwitchingBehavior {
   always,
 }
 
+/// How phones and tablets are held while a game plays. [auto] follows the
+/// device, so the system rotation lock applies.
+enum GamePlaybackOrientation {
+  landscape,
+  portrait,
+  auto,
+}
+
+/// Where mpv draws video on Windows: its own D3D11 window, or media_kit's
+/// texture inside the app.
+enum VideoRenderer {
+  nativeWindow,
+  nativeHdrOnly,
+  inApp;
+
+  bool usesNativeWindow({required bool isHdr}) => switch (this) {
+    nativeWindow => true,
+    nativeHdrOnly => isHdr,
+    inApp => false,
+  };
+}
+
 enum StillWatchingBehavior {
   short_(episodes: 2, hours: 1.0),
   medium(episodes: 3, hours: 1.5),
@@ -208,6 +250,9 @@ enum WatchedIndicatorBehavior {
 
 enum ZoomMode {
   fit,
+
+  /// Shown as Zoom to Fill. The name stays autoCrop because it's the value
+  /// saved and synced to the server.
   autoCrop,
   stretch,
 }
@@ -251,6 +296,14 @@ enum DesktopScrollWheelAction {
   volume,
 }
 
+/// Where brightness and volume swipe gesture indicators are placed on the screen.
+/// [same] places the indicator on the side being swiped (brightness left, volume right).
+/// [inverted] places the indicator on the opposite side (brightness right, volume left).
+enum GestureIndicatorPlacement {
+  same,
+  inverted,
+}
+
 /// Glass rendering budget. `auto` picks per-device (real blur on capable
 /// hardware, zero-blur sheen on TV boxes/web); `full` forces real blur;
 /// `reduced` forces the zero-blur sheen everywhere.
@@ -259,6 +312,10 @@ enum GlassQualityMode { auto, full, reduced }
 /// How much this device is asked to spend on decoded images and inline video.
 /// [DevicePerformanceMode.auto] measures the device, the other two pin it.
 enum DevicePerformanceMode { auto, standard, reduced }
+
+/// Which renderer an Android TV box draws with. [RendererMode.auto] lets the
+/// app pick Impeller where it runs on Vulkan, [RendererMode.skia] pins Skia.
+enum RendererMode { auto, skia }
 
 /// Persisted settled quality of the adaptive glass renderer, mirroring the
 /// package's GlassQuality tiers. `unset` means no benchmark has settled yet,
@@ -317,6 +374,43 @@ enum DetailScreenStyle {
   spotlight,
   nouveau,
   minimalist;
+}
+
+/// Selectable header layout for the library browse screen.
+///
+/// [classic] is the original centered title with a row of icon buttons and is
+/// the default. [modern] puts Home, search and labeled Sort, Group and Show
+/// pills in one bar. [docked] moves the controls and the letters into a side
+/// panel on TV and desktop and a floating bottom bar on phones. Stored per
+/// server and user.
+enum LibraryStyle {
+  classic,
+  modern,
+  docked;
+}
+
+/// Selectable layout for book and audiobook libraries.
+///
+/// [classic] is the original shelves under a featured title. [readingRoom]
+/// leads with large Continue cards over a few shelves. [bookstore] is the
+/// default, a rail or tiles of browse entries over a paged title grid. Stored
+/// per server and user.
+enum BookLibraryStyle {
+  classic,
+  readingRoom,
+  bookstore;
+}
+
+/// Selectable layout for music libraries.
+///
+/// [classic] is the original rows under a Jump Back In card. [quickAccess]
+/// leads with a grid of recent albums and playlists. [immersive] is the
+/// default, the album being listened to on a full-width hero over the rest.
+/// Stored per server and user.
+enum MusicLibraryStyle {
+  classic,
+  quickAccess,
+  immersive;
 }
 
 /// Selectable algorithm source for similarity recommendation system.
@@ -436,6 +530,7 @@ enum HomeSectionType {
   genres('genres'),
   studios('studios'),
   liveTv('livetv'),
+  onNow('onnow'),
   seerrShortcuts('seerr_shortcuts'),
   seerrRecentRequests('seerr_recent_requests'),
   seerrWatchlist('seerr_watchlist'),
@@ -981,6 +1076,9 @@ enum RewatchSortBy {
 /// series carries its first episode's date, so a long running show stops
 /// surfacing. The row shows series cards whichever of these is picked.
 enum RecentlyReleasedSeriesType { series, season, episode }
+
+/// What single-clicking on a Continue Watching or Next Up home card does.
+enum ContinueWatchingDefaultAction { details, play }
 
 /// When a home row card shows its MOVIE or SERIES label. Only external rows
 /// carry a media type, so the rest are unaffected either way.

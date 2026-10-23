@@ -11,6 +11,9 @@ class ServerUser {
   final UserPolicy? policy;
   final UserConfiguration? configuration;
 
+  /// The UserDto exactly as the server sent it, for posting it back whole.
+  final Map<String, dynamic> raw;
+
   const ServerUser({
     required this.id,
     this.name,
@@ -19,6 +22,7 @@ class ServerUser {
     this.hasPassword = false,
     this.policy,
     this.configuration,
+    this.raw = const {},
   });
 
   factory ServerUser.fromJson(Map<String, dynamic> json) => ServerUser(
@@ -33,6 +37,7 @@ class ServerUser {
         configuration: json['Configuration'] is Map<String, dynamic>
             ? UserConfiguration.fromJson(json['Configuration'] as Map<String, dynamic>)
             : null,
+        raw: json,
       );
 }
 

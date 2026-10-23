@@ -6,19 +6,39 @@ class _VideoPlaybackScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    if (SipflixSettingsMode.basic) {
+      return Scaffold(
+        appBar: buildSettingsAppBar(context, Text(l10n.player)),
+        body: ListView(
+          children: [
+            adaptiveListSection(
+              children: [
+                EnumPreferenceTile<ZoomMode>(
+                  preference: UserPreferences.playerZoomMode,
+                  title: l10n.playerZoomMode,
+                  icon: Icons.zoom_out_map,
+                  labelOf: (v) => switch (v) {
+                    ZoomMode.fit => l10n.fit,
+                    ZoomMode.autoCrop => l10n.autoCrop,
+                    ZoomMode.stretch => l10n.stretch,
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
     final prefs = GetIt.instance<UserPreferences>();
-    final advanced = SipflixSettingsMode.advanced;
     return Scaffold(
-      appBar: buildSettingsAppBar(
-        context,
-        Text(l10n.settingsVideoPlaybackPreferences),
-      ),
+      appBar: buildSettingsAppBar(context, Text(l10n.player)),
       body: ListView(
         children: [
           const _SectionHeader('Media Player Behavior'),
           adaptiveListSection(
             children: [
-              if (advanced)
+              if (SipflixSettingsMode.advanced)
                 SwitchPreferenceTile(
                   preference: UserPreferences.showDescriptionOnPause,
                   title: l10n.showDescriptionOnPause,
@@ -36,21 +56,37 @@ class _VideoPlaybackScreen extends StatelessWidget {
                   ZoomMode.stretch => l10n.stretch,
                 },
               ),
-              if (advanced) ...[
-                if (PlatformDetection.isIOS)
+              if (PlatformDetection.isIOS)
+                if (SipflixSettingsMode.advanced)
                   SwitchPreferenceTile(
                     preference: UserPreferences.keepVideoClearOfDynamicIsland,
                     title: l10n.keepVideoClearOfDynamicIsland,
                     subtitle: l10n.keepVideoClearOfDynamicIslandDescription,
                     icon: Icons.crop_free,
                   ),
-                if (letterboxCropSettingVisible())
+              if (letterboxCropSettingVisible()) ...[
+                if (SipflixSettingsMode.advanced)
                   SwitchPreferenceTile(
                     preference: UserPreferences.cropBlackBars,
                     title: l10n.cropBlackBars,
                     subtitle: l10n.settingsCropBlackBarsDescription,
                     icon: Icons.crop_16_9_outlined,
                   ),
+                if (SipflixSettingsMode.advanced)
+                  IntPickerPreferenceTile(
+                    preference: UserPreferences.cropBlackBarsIntervalSeconds,
+                    title: l10n.cropBlackBarsRecropInterval,
+                    description: l10n.settingsCropBlackBarsIntervalDescription,
+                    icon: Icons.timelapse_outlined,
+                    options: {
+                      0: l10n.cropBlackBarsOnce,
+                      1: l10n.cropBlackBarsEverySecond,
+                      5: l10n.fiveSeconds,
+                      10: l10n.tenSeconds,
+                    },
+                  ),
+              ],
+              if (SipflixSettingsMode.advanced)
                 _TvSettingsListTile(
                   leading: const Icon(Icons.timer_outlined),
                   title: Text(l10n.playbackTimeDisplay),
@@ -59,7 +95,8 @@ class _VideoPlaybackScreen extends StatelessWidget {
                     const _PlaybackTimeLayoutScreen(),
                   ),
                 ),
-                if (PlatformDetection.useDesktopUi)
+              if (PlatformDetection.useDesktopUi)
+                if (SipflixSettingsMode.advanced)
                   EnumPreferenceTile<DesktopScrollWheelAction>(
                     preference: UserPreferences.desktopScrollWheelAction,
                     title: l10n.settingsScrollWheelAction,
@@ -67,11 +104,13 @@ class _VideoPlaybackScreen extends StatelessWidget {
                     icon: Icons.mouse_outlined,
                     labelOf: (v) => switch (v) {
                       DesktopScrollWheelAction.off => l10n.scrollWheelActionOff,
-                      DesktopScrollWheelAction.seek => l10n.scrollWheelActionSeek,
+                      DesktopScrollWheelAction.seek =>
+                        l10n.scrollWheelActionSeek,
                       DesktopScrollWheelAction.volume =>
                         l10n.scrollWheelActionVolume,
                     },
                   ),
+              if (SipflixSettingsMode.advanced)
                 StringPickerPreferenceTile(
                   preference: UserPreferences.resumeSubtractDuration,
                   title: l10n.resumeRewind,
@@ -85,6 +124,7 @@ class _VideoPlaybackScreen extends StatelessWidget {
                     '30': l10n.thirtySeconds,
                   },
                 ),
+              if (SipflixSettingsMode.advanced)
                 IntPickerPreferenceTile(
                   preference: UserPreferences.unpauseRewindDuration,
                   title: l10n.unpauseRewind,
@@ -98,6 +138,7 @@ class _VideoPlaybackScreen extends StatelessWidget {
                     30000: l10n.thirtySeconds,
                   },
                 ),
+              if (SipflixSettingsMode.advanced)
                 IntPickerPreferenceTile(
                   preference: UserPreferences.skipBackLength,
                   title: l10n.skipBackLength,
@@ -114,6 +155,7 @@ class _VideoPlaybackScreen extends StatelessWidget {
                     60000: l10n.settingsSixtySeconds,
                   },
                 ),
+              if (SipflixSettingsMode.advanced)
                 IntPickerPreferenceTile(
                   preference: UserPreferences.skipForwardLength,
                   title: l10n.skipForwardLength,
@@ -130,26 +172,48 @@ class _VideoPlaybackScreen extends StatelessWidget {
                     60000: l10n.settingsSixtySeconds,
                   },
                 ),
+              if (SipflixSettingsMode.advanced)
                 SwitchPreferenceTile(
                   preference: UserPreferences.showChapterMarkers,
                   title: l10n.showChapterMarkers,
                   subtitle: l10n.showChapterMarkersDescription,
                   icon: Icons.straighten,
                 ),
-                if (PlatformDetection.useMobileUi) ...[
+              if (PlatformDetection.useMobileUi) ...[
+                if (SipflixSettingsMode.advanced)
                   SwitchPreferenceTile(
                     preference: UserPreferences.osdLockEnabled,
                     title: l10n.osdLockButton,
                     subtitle: l10n.osdLockButtonDescription,
                     icon: Icons.lock,
                   ),
+                if (SipflixSettingsMode.advanced)
                   SwitchPreferenceTile(
                     preference: UserPreferences.playerSwipeGestures,
                     title: l10n.playerSwipeGestures,
                     subtitle: l10n.playerSwipeGesturesDescription,
                     icon: Icons.swipe_vertical,
                   ),
-                ],
+                ListenableBuilder(
+                  listenable: prefs,
+                  builder: (context, _) =>
+                      !prefs.get(UserPreferences.playerSwipeGestures)
+                      ? const SizedBox.shrink()
+                      : EnumPreferenceTile<GestureIndicatorPlacement>(
+                          preference: UserPreferences.gestureIndicatorPlacement,
+                          title: l10n.invertGestureIndicators,
+                          description: l10n.invertGestureIndicatorsDescription,
+                          icon: Icons.swap_horiz,
+                          labelOf: (v) => switch (v) {
+                            GestureIndicatorPlacement.same =>
+                              l10n.gestureIndicatorSame,
+                            GestureIndicatorPlacement.inverted =>
+                              l10n.gestureIndicatorInverted,
+                          },
+                        ),
+                ),
+              ],
+              if (SipflixSettingsMode.advanced)
                 _TvSettingsListTile(
                   leading: const Icon(Icons.tune),
                   title: Text(l10n.osdButtons),
@@ -157,22 +221,21 @@ class _VideoPlaybackScreen extends StatelessWidget {
                   onTap: () =>
                       context.pushSettingsScreen(const _OsdButtonsScreen()),
                 ),
-              ],
             ],
           ),
 
-          if (advanced) ...[
-            _SectionHeader(l10n.trickPlay),
-            // Only this section reacts to the mode, so the rest of the page is
-            // not rebuilt every time any preference anywhere changes.
-            ListenableBuilder(
-              listenable: prefs,
-              builder: (context, _) {
-                final showsPreviews =
-                    prefs.get(UserPreferences.trickPlayMode) !=
-                    TrickplayMode.disabled;
-                return adaptiveListSection(
-                  children: [
+          _SectionHeader(l10n.trickPlay),
+          // Only this section reacts to the mode, so the rest of the page is
+          // not rebuilt every time any preference anywhere changes.
+          ListenableBuilder(
+            listenable: prefs,
+            builder: (context, _) {
+              final showsPreviews =
+                  prefs.get(UserPreferences.trickPlayMode) !=
+                  TrickplayMode.disabled;
+              return adaptiveListSection(
+                children: [
+                  if (SipflixSettingsMode.advanced)
                     EnumPreferenceTile<TrickplayMode>(
                       preference: UserPreferences.trickPlayMode,
                       title: l10n.trickPlay,
@@ -180,18 +243,21 @@ class _VideoPlaybackScreen extends StatelessWidget {
                       icon: Icons.image_search,
                       labelOf: (v) => switch (v) {
                         TrickplayMode.disabled => l10n.disabled,
-                        TrickplayMode.single => l10n.trickplayDisplayStyleSingle,
+                        TrickplayMode.single =>
+                          l10n.trickplayDisplayStyleSingle,
                         TrickplayMode.strip => l10n.trickplayDisplayStyleStrip,
                         TrickplayMode.full => l10n.trickplayModeFull,
                       },
                     ),
-                    // Everything the mode governs sits after the mode itself, so
-                    // turning it on adds rows below the one being used rather
-                    // than shifting it down and taking its focus with it.
-                    if (showsPreviews) ...[
-                      const TrickplaySettingsPreview(),
+                  // Everything the mode governs sits after the mode itself, so
+                  // turning it on adds rows below the one being used rather
+                  // than shifting it down and taking its focus with it.
+                  if (showsPreviews) ...[
+                    const TrickplaySettingsPreview(),
+                    if (SipflixSettingsMode.advanced)
                       SliderPreferenceTile(
-                        preference: UserPreferences.trickPlayPreviewScalePercent,
+                        preference:
+                            UserPreferences.trickPlayPreviewScalePercent,
                         title: l10n.trickplayPreviewScale,
                         icon: Icons.photo_size_select_large_outlined,
                         min: 10,
@@ -199,6 +265,7 @@ class _VideoPlaybackScreen extends StatelessWidget {
                         divisions: 18,
                         labelOf: (v) => l10n.percentValue(v),
                       ),
+                    if (SipflixSettingsMode.advanced)
                       SliderPreferenceTile(
                         preference:
                             UserPreferences.trickPlayVerticalPositionPercent,
@@ -209,179 +276,27 @@ class _VideoPlaybackScreen extends StatelessWidget {
                         divisions: 20,
                         labelOf: (v) => l10n.percentValue(v),
                       ),
+                    if (SipflixSettingsMode.advanced)
                       SwitchPreferenceTile(
-                        preference: UserPreferences.trickPlayFollowScrubPosition,
+                        preference:
+                            UserPreferences.trickPlayFollowScrubPosition,
                         title: l10n.trickplayFollowScrubPosition,
                         subtitle: l10n.trickplayFollowScrubPositionSubtitle,
                         icon: Icons.swipe,
                       ),
+                    if (SipflixSettingsMode.advanced)
                       SwitchPreferenceTile(
-                        preference: UserPreferences.trickPlayPauseWhileScrubbing,
+                        preference:
+                            UserPreferences.trickPlayPauseWhileScrubbing,
                         title: l10n.trickplayPauseWhileScrubbing,
                         subtitle: l10n.trickplayPauseWhileScrubbingSubtitle,
                         icon: Icons.pause_circle_outline,
                       ),
-                    ],
                   ],
-                );
-              },
-            ),
-          ],
-
-          if (advanced) ...[
-            const _SectionHeader('Decoding & Rendering'),
-            adaptiveListSection(
-              children: [
-                if (PlatformDetection.isAndroid)
-                  EnumPreferenceTile<PlaybackEnginePreference>(
-                    preference: UserPreferences.playbackEnginePreference,
-                    title: PlatformDetection.isTV
-                        ? l10n.settingsPlaybackEngineAndroidTv
-                        : l10n.settingsPlaybackEngineAndroidTv.replaceAll(
-                            'Android TV',
-                            'Android',
-                          ),
-                    description: PlatformDetection.isTV
-                        ? l10n.settingsPlaybackEngineAndroidTvDescription
-                        : l10n.settingsPlaybackEngineAndroidTvDescription
-                              .replaceAll('Android TV', 'Android'),
-                    icon: Icons.video_settings,
-                    labelOf: (v) => switch (v) {
-                      PlaybackEnginePreference.media3 =>
-                        l10n.settingsPlaybackEngineMedia3Recommended,
-                      PlaybackEnginePreference.mpv =>
-                        l10n.settingsPlaybackEngineMpvLegacy,
-                    },
-                  ),
-                if (DisplayHdrProbe.isSupported) const _RedetectDisplayTile(),
-                if (PlatformDetection.isAndroid && PlatformDetection.isTV)
-                  EnumPreferenceTile<DolbyVisionFallbackBehavior>(
-                    preference: UserPreferences.dolbyVisionFallbackBehavior,
-                    title: l10n.settingsDolbyVisionFallback,
-                    description: l10n.settingsDolbyVisionFallbackDescription,
-                    icon: Icons.hdr_strong,
-                    labelOf: (v) => switch (v) {
-                      DolbyVisionFallbackBehavior.ask => l10n.settingsAskEachTime,
-                      DolbyVisionFallbackBehavior.hdr10Fallback =>
-                        l10n.settingsPreferHdr10Fallback,
-                      DolbyVisionFallbackBehavior.transcode =>
-                        l10n.settingsPreferServerTranscode,
-                    },
-                  ),
-                if (PlatformDetection.isAndroid && PlatformDetection.isTV)
-                  EnumPreferenceTile<DolbyVisionProfile7DirectPlayBehavior>(
-                    preference:
-                        UserPreferences.dolbyVisionProfile7DirectPlayBehavior,
-                    title: l10n.settingsDolbyVisionProfile7DirectPlay,
-                    description:
-                        l10n.settingsDolbyVisionProfile7DirectPlayDescription,
-                    icon: Icons.movie_filter,
-                    labelOf: (v) => switch (v) {
-                      DolbyVisionProfile7DirectPlayBehavior.auto =>
-                        l10n.settingsAutoAftkrtEnabled,
-                      DolbyVisionProfile7DirectPlayBehavior.enabled =>
-                        l10n.settingsEnabledOnThisDevice,
-                      DolbyVisionProfile7DirectPlayBehavior.disabled =>
-                        l10n.settingsDisabledPreferTranscode,
-                    },
-                  ),
-                // Hidden on Apple TV: AetherEngine always uses VideoToolbox for
-                // hardware-capable codecs and software decode otherwise, so there
-                // is no user-facing toggle to honor.
-                if (!PlatformDetection.isWeb && !PlatformDetection.isAppleTV)
-                  SwitchPreferenceTile(
-                    preference: UserPreferences.hardwareDecoding,
-                    title: l10n.hardwareDecoding,
-                    subtitle: l10n.hardwareDecodingSubtitle,
-                    icon: Icons.memory,
-                  ),
-                if (PlatformDetection.isAndroid && PlatformDetection.isTV)
-                  EnumPreferenceTile<RefreshRateSwitchingBehavior>(
-                    preference: UserPreferences.refreshRateSwitchingBehavior,
-                    title: l10n.refreshRateSwitching,
-                    icon: Icons.speed,
-                    labelOf: (v) => switch (v) {
-                      RefreshRateSwitchingBehavior.disabled => l10n.disabled,
-                      RefreshRateSwitchingBehavior.scaleOnTv => l10n.scaleOnTv,
-                      RefreshRateSwitchingBehavior.scaleOnDevice =>
-                        l10n.scaleOnDevice,
-                    },
-                  ),
-                if (PlatformDetection.isWindows)
-                  EnumPreferenceTile<AutoHdrSwitchingBehavior>(
-                    preference: UserPreferences.autoHdrSwitchingBehavior,
-                    title: l10n.autoHdrSwitching,
-                    description: l10n.autoHdrSwitchingDescription,
-                    icon: Icons.hdr_strong,
-                    labelOf: (v) => switch (v) {
-                      AutoHdrSwitchingBehavior.disabled => l10n.disabled,
-                      AutoHdrSwitchingBehavior.whenFullscreen =>
-                        l10n.whenFullscreen,
-                      AutoHdrSwitchingBehavior.always => l10n.always,
-                    },
-                  ),
-                if (PlatformDetection.supportsNativeHdrWindow)
-                  SwitchPreferenceTile(
-                    preference: UserPreferences.nativeHdrOutput,
-                    title: l10n.nativeHdrOutput,
-                    subtitle: l10n.nativeHdrOutputDescription,
-                    icon: Icons.hdr_on,
-                  ),
-                // Sipflix fork: opt-in connection test before each video.
-                SwitchPreferenceTile(
-                  preference: UserPreferences.preflightEnabled,
-                  title: 'Stream Preflight',
-                  subtitle:
-                      'Test your connection before each video and pick '
-                      'the best route and quality automatically',
-                  icon: Icons.speed,
-                ),
-                SwitchPreferenceTile(
-                  preference: UserPreferences.liveTvDirectPlayEnabled,
-                  title: l10n.settingsLiveTvDirect,
-                  subtitle: l10n.settingsLiveTvDirectSubtitle,
-                  icon: Icons.live_tv,
-                ),
-              ],
-            ),
-
-            _SectionHeader(l10n.transcodingLimits),
-            adaptiveListSection(
-              children: [
-                StringPickerPreferenceTile(
-                  preference: UserPreferences.maxBitrate,
-                  title: l10n.maxStreamingBitrate,
-                  description: l10n.settingsMaxBitrateDescription,
-                  icon: Icons.network_check,
-                  options: {
-                    'auto': l10n.auto,
-                    '200': '200 Mbps',
-                    '120': '120 Mbps',
-                    '80': '80 Mbps',
-                    '40': '40 Mbps',
-                    '20': '20 Mbps',
-                    '10': '10 Mbps',
-                    '5': '5 Mbps',
-                    '2': '2 Mbps',
-                    '1': '1 Mbps',
-                  },
-                ),
-                EnumPreferenceTile<MaxVideoResolution>(
-                  preference: UserPreferences.maxVideoResolution,
-                  title: l10n.maxResolution,
-                  description: l10n.settingsMaxResolutionDescription,
-                  icon: Icons.high_quality,
-                  labelOf: (v) => switch (v) {
-                    MaxVideoResolution.auto => l10n.auto,
-                    MaxVideoResolution.res480p => '480p',
-                    MaxVideoResolution.res720p => '720p',
-                    MaxVideoResolution.res1080p => '1080p',
-                    MaxVideoResolution.res2160p => '2160p (4K)',
-                  },
-                ),
-              ],
-            ),
-          ],
+                ],
+              );
+            },
+          ),
         ],
       ),
     );
@@ -543,9 +458,8 @@ class _ExternalPlayerAppPickerTileState
                   AppLocalizations.of(dialogContext).settingsAskEachTime,
                 ),
                 subtitle: Text(
-                  AppLocalizations.of(
-                    dialogContext,
-                  ).externalPlayerAskEachTimeSubtitle,
+                  AppLocalizations.of(dialogContext)
+                      .externalPlayerAskEachTimeSubtitle,
                 ),
                 trailing: normalizedCurrent.isEmpty
                     ? const Icon(Icons.check)

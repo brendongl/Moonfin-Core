@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get_it/get_it.dart';
@@ -11,6 +9,40 @@ import '../../../../l10n/app_localizations.dart';
 import '../../../util/error_message.dart';
 import '../../../widgets/adaptive/adaptive_dialog.dart';
 import '../widgets/admin_form_styles.dart';
+import 'admin_tasks_screen.dart';
+
+const _ticksPerMinute = 600000000;
+const _ticksPerHour = 60 * _ticksPerMinute;
+
+/// A trigger time of day in the locale's own format.
+String _timeOfDayText(BuildContext context, int ticks) {
+  final minutes = ticks ~/ _ticksPerMinute;
+  return MaterialLocalizations.of(context).formatTimeOfDay(
+    TimeOfDay(hour: minutes ~/ 60 % 24, minute: minutes % 60),
+  );
+}
+
+String _dayName(String day, AppLocalizations l10n) => switch (day) {
+      'Sunday' => l10n.adminDaySunday,
+      'Monday' => l10n.adminDayMonday,
+      'Tuesday' => l10n.adminDayTuesday,
+      'Wednesday' => l10n.adminDayWednesday,
+      'Thursday' => l10n.adminDayThursday,
+      'Friday' => l10n.adminDayFriday,
+      'Saturday' => l10n.adminDaySaturday,
+      _ => day,
+    };
+
+/// 1.5 for 90 minutes, 2 for two hours.
+String _hoursNumber(double hours) => hours == hours.roundToDouble()
+    ? '${hours.round()}'
+    : hours.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '');
+
+/// An hour count that may be fractional.
+String _hoursText(double hours, AppLocalizations l10n) =>
+    hours == hours.roundToDouble()
+        ? l10n.adminTaskTriggerHours(hours.round())
+        : l10n.adminTaskHoursValue(_hoursNumber(hours));
 
 class AdminTaskDetailScreen extends ConsumerStatefulWidget {
   final String taskId;
@@ -23,22 +55,6 @@ class AdminTaskDetailScreen extends ConsumerStatefulWidget {
 
 class _AdminTaskDetailScreenState
     extends ConsumerState<AdminTaskDetailScreen> {
-  Timer? _refreshTimer;
-
-  @override
-  void initState() {
-    super.initState();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      ref.invalidate(adminTaskProvider(widget.taskId));
-    });
-  }
-
-  @override
-  void dispose() {
-    _refreshTimer?.cancel();
-    super.dispose();
-  }
-
   AdminTasksApi get _api =>
       GetIt.instance<MediaServerClient>().adminTasksApi;
 
@@ -56,8 +72,9 @@ class _AdminTaskDetailScreenState
             Text(l10n.adminTaskLoadFailed(describeError(error, l10n))),
             const SizedBox(height: 8),
             ElevatedButton(
-              onPressed: () =>
-                  ref.invalidate(adminTaskProvider(widget.taskId)),
+              onPressed: () => ref
+                ..invalidate(adminTasksProvider)
+                ..invalidate(adminTaskByIdProvider(widget.taskId)),
               child: Text(l10n.retry),
             ),
           ],
@@ -110,7 +127,7 @@ class _AdminTaskDetailScreenState
                       color: isRunning
                           ? theme.colorScheme.primary
                           : isCancelling
-                          ? AppColorScheme.statusPending
+                              ? AppColorScheme.recordingScheduled
                               : theme.colorScheme.onSurfaceVariant,
                     ),
                     const SizedBox(width: 8),
@@ -165,7 +182,6 @@ class _AdminTaskDetailScreenState
   Future<void> _startTask(String taskId) async {
     try {
       await _api.startTask(taskId);
-      ref.invalidate(adminTaskProvider(widget.taskId));
     } catch (e) {
       if (mounted) {
         final l10n = AppLocalizations.of(context);
@@ -178,7 +194,6 @@ class _AdminTaskDetailScreenState
   Future<void> _stopTask(String taskId) async {
     try {
       await _api.stopTask(taskId);
-      ref.invalidate(adminTaskProvider(widget.taskId));
     } catch (e) {
       if (mounted) {
         final l10n = AppLocalizations.of(context);
@@ -189,6 +204,29 @@ class _AdminTaskDetailScreenState
   }
 
   Future<void> _removeTrigger(TaskInfo task, int index) async {
+    final l10n = AppLocalizations.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog.adaptive(
+        title: Text(l10n.adminDeleteTaskTrigger),
+        content: Text(l10n.adminDeleteTaskTriggerConfirm),
+        actions: [
+          adaptiveDialogAction(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l10n.cancel),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+              foregroundColor: Theme.of(ctx).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(l10n.delete),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
     final triggers = List<TaskTriggerInfo>.from(task.triggers)
       ..removeAt(index);
     try {
@@ -196,7 +234,9 @@ class _AdminTaskDetailScreenState
         task.id,
         triggers.map((t) => t.toJson()).toList(),
       );
-      ref.invalidate(adminTaskProvider(widget.taskId));
+      ref
+        ..invalidate(adminTasksProvider)
+        ..invalidate(adminTaskByIdProvider(widget.taskId));
     } catch (e) {
       if (mounted) {
         final l10n = AppLocalizations.of(context);
@@ -219,7 +259,9 @@ class _AdminTaskDetailScreenState
         task.id,
         triggers.map((t) => t.toJson()).toList(),
       );
-      ref.invalidate(adminTaskProvider(widget.taskId));
+      ref
+        ..invalidate(adminTasksProvider)
+        ..invalidate(adminTaskByIdProvider(widget.taskId));
     } catch (e) {
       if (mounted) {
         final l10n = AppLocalizations.of(context);
@@ -248,7 +290,7 @@ class _LastExecutionCard extends StatelessWidget {
         statusColor = theme.colorScheme.error;
       case 'Cancelled':
       case 'Aborted':
-        statusColor = AppColorScheme.statusPending;
+        statusColor = AppColorScheme.recordingScheduled;
       default:
         statusColor = theme.colorScheme.onSurfaceVariant;
     }
@@ -282,7 +324,7 @@ class _LastExecutionCard extends StatelessWidget {
                   _infoRow(l10n.adminTaskDetailEnded,
                       _formatDateTime(result.endTime)),
                   _infoRow(l10n.adminTaskDetailDuration,
-                      _formatDuration(duration)),
+                      taskDurationText(duration, l10n)),
                   if (result.errorMessage != null) ...[
                     const SizedBox(height: 8),
                     Text(l10n.adminTaskDetailErrorLabel,
@@ -321,16 +363,6 @@ class _LastExecutionCard extends StatelessWidget {
   }
 
   String _p(int n) => n.toString().padLeft(2, '0');
-
-  String _formatDuration(Duration d) {
-    if (d.inHours > 0) {
-      return '${d.inHours}h ${d.inMinutes.remainder(60)}m ${d.inSeconds.remainder(60)}s';
-    }
-    if (d.inMinutes > 0) {
-      return '${d.inMinutes}m ${d.inSeconds.remainder(60)}s';
-    }
-    return '${d.inSeconds}s';
-  }
 }
 
 class _TriggersSection extends StatelessWidget {
@@ -387,15 +419,20 @@ class _TriggersSection extends StatelessWidget {
                 final trigger = entry.value;
                 return ListTile(
                   leading: Icon(_triggerIcon(trigger.type)),
-                  title: Text(_triggerDescription(trigger, l10n)),
+                  title: Text(_triggerDescription(context, trigger, l10n)),
                   subtitle: trigger.maxRuntimeTicks != null
-                      ? Text(
-                          l10n.adminTimeLimitDuration(l10n.adminTaskTriggerHours(trigger.maxRuntimeTicks! ~/ (60 * 600000000))))
+                      ? Text(l10n.adminTimeLimitDuration(_hoursText(
+                          trigger.maxRuntimeTicks! / _ticksPerHour, l10n)))
                       : null,
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: () => onRemove(i),
-                  ),
+                  // Emby's system event triggers can't be made here, so they
+                  // stay as they are.
+                  trailing: trigger.type == 'SystemEventTrigger'
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          tooltip: l10n.delete,
+                          onPressed: () => onRemove(i),
+                        ),
                 );
               }),
             ],
@@ -414,43 +451,47 @@ class _TriggersSection extends StatelessWidget {
         return Icons.timer;
       case 'StartupTrigger':
         return Icons.power_settings_new;
+      case 'SystemEventTrigger':
+        return Icons.bolt_outlined;
       default:
         return Icons.schedule;
     }
   }
 
-  String _triggerDescription(TaskTriggerInfo trigger, AppLocalizations l10n) {
+  String _triggerDescription(
+    BuildContext context,
+    TaskTriggerInfo trigger,
+    AppLocalizations l10n,
+  ) {
     switch (trigger.type) {
       case 'DailyTrigger':
-        return l10n.adminTaskTriggerDaily(_ticksToTime(trigger.timeOfDayTicks ?? 0));
+        return l10n.adminTaskTriggerDaily(
+            _timeOfDayText(context, trigger.timeOfDayTicks ?? 0));
       case 'WeeklyTrigger':
-        return l10n.adminTaskTriggerWeekly(trigger.dayOfWeek ?? l10n.unknown, _ticksToTime(trigger.timeOfDayTicks ?? 0));
+        return l10n.adminTaskTriggerWeekly(
+          _dayName(trigger.dayOfWeek ?? l10n.unknown, l10n),
+          _timeOfDayText(context, trigger.timeOfDayTicks ?? 0),
+        );
       case 'IntervalTrigger':
-        return l10n.adminTaskTriggerInterval(_ticksToDuration(trigger.intervalTicks ?? 0));
+        return _intervalText(trigger.intervalTicks ?? 0, l10n);
       case 'StartupTrigger':
         return l10n.adminTaskTriggerStartup;
+      case 'SystemEventTrigger':
+        return l10n.adminTaskTriggerSystemEvent(
+          trigger.systemEvent ?? l10n.unknown,
+        );
       default:
         return trigger.type;
     }
   }
+}
 
-  String _ticksToTime(int ticks) {
-    final totalMinutes = ticks ~/ 600000000;
-    final hours = totalMinutes ~/ 60;
-    final minutes = totalMinutes % 60;
-    final period = hours >= 12 ? 'PM' : 'AM';
-    final displayHour = hours == 0 ? 12 : (hours > 12 ? hours - 12 : hours);
-    return '$displayHour:${minutes.toString().padLeft(2, '0')} $period';
+String _intervalText(int ticks, AppLocalizations l10n) {
+  if (ticks < _ticksPerHour) {
+    return l10n.adminTaskTriggerEveryMinutes('${ticks ~/ _ticksPerMinute}');
   }
-
-  String _ticksToDuration(int ticks) {
-    final totalMinutes = ticks ~/ 600000000;
-    final hours = totalMinutes ~/ 60;
-    final minutes = totalMinutes % 60;
-    if (hours > 0 && minutes > 0) return '${hours}h ${minutes}m';
-    if (hours > 0) return '${hours}h';
-    return '${minutes}m';
-  }
+  if (ticks == _ticksPerHour) return l10n.adminTaskTriggerEveryHour;
+  return l10n.adminTaskTriggerEveryHours(_hoursNumber(ticks / _ticksPerHour));
 }
 
 class _AddTriggerDialog extends StatefulWidget {
@@ -461,11 +502,11 @@ class _AddTriggerDialog extends StatefulWidget {
 }
 
 class _AddTriggerDialogState extends State<_AddTriggerDialog> {
-  String _type = 'IntervalTrigger';
-  TimeOfDay _time = const TimeOfDay(hour: 3, minute: 0);
+  String _type = 'DailyTrigger';
+  int _timeOfDayTicks = 0;
   String _dayOfWeek = 'Sunday';
-  int _intervalHours = 24;
-  int? _maxRuntimeHours;
+  int _intervalTicks = _intervals.first;
+  final _timeLimit = TextEditingController();
 
   static const _daysOfWeek = [
     'Sunday',
@@ -477,6 +518,35 @@ class _AddTriggerDialogState extends State<_AddTriggerDialog> {
     'Saturday',
   ];
 
+  static const _intervals = [
+    15 * _ticksPerMinute,
+    30 * _ticksPerMinute,
+    45 * _ticksPerMinute,
+    1 * _ticksPerHour,
+    2 * _ticksPerHour,
+    3 * _ticksPerHour,
+    4 * _ticksPerHour,
+    6 * _ticksPerHour,
+    8 * _ticksPerHour,
+    12 * _ticksPerHour,
+    24 * _ticksPerHour,
+  ];
+
+  @override
+  void dispose() {
+    _timeLimit.dispose();
+    super.dispose();
+  }
+
+  /// Hours typed in the time limit field, null unless it's at least 1 and a
+  /// multiple of 0.5.
+  double? get _timeLimitHours {
+    final hours = double.tryParse(_timeLimit.text.trim().replaceAll(',', '.'));
+    return hours != null && hours >= 1 && hours * 2 == (hours * 2).roundToDouble()
+        ? hours
+        : null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -486,6 +556,8 @@ class _AddTriggerDialogState extends State<_AddTriggerDialog> {
       'IntervalTrigger': l10n.adminTaskTriggerTypeInterval,
       'StartupTrigger': l10n.adminTaskTriggerStartup,
     };
+    final limitText = _timeLimit.text.trim();
+    final limitValid = limitText.isEmpty || _timeLimitHours != null;
     return AlertDialog.adaptive(
       title: Text(l10n.adminAddTrigger),
       content: SizedBox(
@@ -507,17 +579,15 @@ class _AddTriggerDialogState extends State<_AddTriggerDialog> {
             const SizedBox(height: 16),
             ..._buildTypeFields(),
             const SizedBox(height: 16),
-            DropdownButtonFormField<int?>(
-              initialValue: _maxRuntimeHours,
-              isExpanded: true,
-              decoration: adminInputDecoration(label: l10n.adminTimeLimit),
-              items: [
-                DropdownMenuItem(value: null, child: Text(l10n.adminNoLimit)),
-                ...[1, 2, 3, 6, 12, 24].map((h) => DropdownMenuItem(
-                    value: h,
-                    child: Text(l10n.adminTaskTriggerHours(h)))),
-              ],
-              onChanged: (v) => setState(() => _maxRuntimeHours = v),
+            TextField(
+              controller: _timeLimit,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: adminInputDecoration(
+                label: l10n.adminTimeLimitHours,
+                hint: l10n.adminNoLimit,
+              ),
+              onChanged: (_) => setState(() {}),
             ),
           ],
         ),
@@ -528,8 +598,8 @@ class _AddTriggerDialogState extends State<_AddTriggerDialog> {
           child: Text(l10n.cancel),
         ),
         FilledButton(
-          onPressed: _save,
-          child: Text(l10n.save),
+          onPressed: limitValid ? _save : null,
+          child: Text(l10n.add),
         ),
       ],
     );
@@ -539,7 +609,7 @@ class _AddTriggerDialogState extends State<_AddTriggerDialog> {
     final l10n = AppLocalizations.of(context);
     switch (_type) {
       case 'DailyTrigger':
-        return [_buildTimePicker()];
+        return [_buildTimeField(l10n)];
       case 'WeeklyTrigger':
         return [
           DropdownButtonFormField<String>(
@@ -547,76 +617,64 @@ class _AddTriggerDialogState extends State<_AddTriggerDialog> {
             isExpanded: true,
             decoration: adminInputDecoration(label: l10n.adminDayOfWeek),
             items: _daysOfWeek
-                .map((d) => DropdownMenuItem(value: d, child: Text(d)))
+                .map((d) =>
+                    DropdownMenuItem(value: d, child: Text(_dayName(d, l10n))))
                 .toList(),
             onChanged: (v) => setState(() => _dayOfWeek = v!),
           ),
           const SizedBox(height: 16),
-          _buildTimePicker(),
+          _buildTimeField(l10n),
         ];
       case 'IntervalTrigger':
-        final intervalOptions = {
-          1: l10n.adminTaskTriggerEveryHour,
-          6: l10n.adminTaskTriggerEvery6Hours,
-          12: l10n.adminTaskTriggerEvery12Hours,
-          24: l10n.adminTaskTriggerEvery24Hours,
-          48: l10n.adminTaskTriggerEvery2Days,
-        };
         return [
           DropdownButtonFormField<int>(
-            initialValue: _intervalHours,
+            initialValue: _intervalTicks,
             isExpanded: true,
             decoration: adminInputDecoration(
                 label: l10n.adminTaskTriggerIntervalLabel),
-            items: intervalOptions.entries
-                .map((e) =>
-                    DropdownMenuItem(value: e.key, child: Text(e.value)))
-                .toList(),
-            onChanged: (v) => setState(() => _intervalHours = v!),
+            items: [
+              for (final ticks in _intervals)
+                DropdownMenuItem(
+                  value: ticks,
+                  child: Text(ticks < _ticksPerHour
+                      ? l10n.adminTaskMinutesValue('${ticks ~/ _ticksPerMinute}')
+                      : l10n.adminTaskTriggerHours(ticks ~/ _ticksPerHour)),
+                ),
+            ],
+            onChanged: (v) => setState(() => _intervalTicks = v!),
           ),
         ];
-      case 'StartupTrigger':
-        return [];
       default:
         return [];
     }
   }
 
-  Widget _buildTimePicker() {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      title: Text(AppLocalizations.of(context).adminTaskTriggerTime),
-      trailing: TextButton(
-        onPressed: () async {
-          final picked = await showTimePicker(
-            context: context,
-            initialTime: _time,
-          );
-          if (picked != null) setState(() => _time = picked);
-        },
-        child: Text(_time.format(context)),
-      ),
+  Widget _buildTimeField(AppLocalizations l10n) {
+    return DropdownButtonFormField<int>(
+      initialValue: _timeOfDayTicks,
+      isExpanded: true,
+      decoration: adminInputDecoration(label: l10n.adminTaskTriggerTime),
+      items: [
+        for (var minutes = 0; minutes < 24 * 60; minutes += 15)
+          DropdownMenuItem(
+            value: minutes * _ticksPerMinute,
+            child: Text(_timeOfDayText(context, minutes * _ticksPerMinute)),
+          ),
+      ],
+      onChanged: (v) => setState(() => _timeOfDayTicks = v!),
     );
   }
 
   void _save() {
-    int? timeOfDayTicks;
-    if (_type == 'DailyTrigger' || _type == 'WeeklyTrigger') {
-      timeOfDayTicks = (_time.hour * 60 + _time.minute) * 600000000;
-    }
-
-    int? intervalTicks;
-    if (_type == 'IntervalTrigger') {
-      intervalTicks = _intervalHours * 60 * 600000000;
-    }
-
+    final hours = _timeLimitHours;
     final trigger = TaskTriggerInfo(
       type: _type,
-      timeOfDayTicks: timeOfDayTicks,
-      intervalTicks: intervalTicks,
+      timeOfDayTicks: _type == 'DailyTrigger' || _type == 'WeeklyTrigger'
+          ? _timeOfDayTicks
+          : null,
+      intervalTicks: _type == 'IntervalTrigger' ? _intervalTicks : null,
       dayOfWeek: _type == 'WeeklyTrigger' ? _dayOfWeek : null,
-      maxRuntimeTicks:
-          _maxRuntimeHours != null ? _maxRuntimeHours! * 60 * 600000000 : null,
+      maxRuntimeTicks: hours == null ? null : (hours * _ticksPerHour).round(),
     );
 
     Navigator.pop(context, trigger);

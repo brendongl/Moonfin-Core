@@ -8501,7 +8501,6 @@
     "adminGeneralDisplayLanguage": "Eelistatud kuvakeel",
     "offlineBannerTitle": "Oled võrguühenduseta",
     "offlineBannerSubtitle": "Näitame sinu allalaadimisi",
-    "offlineBannerAction": "Allalaadimised",
     "serverUnreachableBannerTitle": "Serveriga ei saa ühendust",
     "serverUnreachableBannerSubtitle": "Esitame allalaadimistest, kuni ühendus taastub",
     "contextMenuHideFromContinueWatching": "Peida jaotisest „Jätka vaatamist“",

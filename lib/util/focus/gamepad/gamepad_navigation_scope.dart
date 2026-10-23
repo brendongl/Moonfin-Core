@@ -37,9 +37,10 @@ class GamepadNavigationScope extends StatefulWidget {
   /// Stands in for the plugin stream in tests.
   final Stream<NormalizedGamepadEvent>? events;
 
+  // Only Android and Apple TV hand pad input to Flutter natively, so a desktop
+  // set to the TV layout still needs it read here. isIOS leaves out Apple TV.
   static bool get isSupported =>
-      (PlatformDetection.isDesktop || PlatformDetection.isIOS) &&
-      !PlatformDetection.isTV;
+      PlatformDetection.isDesktop || PlatformDetection.isIOS;
 
   /// Whether a pad can reach the UI here at all, so the settings know whether
   /// to offer the switch. Android and Apple TV hand pad input to Flutter

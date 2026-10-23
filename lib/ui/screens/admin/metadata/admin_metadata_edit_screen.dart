@@ -13,7 +13,62 @@ import '../../../../util/platform_detection.dart';
 import '../../../widgets/adaptive/adaptive_dialog.dart';
 import '../../../widgets/identify_dialog.dart';
 import '../../detail/modern/widgets/details_tab_bar.dart';
+import '../admin_draft.dart';
+import '../admin_nav.dart';
+import '../libraries/admin_library_dialogs.dart';
 import '../widgets/admin_form_styles.dart';
+
+/// The item fields a save posts. Save lays the edits over a fresh GET of the
+/// item and sends these keys, so a field this form doesn't edit
+/// (OriginalLanguage, a provider id the server doesn't list) goes back as
+/// stored instead of being cleared.
+const _itemFields = <String>[
+  'Id',
+  'Name',
+  'OriginalTitle',
+  'OriginalLanguage',
+  'ForcedSortName',
+  'CommunityRating',
+  'CriticRating',
+  'IndexNumber',
+  'AirsBeforeSeasonNumber',
+  'AirsAfterSeasonNumber',
+  'AirsBeforeEpisodeNumber',
+  'ParentIndexNumber',
+  'DisplayOrder',
+  'Album',
+  'AlbumArtists',
+  'ArtistItems',
+  'SeriesName',
+  'Overview',
+  'Status',
+  'AirDays',
+  'AirTime',
+  'Genres',
+  'Tags',
+  'Studios',
+  'PremiereDate',
+  'DateCreated',
+  'EndDate',
+  'ProductionYear',
+  'Height',
+  'AspectRatio',
+  'Video3DFormat',
+  'OfficialRating',
+  'CustomRating',
+  'People',
+  'LockData',
+  'LockedFields',
+  'ProviderIds',
+  'PreferredMetadataLanguage',
+  'PreferredMetadataCountryCode',
+  'ProductionLocations',
+  'RunTimeTicks',
+  'Taglines',
+];
+
+/// Series runtime is edited in minutes.
+const _ticksPerMinute = 600000000;
 
 class AdminMetadataEditScreen extends StatefulWidget {
   final String itemId;
@@ -25,7 +80,8 @@ class AdminMetadataEditScreen extends StatefulWidget {
       _AdminMetadataEditScreenState();
 }
 
-class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
+class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen>
+    with AdminDraftHost {
   int _selectedTab = 0;
   final _tabFocusNodes = <int, FocusNode>{};
   late final ItemsApi _itemsApi;
@@ -33,41 +89,16 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
   late final ImageApi _imageApi;
 
   bool _loading = true;
-  bool _saving = false;
   ImageType? _busyImageType;
   String? _error;
 
-  Map<String, dynamic> _raw = const {};
+  /// The draft's working copy of the item.
+  Map<String, dynamic> _item = {};
+
+  /// The item as last fetched: image tags, and the stored time of each date.
+  Map<String, dynamic> _stored = const {};
   Map<String, dynamic> _editorInfo = const {};
   List<Map<String, dynamic>> _externalIds = const [];
-
-  final _nameController = TextEditingController();
-  final _sortNameController = TextEditingController();
-  final _originalTitleController = TextEditingController();
-  final _premiereDateController = TextEditingController();
-  final _endDateController = TextEditingController();
-  final _productionYearController = TextEditingController();
-  final _communityRatingController = TextEditingController();
-  final _criticRatingController = TextEditingController();
-  final _taglineController = TextEditingController();
-  final _overviewController = TextEditingController();
-
-  List<String> _genres = [];
-  List<String> _tags = [];
-  List<String> _studios = [];
-  List<Map<String, String>> _people = const [];
-  String _displayOrder = '';
-  String _officialRating = '';
-  String _customRating = '';
-  String _metadataLanguage = '';
-  String _metadataCountry = '';
-  String _status = '';
-  String _video3DFormat = '';
-  List<String> _airDays = [];
-  bool _lockData = false;
-  List<String> _lockedFields = [];
-
-  final Map<String, TextEditingController> _externalControllers = {};
 
   @override
   void initState() {
@@ -86,20 +117,19 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
     for (final node in _tabFocusNodes.values) {
       node.dispose();
     }
-    _nameController.dispose();
-    _sortNameController.dispose();
-    _originalTitleController.dispose();
-    _premiereDateController.dispose();
-    _endDateController.dispose();
-    _productionYearController.dispose();
-    _communityRatingController.dispose();
-    _criticRatingController.dispose();
-    _taglineController.dispose();
-    _overviewController.dispose();
-    for (final c in _externalControllers.values) {
-      c.dispose();
-    }
     super.dispose();
+  }
+
+  /// Emby lists tags only as TagItems. Its items API writes Tags back there.
+  static Map<String, dynamic> _withTags(Map<String, dynamic> item) {
+    final tagItems = item['TagItems'];
+    if (item['Tags'] == null && tagItems is List) {
+      item['Tags'] = [
+        for (final tag in tagItems)
+          if (tag is Map) tag['Name'],
+      ];
+    }
+    return item;
   }
 
   Future<void> _load() async {
@@ -110,21 +140,30 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
 
     try {
       final result = await Future.wait<dynamic>([
-        _itemsApi.getItem(widget.itemId),
+        _itemsApi.getItem(widget.itemId).then(_withTags),
         _api.getMetadataEditor(widget.itemId),
       ]);
-      final raw = result[0] as Map<String, dynamic>;
+      final item = result[0] as Map<String, dynamic>;
       final editorInfo = result[1] as Map<String, dynamic>;
-      final external = _asMapList(editorInfo['ExternalIdInfos']);
 
       if (!mounted) return;
-      _hydrate(raw, external);
       setState(() {
-        _raw = raw;
+        _item = item;
+        _stored = Map.of(item);
         _editorInfo = editorInfo;
-        _externalIds = external;
+        _externalIds = _asMapList(editorInfo['ExternalIdInfos']);
         _loading = false;
       });
+      hostDraft(
+        AdminDraft.single(
+          working: item,
+          reload: () => _itemsApi.getItem(widget.itemId).then(_withTags),
+          post: (merged) => _api.updateItem(widget.itemId, {
+            for (final key in _itemFields)
+              if (merged.containsKey(key)) key: merged[key],
+          }),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -134,67 +173,24 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
     }
   }
 
-  void _hydrate(Map<String, dynamic> raw, List<Map<String, dynamic>> external) {
-    _nameController.text = (raw['Name'] ?? '').toString();
-    _sortNameController.text =
-        (raw['SortName'] ?? raw['ForcedSortName'] ?? '').toString();
-    _originalTitleController.text = (raw['OriginalTitle'] ?? '').toString();
-    _premiereDateController.text = _dateOnly(raw['PremiereDate']);
-    _endDateController.text = _dateOnly(raw['EndDate']);
-    _productionYearController.text = (raw['ProductionYear'] ?? '').toString();
-    _communityRatingController.text = (raw['CommunityRating'] ?? '').toString();
-    _criticRatingController.text = (raw['CriticRating'] ?? '').toString();
-    _taglineController.text =
-        _firstString(raw['Taglines']) ?? (raw['Tagline'] ?? '').toString();
-    _overviewController.text = (raw['Overview'] ?? '').toString();
-    _displayOrder = (raw['DisplayOrder'] ?? '').toString();
-    _officialRating = (raw['OfficialRating'] ?? '').toString();
-    _customRating = (raw['CustomRating'] ?? '').toString();
-    _metadataLanguage = (raw['PreferredMetadataLanguage'] ?? '').toString();
-    _metadataCountry = (raw['PreferredMetadataCountryCode'] ?? '').toString();
-    _status = (raw['Status'] ?? '').toString();
-    _video3DFormat = (raw['Video3DFormat'] ?? '').toString();
-    _airDays = _stringList(raw['AirDays']);
-    _lockData = raw['LockData'] == true;
-    _lockedFields = _stringList(raw['LockedFields']);
+  void _set(String key, Object? value) {
+    setState(() => _item[key] = value);
+    edited();
+  }
 
-    _genres = _stringList(raw['Genres']);
-    _tags = _stringList(raw['Tags']);
-    _studios = _nameList(raw['Studios']);
-
-    final peopleRaw = raw['People'];
-    if (peopleRaw is List) {
-      _people =
-          peopleRaw
-              .whereType<Map>()
-              .map((e) => e.cast<String, dynamic>())
-              .map(
-                (e) => {
-                  'Name': (e['Name'] ?? '').toString(),
-                  'Role': (e['Role'] ?? '').toString(),
-                  'Type': (e['Type'] ?? '').toString(),
-                },
-              )
-              .toList();
+  /// Text and choices write null for an empty value the item never had, so
+  /// opening and leaving a field doesn't count as an edit.
+  void _setText(String key, String? value, {bool rebuild = false}) {
+    final v = (value ?? '').isEmpty && _stored[key] == null ? null : value;
+    if (rebuild) {
+      _set(key, v);
     } else {
-      _people = const [];
-    }
-
-    final providerIds =
-        raw['ProviderIds'] is Map
-            ? (raw['ProviderIds'] as Map).cast<String, dynamic>()
-            : <String, dynamic>{};
-
-    for (final c in _externalControllers.values) {
-      c.dispose();
-    }
-    _externalControllers.clear();
-    for (final idInfo in external) {
-      final key = _externalKey(idInfo);
-      final value = (providerIds[key] ?? '').toString();
-      _externalControllers[key] = TextEditingController(text: value);
+      _item[key] = v;
+      edited();
     }
   }
+
+  String _str(String key) => (_item[key] ?? '').toString();
 
   List<Map<String, dynamic>> _asMapList(dynamic value) {
     if (value is List) {
@@ -229,43 +225,29 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
     return text.length >= 10 ? text.substring(0, 10) : text;
   }
 
+  /// Keeps the stored time when the day is unchanged.
   String? _dateValue(String property, String text) {
     final trimmed = text.trim();
-    if (trimmed.isEmpty) {
-      return null;
-    }
-
-    final current = (_raw[property] ?? '').toString();
+    if (trimmed.isEmpty) return null;
+    final current = (_stored[property] ?? '').toString();
     if (current.length >= 10 && current.substring(0, 10) == trimmed) {
       return current;
     }
-
     return trimmed;
-  }
-
-  String? _nullIfEmpty(String s) => s.isEmpty ? null : s;
-
-  String? _firstString(dynamic value) {
-    if (value is List && value.isNotEmpty) {
-      final first = value.first?.toString() ?? '';
-      return first.isEmpty ? null : first;
-    }
-    return null;
   }
 
   String _externalKey(Map<String, dynamic> idInfo) {
     return (idInfo['Key'] ?? idInfo['Name'] ?? idInfo['Type'] ?? '').toString();
   }
 
-  String _externalLabel(Map<String, dynamic> idInfo) {
-    return (idInfo['DisplayName'] ??
-            idInfo['Key'] ??
-            idInfo['Name'] ??
-            idInfo['Type'] ??
-            '')
-        .toString();
-  }
+  String _externalLabel(Map<String, dynamic> idInfo) => externalIdLabel(
+    AppLocalizations.of(context),
+    '${idInfo['Name'] ?? idInfo['Key'] ?? ''}',
+    idInfo['Type']?.toString(),
+  );
 
+  /// The server leaves this empty for items that can't carry a content type,
+  /// and the content type action is hidden then.
   List<Map<String, dynamic>> _contentTypeOptions() {
     return _asMapList(_editorInfo['ContentTypeOptions']);
   }
@@ -278,50 +260,18 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
     return _asMapList(_editorInfo['ParentalRatingOptions']);
   }
 
-  List<Map<String, dynamic>> _cultureOptions() {
-    return _asMapList(_editorInfo['Cultures']);
-  }
+  Iterable<(String?, String?)> _cultureItems() =>
+      _asMapList(_editorInfo['Cultures']).map((c) => (
+            (c['TwoLetterISOLanguageName'] ?? c['ThreeLetterISOLanguageName'])
+                ?.toString(),
+            (c['DisplayName'] ?? c['Name'])?.toString(),
+          ));
 
-  List<Map<String, dynamic>> _countryOptions() {
-    return _asMapList(_editorInfo['Countries']);
-  }
-
-  List<Map<String, String>> _fallbackContentTypeOptions() {
-    final l10n = AppLocalizations.of(context);
-    return [
-      {'Value': '', 'Name': l10n.defaultLabel},
-      {'Value': 'movies', 'Name': l10n.movies},
-      {'Value': 'music', 'Name': l10n.music},
-      {'Value': 'tvshows', 'Name': l10n.tvShows},
-      {'Value': 'books', 'Name': l10n.books},
-      {'Value': 'homevideos', 'Name': l10n.homeVideosAndPhotos},
-      {'Value': 'musicvideos', 'Name': l10n.musicVideos},
-      {'Value': 'mixed', 'Name': l10n.mixedMoviesAndShows},
-    ];
-  }
-
-  List<Map<String, String>> _resolvedContentTypeOptions(String currentType) {
-    final fromEditor =
-        _contentTypeOptions()
-            .map(
-              (option) => {
-                'Value': (option['Value'] ?? '').toString(),
-                'Name': (option['Name'] ?? option['Value'] ?? '').toString(),
-              },
-            )
-            .toList();
-
-    final options =
-        fromEditor.isNotEmpty ? fromEditor : _fallbackContentTypeOptions();
-    if (currentType.isNotEmpty &&
-        options.every((option) => option['Value'] != currentType)) {
-      return [
-        ...options,
-        {'Value': currentType, 'Name': currentType},
-      ];
-    }
-    return options;
-  }
+  Iterable<(String?, String?)> _countryItems() =>
+      _asMapList(_editorInfo['Countries']).map((c) => (
+            (c['TwoLetterISORegionName'] ?? c['Name'])?.toString(),
+            (c['DisplayName'] ?? c['Name'])?.toString(),
+          ));
 
   String _imageUrl(ImageType type) {
     final tag = _imageTag(type);
@@ -356,7 +306,7 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
   }
 
   String? _imageTag(ImageType type) {
-    final imageTags = _raw['ImageTags'];
+    final imageTags = _stored['ImageTags'];
     if (imageTags is Map) {
       final mapTag = imageTags[type.toServerString()];
       if (mapTag != null && mapTag.toString().isNotEmpty) {
@@ -364,12 +314,12 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
       }
     }
 
-    final directTag = _raw['${type.toServerString()}ImageTag'];
+    final directTag = _stored['${type.toServerString()}ImageTag'];
     if (directTag != null && directTag.toString().isNotEmpty) {
       return directTag.toString();
     }
 
-    final indexedTags = _raw['${type.toServerString()}ImageTags'];
+    final indexedTags = _stored['${type.toServerString()}ImageTags'];
     if (indexedTags is List && indexedTags.isNotEmpty) {
       final first = indexedTags.first?.toString() ?? '';
       if (first.isNotEmpty) {
@@ -380,7 +330,8 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
     return null;
   }
 
-
+  /// Images aren't part of the draft, so an image change refetches the item
+  /// for its tags only and leaves unsaved edits alone.
   Future<void> _runImageAction(
     ImageType type,
     Future<void> Function() action,
@@ -388,7 +339,8 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
     setState(() => _busyImageType = type);
     try {
       await action();
-      await _load();
+      final fresh = await _itemsApi.getItem(widget.itemId);
+      if (mounted) setState(() => _stored = fresh);
     } finally {
       if (mounted) {
         setState(() => _busyImageType = null);
@@ -396,13 +348,29 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
     }
   }
 
-  bool get _isSeries => (_raw['Type'] ?? '').toString() == 'Series';
+  String get _type => _str('Type');
 
-  bool get _isBoxSet => (_raw['Type'] ?? '').toString() == 'BoxSet';
+  bool get _isSeries => _type == 'Series';
 
-  bool get _isVideo =>
-      (_raw['MediaType'] ?? '').toString() == 'Video' &&
-      (_raw['Type'] ?? '').toString() != 'TvChannel';
+  bool get _isBoxSet => _type == 'BoxSet';
+
+  bool get _isPerson => _type == 'Person';
+
+  bool get _isTvChannel => _type == 'TvChannel';
+
+  bool get _isVideoMedia => _str('MediaType') == 'Video';
+
+  bool get _isVideo => _isVideoMedia && !_isTvChannel;
+
+  /// People, genres, studios, ratings and community rating are hidden for
+  /// these.
+  bool get _isNameOnlyType => const [
+    'Person',
+    'Genre',
+    'Studio',
+    'MusicGenre',
+    'TvChannel',
+  ].contains(_type);
 
   /// Episode ordering schemes the server understands for a series. The empty
   /// value means "aired order", which is what Jellyfin falls back to when the
@@ -431,29 +399,22 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
 
   /// Ratings are stored by their display name, which is what the server sends
   /// back as each option's `Name`.
-  Widget _ratingField(
-    String label,
-    String current,
-    ValueChanged<String?> onChanged,
-  ) {
+  Widget _ratingField(String label, String key) {
     final l10n = AppLocalizations.of(context);
     return adminCodeDropdown(
       label: label,
       defaultLabel: l10n.none,
-      current: current,
+      current: _str(key),
       rawItems: _parentalRatingOptions().map((r) {
         final name = r['Name']?.toString();
         return (name, name);
       }),
-      onChanged: onChanged,
+      onChanged: (v) => _setText(key, v, rebuild: true),
     );
   }
 
-  /// PersonKind as the server defines it. 'Actor' is the sensible starting
-  /// point for a new credit, so it is what an empty or unrecognised type falls
-  /// back to rather than 'Unknown'.
+  /// PersonKind as the server defines it, less Unknown.
   List<(String, String)> _personKinds(AppLocalizations l10n) => [
-    ('Unknown', l10n.adminMetadataPersonKindUnknown),
     ('Actor', l10n.adminMetadataPersonKindActor),
     ('Director', l10n.adminMetadataPersonKindDirector),
     ('Composer', l10n.adminMetadataPersonKindComposer),
@@ -495,7 +456,6 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
   /// production locations label on a person, and only offers runtime on a
   /// series.
   List<(String, String)> _lockableFields(AppLocalizations l10n) {
-    final isPerson = (_raw['Type'] ?? '').toString() == 'Person';
     return [
       ('Name', l10n.adminMetadataLockFieldName),
       ('Overview', l10n.adminMetadataLockFieldOverview),
@@ -504,7 +464,7 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
       ('Cast', l10n.adminMetadataLockFieldCast),
       (
         'ProductionLocations',
-        isPerson
+        _isPerson
             ? l10n.adminMetadataLockFieldBirthLocation
             : l10n.adminMetadataLockFieldProductionLocations,
       ),
@@ -530,293 +490,134 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
     ('MVC', 'MVC'),
   ];
 
-  /// Sits under the two provider dropdowns. [adminCodeDropdown] builds its own
-  /// decoration and has no slot for helper text, so the hint is a plain line
-  /// under the field rather than a reason to widen the shared helper.
-  Widget _inheritHint(AppLocalizations l10n) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 4, left: AppSpacing.spaceXs),
-      child: Text(
-        l10n.adminMetadataInheritHelp,
-        style: Theme.of(context).textTheme.bodySmall,
+  Widget _textRow(String key, String label,
+      {int maxLines = 1, String? helper}) {
+    return adminFieldRow(
+      label: label,
+      helper: helper,
+      child: TextFormField(
+        initialValue: _str(key),
+        minLines: maxLines > 1 ? 3 : null,
+        maxLines: maxLines,
+        decoration: adminInputDecoration(),
+        onChanged: (v) => _setText(key, v),
+      ),
+    );
+  }
+
+  /// An empty field clears the value.
+  Widget _numberRow(String key, String label, {bool decimal = false}) {
+    return adminFieldRow(
+      label: label,
+      child: TextFormField(
+        initialValue: _str(key),
+        keyboardType: TextInputType.numberWithOptions(decimal: decimal),
+        decoration: adminInputDecoration(),
+        onChanged: (v) {
+          final text = v.trim();
+          final num? value = text.isEmpty
+              ? null
+              : (decimal ? double.tryParse(text) : int.tryParse(text));
+          if (text.isNotEmpty && value == null) return;
+          _item[key] = value;
+          edited();
+        },
+      ),
+    );
+  }
+
+  Widget _dateRow(String key, String label) {
+    return adminFieldRow(
+      label: label,
+      child: TextFormField(
+        initialValue: _dateOnly(_item[key]),
+        keyboardType: TextInputType.datetime,
+        decoration: adminInputDecoration(hint: 'YYYY-MM-DD'),
+        onChanged: (v) {
+          _item[key] = _dateValue(key, v);
+          edited();
+        },
+      ),
+    );
+  }
+
+  /// Names separated by semicolons, sent as `{Name}` entries.
+  Widget _namesRow(String key, String label) {
+    final l10n = AppLocalizations.of(context);
+    return adminFieldRow(
+      label: label,
+      helper: l10n.adminMetadataNamesHelp,
+      child: TextFormField(
+        initialValue: _nameList(_item[key]).join(';'),
+        decoration: adminInputDecoration(),
+        onChanged: (v) {
+          _item[key] = [
+            for (final name in v.trim().split(';'))
+              if (name.isNotEmpty) {'Name': name},
+          ];
+          edited();
+        },
       ),
     );
   }
 
   Widget _airDaysField(AppLocalizations l10n) {
     final days = _weekdays(l10n);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        adminSectionLabel(
-          context,
-          l10n.adminMetadataAirDays,
-          icon: Icons.event_repeat_outlined,
-        ),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: days.map((day) {
-            final selected = _airDays.contains(day.$1);
-            return FilterChip(
-              label: Text(day.$2),
-              selected: selected,
-              // Rebuild the whole list so the days keep calendar order however
-              // they were toggled.
-              onSelected: (on) => setState(() {
-                _airDays = [
-                  for (final d in days)
-                    if (d.$1 == day.$1 ? on : _airDays.contains(d.$1)) d.$1,
-                ];
-              }),
-            );
-          }).toList(),
-        ),
-      ],
-    );
-  }
-
-  /// A checked box means the field is left enabled for refreshes to overwrite,
-  /// so the stored list is the inverse of what is ticked. Values the server
-  /// locked that this list does not offer are left untouched.
-  Widget _lockedFieldsEditor(AppLocalizations l10n) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        adminSwitchRow(
-          title: l10n.adminMetadataLockItem,
-          value: _lockData,
-          onChanged: (v) => setState(() => _lockData = v),
-        ),
-        if (!_lockData) ...[
-          adminSectionLabel(
-            context,
-            l10n.adminMetadataEnabledFields,
-            icon: Icons.lock_open_outlined,
-          ),
-          Text(
-            l10n.adminMetadataEnabledFieldsHelp,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          ..._lockableFields(l10n).map((field) {
-            final locked = _lockedFields.contains(field.$1);
-            return CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
-              value: !locked,
-              title: Text(field.$2),
-              onChanged: (enabled) => setState(() {
-                final next = [..._lockedFields]..remove(field.$1);
-                if (enabled != true) next.add(field.$1);
-                _lockedFields = next;
-              }),
-            );
-          }),
-        ],
-      ],
+    final selected = _stringList(_item['AirDays']);
+    return adminFieldRow(
+      label: l10n.adminMetadataAirDays,
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: days.map((day) {
+          return FilterChip(
+            label: Text(day.$2),
+            selected: selected.contains(day.$1),
+            // Rebuild the whole list so the days keep calendar order however
+            // they were toggled.
+            onSelected: (on) => _set('AirDays', [
+              for (final d in days)
+                if (d.$1 == day.$1 ? on : selected.contains(d.$1)) d.$1,
+            ]),
+          );
+        }).toList(),
+      ),
     );
   }
 
   Widget _displayOrderField(AppLocalizations l10n) {
+    final current = _str('DisplayOrder');
     if (_isBoxSet) {
       final options = _boxSetDisplayOrderOptions(l10n);
-      final value = options.any((o) => o.$1 == _displayOrder)
-          ? _displayOrder
+      final value = options.any((o) => o.$1 == current)
+          ? current
           : options.first.$1;
-      return DropdownButtonFormField<String>(
-        initialValue: value,
-        isExpanded: true,
-        decoration: adminInputDecoration(label: l10n.adminMetadataFieldDisplayOrder),
-        items: options
-            .map((o) => DropdownMenuItem(value: o.$1, child: Text(o.$2)))
-            .toList(),
-        onChanged: (v) => setState(() => _displayOrder = v ?? options.first.$1),
+      return adminFieldRow(
+        label: l10n.adminMetadataFieldDisplayOrder,
+        child: DropdownButtonFormField<String>(
+          initialValue: value,
+          isExpanded: true,
+          decoration: adminInputDecoration(),
+          items: options
+              .map((o) => DropdownMenuItem(value: o.$1, child: Text(o.$2)))
+              .toList(),
+          onChanged: (v) => _set('DisplayOrder', v ?? options.first.$1),
+        ),
       );
     }
 
     return adminCodeDropdown(
       label: l10n.adminMetadataFieldDisplayOrder,
       defaultLabel: l10n.adminMetadataDisplayOrderAired,
-      current: _displayOrder,
+      current: current,
       rawItems: _displayOrderOptions(l10n),
-      onChanged: (v) => setState(() => _displayOrder = v ?? ''),
+      onChanged: (v) => _setText('DisplayOrder', v, rebuild: true),
     );
-  }
-
-  static const _preservedItemFields = <String>[
-    'Id',
-    'IndexNumber',
-    'ParentIndexNumber',
-    'AirsBeforeSeasonNumber',
-    'AirsAfterSeasonNumber',
-    'AirsBeforeEpisodeNumber',
-    'Album',
-    'AlbumArtists',
-    'ArtistItems',
-    'AirTime',
-    'DateCreated',
-    'Height',
-    'AspectRatio',
-    'RunTimeTicks',
-    'ProductionLocations',
-    'DisplayOrder',
-  ];
-
-  Future<void> _save() async {
-    final l10n = AppLocalizations.of(context);
-    final sortName = _sortNameController.text.trim();
-    final tagline = _taglineController.text.trim();
-
-    final update = <String, dynamic>{
-      for (final key in _preservedItemFields)
-        if (_raw.containsKey(key)) key: _raw[key],
-      'Name': _nameController.text.trim(),
-      'ForcedSortName': _nullIfEmpty(sortName),
-      'OriginalTitle': _originalTitleController.text.trim(),
-      'PremiereDate': _dateValue('PremiereDate', _premiereDateController.text),
-      'EndDate': _dateValue('EndDate', _endDateController.text),
-      'ProductionYear':
-          int.tryParse(_productionYearController.text.trim()) ??
-          _raw['ProductionYear'],
-      'OfficialRating': _officialRating,
-      'CustomRating': _customRating,
-      'PreferredMetadataLanguage': _metadataLanguage,
-      'PreferredMetadataCountryCode': _metadataCountry,
-      'CommunityRating':
-          double.tryParse(_communityRatingController.text.trim()) ??
-          _raw['CommunityRating'],
-      'CriticRating':
-          double.tryParse(_criticRatingController.text.trim()) ??
-          _raw['CriticRating'],
-      if (_isSeries || _isBoxSet) 'DisplayOrder': _displayOrder,
-      if (_isSeries) 'Status': _nullIfEmpty(_status),
-      if (_isVideo) 'Video3DFormat': _nullIfEmpty(_video3DFormat),
-      if (_isSeries) 'AirDays': _airDays,
-      'LockData': _lockData,
-      'LockedFields': _lockedFields,
-      'Taglines': tagline.isEmpty ? <String>[] : [tagline],
-      'Overview': _overviewController.text.trim(),
-      'Genres': _genres,
-      'Tags': _tags,
-      'Studios': _studios.map((s) => {'Name': s}).toList(),
-      'People': _people,
-      'ProviderIds': Map<String, String>.fromEntries(
-        _externalIds.map((info) {
-          final key = _externalKey(info);
-          return MapEntry(key, _externalControllers[key]?.text.trim() ?? '');
-        }),
-      ),
-    };
-
-    setState(() => _saving = true);
-    try {
-      await _api.updateItem(widget.itemId, update);
-      if (!mounted) return;
-      setState(() {
-        _raw = {..._raw, ...update};
-        _saving = false;
-      });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(l10n.adminMetadataSaved)));
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _saving = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(l10n.adminMetadataSaveFailed(describeError(e, l10n)))));
-    }
-  }
-
-  Future<void> _refreshMetadata() async {
-    final l10n = AppLocalizations.of(context);
-    var recursive = false;
-    var replaceAllMetadata = false;
-    var replaceAllImages = false;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder:
-          (ctx) => StatefulBuilder(
-            builder:
-                (ctx, setStateDialog) => AlertDialog.adaptive(
-                  title: Text(l10n.adminRefreshMetadata),
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CheckboxListTile(
-                        value: recursive,
-                        onChanged:
-                            (v) => setStateDialog(() => recursive = v ?? false),
-                        title: Text(l10n.adminMetadataRecursive),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      CheckboxListTile(
-                        value: replaceAllMetadata,
-                        onChanged:
-                            (v) => setStateDialog(
-                              () => replaceAllMetadata = v ?? false,
-                            ),
-                        title: Text(l10n.adminReplaceAllMetadata),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      CheckboxListTile(
-                        value: replaceAllImages,
-                        onChanged:
-                            (v) => setStateDialog(
-                              () => replaceAllImages = v ?? false,
-                            ),
-                        title: Text(l10n.adminReplaceAllImages),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ],
-                  ),
-                  actions: [
-                    adaptiveDialogAction(
-                      onPressed: () => Navigator.pop(ctx, false),
-                      child: Text(l10n.cancel),
-                    ),
-                    FilledButton(
-                      onPressed: () => Navigator.pop(ctx, true),
-                      child: Text(l10n.refresh),
-                    ),
-                  ],
-                ),
-          ),
-    );
-
-    if (confirmed != true || !mounted) return;
-
-    try {
-      final mode = replaceAllMetadata || replaceAllImages
-          ? MetadataRefreshMode.fullRefresh
-          : MetadataRefreshMode.defaultRefresh;
-      await _api.refreshItem(
-        widget.itemId,
-        recursive: recursive,
-        replaceAllMetadata: replaceAllMetadata,
-        replaceAllImages: replaceAllImages,
-        metadataRefreshMode: mode,
-        imageRefreshMode: mode,
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.adminMetadataRefreshRequested)),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(l10n.adminMetadataRefreshFailed(describeError(e, l10n)))));
-    }
   }
 
   Future<void> _searchAndApplyRemote() async {
-    final searchType = (_raw['Type'] ?? '').toString();
-    final name = (_raw['Name'] ?? '').toString();
-    final year = int.tryParse((_raw['ProductionYear'] ?? '').toString());
-    final path = _raw['Path']?.toString();
-    final providerIds = _raw['ProviderIds'] is Map
-        ? Map<String, dynamic>.from(_raw['ProviderIds'])
+    final providerIds = _item['ProviderIds'] is Map
+        ? Map<String, dynamic>.from(_item['ProviderIds'])
         : null;
 
     final applied = await IdentifyDialog.show(
@@ -824,10 +625,10 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
       itemId: widget.itemId,
       // An empty type means unknown, so let the dialog resolve it from the item
       // rather than posting to /Items/RemoteSearch/ with no type at all.
-      itemType: searchType.isEmpty ? null : searchType,
-      itemName: name,
-      itemYear: year,
-      itemPath: path,
+      itemType: _type.isEmpty ? null : _type,
+      itemName: _str('Name'),
+      itemYear: int.tryParse(_str('ProductionYear')),
+      itemPath: _item['Path']?.toString(),
       providerIds: providerIds,
     );
 
@@ -836,7 +637,7 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
     }
   }
 
-  Future<void> _addChip(String title, List<String> target) async {
+  Future<String?> _promptText(String title) async {
     final l10n = AppLocalizations.of(context);
     final controller = TextEditingController();
     final value = await showDialog<String>(
@@ -863,49 +664,41 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
           ),
     );
     controller.dispose();
-
-    if (value == null || !mounted) return;
-    setState(() {
-      if (!target.contains(value)) {
-        target.add(value);
-      }
-    });
+    return value == null || value.isEmpty || !mounted ? null : value;
   }
 
   Future<void> _editPerson({int? index}) async {
     final l10n = AppLocalizations.of(context);
-    final existing = index == null ? null : _people[index];
-    final nameController = TextEditingController(text: existing?['Name'] ?? '');
-    final roleController = TextEditingController(text: existing?['Role'] ?? '');
+    final people = _asMapList(_item['People']);
+    final existing = index == null ? null : people[index];
+    final nameController =
+        TextEditingController(text: (existing?['Name'] ?? '').toString());
+    final roleController =
+        TextEditingController(text: (existing?['Role'] ?? '').toString());
     final kinds = _personKinds(l10n);
-    var type = existing?['Type'] ?? '';
+    var type = (existing?['Type'] ?? '').toString();
     if (!kinds.any((k) => k.$1 == type)) {
       type = 'Actor';
     }
 
-    final person = await showDialog<Map<String, String>>(
+    final person = await showDialog<Map<String, dynamic>>(
       context: context,
       builder:
-          (ctx) => AlertDialog.adaptive(
-            title: Text(index == null ? l10n.adminMetadataAddPerson : l10n.adminMetadataEditPerson),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: nameController,
-                    decoration: adminInputDecoration(label: l10n.name),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: roleController,
-                    decoration:
-                        adminInputDecoration(label: l10n.adminMetadataRole),
-                  ),
-                  const SizedBox(height: 12),
-                  StatefulBuilder(
-                    builder: (ctx, setStateDialog) =>
-                        DropdownButtonFormField<String>(
+          (ctx) => StatefulBuilder(
+            builder: (ctx, setStateDialog) => AlertDialog.adaptive(
+              title: Text(index == null
+                  ? l10n.adminMetadataAddPerson
+                  : l10n.adminMetadataEditPerson),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: nameController,
+                      decoration: adminInputDecoration(label: l10n.name),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
                       initialValue: type,
                       isExpanded: true,
                       decoration:
@@ -917,31 +710,41 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
                       onChanged: (v) =>
                           setStateDialog(() => type = v ?? 'Actor'),
                     ),
-                  ),
-                ],
+                    if (type == 'Actor' || type == 'GuestStar') ...[
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: roleController,
+                        decoration:
+                            adminInputDecoration(label: l10n.adminMetadataRole),
+                      ),
+                    ],
+                  ],
+                ),
               ),
+              actions: [
+                adaptiveDialogAction(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text(l10n.cancel),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final name = nameController.text.trim();
+                    if (name.isEmpty) {
+                      Navigator.pop(ctx);
+                      return;
+                    }
+                    final role = roleController.text.trim();
+                    Navigator.pop(ctx, {
+                      ...?existing,
+                      'Name': name,
+                      'Role': role.isEmpty ? null : role,
+                      'Type': type,
+                    });
+                  },
+                  child: Text(index == null ? l10n.add : l10n.save),
+                ),
+              ],
             ),
-            actions: [
-              adaptiveDialogAction(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text(l10n.cancel),
-              ),
-              FilledButton(
-                onPressed: () {
-                  final name = nameController.text.trim();
-                  if (name.isEmpty) {
-                    Navigator.pop(ctx);
-                    return;
-                  }
-                  Navigator.pop(ctx, {
-                    'Name': name,
-                    'Role': roleController.text.trim(),
-                    'Type': type,
-                  });
-                },
-                child: Text(index == null ? l10n.add : l10n.save),
-              ),
-            ],
           ),
     );
 
@@ -949,26 +752,26 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
     roleController.dispose();
 
     if (person == null || !mounted) return;
-    setState(() {
-      if (index == null) {
-        _people = [..._people, person];
-      } else {
-        final next = [..._people];
-        next[index] = person;
-        _people = next;
-      }
-    });
+    _set('People', [
+      for (var i = 0; i < people.length; i++) i == index ? person : people[i],
+      if (index == null) person,
+    ]);
   }
 
   Future<void> _changeContentType() async {
     final l10n = AppLocalizations.of(context);
     final currentType = (_editorInfo['ContentType'] ?? '').toString();
-    final options = _resolvedContentTypeOptions(currentType);
-    var selectedValue = currentType;
-
-    if (selectedValue.isEmpty && options.isNotEmpty) {
-      selectedValue = options.first['Value'] ?? '';
+    final options = [
+      for (final option in _contentTypeOptions())
+        (
+          (option['Value'] ?? '').toString(),
+          (option['Name'] ?? option['Value'] ?? '').toString(),
+        ),
+    ];
+    if (options.every((o) => o.$1 != currentType)) {
+      options.add((currentType, currentType));
     }
+    var selectedValue = currentType;
 
     final value = await showDialog<String>(
       context: context,
@@ -979,19 +782,18 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
                   title: Text(l10n.adminUpdateContentType),
                   content: DropdownButtonFormField<String>(
                     initialValue: selectedValue,
+                    isExpanded: true,
                     decoration:
                         adminInputDecoration(label: l10n.adminContentType),
-                    items:
-                        options.map((option) {
-                          final optionValue = option['Value'] ?? '';
-                          final optionName = option['Name'] ?? optionValue;
-                          return DropdownMenuItem<String>(
-                            value: optionValue,
-                            child: Text(
-                              optionName.isEmpty ? l10n.adminMetadataDefault : optionName,
-                            ),
-                          );
-                        }).toList(),
+                    items: [
+                      for (final (optionValue, optionName) in options)
+                        DropdownMenuItem<String>(
+                          value: optionValue,
+                          child: Text(optionName.isEmpty
+                              ? l10n.adminMetadataDefault
+                              : optionName),
+                        ),
+                    ],
                     onChanged: (next) {
                       setStateDialog(() => selectedValue = next ?? '');
                     },
@@ -1010,10 +812,13 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
           ),
     );
 
-    if (value == null || value.isEmpty || !mounted) return;
+    // An empty value is Inherit, which removes the override. Only a change is
+    // posted.
+    if (value == null || value == currentType || !mounted) return;
     try {
       await _api.updateContentType(widget.itemId, value);
       if (!mounted) return;
+      setState(() => _editorInfo = {..._editorInfo, 'ContentType': value});
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(l10n.adminMetadataContentTypeUpdated)));
@@ -1024,6 +829,26 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
       );
     }
   }
+
+  List<Widget> _headerActions(AppLocalizations l10n) => [
+    FilledButton.tonalIcon(
+      onPressed: () => showRefreshItemDialog(context, itemId: widget.itemId),
+      icon: const Icon(Icons.refresh),
+      label: Text(l10n.refresh),
+    ),
+    FilledButton.tonalIcon(
+      onPressed: _searchAndApplyRemote,
+      icon: const Icon(Icons.travel_explore),
+      label: Text(l10n.adminMetadataIdentify),
+    ),
+    // Emby has no per-item content type.
+    if (_contentTypeOptions().isNotEmpty && !AdminServerScope.isEmby(context))
+      FilledButton.tonalIcon(
+        onPressed: _changeContentType,
+        icon: const Icon(Icons.category_outlined),
+        label: Text(l10n.adminContentType),
+      ),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -1048,10 +873,11 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
       );
     }
 
+    final actions = _headerActions(l10n);
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
           child:
               compactHeader
                   ? Column(
@@ -1060,75 +886,28 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
                       adminScreenHeader(
                         context,
                         title: l10n.adminMetadataEditorTitle,
+                        subtitle: _str('Name'),
                         icon: Icons.edit_note_outlined,
                       ),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          FilledButton.tonalIcon(
-                            onPressed: _refreshMetadata,
-                            icon: const Icon(Icons.refresh),
-                            label: Text(l10n.refresh),
-                          ),
-                          FilledButton.tonalIcon(
-                            onPressed: _searchAndApplyRemote,
-                            icon: const Icon(Icons.travel_explore),
-                            label: Text(l10n.adminMetadataIdentify),
-                          ),
-                          FilledButton.tonalIcon(
-                            onPressed: _changeContentType,
-                            icon: const Icon(Icons.category_outlined),
-                            label: Text(l10n.adminMetadataType),
-                          ),
-                          FilledButton.icon(
-                            onPressed: _saving ? null : _save,
-                            icon: const Icon(Icons.save),
-                            label: Text(l10n.save),
-                          ),
-                        ],
-                      ),
+                      Wrap(spacing: 8, runSpacing: 8, children: actions),
+                      const SizedBox(height: 12),
                     ],
                   )
                   : Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.edit_note_outlined,
-                          color: AppColorScheme.accent, size: 26),
-                      const SizedBox(width: 12),
                       Expanded(
-                        child: Text(
-                          l10n.adminMetadataEditorTitle,
-                          style: TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: -0.5,
-                            color: AppColorScheme.onSurface,
-                          ),
+                        child: adminScreenHeader(
+                          context,
+                          title: l10n.adminMetadataEditorTitle,
+                          subtitle: _str('Name'),
+                          icon: Icons.edit_note_outlined,
                         ),
                       ),
-                      FilledButton.tonalIcon(
-                        onPressed: _refreshMetadata,
-                        icon: const Icon(Icons.refresh),
-                        label: Text(l10n.refresh),
-                      ),
-                      const SizedBox(width: 8),
-                      FilledButton.tonalIcon(
-                        onPressed: _searchAndApplyRemote,
-                        icon: const Icon(Icons.travel_explore),
-                        label: Text(l10n.adminMetadataIdentify),
-                      ),
-                      const SizedBox(width: 8),
-                      FilledButton.tonalIcon(
-                        onPressed: _changeContentType,
-                        icon: const Icon(Icons.category_outlined),
-                        label: Text(l10n.adminMetadataType),
-                      ),
-                      const SizedBox(width: 8),
-                      FilledButton.icon(
-                        onPressed: _saving ? null : _save,
-                        icon: const Icon(Icons.save),
-                        label: Text(l10n.save),
-                      ),
+                      for (final action in actions) ...[
+                        const SizedBox(width: 8),
+                        action,
+                      ],
                     ],
                   ),
         ),
@@ -1149,264 +928,414 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
           ),
         ),
         Expanded(
-          child: IndexedStack(
-            index: _selectedTab,
-            children: [
-              _buildGeneralTab(),
-              _buildDetailsTab(),
-              _buildExternalTab(),
-              _buildImagesTab(),
-            ],
+          child: draftKeyed(
+            IndexedStack(
+              index: _selectedTab,
+              children: [
+                _buildGeneralTab(),
+                _buildDetailsTab(),
+                _buildExternalTab(),
+                _buildImagesTab(),
+              ],
+            ),
           ),
         ),
       ],
     );
   }
 
+  EdgeInsets get _tabPadding => EdgeInsets.fromLTRB(
+      16, 4, 16, MediaQuery.of(context).padding.bottom + 40);
+
   Widget _buildGeneralTab() {
     final l10n = AppLocalizations.of(context);
+    final type = _type;
+    final path = _str('Path');
+    final isAudioish = const ['Audio', 'MusicAlbum', 'MusicVideo'].contains(type);
+    final indexLabel = switch (type) {
+      'Episode' => l10n.adminMetadataFieldEpisodeNumber,
+      'Season' => l10n.adminMetadataFieldSeasonNumber,
+      _ => l10n.adminMetadataFieldTrackNumber,
+    };
+    final runtimeTicks = (_item['RunTimeTicks'] as num?)?.toInt();
+    final isSpecial = type == 'Episode' && _stored['ParentIndexNumber'] == 0;
+    final ratings = [
+      if (!_isNameOnlyType)
+        _numberRow('CommunityRating', l10n.adminMetadataFieldCommunityRating,
+            decimal: true),
+      if (type == 'Movie' || type == 'Trailer')
+        _numberRow('CriticRating', l10n.adminMetadataFieldCriticRating,
+            decimal: true),
+      if (!_isNameOnlyType || _isTvChannel)
+        _ratingField(l10n.adminMetadataFieldOfficialRating, 'OfficialRating'),
+      if (!_isNameOnlyType)
+        _ratingField(l10n.adminMetadataFieldCustomRating, 'CustomRating'),
+    ];
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: _tabPadding,
       children: [
-        _field(_nameController, l10n.adminMetadataFieldTitle),
-        const SizedBox(height: 12),
-        _field(_sortNameController, l10n.adminMetadataFieldSortTitle),
-        const SizedBox(height: 12),
-        _field(_originalTitleController, l10n.adminMetadataFieldOriginalTitle),
-        const SizedBox(height: 12),
-        Row(
+        adminSection(
+          context,
+          title: l10n.general,
+          icon: Icons.info_outline,
           children: [
-            Expanded(
-              child: _field(
-                _premiereDateController,
-                l10n.adminMetadataFieldPremiereDate,
+            if (path.isNotEmpty && _item['EnableMediaSourceDisplay'] != false)
+              adminFieldRow(
+                label: l10n.path,
+                child: SelectableText(path,
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 13)),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _field(_endDateController, l10n.adminMetadataFieldEndDate),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        _field(
-          _productionYearController,
-          l10n.adminMetadataFieldProductionYear,
-          keyboardType: TextInputType.number,
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _ratingField(
-                l10n.adminMetadataFieldOfficialRating,
-                _officialRating,
-                (v) => setState(() => _officialRating = v ?? ''),
+            _textRow('Name', _isPerson ? l10n.name : l10n.adminMetadataFieldTitle),
+            if (const ['Series', 'Season', 'Episode', 'Movie', 'Trailer', 'Person']
+                .contains(type))
+              _textRow('OriginalTitle', l10n.adminMetadataFieldOriginalTitle),
+            if (_isSeries || _isVideoMedia)
+              adminCodeDropdown(
+                label: l10n.adminMetadataFieldOriginalLanguage,
+                defaultLabel: l10n.none,
+                current: _str('OriginalLanguage'),
+                rawItems: _cultureItems(),
+                onChanged: (v) =>
+                    _setText('OriginalLanguage', v, rebuild: true),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _ratingField(
-                l10n.adminMetadataFieldCustomRating,
-                _customRating,
-                (v) => setState(() => _customRating = v ?? ''),
+            // ForcedSortName is the override. SortName is what the server
+            // computes, and saving it as forced would pin it for good.
+            _textRow('ForcedSortName', l10n.adminMetadataFieldSortTitle),
+            if (!_isTvChannel)
+              _dateRow('DateCreated', l10n.adminMetadataFieldDateAdded),
+            if (_isSeries) ...[
+              adminCodeDropdown(
+                label: l10n.status,
+                defaultLabel: l10n.none,
+                current: _str('Status'),
+                rawItems: _seriesStatuses(l10n),
+                onChanged: (v) => _setText('Status', v, rebuild: true),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _field(
-                _communityRatingController,
-                l10n.adminMetadataFieldCommunityRating,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
+              _airDaysField(l10n),
+              _textRow('AirTime', l10n.adminMetadataFieldAirTime),
+              adminFieldRow(
+                label: l10n.adminMetadataFieldRuntime,
+                child: TextFormField(
+                  initialValue: runtimeTicks == null
+                      ? ''
+                      : '${runtimeTicks ~/ _ticksPerMinute}',
+                  keyboardType: TextInputType.number,
+                  decoration: adminInputDecoration(),
+                  onChanged: (v) {
+                    final minutes = int.tryParse(v.trim());
+                    if (v.trim().isNotEmpty && minutes == null) return;
+                    _item['RunTimeTicks'] =
+                        minutes == null ? null : minutes * _ticksPerMinute;
+                    edited();
+                  },
                 ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _field(
-                _criticRatingController,
-                l10n.adminMetadataFieldCriticRating,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
+            ],
+            if (isAudioish) ...[
+              _namesRow('ArtistItems', l10n.adminMetadataFieldArtists),
+              _namesRow('AlbumArtists', l10n.adminMetadataFieldAlbumArtists),
+            ],
+            if (type == 'Audio' || type == 'MusicVideo')
+              _textRow('Album', l10n.adminMetadataFieldAlbum),
+            if (type == 'Book')
+              _textRow('SeriesName', l10n.adminMetadataFieldSeriesName),
+            if (const ['Audio', 'Episode', 'Season'].contains(type))
+              _numberRow('IndexNumber', indexLabel),
+            if (type == 'Audio' || type == 'Episode')
+              _numberRow(
+                'ParentIndexNumber',
+                type == 'Episode'
+                    ? l10n.adminMetadataFieldSeasonNumber
+                    : l10n.adminMetadataFieldDiscNumber,
+              ),
+            if (isSpecial) ...[
+              _numberRow(
+                  'AirsBeforeSeasonNumber', l10n.adminMetadataFieldAirsBeforeSeason),
+              _numberRow(
+                  'AirsAfterSeasonNumber', l10n.adminMetadataFieldAirsAfterSeason),
+              _numberRow('AirsBeforeEpisodeNumber',
+                  l10n.adminMetadataFieldAirsBeforeEpisode),
+            ],
+            if (!_isTvChannel) ...[
+              _dateRow(
+                'PremiereDate',
+                _isPerson
+                    ? l10n.adminMetadataFieldBirthDate
+                    : l10n.adminMetadataFieldPremiereDate,
+              ),
+              _numberRow(
+                'ProductionYear',
+                _isPerson
+                    ? l10n.adminMetadataFieldBirthYear
+                    : l10n.adminMetadataFieldProductionYear,
+              ),
+            ],
+            if (_isPerson)
+              adminFieldRow(
+                label: l10n.adminMetadataFieldPlaceOfBirth,
+                child: TextFormField(
+                  initialValue: _stringList(_item['ProductionLocations'])
+                          .firstOrNull ??
+                      '',
+                  decoration: adminInputDecoration(),
+                  onChanged: (v) {
+                    _item['ProductionLocations'] = v.isEmpty ? <String>[] : [v];
+                    edited();
+                  },
                 ),
               ),
-            ),
+            if (_isSeries || _isPerson)
+              _dateRow(
+                'EndDate',
+                _isPerson
+                    ? l10n.adminMetadataFieldDeathDate
+                    : l10n.adminMetadataFieldEndDate,
+              ),
+            if (_isSeries || _isBoxSet) _displayOrderField(l10n),
+            if (_isVideo) ...[
+              adminCodeDropdown(
+                label: l10n.adminMetadataField3DFormat,
+                defaultLabel: l10n.none,
+                current: _str('Video3DFormat'),
+                rawItems: _video3DFormats,
+                onChanged: (v) => _setText('Video3DFormat', v, rebuild: true),
+              ),
+              _textRow('AspectRatio', l10n.adminMetadataFieldAspectRatio),
+            ],
           ],
         ),
-        if (_isSeries || _isBoxSet) ...[
-          const SizedBox(height: 12),
-          _displayOrderField(l10n),
-        ],
-        if (_isSeries) ...[
-          const SizedBox(height: 12),
-          adminCodeDropdown(
-            label: l10n.status,
-            defaultLabel: l10n.none,
-            current: _status,
-            rawItems: _seriesStatuses(l10n).map((o) => (o.$1, o.$2)),
-            onChanged: (v) => setState(() => _status = v ?? ''),
+        if (ratings.isNotEmpty)
+          adminSection(
+            context,
+            title: l10n.adminMetadataSectionRatings,
+            icon: Icons.star_outline,
+            children: ratings,
           ),
-          const SizedBox(height: 12),
-          _airDaysField(l10n),
-        ],
-        if (_isVideo) ...[
-          const SizedBox(height: 12),
-          adminCodeDropdown(
-            label: l10n.adminMetadataField3DFormat,
-            defaultLabel: l10n.none,
-            current: _video3DFormat,
-            rawItems: _video3DFormats.map((o) => (o.$1, o.$2)),
-            onChanged: (v) => setState(() => _video3DFormat = v ?? ''),
+        if (!_isTvChannel)
+          adminSection(
+            context,
+            title: l10n.adminMetadataFieldOverview,
+            icon: Icons.notes_outlined,
+            children: [
+              if (_isVideoMedia && type != 'Episode')
+                adminFieldRow(
+                  label: l10n.adminMetadataFieldTagline,
+                  child: TextFormField(
+                    initialValue:
+                        _stringList(_item['Taglines']).firstOrNull ?? '',
+                    decoration: adminInputDecoration(),
+                    onChanged: (v) {
+                      _item['Taglines'] = v.isEmpty ? <String>[] : [v];
+                      edited();
+                    },
+                  ),
+                ),
+              _textRow('Overview', l10n.adminMetadataFieldOverview,
+                  maxLines: 10),
+            ],
           ),
-        ],
-        const SizedBox(height: 12),
-        _field(_taglineController, l10n.adminMetadataFieldTagline),
-        const SizedBox(height: 12),
-        _field(_overviewController, l10n.adminMetadataFieldOverview, maxLines: 8),
       ],
     );
   }
 
   Widget _buildDetailsTab() {
     final l10n = AppLocalizations.of(context);
+    final people = _asMapList(_item['People']);
+    final lockData = _item['LockData'] == true;
+    final lockedFields = _stringList(_item['LockedFields']);
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: _tabPadding,
       children: [
-        _chipEditor(l10n.adminMetadataGenres, _genres, () => _addChip(l10n.adminMetadataAddGenre, _genres)),
-        const SizedBox(height: 12),
-        _chipEditor(l10n.adminMetadataTags, _tags, () => _addChip(l10n.adminMetadataAddTag, _tags)),
-        const SizedBox(height: 12),
+        if (!_isNameOnlyType)
+          _chipEditor(
+            l10n.adminMetadataGenres,
+            Icons.theater_comedy_outlined,
+            _stringList(_item['Genres']),
+            onAdd: () async {
+              final v = await _promptText(l10n.adminMetadataAddGenre);
+              final genres = _stringList(_item['Genres']);
+              if (v != null && !genres.contains(v)) _set('Genres', [...genres, v]);
+            },
+            onRemove: (v) => _set('Genres',
+                _stringList(_item['Genres']).where((g) => g != v).toList()),
+          ),
         _chipEditor(
-          l10n.adminMetadataStudios,
-          _studios,
-          () => _addChip(l10n.adminMetadataAddStudio, _studios),
+          l10n.adminMetadataTags,
+          Icons.sell_outlined,
+          _stringList(_item['Tags']),
+          onAdd: () async {
+            final v = await _promptText(l10n.adminMetadataAddTag);
+            final tags = _stringList(_item['Tags']);
+            if (v != null && !tags.contains(v)) _set('Tags', [...tags, v]);
+          },
+          onRemove: (v) => _set(
+              'Tags', _stringList(_item['Tags']).where((t) => t != v).toList()),
         ),
-        const SizedBox(height: 8),
-        Row(
+        if (!_isNameOnlyType)
+          _chipEditor(
+            l10n.adminMetadataStudios,
+            Icons.business_outlined,
+            _nameList(_item['Studios']),
+            onAdd: () async {
+              final v = await _promptText(l10n.adminMetadataAddStudio);
+              final studios = _asMapList(_item['Studios']);
+              if (v != null && studios.every((s) => s['Name'] != v)) {
+                _set('Studios', [...studios, {'Name': v}]);
+              }
+            },
+            onRemove: (v) => _set('Studios', [
+              for (final s in _asMapList(_item['Studios']))
+                if (s['Name'] != v) s,
+            ]),
+          ),
+        if (!_isNameOnlyType)
+          adminSection(
+            context,
+            title: l10n.adminMetadataPeople,
+            icon: Icons.people_outline,
+            children: [
+              for (var i = 0; i < people.length; i++)
+                ListTile(
+                  title: Text((people[i]['Name'] ?? '').toString()),
+                  subtitle: Text(
+                    [people[i]['Role'], people[i]['Type']]
+                        .map((e) => (e ?? '').toString())
+                        .where((e) => e.isNotEmpty)
+                        .join(' · '),
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: l10n.adminMetadataEditPerson,
+                        onPressed: () => _editPerson(index: i),
+                        icon: const Icon(Icons.edit_outlined),
+                      ),
+                      IconButton(
+                        tooltip: l10n.delete,
+                        onPressed: () =>
+                            _set('People', [...people]..removeAt(i)),
+                        icon: const Icon(Icons.delete_outline),
+                      ),
+                    ],
+                  ),
+                ),
+              ListTile(
+                leading: const Icon(Icons.add),
+                title: Text(people.isEmpty
+                    ? l10n.adminNoPeopleEntries
+                    : l10n.adminMetadataAddPerson),
+                onTap: () => _editPerson(),
+              ),
+            ],
+          ),
+        if (!_isTvChannel)
+          adminSection(
+            context,
+            title: l10n.adminMetadataSettings,
+            icon: Icons.travel_explore_outlined,
+            children: [
+              adminCodeDropdown(
+                label: l10n.adminMetadataDownloadLanguage,
+                helper: l10n.adminMetadataInheritHelp,
+                defaultLabel: l10n.adminLibDefault,
+                current: _str('PreferredMetadataLanguage'),
+                rawItems: _cultureItems(),
+                onChanged: (v) =>
+                    _setText('PreferredMetadataLanguage', v, rebuild: true),
+              ),
+              adminCodeDropdown(
+                label: l10n.adminMetadataCountryRegion,
+                helper: l10n.adminMetadataInheritHelp,
+                defaultLabel: l10n.adminLibDefault,
+                current: _str('PreferredMetadataCountryCode'),
+                rawItems: _countryItems(),
+                onChanged: (v) =>
+                    _setText('PreferredMetadataCountryCode', v, rebuild: true),
+              ),
+            ],
+          ),
+        // A ticked box leaves the field open to refreshes, so the stored list
+        // is the inverse of what is ticked. Locked values this list doesn't
+        // offer are left untouched.
+        adminSection(
+          context,
+          title: l10n.adminMetadataEnabledFields,
+          icon: Icons.lock_open_outlined,
           children: [
-            Expanded(
-              child: adminSectionLabel(context, l10n.adminMetadataPeople,
-                  icon: Icons.people_outline),
+            adminSwitchRow(
+              title: l10n.adminMetadataLockItem,
+              value: lockData,
+              onChanged: (v) => _set('LockData', v),
             ),
-            FilledButton.tonalIcon(
-              onPressed: () => _editPerson(),
-              icon: const Icon(Icons.add),
-              label: Text(l10n.add),
-            ),
+            if (!lockData) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.spaceLg, AppSpacing.spaceSm, AppSpacing.spaceLg, 0),
+                child: Text(
+                  l10n.adminMetadataEnabledFieldsHelp,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+              for (final field in _lockableFields(l10n))
+                CheckboxListTile(
+                  value: !lockedFields.contains(field.$1),
+                  title: Text(field.$2),
+                  onChanged: (enabled) => _set('LockedFields', [
+                    ...lockedFields.where((f) => f != field.$1),
+                    if (enabled != true) field.$1,
+                  ]),
+                ),
+            ],
           ],
         ),
-        const SizedBox(height: 8),
-        if (_people.isEmpty)
-          Text(l10n.adminNoPeopleEntries)
-        else
-          ..._people.asMap().entries.map((entry) {
-            final i = entry.key;
-            final p = entry.value;
-            final name = p['Name'] ?? '';
-            final role = p['Role'] ?? '';
-            final type = p['Type'] ?? '';
-            return ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(name),
-              subtitle: Text(
-                [role, type].where((e) => e.isNotEmpty).join(' • '),
-              ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    onPressed: () => _editPerson(index: i),
-                    icon: const Icon(Icons.edit_outlined),
-                  ),
-                  IconButton(
-                    onPressed: () {
-                      setState(() {
-                        final next = [..._people];
-                        next.removeAt(i);
-                        _people = next;
-                      });
-                    },
-                    icon: const Icon(Icons.delete_outline),
-                  ),
-                ],
-              ),
-            );
-          }),
-        const SizedBox(height: 8),
-        adminSectionLabel(
-          context,
-          l10n.adminMetadataSettings,
-          icon: Icons.travel_explore_outlined,
-        ),
-        adminCodeDropdown(
-          label: l10n.adminMetadataDownloadLanguage,
-          defaultLabel: l10n.adminLibDefault,
-          current: _metadataLanguage,
-          rawItems: _cultureOptions().map((c) => (
-                (c['TwoLetterISOLanguageName'] ?? c['ThreeLetterISOLanguageName'])
-                    ?.toString(),
-                (c['DisplayName'] ?? c['Name'])?.toString(),
-              )),
-          onChanged: (v) => setState(() => _metadataLanguage = v ?? ''),
-        ),
-        _inheritHint(l10n),
-        const SizedBox(height: 12),
-        adminCodeDropdown(
-          label: l10n.adminMetadataCountryRegion,
-          defaultLabel: l10n.adminLibDefault,
-          current: _metadataCountry,
-          rawItems: _countryOptions().map((c) => (
-                (c['TwoLetterISORegionName'] ?? c['Name'])?.toString(),
-                (c['DisplayName'] ?? c['Name'])?.toString(),
-              )),
-          onChanged: (v) => setState(() => _metadataCountry = v ?? ''),
-        ),
-        _inheritHint(l10n),
-        const SizedBox(height: 8),
-        _lockedFieldsEditor(l10n),
       ],
     );
   }
 
+  /// Every listed id is editable, and ids the server doesn't list stay in
+  /// ProviderIds untouched.
   Widget _buildExternalTab() {
     final l10n = AppLocalizations.of(context);
+    final providerIds = _item['ProviderIds'] is Map
+        ? (_item['ProviderIds'] as Map).cast<String, dynamic>()
+        : const <String, dynamic>{};
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: _tabPadding,
       children: [
-        if (_externalIds.isEmpty)
-          Text(l10n.adminNoExternalIds)
-        else
-          ..._externalIds.map((info) {
-            final key = _externalKey(info);
-            final label = _externalLabel(info);
-            final controller =
-                _externalControllers[key] ??
-                (_externalControllers[key] = TextEditingController());
-            final url =
-                (info['UrlFormatString'] ?? info['Url'] ?? '').toString();
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _field(controller, label),
-                  if (url.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        url,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ),
-                ],
+        adminSection(
+          context,
+          title: l10n.adminMetadataExternalIds,
+          icon: Icons.link,
+          children: [
+            if (_externalIds.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(AppSpacing.spaceLg),
+                child: Text(l10n.adminNoExternalIds),
               ),
-            );
-          }),
+            for (final info in _externalIds)
+              adminFieldRow(
+                label: _externalLabel(info),
+                helper: (info['UrlFormatString'] ?? info['Url'] ?? '')
+                        .toString()
+                        .isEmpty
+                    ? null
+                    : (info['UrlFormatString'] ?? info['Url']).toString(),
+                child: TextFormField(
+                  initialValue:
+                      (providerIds[_externalKey(info)] ?? '').toString(),
+                  decoration: adminInputDecoration(),
+                  onChanged: (v) {
+                    _item['ProviderIds'] = {
+                      ...?(_item['ProviderIds'] as Map?)?.cast<String, dynamic>(),
+                      _externalKey(info): v,
+                    };
+                    edited();
+                  },
+                ),
+              ),
+          ],
+        ),
       ],
     );
   }
@@ -1678,69 +1607,36 @@ class _AdminMetadataEditScreenState extends State<AdminMetadataEditScreen> {
     }
   }
 
-  Widget _field(
-    TextEditingController controller,
-    String label, {
-    TextInputType? keyboardType,
-    int maxLines = 1,
+  Widget _chipEditor(
+    String label,
+    IconData icon,
+    List<String> values, {
+    required VoidCallback onAdd,
+    required ValueChanged<String> onRemove,
   }) {
-    return TextField(
-      controller: controller,
-      keyboardType: keyboardType,
-      maxLines: maxLines,
-      decoration: adminInputDecoration(label: label),
-    );
-  }
-
-  Widget _chipEditor(String label, List<String> values, VoidCallback onAdd) {
     final l10n = AppLocalizations.of(context);
-    return adminGlassGroup(
+    return adminSection(
       context,
+      title: label,
+      icon: icon,
       children: [
-      Padding(
-        padding: const EdgeInsets.all(AppSpacing.spaceLg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    label,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: onAdd,
-                  icon: const Icon(Icons.add),
-                  label: Text(l10n.add),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (values.isEmpty)
-              Text(l10n.none)
-            else
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children:
-                    values
-                        .map(
-                          (value) => Chip(
-                            label: Text(value),
-                            onDeleted: () {
-                              setState(() {
-                                values.remove(value);
-                              });
-                            },
-                          ),
-                        )
-                        .toList(),
+        Padding(
+          padding: const EdgeInsets.all(AppSpacing.spaceLg),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              for (final value in values)
+                Chip(label: Text(value), onDeleted: () => onRemove(value)),
+              ActionChip(
+                avatar: const Icon(Icons.add, size: 18),
+                label: Text(l10n.add),
+                onPressed: onAdd,
               ),
-          ],
+            ],
+          ),
         ),
-      ),
       ],
     );
   }

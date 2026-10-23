@@ -12,6 +12,7 @@ import '../../../util/focus/input_mode_tracker.dart';
 import '../adaptive/adaptive_icons.dart';
 import '../adaptive/sf_symbol.dart';
 import '../overlay_sheet.dart';
+import 'multi_select_dialog.dart';
 import 'preference_binding.dart';
 
 Widget withBackClose(BuildContext dialogContext, Widget child) {
@@ -1001,6 +1002,128 @@ class _StringPickerPreferenceTileState
       _binding.value = result;
       widget.onChanged?.call();
     }
+  }
+}
+
+/// A preference holding a comma separated list of [options] keys, stored in the
+/// order they were picked. Shows [emptyLabel] while nothing is picked.
+class MultiSelectPreferenceTile extends StatefulWidget {
+  final Preference<String> preference;
+  final String title;
+  final String? description;
+  final IconData? icon;
+  final Map<String, String> options;
+  final String emptyLabel;
+  final int? maxSelected;
+
+  const MultiSelectPreferenceTile({
+    super.key,
+    required this.preference,
+    required this.title,
+    this.description,
+    this.icon,
+    required this.options,
+    required this.emptyLabel,
+    this.maxSelected,
+  });
+
+  @override
+  State<MultiSelectPreferenceTile> createState() =>
+      _MultiSelectPreferenceTileState();
+}
+
+class _MultiSelectPreferenceTileState extends State<MultiSelectPreferenceTile> {
+  late PreferenceBinding<String> _binding;
+  bool _pickerOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _binding = PreferenceBinding(
+      GetIt.instance<PreferenceStore>(),
+      widget.preference,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant MultiSelectPreferenceTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _binding = _rebindOnPreferenceChange(
+      _binding,
+      widget.preference,
+      oldWidget.preference,
+    );
+  }
+
+  @override
+  void dispose() {
+    _binding.dispose();
+    super.dispose();
+  }
+
+  List<String> _picked(String value) => value
+      .split(',')
+      .map((key) => key.trim())
+      .where(widget.options.containsKey)
+      .toList();
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusHighlight(
+      builder: (context, focused) => ValueListenableBuilder<String>(
+        valueListenable: _binding,
+        builder: (context, value, _) {
+          final picked = _picked(value);
+          final label = picked.isEmpty
+              ? widget.emptyLabel
+              : picked.map((key) => widget.options[key]!).join(', ');
+          return ListTile(
+            leading: widget.icon != null
+                ? buildSettingsLeadingIconShell(
+                    context,
+                    icon: Icon(widget.icon),
+                    focused: focused,
+                    iconColor: focused && settingsTileInvertsOnFocus
+                        ? AppColors.black.withValues(alpha: 0.54)
+                        : AppColorScheme.onSurface.withValues(alpha: 0.78),
+                  )
+                : null,
+            title: Text(widget.title, style: _kSettingsTitleTextStyle),
+            trailing: buildSettingsSelectionBubble(context, label, focused),
+            subtitle: widget.description != null
+                ? Text(
+                    widget.description!,
+                    style: _kSettingsDescriptionTextStyle,
+                  )
+                : null,
+            isThreeLine: widget.description != null,
+            titleAlignment: ListTileTitleAlignment.center,
+            onTap: () => _showPicker(context, picked),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _showPicker(BuildContext context, List<String> picked) async {
+    if (_pickerOpen) return;
+    _pickerOpen = true;
+    final result = await showMultiSelectDialog(
+      context: context,
+      title: widget.title,
+      items: widget.options,
+      selected: picked.toSet(),
+      sortByLabel: false,
+      maxSelected: widget.maxSelected,
+    );
+    _pickerOpen = false;
+    if (!mounted || result == null) return;
+    // Keeps what was picked before in its place and adds the new picks after.
+    final ordered = [
+      ...picked.where(result.contains),
+      ...result.where((key) => !picked.contains(key)),
+    ];
+    _binding.value = ordered.join(',');
   }
 }
 

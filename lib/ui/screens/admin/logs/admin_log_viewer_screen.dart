@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
@@ -26,6 +27,11 @@ class AdminLogViewerScreen extends StatefulWidget {
 
 class _AdminLogViewerScreenState extends State<AdminLogViewerScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+
+  /// Watch mode refetches every 2 s and follows the end of the log while the
+  /// view is already at the bottom.
+  Timer? _watchTimer;
 
   bool _loading = true;
   String? _error;
@@ -43,8 +49,48 @@ class _AdminLogViewerScreenState extends State<AdminLogViewerScreen> {
 
   @override
   void dispose() {
+    _watchTimer?.cancel();
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _toggleWatch() {
+    if (_watchTimer != null) {
+      setState(() {
+        _watchTimer!.cancel();
+        _watchTimer = null;
+      });
+      return;
+    }
+    setState(() {
+      _watchTimer = Timer.periodic(const Duration(seconds: 2), (_) => _refetch());
+    });
+    _scrollToBottom();
+  }
+
+  bool get _atBottom =>
+      !_scrollController.hasClients ||
+      _scrollController.position.extentAfter < 24;
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      }
+    });
+  }
+
+  /// A watch refetch keeps the current text on screen and drops a failed
+  /// read. The next tick tries again.
+  Future<void> _refetch() async {
+    try {
+      final text = await _api.getLogFileContent(widget.fileName);
+      if (!mounted || _watchTimer == null || text == _content) return;
+      final follow = _atBottom;
+      setState(() => _content = text);
+      if (follow) _scrollToBottom();
+    } catch (_) {}
   }
 
   Future<void> _loadLog() async {
@@ -74,12 +120,30 @@ class _AdminLogViewerScreenState extends State<AdminLogViewerScreen> {
     final q = _query.trim().toLowerCase();
     return all.where((line) {
       if (q.isNotEmpty && !line.toLowerCase().contains(q)) return false;
-      if (_levelFilter != null &&
-          !line.toUpperCase().contains('[$_levelFilter]')) {
+      if (_levelFilter != null && _levelOf(line) != _levelFilter) {
         return false;
       }
       return true;
     }).toList();
+  }
+
+  /// Emby writes the level as a word after the time, where Jellyfin tags
+  /// the line with `[ERR]` and the like.
+  static final _embyLevel = RegExp(r'^\S+ \S+ (Error|Fatal|Warn|Info|Debug) ');
+
+  /// ERR, WRN, INF or DBG, or null for a line without a level.
+  static String? _levelOf(String line) {
+    final upper = line.toUpperCase();
+    for (final level in const ['ERR', 'WRN', 'INF', 'DBG']) {
+      if (upper.contains('[$level]')) return level;
+    }
+    return switch (_embyLevel.firstMatch(line)?.group(1)) {
+      'Error' || 'Fatal' => 'ERR',
+      'Warn' => 'WRN',
+      'Info' => 'INF',
+      'Debug' => 'DBG',
+      _ => null,
+    };
   }
 
   Future<void> _copyAll() async {
@@ -136,16 +200,13 @@ class _AdminLogViewerScreenState extends State<AdminLogViewerScreen> {
     }
   }
 
-  Color _lineColor(ThemeData theme, String line) {
-    final upper = line.toUpperCase();
-    if (upper.contains('[ERR]')) return AppColorScheme.statusRequested;
-    if (upper.contains('[WRN]')) return AppColorScheme.statusPending;
-    if (upper.contains('[INF]')) return AppColorScheme.statusAvailable;
-    if (upper.contains('[DBG]')) {
-      return AppColorScheme.onSurface.withValues(alpha: 0.6);
-    }
-    return theme.colorScheme.onSurface;
-  }
+  Color _lineColor(ThemeData theme, String line) => switch (_levelOf(line)) {
+    'ERR' => AppColorScheme.statusRequested,
+    'WRN' => AppColorScheme.statusPending,
+    'INF' => AppColorScheme.statusAvailable,
+    'DBG' => AppColorScheme.onSurface.withValues(alpha: 0.6),
+    _ => theme.colorScheme.onSurface,
+  };
 
   TextSpan _buildLineSpan({
     required String line,
@@ -229,6 +290,15 @@ class _AdminLogViewerScreenState extends State<AdminLogViewerScreen> {
                 onPressed: _copyAll,
                 icon: const Icon(Icons.copy_all),
               ),
+              IconButton(
+                tooltip: _watchTimer == null
+                    ? AppLocalizations.of(context).adminLogWatch
+                    : AppLocalizations.of(context).adminLogStopWatching,
+                isSelected: _watchTimer != null,
+                onPressed: _toggleWatch,
+                icon: const Icon(Icons.visibility_outlined),
+                selectedIcon: const Icon(Icons.visibility_off_outlined),
+              ),
               if (!PlatformDetection.isTV)
                 IconButton(
                   tooltip: AppLocalizations.of(context).save,
@@ -261,7 +331,7 @@ class _AdminLogViewerScreenState extends State<AdminLogViewerScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             children: [
               for (final (label, filter) in <(String, String?)>[
-                ('All', null),
+                (AppLocalizations.of(context).all, null),
                 ('ERR', 'ERR'),
                 ('WRN', 'WRN'),
                 ('INF', 'INF'),
@@ -294,6 +364,7 @@ class _AdminLogViewerScreenState extends State<AdminLogViewerScreen> {
           child: lines.isEmpty
               ? Center(child: Text(AppLocalizations.of(context).adminLogViewerNoMatches))
               : ListView.builder(
+                  controller: _scrollController,
                   itemCount: lines.length,
                   itemBuilder: (context, index) {
                     final line = lines[index];

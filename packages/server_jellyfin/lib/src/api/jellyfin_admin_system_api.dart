@@ -72,12 +72,18 @@ class JellyfinAdminSystemApi implements AdminSystemApi {
     int? limit,
     bool? hasUserId,
     DateTime? minDate,
+    DateTime? maxDate,
+    String? severity,
+    String? username,
   }) async {
     final params = <String, dynamic>{};
     if (startIndex != null) params['startIndex'] = startIndex;
     if (limit != null) params['limit'] = limit;
     if (hasUserId != null) params['hasUserId'] = hasUserId;
     if (minDate != null) params['minDate'] = minDate.toUtc().toIso8601String();
+    if (maxDate != null) params['maxDate'] = maxDate.toUtc().toIso8601String();
+    if (severity != null) params['severity'] = severity;
+    if (username != null) params['username'] = username;
     final response = await _dio.get(
       '/System/ActivityLog/Entries',
       queryParameters: params,

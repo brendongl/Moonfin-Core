@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "ภาษาที่ต้องการแสดงผล",
     "offlineBannerTitle": "คุณออฟไลน์อยู่",
     "offlineBannerSubtitle": "กำลังแสดงรายการที่ดาวน์โหลดไว้",
-    "offlineBannerAction": "ดาวน์โหลด",
     "serverUnreachableBannerTitle": "เชื่อมต่อเซิร์ฟเวอร์ของคุณไม่ได้",
     "serverUnreachableBannerSubtitle": "กำลังเล่นจากรายการที่ดาวน์โหลดไว้จนกว่าจะกลับมา",
     "contextMenuHideFromContinueWatching": "ซ่อนจากรายการดูต่อ",

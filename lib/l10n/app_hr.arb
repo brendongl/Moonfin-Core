@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "Željeni jezik prikaza",
     "offlineBannerTitle": "Izvan mreže ste",
     "offlineBannerSubtitle": "Prikazuju se vaša preuzimanja",
-    "offlineBannerAction": "Preuzimanja",
     "serverUnreachableBannerTitle": "Poslužitelj nije dostupan",
     "serverUnreachableBannerSubtitle": "Reprodukcija iz preuzimanja dok se ne vrati",
     "contextMenuHideFromContinueWatching": "Sakrij iz odjeljka „Nastavite s gledanjem”",

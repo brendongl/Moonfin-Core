@@ -1,4 +1,4 @@
-// tvOS drives playback through AppleTvVideoChannel and its native player UI,
+// tvOS drives playback through NativeApplePlayerChannel and its native player UI,
 // so this channel is only built for the two platforms where Flutter owns the
 // OSD and the video arrives through a platform view.
 #if os(iOS) || os(macOS)
@@ -26,6 +26,8 @@ final class AetherVideoChannel: NSObject, FlutterStreamHandler {
     private let events: FlutterEventChannel
     private nonisolated(unsafe) var eventSink: FlutterEventSink?
 
+    private var playerCreated = false
+
     private(set) lazy var player: AetherPlayerWrapper = {
         let created = AetherPlayerWrapper()
         created.onPlayerError = { [weak self] payload in
@@ -34,14 +36,22 @@ final class AetherVideoChannel: NSObject, FlutterStreamHandler {
         created.onNowPlayingCommand = { [weak self] payload in
             self?.send(payload)
         }
+        self.playerCreated = true
         return created
     }()
+
+    /// The wrapper if something has already asked for it, so PiP can look for
+    /// a layer without building a player nobody is using.
+    var playerIfCreated: AetherPlayerWrapper? { playerCreated ? player : nil }
 
     private var stateTimer: Timer?
     private var lastTextTrackCount = -1
     private var lastClosedCaptionCount = -1
     private var didComplete = false
     private var didReportTerminalError = false
+    #if os(iOS)
+        private var volumeObservation: NSKeyValueObservation?
+    #endif
 
     init(messenger: FlutterBinaryMessenger) {
         control = FlutterMethodChannel(
@@ -58,6 +68,16 @@ final class AetherVideoChannel: NSObject, FlutterStreamHandler {
             Task { @MainActor in self?.handle(call) }
         }
         events.setStreamHandler(self)
+        #if os(iOS)
+            volumeObservation = AVAudioSession.sharedInstance().observe(
+                \.outputVolume, options: [.new]
+            ) { [weak self] _, change in
+                guard let volume = change.newValue else { return }
+                Task { @MainActor in
+                    self?.send(["event": "systemVolume", "value": Double(volume)])
+                }
+            }
+        #endif
     }
 
     nonisolated func onListen(withArguments arguments: Any?, eventSink: @escaping FlutterEventSink)
@@ -132,6 +152,9 @@ final class AetherVideoChannel: NSObject, FlutterStreamHandler {
                 verticalOffset: (args["verticalOffset"] as? NSNumber)?.doubleValue)
         case "setAllowUntrustedTls":
             EngineTLS.serverTrustEvaluator = EngineTrustPolicy.evaluator(from: args)
+        case "setClientCertificates":
+            ClientIdentityStore.setClientCertificates(
+                (args["certificates"] as? [[String: Any]]) ?? [])
         case "setSubtitleRendererMode":
             // The host overlay is the only subtitle renderer on this path.
             break
@@ -189,6 +212,7 @@ final class AetherVideoChannel: NSObject, FlutterStreamHandler {
                 audioStreamIndex: (args["audioStreamIndex"] as? NSNumber).flatMap {
                     $0.intValue >= 0 ? Int32($0.intValue) : nil
                 },
+                audioBridgeLossless: (args["audioBridgeLossless"] as? Bool) ?? false,
                 dolbyVisionBaseLayerOnly: (args["dolbyVisionBaseLayerOnly"] as? Bool) ?? false,
                 externalSubtitles: AetherPlayerWrapper.externalSubtitleTracks(
                     from: args["externalSubtitles"])))
@@ -234,14 +258,20 @@ final class AetherVideoChannel: NSObject, FlutterStreamHandler {
             break
         }
 
-        send([
+        var state: [String: Any] = [
             "event": "state",
             "positionMs": Int((p.currentTime * 1000).rounded()),
             "durationMs": Int((p.duration * 1000).rounded()),
             "bufferedMs": Int((p.duration * Double(p.bufferProgress) * 1000).rounded()),
             "isPlaying": isPlaying,
             "isBuffering": isBuffering,
-        ])
+            "isSubtitleLoading": p.isSubtitleLoading,
+        ]
+        if let range = p.seekableLiveRange {
+            state["liveWindowStartMs"] = Int((range.lowerBound * 1000).rounded())
+            state["liveEdgeMs"] = Int((range.upperBound * 1000).rounded())
+        }
+        send(state)
 
         // Captions can turn up part way through a live stream, so a change in
         // either list re-emits tracksChanged.
@@ -279,8 +309,8 @@ final class AetherVideoChannel: NSObject, FlutterStreamHandler {
 
 /// Device-profile capabilities for AetherEngine. HEVC and H.264 decode in
 /// hardware everywhere this builds. AV1 has hardware on the newest chips with
-/// software dav1d covering the rest at lower resolutions, and VP9, MPEG-2,
-/// VC-1 and interlaced H.264 route through the engine's software path.
+/// software dav1d covering the rest, and VP9, MPEG-2, VC-1 and interlaced
+/// H.264 route through the engine's software path.
 ///
 /// Every iOS device that reaches the deployment floor has an HDR capable
 /// screen. A Mac may be driving anything, so there HDR and Dolby Vision are
@@ -304,10 +334,21 @@ enum AetherVideoCapabilities {
         #endif
     }
 
+    // Even an M1 decodes heavy 4K HDR10 AV1 at about 2.9x real time, so only
+    // Intel Macs and iOS devices without AV1 hardware keep the 1080p SDR cap.
+    private static var softwareAv1HandlesUhd: Bool {
+        #if os(macOS) && arch(arm64)
+            return true
+        #else
+            return false
+        #endif
+    }
+
     static func deviceProfileCapabilities() -> [String: Any] {
         let hardwareAv1 = VTIsHardwareDecodeSupported(kCMVideoCodecType_AV1)
-        let av1Width = hardwareAv1 ? 3840 : 1920
-        let av1Height = hardwareAv1 ? 2160 : 1080
+        let fullAv1 = hardwareAv1 || softwareAv1HandlesUhd
+        let av1Width = fullAv1 ? 3840 : 1920
+        let av1Height = fullAv1 ? 2160 : 1080
         let hdr = displaySupportsHdr
         return [
             "supportsAvc": true,
@@ -329,7 +370,7 @@ enum AetherVideoCapabilities {
             "supportsVc1": true,
             "supportsAv1": true,
             "supportsAv1Main10": true,
-            "supportsAv1Hdr10": hardwareAv1 && hdr,
+            "supportsAv1Hdr10": fullAv1 && hdr,
             "supportsAv1Hdr10Plus": false,
             "supportsAv1DolbyVision": false,
             "maxResolutionAvc": ["width": 3840, "height": 2160],

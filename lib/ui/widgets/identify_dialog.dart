@@ -14,6 +14,29 @@ import 'adaptive/adaptive_dialog.dart';
 import 'focus/focusable_button.dart';
 import 'overlay_sheet.dart';
 
+/// A provider id's label, "{name} {type} Id", from the name and item type
+/// the server lists for it.
+String externalIdLabel(AppLocalizations l10n, String name, String? type) {
+  final typeLabel = switch (type) {
+    null || '' => null,
+    'Movie' => l10n.movie,
+    'Series' => l10n.series,
+    'BoxSet' => l10n.collection,
+    'Season' => l10n.season,
+    'Episode' => l10n.episode,
+    'Album' => l10n.album,
+    'Track' => l10n.track,
+    'Person' => l10n.adminExternalIdTypePerson,
+    'Artist' => l10n.adminExternalIdTypeArtist,
+    'AlbumArtist' => l10n.adminExternalIdTypeAlbumArtist,
+    'OtherArtist' => l10n.adminExternalIdTypeOtherArtist,
+    'ReleaseGroup' => l10n.adminExternalIdTypeReleaseGroup,
+    'Book' => l10n.adminExternalIdTypeBook,
+    _ => type,
+  };
+  return l10n.adminExternalIdLabel([name, ?typeLabel].join(' '));
+}
+
 class IdentifyDialog extends StatefulWidget {
   final String itemId;
   final String? itemType;
@@ -59,9 +82,11 @@ class IdentifyDialog extends StatefulWidget {
 }
 
 class _IdentifyDialogState extends State<IdentifyDialog> {
-  /// Every focus node list and the d-pad wrap-around logic is sized off this.
-  static const int _fieldCount = 8;
-  static const int _lastFieldIndex = _fieldCount - 1;
+  /// Name and year, then one row per provider id the server knows for the
+  /// item. Every focus node list and the d-pad wrap-around follow this.
+  static const int _fixedFieldCount = 2;
+  int get _fieldCount => _fixedFieldCount + _idFields.length;
+  int get _lastFieldIndex => _fieldCount - 1;
 
   late final AdminItemsApi _adminApi;
   late final ItemsApi _itemsApi;
@@ -81,22 +106,15 @@ class _IdentifyDialogState extends State<IdentifyDialog> {
   // What the item currently has, shown next to each search field.
   String? _refName;
   String? _refYear;
-  String? _refImdb;
-  String? _refTmdbMovie;
-  String? _refTmdbBoxSet;
-  String? _refTvdbBoxSet;
-  String? _refTvdbId;
-  String? _refTvdbSlug;
+  Map<String, dynamic> _providerRefs = const {};
 
   // The search fields start blank so a search only uses what the admin types.
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _yearController = TextEditingController();
-  final TextEditingController _imdbController = TextEditingController();
-  final TextEditingController _tmdbMovieController = TextEditingController();
-  final TextEditingController _tmdbBoxSetController = TextEditingController();
-  final TextEditingController _tvdbBoxSetController = TextEditingController();
-  final TextEditingController _tvdbIdController = TextEditingController();
-  final TextEditingController _tvdbSlugController = TextEditingController();
+
+  /// One row per GET /Items/{id}/ExternalIdInfos entry, plugin providers
+  /// included.
+  List<_IdField> _idFields = const [];
 
   final ScrollController _scrollController = ScrollController();
 
@@ -104,12 +122,9 @@ class _IdentifyDialogState extends State<IdentifyDialog> {
   final FocusNode _cancelButtonFocusNode = FocusNode(debugLabel: 'identify-cancel-btn');
   final FocusNode _searchButtonFocusNode = FocusNode(debugLabel: 'identify-search-btn');
 
-  final List<FocusNode> _fieldFocusNodes = List.generate(
-      _fieldCount, (i) => FocusNode(debugLabel: 'identify-field-$i'));
-  final List<FocusNode> _arrowFocusNodes = List.generate(
-      _fieldCount, (i) => FocusNode(debugLabel: 'identify-arrow-$i'));
-  final List<GlobalKey<CustomTVTextFieldState>> _tvFieldKeys =
-      List.generate(_fieldCount, (_) => GlobalKey<CustomTVTextFieldState>());
+  final List<FocusNode> _fieldFocusNodes = [];
+  final List<FocusNode> _arrowFocusNodes = [];
+  final List<GlobalKey<CustomTVTextFieldState>> _tvFieldKeys = [];
 
   List<FocusNode>? _resultFocusNodes;
 
@@ -131,35 +146,32 @@ class _IdentifyDialogState extends State<IdentifyDialog> {
         : (itemType == null || itemType.isEmpty ? 'Movie' : itemType);
     _path = widget.itemPath;
 
-    final initialProviders = widget.providerIds ?? const {};
-
     if (!isTVChild) {
       _refName = widget.itemName;
       _refYear = widget.itemYear?.toString();
-      _refImdb = initialProviders['Imdb']?.toString();
-      _refTmdbMovie = initialProviders['Tmdb']?.toString();
-      _refTmdbBoxSet = initialProviders['TmdbBoxSet']?.toString();
-      _refTvdbBoxSet = initialProviders['TvdbBoxSet']?.toString();
-      _refTvdbId = initialProviders['Tvdb']?.toString();
-      _refTvdbSlug = initialProviders['TvdbSlug']?.toString();
+      _providerRefs = widget.providerIds ?? const {};
     }
 
-    // Keep the focused row on screen while the d-pad walks down the form.
-    for (int i = 0; i < _fieldCount; i++) {
-      final idx = i;
-      _fieldFocusNodes[idx].addListener(() {
-        if (_fieldFocusNodes[idx].hasFocus) {
-          _scrollToIndex(idx);
-        }
-      });
-      _arrowFocusNodes[idx].addListener(() {
-        if (_arrowFocusNodes[idx].hasFocus) {
-          _scrollToIndex(idx);
-        }
-      });
-    }
-
+    _ensureFieldNodes(_fieldCount);
     _loadItemDetails();
+  }
+
+  /// Grows the per-row focus nodes to [count], each keeping its row on screen
+  /// while the d-pad walks down the form.
+  void _ensureFieldNodes(int count) {
+    for (var i = _fieldFocusNodes.length; i < count; i++) {
+      final field = FocusNode(debugLabel: 'identify-field-$i');
+      final arrow = FocusNode(debugLabel: 'identify-arrow-$i');
+      field.addListener(() {
+        if (field.hasFocus) _scrollToIndex(i);
+      });
+      arrow.addListener(() {
+        if (arrow.hasFocus) _scrollToIndex(i);
+      });
+      _fieldFocusNodes.add(field);
+      _arrowFocusNodes.add(arrow);
+      _tvFieldKeys.add(GlobalKey<CustomTVTextFieldState>());
+    }
   }
 
   void _closeDialog([bool? result]) {
@@ -172,12 +184,9 @@ class _IdentifyDialogState extends State<IdentifyDialog> {
   void dispose() {
     _nameController.dispose();
     _yearController.dispose();
-    _imdbController.dispose();
-    _tmdbMovieController.dispose();
-    _tmdbBoxSetController.dispose();
-    _tvdbBoxSetController.dispose();
-    _tvdbIdController.dispose();
-    _tvdbSlugController.dispose();
+    for (final field in _idFields) {
+      field.controller.dispose();
+    }
 
     _scrollController.dispose();
 
@@ -299,6 +308,12 @@ class _IdentifyDialogState extends State<IdentifyDialog> {
       }
 
       if (!mounted) return;
+      if (raw['LockData'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(AppLocalizations.of(context).adminMetadataItemLocked)));
+        _closeDialog(false);
+        return;
+      }
       setState(() {
         _refName = raw['Name']?.toString();
         _refYear = raw['ProductionYear']?.toString();
@@ -309,14 +324,7 @@ class _IdentifyDialogState extends State<IdentifyDialog> {
           _searchType = raw['Type'].toString();
         }
         final pIds = raw['ProviderIds'];
-        if (pIds is Map) {
-          _refImdb = pIds['Imdb']?.toString();
-          _refTmdbMovie = pIds['Tmdb']?.toString();
-          _refTmdbBoxSet = pIds['TmdbBoxSet']?.toString();
-          _refTvdbBoxSet = pIds['TvdbBoxSet']?.toString();
-          _refTvdbId = pIds['Tvdb']?.toString();
-          _refTvdbSlug = pIds['TvdbSlug']?.toString();
-        }
+        if (pIds is Map) _providerRefs = Map<String, dynamic>.from(pIds);
       });
     } catch (e) {
       // Searching by hand still works without reference values, so say what
@@ -324,11 +332,25 @@ class _IdentifyDialogState extends State<IdentifyDialog> {
       if (mounted) {
         setState(() => _loadError = describeError(e, AppLocalizations.of(context)));
       }
-    } finally {
-      if (mounted) {
-        setState(() => _loadingItem = false);
-      }
     }
+    // Without the id rows the name and year still search.
+    final infos = await _adminApi
+        .getExternalIdInfos(_targetItemId)
+        .catchError((_) => <Map<String, dynamic>>[]);
+    if (!mounted) return;
+    setState(() {
+      _idFields = [
+        for (final info in infos)
+          if ('${info['Key'] ?? ''}'.isNotEmpty)
+            _IdField(
+              '${info['Key']}',
+              '${info['Name'] ?? info['Key']}',
+              info['Type']?.toString(),
+            ),
+      ];
+      _ensureFieldNodes(_fieldCount);
+      _loadingItem = false;
+    });
   }
 
   Future<List<Map<String, dynamic>>> _searchRemote(
@@ -338,56 +360,42 @@ class _IdentifyDialogState extends State<IdentifyDialog> {
     return _adminApi.searchRemote(_searchType, <String, dynamic>{
       'SearchInfo': searchInfo,
       'ItemId': _targetItemId,
-      'IncludeDisabledProviders': false,
+      // A new Emby library has no providers turned on, so a search of only
+      // the enabled ones finds nothing.
+      'IncludeDisabledProviders':
+          GetIt.instance<MediaServerClient>().serverType == ServerType.emby,
       'SearchProviderName': ?providerName,
     });
   }
 
   Future<void> _performSearch() async {
     final l10n = AppLocalizations.of(context);
-    setState(() {
-      _searching = true;
-      _searchResults = null;
-    });
-
     final nameVal = _nameController.text.trim();
     final yearVal = int.tryParse(_yearController.text.trim());
 
     // Provider ids are matched case insensitively, so one casing each is enough.
     final providerIds = <String, String>{};
 
-    var imdbVal = _imdbController.text.trim();
-    if (imdbVal.isNotEmpty) {
-      if (RegExp(r'^\d+$').hasMatch(imdbVal)) {
-        imdbVal = 'tt$imdbVal';
+    for (final field in _idFields) {
+      var value = field.controller.text.trim();
+      if (value.isEmpty) continue;
+      // IMDb ids carry a tt prefix that a pasted number often lacks.
+      if (field.key == 'Imdb' && RegExp(r'^\d+$').hasMatch(value)) {
+        value = 'tt$value';
       }
-      providerIds['Imdb'] = imdbVal;
+      providerIds[field.key] = value;
     }
 
-    final tmdbVal = _tmdbMovieController.text.trim();
-    if (tmdbVal.isNotEmpty) {
-      providerIds['Tmdb'] = tmdbVal;
+    if (nameVal.isEmpty && providerIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.adminMetadataNameOrIdRequired)),
+      );
+      return;
     }
-
-    final tmdbBoxSetVal = _tmdbBoxSetController.text.trim();
-    if (tmdbBoxSetVal.isNotEmpty) {
-      providerIds['TmdbBoxSet'] = tmdbBoxSetVal;
-    }
-
-    final tvdbBoxSetVal = _tvdbBoxSetController.text.trim();
-    if (tvdbBoxSetVal.isNotEmpty) {
-      providerIds['TvdbBoxSet'] = tvdbBoxSetVal;
-    }
-
-    final tvdbVal = _tvdbIdController.text.trim();
-    if (tvdbVal.isNotEmpty) {
-      providerIds['Tvdb'] = tvdbVal;
-    }
-
-    final tvdbSlugVal = _tvdbSlugController.text.trim();
-    if (tvdbSlugVal.isNotEmpty) {
-      providerIds['TvdbSlug'] = tvdbSlugVal;
-    }
+    setState(() {
+      _searching = true;
+      _searchResults = null;
+    });
 
     final searchInfo = <String, dynamic>{
       'Name': nameVal,
@@ -771,17 +779,23 @@ class _IdentifyDialogState extends State<IdentifyDialog> {
         _IdentifyField(l10n.name, _nameController, _refName),
         _IdentifyField(l10n.adminLabelYear, _yearController, _refYear,
             keyboardType: TextInputType.number),
-        _IdentifyField(l10n.adminLabelImdbId, _imdbController, _refImdb),
-        _IdentifyField(
-            l10n.adminLabelTmdbMovieId, _tmdbMovieController, _refTmdbMovie),
-        _IdentifyField(
-            l10n.adminLabelTmdbBoxSetId, _tmdbBoxSetController, _refTmdbBoxSet),
-        _IdentifyField(
-            l10n.adminLabelTvdbBoxSetId, _tvdbBoxSetController, _refTvdbBoxSet),
-        _IdentifyField(l10n.adminLabelTvdbId, _tvdbIdController, _refTvdbId),
-        _IdentifyField(
-            l10n.adminLabelTvdbSlug, _tvdbSlugController, _refTvdbSlug),
+        for (final field in _idFields)
+          _IdentifyField(
+            externalIdLabel(l10n, field.name, field.type),
+            field.controller,
+            _providerRef(field.key),
+          ),
       ];
+
+  /// ProviderIds keys are case insensitive on the server.
+  String? _providerRef(String key) {
+    for (final entry in _providerRefs.entries) {
+      if (entry.key.toLowerCase() == key.toLowerCase()) {
+        return entry.value?.toString();
+      }
+    }
+    return null;
+  }
 
   Widget _buildSearchForm(BuildContext context) {
     final theme = Theme.of(context);
@@ -1265,4 +1279,15 @@ class _IdentifyField {
     this.reference, {
     this.keyboardType,
   });
+}
+
+/// A provider id row from GET /Items/{id}/ExternalIdInfos: the ProviderIds
+/// key, the provider's name and the item type the id belongs to.
+class _IdField {
+  _IdField(this.key, this.name, this.type);
+
+  final String key;
+  final String name;
+  final String? type;
+  final controller = TextEditingController();
 }

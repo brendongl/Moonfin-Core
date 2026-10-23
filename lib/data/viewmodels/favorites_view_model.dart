@@ -107,7 +107,9 @@ class FavoritesViewModel extends ChangeNotifier {
     _sortBy = _prefs.get(UserPreferences.librarySortBy(_prefKey));
     _sortDirection = _prefs.get(UserPreferences.librarySortDirection(_prefKey));
     _imageType = _prefs.get(UserPreferences.libraryImageType(_prefKey));
-    _posterSize = _prefs.resolveLibraryPosterSize();
+    _posterSize = _prefs.resolveScreenPosterSize(
+      UserPreferences.favoritesPosterSize,
+    );
     _viewStyle = _prefs.get(UserPreferences.favoritesViewStyle);
     userDataSync.addListener(_onUserDataChanged);
   }
@@ -406,7 +408,7 @@ class FavoritesViewModel extends ChangeNotifier {
   Future<void> setPosterSize(PosterSize value) async {
     if (_posterSize == value) return;
     _posterSize = value;
-    await _prefs.set(UserPreferences.libraryPosterSize, value);
+    await _prefs.set(UserPreferences.favoritesPosterSize, value);
     notifyListeners();
   }
 }

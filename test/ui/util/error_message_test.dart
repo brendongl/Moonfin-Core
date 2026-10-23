@@ -88,4 +88,19 @@ void main() {
       expect(describeError(StateError('bad'), _l10n), 'Bad state: bad');
     });
   });
+
+  test('isPremiereError matches the plain text Emby sends', () {
+    expect(
+      isPremiereError(
+        _badResponse(
+          500,
+          'Creating series recordings requires an active Emby Premiere '
+          'subscription.',
+        ),
+      ),
+      isTrue,
+    );
+    expect(isPremiereError(_badResponse(500, 'Premiere night')), isFalse);
+    expect(isPremiereError(StateError('Emby Premiere')), isFalse);
+  });
 }

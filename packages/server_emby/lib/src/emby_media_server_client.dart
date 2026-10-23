@@ -2,6 +2,17 @@ import 'package:dio/dio.dart';
 import 'package:logger/logger.dart';
 import 'package:server_core/server_core.dart';
 
+import 'api/emby_admin_api_keys_api.dart';
+import 'api/emby_admin_devices_api.dart';
+import 'api/emby_admin_environment_api.dart';
+import 'api/emby_admin_extras_api.dart';
+import 'api/emby_admin_items_api.dart';
+import 'api/emby_admin_library_api.dart';
+import 'api/emby_admin_live_tv_api.dart';
+import 'api/emby_admin_plugins_api.dart';
+import 'api/emby_admin_system_api.dart';
+import 'api/emby_admin_tasks_api.dart';
+import 'api/emby_admin_users_api.dart';
 import 'api/emby_auth_api.dart';
 import 'api/emby_client_log_api.dart';
 import 'api/emby_items_api.dart';
@@ -45,9 +56,12 @@ class EmbyMediaServerClient extends MediaServerClient {
   @override
   final DeviceInfo deviceInfo;
 
+  /// [interceptors] run after the client's own, so a test or a diagnostics
+  /// harness sees each request as sent, auth header included.
   EmbyMediaServerClient({
     required String baseUrl,
     required this.deviceInfo,
+    List<Interceptor> interceptors = const [],
   }) : _dio = Dio(BaseOptions(
          baseUrl: baseUrl,
          followRedirects: false,
@@ -59,6 +73,7 @@ class EmbyMediaServerClient extends MediaServerClient {
     _baseUrl = baseUrl;
     configureServerDio(_dio);
     _setupInterceptors();
+    _dio.interceptors.addAll(interceptors);
   }
 
   late String _baseUrl;
@@ -362,48 +377,42 @@ class EmbyMediaServerClient extends MediaServerClient {
   late final ClientLogApi clientLogApi = EmbyClientLogApi(_dio);
 
   @override
-  AdminSystemApi get adminSystemApi =>
-      throw UnsupportedError('Admin not supported on Emby yet');
+  late final AdminSystemApi adminSystemApi = EmbyAdminSystemApi(_dio);
 
   @override
-  AdminUsersApi get adminUsersApi =>
-      throw UnsupportedError('Admin not supported on Emby yet');
+  late final AdminUsersApi adminUsersApi = EmbyAdminUsersApi(_dio);
 
   @override
-  AdminLibraryApi get adminLibraryApi =>
-      throw UnsupportedError('Admin not supported on Emby yet');
+  late final AdminLibraryApi adminLibraryApi = EmbyAdminLibraryApi(_dio);
 
   @override
-  AdminEnvironmentApi get adminEnvironmentApi =>
-      throw UnsupportedError('Admin not supported on Emby yet');
+  late final AdminEnvironmentApi adminEnvironmentApi = EmbyAdminEnvironmentApi(_dio);
 
   @override
-  AdminTasksApi get adminTasksApi =>
-      throw UnsupportedError('Admin not supported on Emby yet');
+  late final AdminTasksApi adminTasksApi = EmbyAdminTasksApi(_dio);
 
   @override
-  AdminPluginsApi get adminPluginsApi =>
-      throw UnsupportedError('Admin not supported on Emby yet');
+  late final AdminPluginsApi adminPluginsApi = EmbyAdminPluginsApi(_dio);
 
   @override
-  AdminDevicesApi get adminDevicesApi =>
-      throw UnsupportedError('Admin not supported on Emby yet');
+  late final AdminDevicesApi adminDevicesApi = EmbyAdminDevicesApi(_dio);
 
   @override
-  AdminApiKeysApi get adminApiKeysApi =>
-      throw UnsupportedError('Admin not supported on Emby yet');
+  late final AdminApiKeysApi adminApiKeysApi = EmbyAdminApiKeysApi(_dio);
 
+  /// Emby's backups come from a plugin, through [embyAdminApi].
   @override
   AdminBackupApi get adminBackupApi =>
-      throw UnsupportedError('Admin not supported on Emby yet');
+      throw UnsupportedError('Emby has no built-in backups');
 
   @override
-  AdminLiveTvApi get adminLiveTvApi =>
-      throw UnsupportedError('Admin not supported on Emby yet');
+  late final EmbyAdminApi embyAdminApi = EmbyAdminExtrasApi(_dio);
 
   @override
-  AdminItemsApi get adminItemsApi =>
-      throw UnsupportedError('Admin not supported on Emby yet');
+  late final AdminLiveTvApi adminLiveTvApi = EmbyAdminLiveTvApi(_dio);
+
+  @override
+  late final AdminItemsApi adminItemsApi = EmbyAdminItemsApi(_dio);
 
   @override
   late final GamesApi gamesApi = MoonbaseGamesApi(

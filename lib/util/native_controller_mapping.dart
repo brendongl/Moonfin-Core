@@ -57,17 +57,28 @@ class CoreControllerType {
 
   bool get isCoreDefault => id == retroDeviceJoypad;
 
-  /// The first UI pass intentionally supports generic joypads plus the three
-  /// FBNeo layouts we can drive through the existing Android RetroPad path.
-  /// Libretro subtype ids are core-specific, so an identical numeric id from a
-  /// different core is not presumed compatible.
+  /// Generic joypads everywhere, the three FBNeo layouts we can drive through
+  /// the RetroPad path, and PlayStation's Dual Analog and DualShock for the
+  /// on-screen sticks. Libretro subtype ids are core-specific, so an identical
+  /// numeric id from a different core isn't presumed compatible.
   bool isSupportedForCore(String coreId) {
     if (isCoreDefault) return true;
-    return coreId == 'fbneo' && _fbNeoControllerTypeIds.contains(id);
+    return switch (coreId) {
+      'fbneo' => _fbNeoControllerTypeIds.contains(id),
+      'pcsx_rearmed' => pcsxAnalogPadTypes.contains(id),
+      _ => false,
+    };
   }
 }
 
 const Set<int> _fbNeoControllerTypeIds = {5, 261, 517};
+
+/// pcsx_rearmed's Dual Analog, SUBCLASS(ANALOG, 0), and DualShock,
+/// SUBCLASS(ANALOG, 1). Both read the sticks every frame.
+const Set<int> pcsxAnalogPadTypes = {261, 517};
+
+/// The DualShock id the touch pad offers on PlayStation.
+const int pcsxDualShockDeviceType = 517;
 
 /// How strictly a stick is snapped to fixed directions. Per game and per
 /// controller: a 4-way game needs the weaker axis dropped, an 8-way game needs

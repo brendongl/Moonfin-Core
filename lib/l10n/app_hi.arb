@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "पसंदीदा डिस्प्ले भाषा",
     "offlineBannerTitle": "आप ऑफ़लाइन हैं",
     "offlineBannerSubtitle": "आपके डाउनलोड दिखाए जा रहे हैं",
-    "offlineBannerAction": "डाउनलोड",
     "serverUnreachableBannerTitle": "आपके सर्वर तक नहीं पहुँच पा रहे",
     "serverUnreachableBannerSubtitle": "वापस आने तक डाउनलोड से चलाया जा रहा है",
     "contextMenuHideFromContinueWatching": "Continue Watching से छिपाएँ",

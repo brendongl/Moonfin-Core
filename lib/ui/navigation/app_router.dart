@@ -10,12 +10,14 @@ import '../../data/services/media_server_client_factory.dart';
 import '../../data/services/remote_search_session.dart';
 import '../../data/services/retro_artwork/retro_artwork_activity_gate.dart';
 import '../../di/injection.dart';
+import '../../playback/apple_player_ui.dart';
 import '../../playback/external_player_policy.dart';
 import '../../preference/user_preferences.dart';
 import '../../preference/preference_constants.dart';
-import '../../syncplay/syncplay_manager.dart';
 import '../../util/game_cores.dart';
 import '../../util/platform_detection.dart';
+import '../screens/admin/admin_nav.dart';
+import '../screens/admin/admin_routes.dart';
 import '../screens/auth/emby_connect_screen.dart';
 import '../screens/auth/login_screen.dart';
 import '../screens/auth/server_screen.dart';
@@ -31,8 +33,8 @@ import '../screens/browse/library_browse_screen.dart';
 import '../screens/browse/library_genres_screen.dart';
 import '../screens/browse/library_letters_screen.dart';
 import '../screens/browse/library_suggestions_screen.dart';
-import '../screens/browse/book_browse_screen.dart';
-import '../screens/browse/music_browse_screen.dart';
+import '../screens/browse/book_library_screen.dart';
+import '../screens/browse/music_library_screen.dart';
 import '../../data/models/tmdb_item_ref.dart';
 import '../screens/detail/item_detail_screen.dart';
 import '../screens/games/game_library_screen.dart';
@@ -69,38 +71,6 @@ import '../screens/search/search_screen.dart';
 import '../screens/settings/settings_side_panel.dart';
 import '../screens/setup/setup_wizard_gate.dart';
 import '../screens/setup/setup_wizard_screen.dart';
-import '../screens/admin/admin_shell_screen.dart';
-import '../screens/admin/admin_content_analytics_screen.dart';
-import '../screens/admin/admin_dashboard_screen.dart';
-import '../screens/admin/users/admin_users_screen.dart';
-import '../screens/admin/users/admin_user_add_screen.dart';
-import '../screens/admin/users/admin_user_edit_screen.dart';
-import '../screens/admin/libraries/admin_libraries_screen.dart';
-import '../screens/admin/libraries/admin_library_add_screen.dart';
-import '../screens/admin/libraries/admin_library_edit_screen.dart';
-import '../screens/admin/tasks/admin_tasks_screen.dart';
-import '../screens/admin/tasks/admin_task_detail_screen.dart';
-import '../screens/admin/activity/admin_activity_screen.dart';
-import '../screens/admin/settings/admin_general_settings_screen.dart';
-import '../screens/admin/settings/admin_branding_screen.dart';
-import '../screens/admin/settings/admin_networking_screen.dart';
-import '../screens/admin/settings/admin_playback_settings_screen.dart';
-import '../screens/admin/settings/admin_resume_settings_screen.dart';
-import '../screens/admin/settings/admin_streaming_screen.dart';
-import '../screens/admin/settings/admin_trickplay_screen.dart';
-import '../screens/admin/libraries/admin_library_display_screen.dart';
-import '../screens/admin/libraries/admin_library_metadata_screen.dart';
-import '../screens/admin/libraries/admin_library_nfo_screen.dart';
-import '../screens/admin/plugins/admin_plugins_screen.dart';
-import '../screens/admin/plugins/admin_plugin_detail_screen.dart';
-import '../screens/admin/plugins/admin_repositories_screen.dart';
-import '../screens/admin/devices/admin_devices_screen.dart';
-import '../screens/admin/keys/admin_api_keys_screen.dart';
-import '../screens/admin/backups/admin_backups_screen.dart';
-import '../screens/admin/logs/admin_logs_screen.dart';
-import '../screens/admin/logs/admin_log_viewer_screen.dart';
-import '../screens/admin/livetv/admin_live_tv_screen.dart';
-import '../screens/admin/metadata/admin_metadata_edit_screen.dart';
 import 'destinations.dart';
 import 'focus_route_observer.dart';
 import 'route_lifecycle_observer.dart';
@@ -129,6 +99,10 @@ bool _shouldRunSetupWizard() {
   }
 }
 
+/// The admin area has no TV layout. The settings tile is hidden there and on
+/// servers it doesn't cover, and this stops deep links too.
+bool _adminAvailable() => !PlatformDetection.isTV && adminServerSupported();
+
 /// Surfaces that genuinely need the server. Everything else works offline
 /// against the downloads catalog.
 bool _isOfflineBlocked(String path) {
@@ -148,23 +122,7 @@ bool _shouldRedirectVideoToExternalPlayer(String path) {
     return false;
   }
 
-  if (!PlatformDetection.isAndroid) {
-    return false;
-  }
-
-  final prefs = GetIt.instance<UserPreferences>();
-  if (!prefs.get(UserPreferences.useExternalPlayer)) {
-    return false;
-  }
-
-  if (GetIt.instance.isRegistered<SyncPlayManager>()) {
-    final syncPlay = GetIt.instance<SyncPlayManager>();
-    if (syncPlay.state.enabled) {
-      return false;
-    }
-  }
-
-  return ExternalPlayerPolicy.isEligibleItem(manager.queueService.currentItem);
+  return ExternalPlayerPolicy.coversQueue([manager.queueService.currentItem]);
 }
 
 CustomTransitionPage<T> _opaqueFullScreenPage<T>({
@@ -218,7 +176,7 @@ final appRouter = GoRouter(
 
     if (path.startsWith('/admin')) {
       final user = getIt<UserRepository>().currentUser;
-      if (user == null || !user.isAdministrator) {
+      if (user == null || !user.isAdministrator || !_adminAvailable()) {
         return Destinations.home;
       }
     }
@@ -292,6 +250,8 @@ final appRouter = GoRouter(
           prefillUsername: username,
           hasPassword: hasPassword,
           message: message,
+          backToServerList: state.uri.queryParameters['noUsers'] == 'true',
+          resetPin: state.uri.queryParameters['resetPin'] == '1',
         );
       },
     ),
@@ -395,7 +355,7 @@ final appRouter = GoRouter(
       path: Destinations.musicBrowse,
       builder: (context, state) {
         final libraryId = state.pathParameters['libraryId']!;
-        return MusicBrowseScreen(libraryId: libraryId);
+        return MusicLibraryScreen(libraryId: libraryId);
       },
     ),
     GoRoute(
@@ -403,7 +363,7 @@ final appRouter = GoRouter(
       builder: (context, state) {
         final libraryId = state.pathParameters['libraryId']!;
         final collectionType = state.uri.queryParameters['collectionType'];
-        return BookBrowseScreen(
+        return BookLibraryScreen(
           libraryId: libraryId,
           collectionType: collectionType,
         );
@@ -576,9 +536,14 @@ final appRouter = GoRouter(
                 : const <String, dynamic>{};
             final channels = extra['channels'] as List<GuideChannel>?;
             final startIndex = extra['startIndex'] as int? ?? 0;
+            // Decided before branching so the channel loader below reads the
+            // same answer this route latched.
+            final useNativePlayer =
+                PlatformDetection.isAppleTV ||
+                useNativeApplePlayerForRoute(state.pageKey);
             final Widget child;
             if (channels != null) {
-              child = PlatformDetection.isAppleTV
+              child = useNativePlayer
                   ? AppleTvLiveTvPlayerHostScreen(
                       channels: channels,
                       startIndex: startIndex,
@@ -605,7 +570,9 @@ final appRouter = GoRouter(
       path: Destinations.videoPlayer,
       pageBuilder: (context, state) => _opaqueFullScreenPage<void>(
         state: state,
-        child: PlatformDetection.isAppleTV
+        child:
+            PlatformDetection.isAppleTV ||
+                useNativeApplePlayerForRoute(state.pageKey)
             ? const AppleTvPlayerHostScreen()
             : const VideoPlayerScreen(),
       ),
@@ -666,146 +633,7 @@ final appRouter = GoRouter(
     ),
 
     // Admin
-    ShellRoute(
-      navigatorKey: AdminShellScreen.navigatorKey,
-      builder: (context, state, child) => AdminShellScreen(child: child),
-      routes: [
-        GoRoute(
-          path: Destinations.admin,
-          builder: (context, state) => const AdminDashboardScreen(),
-        ),
-        GoRoute(
-          path: Destinations.adminAnalytics,
-          builder: (context, state) => const AdminContentAnalyticsScreen(),
-        ),
-        GoRoute(
-          path: Destinations.adminUsers,
-          builder: (context, state) => const AdminUsersScreen(),
-        ),
-        GoRoute(
-          path: Destinations.adminUsersAdd,
-          builder: (context, state) => const AdminUserAddScreen(),
-        ),
-        GoRoute(
-          path: Destinations.adminUsersEdit,
-          builder: (context, state) =>
-              AdminUserEditScreen(userId: state.pathParameters['userId']!),
-        ),
-        GoRoute(
-          path: Destinations.adminLibraries,
-          builder: (context, state) => const AdminLibrariesScreen(),
-        ),
-        GoRoute(
-          path: Destinations.adminLibrariesAdd,
-          builder: (context, state) => const AdminLibraryAddScreen(),
-        ),
-        GoRoute(
-          path: Destinations.adminLibrariesEdit,
-          builder: (context, state) => AdminLibraryEditScreen(
-            libraryId: state.pathParameters['libraryId']!,
-          ),
-        ),
-        GoRoute(
-          path: Destinations.adminSettings,
-          builder: (context, state) => const AdminGeneralSettingsScreen(),
-        ),
-        GoRoute(
-          path: Destinations.adminSettingsPlayback,
-          builder: (context, state) => const AdminPlaybackSettingsScreen(),
-        ),
-        GoRoute(
-          path: Destinations.adminSettingsResume,
-          builder: (context, state) => const AdminResumeSettingsScreen(),
-        ),
-        GoRoute(
-          path: Destinations.adminSettingsStreaming,
-          builder: (context, state) => const AdminStreamingScreen(),
-        ),
-        GoRoute(
-          path: Destinations.adminSettingsTrickplay,
-          builder: (context, state) => const AdminTrickplayScreen(),
-        ),
-        GoRoute(
-          path: Destinations.adminSettingsNetworking,
-          builder: (context, state) => const AdminNetworkingScreen(),
-        ),
-        GoRoute(
-          path: Destinations.adminSettingsBranding,
-          builder: (context, state) => const AdminBrandingScreen(),
-        ),
-        GoRoute(
-          path: Destinations.adminSettingsDisplay,
-          builder: (context, state) => const AdminLibraryDisplayScreen(),
-        ),
-        GoRoute(
-          path: Destinations.adminSettingsMetadata,
-          builder: (context, state) => const AdminLibraryMetadataScreen(),
-        ),
-        GoRoute(
-          path: Destinations.adminSettingsNfo,
-          builder: (context, state) => const AdminLibraryNfoScreen(),
-        ),
-        GoRoute(
-          path: Destinations.adminTasks,
-          builder: (context, state) => const AdminTasksScreen(),
-        ),
-        GoRoute(
-          path: Destinations.adminTasksDetail,
-          builder: (context, state) =>
-              AdminTaskDetailScreen(taskId: state.pathParameters['taskId']!),
-        ),
-        GoRoute(
-          path: Destinations.adminPlugins,
-          builder: (context, state) => const AdminPluginsScreen(),
-        ),
-        GoRoute(
-          path: Destinations.adminPluginsDetail,
-          builder: (context, state) => AdminPluginDetailScreen(
-            pluginId: state.pathParameters['pluginId']!,
-          ),
-        ),
-        GoRoute(
-          path: Destinations.adminRepositories,
-          builder: (context, state) => const AdminRepositoriesScreen(),
-        ),
-        GoRoute(
-          path: Destinations.adminActivity,
-          builder: (context, state) => const AdminActivityScreen(),
-        ),
-        GoRoute(
-          path: Destinations.adminDevices,
-          builder: (context, state) => const AdminDevicesScreen(),
-        ),
-        GoRoute(
-          path: Destinations.adminKeys,
-          builder: (context, state) => const AdminApiKeysScreen(),
-        ),
-        GoRoute(
-          path: Destinations.adminBackups,
-          builder: (context, state) => const AdminBackupsScreen(),
-        ),
-        GoRoute(
-          path: Destinations.adminLogs,
-          builder: (context, state) => const AdminLogsScreen(),
-        ),
-        GoRoute(
-          path: Destinations.adminLogsFile,
-          builder: (context, state) => AdminLogViewerScreen(
-            // go_router already decodes path parameters, no need for a second decode
-            fileName: state.pathParameters['fileName']!,
-          ),
-        ),
-        GoRoute(
-          path: Destinations.adminLiveTv,
-          builder: (context, state) => const AdminLiveTvScreen(),
-        ),
-        GoRoute(
-          path: Destinations.adminMetadataEdit,
-          builder: (context, state) =>
-              AdminMetadataEditScreen(itemId: state.pathParameters['itemId']!),
-        ),
-      ],
-    ),
+    adminShellRoute,
 
     // Settings
     GoRoute(
@@ -880,6 +708,10 @@ class PlayerRouteObserver extends NavigatorObserver {
   final ValueNotifier<bool> isPlayerActive = ValueNotifier<bool>(false);
   final List<Route<dynamic>> _playerRoutes = [];
 
+  /// The name of the topmost player route, while one is on screen.
+  String? get activePlayerRoute =>
+      _playerRoutes.isEmpty ? null : _playerRoutes.last.settings.name;
+
   bool _isPlayer(Route<dynamic> route) {
     final name = route.settings.name;
     return name != null && Destinations.isPlayerRoute(name);
@@ -893,11 +725,19 @@ class PlayerRouteObserver extends NavigatorObserver {
     }
   }
 
+  // The page key is what the route's page builder latched the iOS player
+  // choice against, so the choice ends with the route.
+  void _released(Route<dynamic> route) {
+    final settings = route.settings;
+    releaseApplePlayerRoute(settings is Page ? settings.key : null);
+  }
+
   @override
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     if (_isPlayer(route)) {
       _playerRoutes.remove(route);
       isPlayerActive.value = _playerRoutes.isNotEmpty;
+      _released(route);
     }
   }
 
@@ -906,6 +746,7 @@ class PlayerRouteObserver extends NavigatorObserver {
     if (_isPlayer(route)) {
       _playerRoutes.remove(route);
       isPlayerActive.value = _playerRoutes.isNotEmpty;
+      _released(route);
     }
   }
 
@@ -913,6 +754,7 @@ class PlayerRouteObserver extends NavigatorObserver {
   void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
     if (oldRoute != null && _isPlayer(oldRoute)) {
       _playerRoutes.remove(oldRoute);
+      _released(oldRoute);
     }
     if (newRoute != null && _isPlayer(newRoute)) {
       _playerRoutes.add(newRoute);

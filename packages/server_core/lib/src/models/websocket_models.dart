@@ -102,6 +102,20 @@ class ServerEventMessage extends ServerWebSocketMessage {
   const ServerEventMessage({required this.type, this.data = const {}});
 }
 
+/// The session list a `SessionsStart` subscription pushes.
+class SessionsMessage extends ServerWebSocketMessage {
+  final List<Map<String, dynamic>> sessions;
+
+  const SessionsMessage(this.sessions);
+}
+
+/// The task list a `ScheduledTasksInfoStart` subscription pushes.
+class ScheduledTasksInfoMessage extends ServerWebSocketMessage {
+  final List<Map<String, dynamic>> tasks;
+
+  const ScheduledTasksInfoMessage(this.tasks);
+}
+
 class SyncPlayCommandMessage extends ServerWebSocketMessage {
   final SyncPlayCommand command;
   const SyncPlayCommandMessage(this.command);

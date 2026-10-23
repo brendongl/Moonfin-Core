@@ -38,6 +38,9 @@ class _DetailButtonsScreen extends StatelessWidget {
                     ButtonLayoutEntry(
                       id: button.id,
                       title: button.label(l10n),
+                      subtitle: button == DetailButton.watchWithGroup
+                          ? l10n.buttonShownInSyncPlayGroup
+                          : null,
                       icon: button.icon,
                       canHide: button.canHide,
                     ),

@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:background_downloader/background_downloader.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get_it/get_it.dart';
+import 'package:server_core/server_core.dart';
 
 import '../../l10n/current_app_localizations.dart';
 import '../../preference/user_preferences.dart';
@@ -31,6 +33,7 @@ class BackgroundDownloadCoordinator {
 
   Future<void>? _initFuture;
   int? _configuredMaxConcurrentDownloads;
+  List<ClientCertificateMaterial> _clientCertificates = const [];
 
   final UserPreferences _prefs;
 
@@ -63,6 +66,30 @@ class BackgroundDownloadCoordinator {
     );
     _configuredMaxConcurrentDownloads = maxConcurrent;
   }
+
+  /// The desktop engine downloads from an isolate that builds its own
+  /// HttpClient, so it needs the client certificates handed to it.
+  Future<void> applyClientCertificates(
+    List<ClientCertificateMaterial> certificates,
+  ) async {
+    _clientCertificates = certificates;
+    if (_initFuture == null || !PlatformDetection.isDesktop) return;
+    await _initFuture;
+    await FileDownloader().configure(desktopConfig: _mtlsConfig());
+  }
+
+  List<(String, Object)> _mtlsConfig() => [
+    (Config.mTLS, false),
+    for (final c in _clientCertificates)
+      (
+        Config.mTLS,
+        MTLSConfig(
+          host: c.host,
+          certificateBytes: utf8.encode(c.chainPem),
+          privateKeyBytes: utf8.encode(c.keyPem),
+        ),
+      ),
+  ];
 
   /// Whether this platform stages plugin downloads in a directory Moonfin
   /// chooses. iOS URLSession stages inside the app container and finalizes
@@ -135,6 +162,7 @@ class BackgroundDownloadCoordinator {
         // servers instead fall back to the legacy engine.
         if (kDebugMode) (Config.bypassTLSCertificateValidation, true),
         if (stagingPath != null) (Config.tempFilePath, stagingPath),
+        ..._mtlsConfig(),
       ],
     );
     _configuredMaxConcurrentDownloads = maxConcurrent;

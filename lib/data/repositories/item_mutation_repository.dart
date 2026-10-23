@@ -36,6 +36,17 @@ class ItemMutationRepository {
     });
   }
 
+  /// Asks the server to drop [itemId] from its resume list, leaving the played
+  /// state and resume position alone. Returns false when the server has no
+  /// way to do that (Jellyfin), so the caller can fall back to a local hide.
+  Future<bool> hideFromResume(String itemId) async {
+    if (_client.userLibraryApi case final ResumeVisibilityApi api) {
+      await api.setHiddenFromResume(itemId, hidden: true);
+      return true;
+    }
+    return false;
+  }
+
   Future<void> setRating(String itemId, {required bool likes}) async {
     await _client.userLibraryApi.updateUserRating(itemId, likes: likes);
     userDataSync.publish(itemId, {'Likes': likes});

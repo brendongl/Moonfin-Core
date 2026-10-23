@@ -31,7 +31,10 @@ enum HomeSectionPluginSource {
 
   playlists('playlists'),
 
-  custom('custom');
+  custom('custom'),
+
+  /// A slider an admin set up on Seerr's discover page.
+  seerr('seerr');
 
   const HomeSectionPluginSource(this.serializedName);
   final String serializedName;
@@ -387,6 +390,11 @@ class HomeSectionConfig {
       type: HomeSectionType.seasonal,
       enabled: false,
       order: 46,
+    ),
+    HomeSectionConfig(
+      type: HomeSectionType.onNow,
+      enabled: false,
+      order: 47,
     ),
   ];
 

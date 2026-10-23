@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "Gjuha e parapëlqyer e shfaqjes",
     "offlineBannerTitle": "Jeni jashtë linje",
     "offlineBannerSubtitle": "Po shfaqen shkarkimet tuaja",
-    "offlineBannerAction": "Shkarkimet",
     "serverUnreachableBannerTitle": "Serveri juaj nuk arrihet",
     "serverUnreachableBannerSubtitle": "Po luhet nga shkarkimet derisa të rikthehet",
     "contextMenuHideFromContinueWatching": "Fshih nga \"Vazhdo shikimin\"",

@@ -3,13 +3,17 @@ import 'package:dio/dio.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:moonfin_design/moonfin_design.dart';
+import 'package:playback_core/playback_core.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../../auth/repositories/user_repository.dart';
 import '../../../data/models/aggregated_item.dart';
+import '../../../data/offline/connectivity_aware_media_server_client.dart';
+import '../../../data/offline/offline_catalog.dart';
 import '../../../data/repositories/item_mutation_repository.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../util/error_message.dart';
+import '../../../preference/preference_constants.dart';
 import '../../../preference/user_preferences.dart';
 import '../../../util/home_refresh_helper.dart';
 import '../../../util/item_watch_state.dart';
@@ -63,11 +67,40 @@ const _identifiableTypes = <String>{
 
 bool canIdentifyItemType(String? type) => _identifiableTypes.contains(type);
 
+/// Whether [item] is a downloaded video the server can stream instead.
+bool canPlayFromServer(AggregatedItem item) =>
+    const {'Movie', 'Episode', 'Video', 'MusicVideo'}.contains(item.type) &&
+    GetIt.instance.isRegistered<OfflineCatalog>() &&
+    GetIt.instance<OfflineCatalog>().byId(item.id) != null &&
+    !shouldUseOfflineCatalog();
+
+/// Takes [item] off the server's resume list and keeps its progress where the
+/// server can do that (Emby), or clears the progress that keeps it there where
+/// it can't. Audio always resets, because an audiobook library's Continue row
+/// falls back to an IsResumable query that ignores Emby's flag. A failed
+/// server call resets nothing.
+Future<void> _hideFromResumeOrReset(
+  ItemMutationRepository mutations,
+  AggregatedItem item,
+) async {
+  if (!item.isAudioLike) {
+    try {
+      if (await mutations.hideFromResume(item.id)) return;
+    } catch (_) {
+      return;
+    }
+  }
+  try {
+    await mutations.setPlayed(item.id, isPlayed: false);
+  } catch (_) {}
+}
+
 List<ItemContextAction> contextActionsFor(
   BuildContext context,
   AggregatedItem item, {
   VoidCallback? onChanged,
   CollectionRemovalContext? collectionRemoval,
+  bool isContinueWatchingOrNextUp = false,
 }) {
   final l10n = AppLocalizations.of(context);
   final mutations = GetIt.instance<ItemMutationRepository>();
@@ -81,8 +114,6 @@ List<ItemContextAction> contextActionsFor(
       !requiresCollectionPermission ||
       currentUser?.canManageCollections == true ||
       isAdminUser;
-  final canRefreshMetadata =
-      client.serverType == ServerType.jellyfin && isAdminUser;
   final actions = <ItemContextAction>[];
   final type = item.type;
 
@@ -96,19 +127,58 @@ List<ItemContextAction> contextActionsFor(
       type == 'BoxSet';
 
   if (isMediaType) {
-    // First so a remote lands on it with no extra presses. The detail screen
-    // does the playing, which keeps the next episode lookup for a series and
-    // the external player preference working the way the Play button does.
-    actions.add(ItemContextAction(
-      icon: Icons.play_arrow,
-      label: watchStateOf(item).hasProgress ? l10n.resume : l10n.play,
-      onSelect: () async {
-        if (!context.mounted) return;
-        context.push(
-          Destinations.item(item.id, serverId: item.serverId, autoPlay: true),
-        );
-      },
-    ));
+    final prefs = GetIt.instance<UserPreferences>();
+    final defaultAction =
+        prefs.get(UserPreferences.continueWatchingDefaultAction);
+    final flipTopAction =
+        isContinueWatchingOrNextUp &&
+        defaultAction == ContinueWatchingDefaultAction.play;
+
+    if (flipTopAction) {
+      actions.add(ItemContextAction(
+        icon: Icons.info_outline,
+        label: l10n.goToDetailsScreen,
+        onSelect: () async {
+          if (!context.mounted) return;
+          context.push(
+            Destinations.itemOrPhoto(
+              item.id,
+              serverId: item.serverId,
+              type: item.type,
+              channelId: item.channelId,
+            ),
+          );
+        },
+      ));
+    } else {
+      // First so a remote lands on it with no extra presses. The detail screen
+      // does the playing, which keeps the next episode lookup for a series and
+      // the external player preference working the way the Play button does.
+      actions.add(ItemContextAction(
+        icon: Icons.play_arrow,
+        label: watchStateOf(item).hasProgress ? l10n.resume : l10n.play,
+        onSelect: () async {
+          if (!context.mounted) return;
+          context.push(
+            Destinations.item(item.id, serverId: item.serverId, autoPlay: true),
+          );
+        },
+      ));
+    }
+
+    if (canPlayFromServer(item)) {
+      actions.add(ItemContextAction(
+        icon: Icons.cloud_outlined,
+        label: l10n.playFromServer,
+        onSelect: () async {
+          if (!context.mounted) return;
+          GetIt.instance<PlaybackManager>().streamFromServerOnce(item.id);
+          context.push(
+            Destinations.item(item.id, serverId: item.serverId, autoPlay: true),
+          );
+        },
+      ));
+    }
 
     actions.add(ItemContextAction(
       icon: item.isPlayed
@@ -137,9 +207,7 @@ List<ItemContextAction> contextActionsFor(
           } else {
             await prefs.hideFromContinueWatching(item.id);
           }
-          try {
-            await mutations.setPlayed(item.id, isPlayed: false);
-          } catch (_) {}
+          await _hideFromResumeOrReset(mutations, item);
           onChanged?.call();
         },
       ));
@@ -155,9 +223,7 @@ List<ItemContextAction> contextActionsFor(
           final prefs = GetIt.instance<UserPreferences>();
           await prefs.hideFromNextUp(item.seriesId!);
           await prefs.hideFromContinueWatching(item.seriesId!);
-          try {
-            await mutations.setPlayed(item.id, isPlayed: false);
-          } catch (_) {}
+          await _hideFromResumeOrReset(mutations, item);
           onChanged?.call();
         },
       ));
@@ -224,7 +290,7 @@ List<ItemContextAction> contextActionsFor(
       },
     ));
 
-    if (canRefreshMetadata) {
+    if (isAdminUser) {
       actions.add(ItemContextAction(
         icon: Icons.refresh,
         label: l10n.adminRefreshMetadata,
@@ -318,7 +384,6 @@ List<ItemContextAction> contextActionsFor(
           type == 'MusicGenre' ||
           type == 'Studio' ||
           type == 'Network') &&
-      client.serverType == ServerType.jellyfin &&
       isAdminUser;
 
   if (canChangeArtwork) {

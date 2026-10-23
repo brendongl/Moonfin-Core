@@ -1,58 +1,39 @@
-import 'dart:async';
 import 'package:moonfin_design/moonfin_design.dart';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get_it/get_it.dart';
 import 'package:server_core/server_core.dart';
 
+import '../../../../util/play_method_label.dart';
 import '../../../../l10n/app_localizations.dart';
+import '../providers/admin_user_providers.dart';
 import '../../../util/error_message.dart';
 import '../../../widgets/adaptive/adaptive_dialog.dart';
 import '../../../widgets/adaptive/adaptive_slider.dart';
+import 'active_sessions_card.dart';
+import 'admin_form_styles.dart';
 
-class SessionDetailSheet extends StatefulWidget {
+class SessionDetailSheet extends ConsumerStatefulWidget {
   final Map<String, dynamic> session;
 
   const SessionDetailSheet({super.key, required this.session});
 
   @override
-  State<SessionDetailSheet> createState() => _SessionDetailSheetState();
+  ConsumerState<SessionDetailSheet> createState() => _SessionDetailSheetState();
 }
 
-class _SessionDetailSheetState extends State<SessionDetailSheet> {
+class _SessionDetailSheetState extends ConsumerState<SessionDetailSheet> {
   late final SessionApi _sessionApi;
   late Map<String, dynamic> _session;
   bool _busy = false;
   double? _seekPosition;
-  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _sessionApi = GetIt.instance<MediaServerClient>().sessionApi;
     _session = widget.session;
-    _refreshTimer = Timer.periodic(
-      const Duration(seconds: 5),
-      (_) => _refresh(),
-    );
-  }
-
-  @override
-  void dispose() {
-    _refreshTimer?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _refresh() async {
-    try {
-      final sessions = await _sessionApi.getSessions();
-      if (!mounted) return;
-      final updated = sessions.firstWhere(
-        (s) => s['Id'] == _session['Id'],
-        orElse: () => _session,
-      );
-      setState(() => _session = updated);
-    } catch (_) {}
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -122,6 +103,7 @@ class _SessionDetailSheetState extends State<SessionDetailSheet> {
                   () => _sessionApi.sendMessage(
                     _session['Id']?.toString() ?? '',
                     text,
+                    timeoutMs: 5000,
                   ),
                 );
               }
@@ -173,6 +155,10 @@ class _SessionDetailSheetState extends State<SessionDetailSheet> {
 
   @override
   Widget build(BuildContext context) {
+    // The Sessions feed keeps this entry current while the sheet is open.
+    for (final s in ref.watch(adminSessionsProvider).valueOrNull ?? const []) {
+      if (s['Id'] == widget.session['Id']) _session = s;
+    }
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final sessionId = _session['Id']?.toString() ?? '';
@@ -188,6 +174,9 @@ class _SessionDetailSheetState extends State<SessionDetailSheet> {
     final transcodingInfo =
         _session['TranscodingInfo'] as Map<String, dynamic>?;
 
+    // Only sessions that take remote commands get the controls.
+    final canControl = _session['ServerId'] != null &&
+        _session['SupportsRemoteControl'] == true;
     final isPaused = playState?['IsPaused'] as bool? ?? false;
     final isMuted = playState?['IsMuted'] as bool? ?? false;
     final positionTicks = (playState?['PositionTicks'] as num?)?.toInt();
@@ -267,88 +256,96 @@ class _SessionDetailSheetState extends State<SessionDetailSheet> {
                   const SizedBox(height: 16),
 
                   if (nowPlaying != null) ...[
-                    _SectionLabel(l10n.nowPlaying),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surfaceContainerLow,
-                        borderRadius: AppRadius.circular(14),
-                        border: Border.all(
-                          color: theme.colorScheme.outlineVariant.withValues(
-                            alpha: 0.5,
-                          ),
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            nowPlaying['Name'] as String? ?? '',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          if ((nowPlaying['SeriesName'] as String?) != null)
-                            Text(
-                              nowPlaying['SeriesName'] as String,
-                              style: theme.textTheme.bodySmall,
-                            ),
-                          if (positionTicks != null &&
-                              runtimeTicks != null &&
-                              runtimeTicks > 0) ...[
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                Text(
-                                  ticksToTime(positionTicks),
-                                  style: theme.textTheme.labelSmall,
+                    adminSection(
+                      context,
+                      title: l10n.nowPlaying,
+                      icon: Icons.play_circle_outline,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                nowPlaying['Name'] as String? ?? '',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
                                 ),
-                                Expanded(
-                                  child: adaptiveSlider(
-                                    value:
-                                        (_seekPosition ??
-                                                positionTicks / runtimeTicks)
-                                            .clamp(0.0, 1.0),
-                                    onChanged: (v) =>
-                                        setState(() => _seekPosition = v),
-                                    onChangeEnd: (v) {
-                                      final target = (v * runtimeTicks).round();
-                                      _seekPosition = null;
-                                      _sendPlayState('Seek', seekTicks: target);
-                                    },
-                                  ),
-                                ),
+                              ),
+                              if ((nowPlaying['SeriesName'] as String?) != null)
                                 Text(
-                                  ticksToTime(runtimeTicks),
-                                  style: theme.textTheme.labelSmall,
+                                  nowPlaying['SeriesName'] as String,
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                              if (positionTicks != null &&
+                                  runtimeTicks != null &&
+                                  runtimeTicks > 0) ...[
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Text(
+                                      ticksToTime(positionTicks),
+                                      style: theme.textTheme.labelSmall,
+                                    ),
+                                    Expanded(
+                                      child: canControl
+                                          ? adaptiveSlider(
+                                              value:
+                                                  (_seekPosition ??
+                                                          positionTicks / runtimeTicks)
+                                                      .clamp(0.0, 1.0),
+                                              onChanged: (v) =>
+                                                  setState(() => _seekPosition = v),
+                                              onChangeEnd: (v) {
+                                                final target = (v * runtimeTicks).round();
+                                                _seekPosition = null;
+                                                _sendPlayState('Seek', seekTicks: target);
+                                              },
+                                            )
+                                          : Padding(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 8,
+                                              ),
+                                              child: LinearProgressIndicator(
+                                                value: (positionTicks /
+                                                        runtimeTicks)
+                                                    .clamp(0.0, 1.0),
+                                              ),
+                                            ),
+                                    ),
+                                    Text(
+                                      ticksToTime(runtimeTicks),
+                                      style: theme.textTheme.labelSmall,
+                                    ),
+                                  ],
                                 ),
                               ],
-                            ),
-                          ],
-                          if (isPaused)
-                            Container(
-                              margin: const EdgeInsets.only(top: 4),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.secondaryContainer,
-                                borderRadius: AppRadius.circular(6),
-                              ),
-                              child: Text(
-                                l10n.paused,
-                                style: theme.textTheme.labelSmall,
-                              ),
-                            ),
-                        ],
-                      ),
+                              if (isPaused)
+                                Container(
+                                  margin: const EdgeInsets.only(top: 4),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.secondaryContainer,
+                                    borderRadius: AppRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    l10n.paused,
+                                    style: theme.textTheme.labelSmall,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 12),
+                  ],
 
-                    _SectionLabel(l10n.playback),
-                    const SizedBox(height: 8),
+                  if (nowPlaying != null && canControl) ...[
+                    adminSectionLabel(context, l10n.playback,
+                        icon: Icons.tune),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -393,10 +390,8 @@ class _SessionDetailSheetState extends State<SessionDetailSheet> {
                         color: theme.colorScheme.error,
                       ),
                     ),
-                    const SizedBox(height: 12),
-
-                    _SectionLabel(l10n.volume),
-                    const SizedBox(height: 8),
+                    adminSectionLabel(context, l10n.volume,
+                        icon: Icons.volume_up_outlined),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -426,12 +421,14 @@ class _SessionDetailSheetState extends State<SessionDetailSheet> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
                   ],
 
-                  if (transcodingInfo != null) ...[
-                    _SectionLabel(l10n.transcoding),
-                    const SizedBox(height: 8),
+                  if (nowPlaying != null && transcodingInfo != null) ...[
+                    adminSectionLabel(
+                      context,
+                      playMethodLabel(displayPlayMethod(_session), l10n),
+                      icon: Icons.swap_horiz,
+                    ),
                     _InfoGrid({
                       l10n.videoCodec:
                           transcodingInfo['VideoCodec'] as String? ?? '–',
@@ -442,69 +439,56 @@ class _SessionDetailSheetState extends State<SessionDetailSheet> {
                       l10n.bitrate: transcodingInfo['Bitrate'] != null
                           ? '${((transcodingInfo['Bitrate'] as int) / 1000000).toStringAsFixed(1)} Mbps'
                           : '–',
-                      l10n.hwAccel: transcodingInfo['IsVideoDirect'] == true
-                          ? l10n.direct
-                          : l10n.transcoding,
+                      l10n.hwAccel:
+                          transcodingInfo['HardwareAccelerationType']
+                              as String? ?? '–',
                       l10n.completion:
                           transcodingInfo['CompletionPercentage'] != null
                           ? '${(transcodingInfo['CompletionPercentage'] as num).toStringAsFixed(1)}%'
                           : '–',
+                      l10n.transcodeReasons:
+                          (transcodingInfo['TranscodeReasons'] as List?)
+                                  ?.map((r) => transcodeReasonLabel('$r', l10n))
+                                  .join(', ') ??
+                              '–',
                     }),
-                    const SizedBox(height: 12),
                   ],
 
-                  _SectionLabel(l10n.actions),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.message_outlined),
-                          label: Text(l10n.adminSendMessage),
-                          onPressed: _showSendMessageDialog,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.link_off),
-                          label: Text(l10n.adminDisconnect),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: theme.colorScheme.error,
+                  if (canControl) ...[
+                    adminSectionLabel(context, l10n.actions,
+                        icon: Icons.bolt_outlined),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.message_outlined),
+                            label: Text(l10n.adminSendMessage),
+                            onPressed: _showSendMessageDialog,
                           ),
-                          onPressed: () => _run(
-                            () => _sessionApi.sendGeneralCommand(
-                              sessionId,
-                              'GoHome',
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          // GoHome only asks the client to show its home
+                          // screen, it signs nothing out.
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.home_outlined),
+                            label: Text(l10n.adminSessionGoHome),
+                            onPressed: () => _run(
+                              () => _sessionApi.sendGeneralCommand(
+                                sessionId,
+                                'GoHome',
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _SectionLabel extends StatelessWidget {
-  final String text;
-  const _SectionLabel(this.text);
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Text(
-      text.toUpperCase(),
-      style: theme.textTheme.labelSmall?.copyWith(
-        color: theme.colorScheme.primary,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 0.8,
       ),
     );
   }
@@ -557,40 +541,35 @@ class _InfoGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final entries = data.entries.toList();
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: AppRadius.circular(14),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+    return adminListCard(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Wrap(
+          spacing: 24,
+          runSpacing: 8,
+          children: entries
+              .map(
+                (e) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      e.key,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.outline,
+                      ),
+                    ),
+                    Text(
+                      e.value,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+              .toList(),
         ),
-      ),
-      child: Wrap(
-        spacing: 24,
-        runSpacing: 8,
-        children: entries
-            .map(
-              (e) => Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    e.key,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.outline,
-                    ),
-                  ),
-                  Text(
-                    e.value,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            )
-            .toList(),
       ),
     );
   }

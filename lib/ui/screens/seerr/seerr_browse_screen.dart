@@ -59,6 +59,11 @@ class _SeerrBrowseScreenState extends State<SeerrBrowseScreen> {
   final _prefs = GetIt.instance<UserPreferences>();
   SeerrDiscoverItem? _focusedItem;
 
+  double get _cardWidth {
+    final size = _prefs.resolveScreenPosterSize(UserPreferences.seerrPosterSize);
+    return size.portraitHeight * (2 / 3);
+  }
+
   final _allLetterFocusNode = FocusNode(debugLabel: 'seerr_alpha_all_letter');
 
   @override
@@ -174,8 +179,7 @@ class _SeerrBrowseScreenState extends State<SeerrBrowseScreen> {
     final l10n = AppLocalizations.of(context);
     final vm = _vm;
     if (_initializing || vm == null || (vm.state.isLoading && vm.state.items.isEmpty)) {
-      final cardWidth =
-          _prefs.resolveLibraryPosterSize().portraitHeight * (2 / 3);
+      final cardWidth = _cardWidth;
       return SkeletonLibraryGrid(
         cardWidth: cardWidth,
         aspectRatio: 2 / 3,
@@ -221,8 +225,7 @@ class _SeerrBrowseScreenState extends State<SeerrBrowseScreen> {
       );
     }
 
-    final cardWidth =
-      _prefs.resolveLibraryPosterSize().portraitHeight * (2 / 3);
+    final cardWidth = _cardWidth;
     final cardExpansion = GetIt.instance<UserPreferences>()
         .get(UserPreferences.cardFocusExpansion);
 
@@ -1360,7 +1363,8 @@ class _SeerrSettingsDialogState extends State<_SeerrSettingsDialog> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final current = widget.prefs.resolveLibraryPosterSize();
+    final current =
+        widget.prefs.resolveScreenPosterSize(UserPreferences.seerrPosterSize);
     final dialogWidth = (MediaQuery.sizeOf(context).width - 32).clamp(
       280.0,
       380.0,
@@ -1400,7 +1404,7 @@ class _SeerrSettingsDialogState extends State<_SeerrSettingsDialog> {
               ),
             ),
             Divider(color: AppColorScheme.onSurface.withAlpha(20)),
-            for (final option in PosterSize.values)
+            for (final option in PosterSize.gridValues)
               _settingsRadioTile(
                 label: _posterSizeLabel(option, l10n),
                 selected: current == option,
@@ -1408,7 +1412,7 @@ class _SeerrSettingsDialogState extends State<_SeerrSettingsDialog> {
                   if (_popped) return;
                   _popped = true;
                   await widget.prefs.set(
-                    UserPreferences.libraryPosterSize,
+                    UserPreferences.seerrPosterSize,
                     option,
                   );
                   if (context.mounted) {
@@ -1426,7 +1430,7 @@ class _SeerrSettingsDialogState extends State<_SeerrSettingsDialog> {
     PosterSize.small => l10n.small,
     PosterSize.medium => l10n.medium,
     PosterSize.large => l10n.large,
-    PosterSize.extraLarge => l10n.extraLarge,
+    PosterSize.extraLarge || PosterSize.grandparents => l10n.extraLarge,
   };
 
   Widget _settingsRadioTile({

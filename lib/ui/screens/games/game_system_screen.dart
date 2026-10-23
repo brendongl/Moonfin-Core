@@ -5,7 +5,8 @@ import 'package:custom_tv_text_field/custom_tv_text_field.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show ScrollCacheExtent;
+import 'package:flutter/rendering.dart'
+    show RenderAbstractViewport, ScrollCacheExtent;
 import 'package:flutter/services.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart'
     show HttpExceptionWithStatus;
@@ -37,6 +38,7 @@ import '../../widgets/focus/request_initial_focus.dart';
 import '../../widgets/game/game_alpha_picker_bar.dart';
 import '../../widgets/game/game_poster_card.dart';
 import '../../widgets/game/retro_artwork_image.dart';
+import '../../widgets/game/retro_artwork_shape.dart';
 import '../../widgets/media_card.dart';
 
 import '../../widgets/local_search_field.dart';
@@ -128,6 +130,11 @@ class _GameSystemScreenState extends State<GameSystemScreen>
   bool _allowTvPop = false;
   bool _routeIsCovered = false;
   bool _artworkRefreshQueued = false;
+  // Fixed for the visit once adopted; null is the portrait cell.
+  double? _gridCellAspect;
+  bool _gridCellAspectLocked = false;
+  int? _focusedGridIndex;
+  double _lastGridTopPadding = _gridTopPadding;
   ModalRoute<dynamic>? _observedRoute;
 
   @override
@@ -135,6 +142,7 @@ class _GameSystemScreenState extends State<GameSystemScreen>
     super.initState();
     _artworkScope = gameArtworkScope(widget.libraryId, widget.systemId);
     _activateArtworkScope();
+    _restoreGridCellAspect();
     _browse = GameSystemBrowseViewModel(
       gamesApi: GetIt.instance<MediaServerClient>().gamesApi,
       libraryId: widget.libraryId,
@@ -163,9 +171,69 @@ class _GameSystemScreenState extends State<GameSystemScreen>
       );
     }
     if (mounted) {
-      setState(() {});
+      setState(_adoptGridCellAspect);
       _scheduleArtworkPriority();
     }
+  }
+
+  void _restoreGridCellAspect() {
+    _gridCellAspect = _prefs.gameGridCellAspect(_artworkScope);
+    _gridCellAspectLocked = _gridCellAspect != null;
+  }
+
+  /// Adopts the median box art shape once per visit. Call inside setState.
+  void _adoptGridCellAspect() {
+    final dataSource = _retroArtworkDataSource;
+    if (dataSource == null) return;
+    final before = _gridCellAspect;
+    if (!dataSource.reportsDimensions) {
+      _gridCellAspect = null;
+      _gridCellAspectLocked = true;
+    } else {
+      final median = dataSource.snapshot?.medianBoxartAspectRatio;
+      if (median == null) return;
+      if (!_gridCellAspectLocked) {
+        _gridCellAspect = median;
+        _gridCellAspectLocked = true;
+      }
+      final stored = _prefs.gameGridCellAspect(_artworkScope);
+      if (stored == null || (stored - median).abs() > 0.01) {
+        unawaited(_prefs.setGameGridCellAspect(_artworkScope, median));
+      }
+    }
+    if (before != _gridCellAspect) _keepFocusedGameAfterReshape();
+  }
+
+  // Two frames: the grid relays out, then [_artworkGridLayout] catches up.
+  void _keepFocusedGameAfterReshape() {
+    final index = _focusedGridIndex;
+    if (index == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final layout = _artworkGridLayout;
+        if (!mounted || layout == null || !_gridScrollController.hasClients) {
+          return;
+        }
+        if (index >= layout.games.length) return;
+        final position = _gridScrollController.position;
+        final row = index ~/ layout.crossAxisCount;
+        _gridScrollController.jumpTo(
+          (row * layout.rowStride - _lastGridTopPadding).clamp(
+            position.minScrollExtent,
+            position.maxScrollExtent,
+          ),
+        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || _focusedGridIndex != index) return;
+          final node = getGridItemFocusNode(index, prefix: 'game_grid');
+          if (node.hasFocus) {
+            _scrollFocusedCardIntoView(node, topMargin: _lastGridTopPadding);
+          } else {
+            node.requestFocus();
+          }
+        });
+      });
+    });
   }
 
   Future<void> _initializeArtworkDataSource() async {
@@ -229,7 +297,7 @@ class _GameSystemScreenState extends State<GameSystemScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _artworkRefreshQueued = false;
       if (!mounted) return;
-      setState(() {});
+      setState(_adoptGridCellAspect);
       if (recenter) _scheduleArtworkPriority(force: true);
     });
     // addPostFrameCallback only fires once a frame is already scheduled. If
@@ -289,6 +357,7 @@ class _GameSystemScreenState extends State<GameSystemScreen>
       releaseGameArtworkCacheScope(_artworkScope);
       _artworkScope = gameArtworkScope(widget.libraryId, widget.systemId);
       _activateArtworkScope();
+      _restoreGridCellAspect();
     }
   }
 
@@ -560,12 +629,16 @@ class _GameSystemScreenState extends State<GameSystemScreen>
         Expanded(
           child: _browse.visibleGames.isEmpty
               ? Center(child: Text(AppLocalizations.of(context).noItemsFound))
-              : _buildGrid(
-                  _browse.visibleGames,
-                  desktopScale: desktopScale,
-                  horizontalPadding: horizontalPadding,
-                  showDetails: showDetails,
-                  showBackdrop: showBackdrop,
+              // Rows scrolled above the grid would otherwise paint over the header.
+              : ClipRect(
+                  clipper: const _ClipTopEdge(),
+                  child: _buildGrid(
+                    _browse.visibleGames,
+                    desktopScale: desktopScale,
+                    horizontalPadding: horizontalPadding,
+                    showDetails: showDetails,
+                    showBackdrop: showBackdrop,
+                  ),
                 ),
         ),
       ],
@@ -691,24 +764,32 @@ class _GameSystemScreenState extends State<GameSystemScreen>
     );
   }
 
-  void _scrollToGridRow({
-    required int index,
-    required int crossAxisCount,
-    required double cellHeight,
-    required double mainAxisSpacing,
+  /// Scrolls just enough to show the focused card, plus [topMargin] above it
+  /// and [_gridBottomFocusPeek] of the next row below it.
+  ///
+  /// Reads the card's real position from the viewport instead of recomputing
+  /// it from the grid's spacing and padding, so a layout change to the grid
+  /// can't leave this scrolling to the wrong row.
+  void _scrollFocusedCardIntoView(
+    FocusNode cardNode, {
+    required double topMargin,
   }) {
     if (!_gridScrollController.hasClients) return;
-    final row = index ~/ crossAxisCount;
-    final rowTop = _gridTopPadding + row * (cellHeight + mainAxisSpacing);
-    final rowBottom = rowTop + cellHeight;
+    final card = cardNode.context?.findRenderObject();
+    if (card == null || !card.attached) return;
+    final viewport = RenderAbstractViewport.maybeOf(card);
+    if (viewport == null) return;
     final position = _gridScrollController.position;
     final current = position.pixels;
-    final viewportHeight = position.viewportDimension;
+    // Offsets that put the card's top at the viewport's top edge, and its
+    // bottom at the viewport's bottom edge.
+    final revealTop = viewport.getOffsetToReveal(card, 0.0).offset;
+    final revealBottom = viewport.getOffsetToReveal(card, 1.0).offset;
     var target = current;
-    if (rowTop - _gridTopPadding < current) {
-      target = rowTop - _gridTopPadding;
-    } else if (rowBottom + _gridBottomFocusPeek > current + viewportHeight) {
-      target = rowBottom + _gridBottomFocusPeek - viewportHeight;
+    if (revealTop - topMargin < current) {
+      target = revealTop - topMargin;
+    } else if (revealBottom + _gridBottomFocusPeek > current) {
+      target = revealBottom + _gridBottomFocusPeek;
     }
     target = target.clamp(position.minScrollExtent, position.maxScrollExtent);
     if ((target - current).abs() < 1) return;
@@ -719,6 +800,56 @@ class _GameSystemScreenState extends State<GameSystemScreen>
         curve: Curves.easeOutCubic,
       ),
     );
+  }
+
+  /// Pages the grid the way FF/RW page the Live TV guide.
+  ///
+  /// A page is the rows fully on screen. Paging forward scrolls the first row
+  /// that is cut off at the bottom up to the top, and paging back does the
+  /// reverse. Focus moves the same number of rows in the same column, so it
+  /// keeps its place on screen. Rows on screen depend on the display, UI scale
+  /// and poster size, so the page is measured every time.
+  void _pageGrid(
+    int fromIndex,
+    int direction, {
+    required int itemCount,
+    required int crossAxisCount,
+    required double topPadding,
+    required double cardHeight,
+    required double rowStride,
+  }) {
+    if (!_gridScrollController.hasClients || itemCount == 0) return;
+    final position = _gridScrollController.position;
+    final current = position.pixels;
+    // Scroll offset rowIndex * rowStride puts that row's top at the viewport's
+    // top, leaving topPadding above it for the focus zoom.
+    final firstVisibleRow = ((current - 0.5) / rowStride).ceil();
+    final firstCutOffRow =
+        ((current + position.viewportDimension + 0.5 - topPadding - cardHeight) /
+                    rowStride)
+                .floor() +
+            1;
+    final fullRows = firstCutOffRow - firstVisibleRow;
+    final rows = fullRows < 1 ? 1 : fullRows;
+    final lastRow = (itemCount - 1) ~/ crossAxisCount;
+    final fromRow = fromIndex ~/ crossAxisCount;
+    final targetRow = (fromRow + direction * rows).clamp(0, lastRow);
+    final target = (targetRow * crossAxisCount + fromIndex % crossAxisCount)
+        .clamp(0, itemCount - 1);
+    if (target == fromIndex) return;
+    final topRow = (firstVisibleRow + direction * rows).clamp(0, lastRow);
+    _gridScrollController.jumpTo(
+      (topRow * rowStride).clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      ),
+    );
+    // Focus once the grid has laid out at the new offset, so the target is
+    // built and the card's own focus scroll sees where it really is.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      getGridItemFocusNode(target, prefix: 'game_grid').requestFocus();
+    });
   }
 
   void _activateHoveredGame(
@@ -923,15 +1054,17 @@ class _GameSystemScreenState extends State<GameSystemScreen>
   }) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        const imageHeightRatio = 1.34;
         const captionGap = 6.0;
         const captionHeight = 42.0;
 
+        final cellAspect = _gridCellAspect;
+        final cell = RetroArtworkShape.cellFor(cellAspect);
         final availableWidth = constraints.maxWidth - horizontalPadding * 2;
-        final preferredCardWidth =
+        final portraitCardWidth =
             _prefs.resolveLibraryPosterSize().portraitHeight *
             (2 / 3) *
             desktopScale;
+        final preferredCardWidth = portraitCardWidth * cell.width;
         final cardFocusExpansion = _prefs.get(
           UserPreferences.cardFocusExpansion,
         );
@@ -954,14 +1087,12 @@ class _GameSystemScreenState extends State<GameSystemScreen>
             : 12.0;
         final textScale = MediaQuery.textScalerOf(context).scale(1.0);
         final isRtl = Directionality.of(context) == TextDirection.rtl;
-        final cardHeight =
-            cardWidth * imageHeightRatio +
-            captionGap +
-            captionHeight * textScale;
-        final childAspectRatio = cardWidth / cardHeight;
-        final upwardGrowth = (cardWidth * imageHeightRatio) * expansionFactor;
+        final imageHeight = cardWidth / cell.aspectRatio;
+        final cardHeight = imageHeight + captionGap + captionHeight * textScale;
+        final upwardGrowth = imageHeight * expansionFactor;
         final gridMainAxisSpacing = 14.0 + upwardGrowth;
         final topPadding = _gridTopPadding + upwardGrowth;
+        _lastGridTopPadding = topPadding;
         final rowStride = cardHeight + gridMainAxisSpacing;
         final layout = _ArtworkGridLayout(
           games: games,
@@ -1011,7 +1142,12 @@ class _GameSystemScreenState extends State<GameSystemScreen>
                 crossAxisCount: columnCount,
                 mainAxisSpacing: gridMainAxisSpacing,
                 crossAxisSpacing: gridSpacing,
-                childAspectRatio: childAspectRatio,
+                // A fixed extent, not an aspect ratio: the grid derives its
+                // own cell width from gridSpacing, which differs slightly from
+                // the spacing cardWidth was sized with, and an aspect ratio
+                // would make the real row stride drift from rowStride, which
+                // paging relies on.
+                mainAxisExtent: cardHeight,
               ),
               itemCount: games.length,
               itemBuilder: (context, index) {
@@ -1020,10 +1156,23 @@ class _GameSystemScreenState extends State<GameSystemScreen>
                     ? null
                     : _retroArtworkDataSource?.imageFor(game.id);
                 final source = reference?.source;
+                final cardFocusNode = getGridItemFocusNode(
+                  index,
+                  prefix: 'game_grid',
+                );
                 final column = index % columnCount;
                 final atVisualRightEdge = isRtl
                     ? column == 0
                     : column == columnCount - 1 || index == games.length - 1;
+                final artAspect = _retroArtworkDataSource?.snapshot
+                    ?.aspectRatioFor(game.id);
+                final containArt =
+                    cellAspect != null &&
+                    (artAspect == null ||
+                        RetroArtworkShape.needsFill(
+                          artAspect,
+                          cell.aspectRatio,
+                        ));
                 return GamePosterCard(
                   imageUrl: reference?.legacyUrl,
                   artwork:
@@ -1046,7 +1195,8 @@ class _GameSystemScreenState extends State<GameSystemScreen>
                             cardWidth,
                             MediaQuery.devicePixelRatioOf(context),
                           ),
-                          fit: BoxFit.cover,
+                          fit: containArt ? BoxFit.contain : BoxFit.cover,
+                          fillBehind: containArt,
                           onLoadFinished: () => _retroArtworkDataSource
                               ?.reportImageLoaded(game.id),
                           errorBuilder: (_, error) {
@@ -1060,28 +1210,35 @@ class _GameSystemScreenState extends State<GameSystemScreen>
                   title: game.title,
                   fileName: game.fileName,
                   seed: game.id,
-                  cacheManager: gameArtworkCacheManagerForScope(_artworkScope),
+                  cacheManager: gameArtworkCacheManagerForScope(
+                    _artworkScope,
+                  ),
                   width: cardWidth,
-                  focusNode: getGridItemFocusNode(index, prefix: 'game_grid'),
+                  imageHeight: imageHeight,
+                  focusNode: cardFocusNode,
                   focusColor: focusColor,
                   cardFocusExpansion: cardFocusExpansion,
                   suppressFocusGlow: isNeon,
                   autoScroll: false,
                   onFocus: () {
+                    _focusedGridIndex = index;
                     _activateBrowseGame(
                       game,
                       showBackdrop: showBackdrop,
                       showDetails: showDetails,
                     );
                     _scheduleArtworkPriority(focusedIndex: index);
-                    _scrollToGridRow(
-                      index: index,
-                      crossAxisCount: columnCount,
-                      cellHeight: cardHeight,
-                      mainAxisSpacing: 14,
+                    // topPadding is the room the focus zoom needs above a
+                    // card, so the same margin keeps a zoomed top row whole.
+                    _scrollFocusedCardIntoView(
+                      cardFocusNode,
+                      topMargin: topPadding,
                     );
                   },
-                  onFocusLost: () => _browse.deactivateGame(game),
+                  onFocusLost: () {
+                    if (_focusedGridIndex == index) _focusedGridIndex = null;
+                    _browse.deactivateGame(game);
+                  },
                   onHoverStart: () => _activateHoveredGame(
                     game,
                     showBackdrop: showBackdrop,
@@ -1099,6 +1256,21 @@ class _GameSystemScreenState extends State<GameSystemScreen>
                     );
                   },
                   onKeyEvent: (_, event) {
+                    final pageDirection = event.isActionable
+                        ? event.logicalKey.pageDirection
+                        : 0;
+                    if (pageDirection != 0) {
+                      _pageGrid(
+                        index,
+                        pageDirection,
+                        itemCount: games.length,
+                        crossAxisCount: columnCount,
+                        topPadding: topPadding,
+                        cardHeight: cardHeight,
+                        rowStride: rowStride,
+                      );
+                      return KeyEventResult.handled;
+                    }
                     if (PlatformDetection.isTV &&
                         event.isActionable &&
                         event.logicalKey.isBackKey &&
@@ -1124,6 +1296,17 @@ class _GameSystemScreenState extends State<GameSystemScreen>
       },
     );
   }
+}
+
+class _ClipTopEdge extends CustomClipper<Rect> {
+  const _ClipTopEdge();
+
+  @override
+  Rect getClip(Size size) =>
+      Rect.fromLTRB(-size.width, 0, size.width * 2, size.height * 2);
+
+  @override
+  bool shouldReclip(_ClipTopEdge oldClipper) => false;
 }
 
 class _ArtworkGridLayout {

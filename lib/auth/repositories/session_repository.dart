@@ -46,7 +46,7 @@ import '../../data/services/user_data_sync.dart';
 import '../../di/modules/app_module.dart';
 import '../../di/modules/playback_module.dart';
 import '../../di/modules/server_module.dart';
-import '../../playback/appletv_backend.dart';
+import '../../playback/native_apple_player_backend.dart';
 import '../../playback/audio_handler.dart';
 import '../../playback/headless_session_bootstrap.dart';
 import '../../playback/last_playback_session_store.dart';
@@ -244,6 +244,9 @@ class SessionRepository {
     String? password,
     bool validateToken = false,
   }) async {
+    if (serverId != _activeServerId || userId != _activeUserId) {
+      await _stopPlaybackForSessionChange();
+    }
     _setState(SessionState.switching);
     _remoteVolumeGeneration++;
     _remoteNavigationGeneration++;
@@ -502,7 +505,7 @@ class SessionRepository {
       password: password,
     );
     if (seerrCameUp) {
-      homeRefreshBus.requestNowOrAfterNavigation();
+      homeRefreshBus.requestNowOrAfterNavigation(newSectionsOnly: true);
     }
   }
 
@@ -590,7 +593,18 @@ class SessionRepository {
   /// [tokenKnownInvalid] is set when the server has already rejected the
   /// token. The push unregister and the logout both authenticate with it, so
   /// sending them would only add 401s to the burst that got us here.
+  // Music left playing in the background belongs to the user being left, and
+  // the sign-in screen has no mini player to stop it. Running before the token
+  // changes reports the stop for that user.
+  Future<void> _stopPlaybackForSessionChange() async {
+    if (!GetIt.instance.isRegistered<PlaybackManager>()) return;
+    try {
+      await GetIt.instance<PlaybackManager>().stop(userInitiated: false);
+    } catch (_) {}
+  }
+
   Future<void> destroyCurrentSession({bool tokenKnownInvalid = false}) async {
+    await _stopPlaybackForSessionChange();
     _remoteVolumeGeneration++;
     _remoteNavigationGeneration++;
     _remoteSearch?.close();
@@ -956,7 +970,7 @@ class SessionRepository {
 
   Future<void> _navigateRemote(String command, GamepadNavKey key) async {
     final backend = GetIt.instance<PlaybackManager>().backend;
-    if (backend is AppleTvBackend && backend.isPlayerPresented) {
+    if (backend is NativeApplePlayerBackend && backend.isPlayerPresented) {
       // Native playback owns its input, including any menu above the player.
       await backend.sendRemoteNavigation(command);
       return;
@@ -1275,7 +1289,7 @@ class SessionRepository {
         if (generation != _remoteNavigationGeneration) return;
         await manager.stop(userInitiated: false);
         if (generation != _remoteNavigationGeneration) return;
-        if (backend is AppleTvBackend) await backend.dismissPlayer();
+        if (backend is NativeApplePlayerBackend) await backend.dismissPlayer();
         if (generation != _remoteNavigationGeneration) return;
         _router.go(Destinations.home);
       case 'gotosearch':
@@ -1331,7 +1345,7 @@ class SessionRepository {
       if (!search.active) return;
       // Native tvOS playback is presented above Flutter's routes.
       final backend = manager.backend;
-      if (backend is AppleTvBackend) await backend.dismissPlayer();
+      if (backend is NativeApplePlayerBackend) await backend.dismissPlayer();
       if (!search.active) return;
       final path = _remoteRoutePath;
       if (path == Destinations.search || Destinations.isPlayerRoute(path)) {

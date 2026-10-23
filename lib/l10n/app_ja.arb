@@ -8501,7 +8501,6 @@
     "adminGeneralDisplayLanguage": "優先する表示言語",
     "offlineBannerTitle": "オフラインです",
     "offlineBannerSubtitle": "ダウンロード済みの項目を表示しています",
-    "offlineBannerAction": "ダウンロード",
     "serverUnreachableBannerTitle": "サーバーに接続できません",
     "serverUnreachableBannerSubtitle": "復旧するまでダウンロード済みの項目を再生します",
     "contextMenuHideFromContinueWatching": "「視聴を続ける」から削除",

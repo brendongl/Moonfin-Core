@@ -429,6 +429,46 @@ static void test_analog_passthrough(void) {
   lh_destroy(host);
 }
 
+// The run loop samples the pointer once per frame, so a tap shorter than a
+// frame has to be held over to the next one.
+static void test_pointer_tap_latch(void) {
+  printf("pointer tap latch:\n");
+  lh_callbacks cb;
+  memset(&cb, 0, sizeof(cb));
+  lh_host *host = lh_create(LH_FORMAT_RGBA8888, cb);
+  CHECK(host != NULL, "pointer test host allocates");
+  if (!host) return;
+
+  lh_set_pointer(host, 0, 1, 500, -600);
+  lh_set_pointer(host, 0, 0, 0, 0);
+  lh_test_poll_input(host);
+  CHECK(lh_test_read_pointer(host, 0, 2) == 1,
+        "a tap released before the frame latch is still pressed for a frame");
+  CHECK(lh_test_read_pointer(host, 0, 0) == 500 &&
+            lh_test_read_pointer(host, 0, 1) == -600,
+        "the latched tap keeps the position it landed on, not the release's");
+  lh_test_core_poll_input(host);
+  CHECK(lh_test_read_pointer(host, 0, 2) == 1,
+        "a core poll inside the same frame still sees the latched tap");
+  lh_test_poll_input(host);
+  CHECK(lh_test_read_pointer(host, 0, 2) == 0,
+        "the latched tap is released on the next frame");
+
+  lh_set_pointer(host, 0, 1, 10, 20);
+  lh_test_poll_input(host);
+  lh_set_pointer(host, 0, 1, 30, 40);
+  lh_test_poll_input(host);
+  CHECK(lh_test_read_pointer(host, 0, 2) == 1 &&
+            lh_test_read_pointer(host, 0, 0) == 30,
+        "a held touch stays pressed and follows the finger");
+  lh_set_pointer(host, 0, 0, 0, 0);
+  lh_test_poll_input(host);
+  CHECK(lh_test_read_pointer(host, 0, 2) == 0,
+        "lifting a held touch releases it on the next frame, not one later");
+
+  lh_destroy(host);
+}
+
 // ---------------------------------------------------------------------------
 // Coverage that requires calling through the real input_state_cb dispatch
 // (index/id mapping, derivation from the digital mask, and the domains other
@@ -549,17 +589,21 @@ static void test_analog_via_core(const char *core_path, const char *rom_path,
   // from zero, so any swapped field shows up as a mismatch.
   lh_set_pad_state(host, 0, 1u << RETRO_DEVICE_ID_JOYPAD_B, 111, -222, 333,
                    -444, 0x1111, 0x2222);
+  // A touch on the lower-right quadrant. The sign and the two distinct values
+  // catch a swapped or truncated axis.
+  lh_set_pointer(host, 0, 1, 555, -666);
 
   lh_start(host);
   msleep(200);
 
-  int lx, ly, rx, ry, l2, r2, db, ds, mx, gx, px;
+  int lx, ly, rx, ry, l2, r2, db, ds, mx, gx, px, py, pp, pc, p2;
   int parsed = sscanf(g_last_message,
                       "stub analog lx=%d ly=%d rx=%d ry=%d l2=%d r2=%d "
-                      "db=%d ds=%d mx=%d gx=%d px=%d",
-                      &lx, &ly, &rx, &ry, &l2, &r2, &db, &ds, &mx, &gx, &px);
-  CHECK(parsed == 11, "stub core's analog probe message parses");
-  if (parsed == 11) {
+                      "db=%d ds=%d mx=%d gx=%d px=%d py=%d pp=%d pc=%d p2=%d",
+                      &lx, &ly, &rx, &ry, &l2, &r2, &db, &ds, &mx, &gx, &px,
+                      &py, &pp, &pc, &p2);
+  CHECK(parsed == 15, "stub core's analog probe message parses");
+  if (parsed == 15) {
     CHECK(lx == 111 && ly == -222,
           "left stick reaches the core through input_state_cb");
     CHECK(rx == 333 && ry == -444,
@@ -575,7 +619,12 @@ static void test_analog_via_core(const char *core_path, const char *rom_path,
           "returns 0");
     CHECK(mx == 0, "RETRO_DEVICE_MOUSE still returns 0");
     CHECK(gx == 0, "RETRO_DEVICE_LIGHTGUN still returns 0");
-    CHECK(px == 0, "RETRO_DEVICE_POINTER still returns 0");
+    CHECK(px == 555 && py == -666,
+          "RETRO_DEVICE_POINTER returns the touch position set by "
+          "lh_set_pointer");
+    CHECK(pp == 1 && pc == 1,
+          "a pressed pointer reports PRESSED and a COUNT of one");
+    CHECK(p2 == 0, "a second pointer index is never pressed");
   }
 
   lh_stop(host);
@@ -1090,8 +1139,8 @@ static void test_format(const char *core_path, const char *rom_path,
     // stub_speed, stub_pattern, stub_rotation, stub_format, stub_huge_frame,
     // stub_bad_pitch, stub_vfs_dir_check, stub_analog_check, stub_hw,
     // stub_analog_query, stub_repeat_geometry, stub_unserved,
-    // stub_input_thread, stub_no_poll, stub_waits_report.
-    CHECK(lh_option_count(host) == 15, "fifteen core options");
+    // stub_input_thread, stub_no_poll, stub_waits_report, stub_thread_report.
+    CHECK(lh_option_count(host) == 16, "sixteen core options");
     lh_option opt;
     int opt_rc = lh_get_option(host, 0, &opt);
     CHECK(opt_rc == 0 && strcmp(opt.id, "stub_speed") == 0, "option id");
@@ -1119,7 +1168,7 @@ static void test_format(const char *core_path, const char *rom_path,
     uint8_t blob_a[64], blob_b[64], blob_c[64];
     CHECK(size > 0, "serialize size");
     CHECK(lh_serialize(host, blob_a, size) == 0, "serialize after restart");
-    CHECK(lh_option_count(host) == 15, "restart replaces option definitions");
+    CHECK(lh_option_count(host) == 16, "restart replaces option definitions");
     lh_get_option(host, 0, &opt);
     CHECK(strcmp(opt.current, "fast") == 0, "restart retains option value");
     int32_t restart_marker;
@@ -1541,6 +1590,87 @@ static void test_probe_bad_path_leaves_host_usable(const char *core_path,
   lh_destroy(host);
 }
 
+// The stub's retro_deinit report: the thread each kind of call last ran on,
+// 0 for a call that never happened.
+typedef struct {
+  unsigned long long init, load, run, job, deinit;
+} thread_report;
+
+static int parse_thread_report(thread_report *r) {
+  return sscanf(g_last_message,
+                "stub threads init=%llu load=%llu run=%llu job=%llu "
+                "deinit=%llu",
+                &r->init, &r->load, &r->run, &r->job, &r->deinit) == 5;
+}
+
+static unsigned long long harness_thread_id(void) {
+#ifdef _WIN32
+  return (unsigned long long)GetCurrentThreadId();
+#else
+  return (unsigned long long)(uintptr_t)pthread_self();
+#endif
+}
+
+// mupen64plus-next's Windows build saves the calling thread's libco fiber in
+// retro_init and faults if retro_run comes from another thread, so every call
+// into a core has to come from one host thread.
+static void test_core_calls_share_one_thread(const char *core_path,
+                                             const char *rom_path,
+                                             const char *work_dir) {
+  printf("every core call runs on one host thread:\n");
+  const unsigned long long caller = harness_thread_id();
+  const char *keys[] = {"stub_thread_report"};
+  const char *vals[] = {"on"};
+  thread_report r;
+  lh_av_info av;
+
+  lh_host *host = lh_create(LH_FORMAT_RGBA8888, make_callbacks());
+  int rc = lh_load(host, core_path, rom_path, work_dir, work_dir,
+                   "samethread-run", keys, vals, 1, &av);
+  CHECK(rc == 0, "core loads with the thread report on");
+  if (rc == 0) {
+    CHECK(lh_serialize_size(host) > 0, "a job before lh_start still runs");
+    g_frames_ready = 0;
+    lh_start(host);
+    for (int waited = 0; waited < 2000 && g_frames_ready == 0; waited += 10) {
+      msleep(10);
+    }
+    g_last_message[0] = '\0';
+    lh_stop(host);
+    CHECK(parse_thread_report(&r), "the stub reports its threads");
+    CHECK(r.init == r.load && r.load == r.run,
+          "retro_init, retro_load_game and retro_run share one thread");
+    CHECK(r.job == r.init, "a job queued before lh_start runs on that thread");
+    CHECK(r.deinit == r.init, "the teardown runs on that thread");
+    CHECK(r.init != caller, "and it isn't the thread that called lh_load");
+  }
+  lh_destroy(host);
+
+  host = lh_create(LH_FORMAT_RGBA8888, make_callbacks());
+  rc = lh_load(host, core_path, rom_path, work_dir, work_dir,
+               "samethread-idle", keys, vals, 1, &av);
+  CHECK(rc == 0, "core loads for a session that never starts");
+  if (rc == 0) {
+    g_last_message[0] = '\0';
+    lh_stop(host);
+    CHECK(parse_thread_report(&r) && r.run == 0 && r.load == r.init &&
+              r.deinit == r.init && r.init != caller,
+          "a session stopped before lh_start loads and unloads on one host "
+          "thread");
+  }
+  lh_destroy(host);
+
+  host = lh_create(LH_FORMAT_RGBA8888, make_callbacks());
+  lh_set_option(host, "stub_thread_report", "on");
+  g_last_message[0] = '\0';
+  CHECK(lh_probe_options(host, core_path, work_dir) == 0,
+        "probe succeeds with the thread report on");
+  CHECK(parse_thread_report(&r) && r.load == 0 && r.deinit == r.init &&
+            r.init != caller,
+        "a probe runs retro_init and retro_deinit off the caller's thread");
+  lh_destroy(host);
+}
+
 static void test_option_snapshot_survives_invalidation(const char *core_path,
                                                        const char *rom_path,
                                                        const char *work_dir) {
@@ -1754,9 +1884,12 @@ static int hw_supports(void *user, const lh_hw_request *req) {
   g_hw_supports_calls++;
   return 1;
 }
+static int g_hw_created_w;
+static int g_hw_created_h;
 static int hw_context_create(void *user, const lh_hw_request *req) {
   (void)user;
-  (void)req;
+  g_hw_created_w = req->max_width;
+  g_hw_created_h = req->max_height;
   g_hw_calls++;
   g_hw_creates++;
   return 0;
@@ -1897,7 +2030,7 @@ int main(int argc, char **argv) {
           "a core requesting a GLES3 context loads");
 
     CHECK(atomic_load(&g_hw_creates) == 0,
-          "no context is created on the loading thread");
+          "no context is created before lh_start");
     CHECK(lh_hw_active(hw) == 0, "lh_hw_active is 0 before the loop starts");
 
     lh_start(hw);
@@ -1954,6 +2087,46 @@ int main(int argc, char **argv) {
           "no software frames on the GLES2 hardware path");
     lh_stop(g2);
     lh_destroy(g2);
+  }
+
+  // PPSSPP asks for GLES while its geometry still reads 0x0.
+  {
+    printf("a hardware request made before the geometry is known:\n");
+    lh_hw_backend good = make_hw_backend();
+    lh_host *lg = lh_create(LH_FORMAT_RGBA8888, make_callbacks());
+    lh_set_hw_backend(lg, &good, NULL);
+    g_hw_creates = 0;
+    g_hw_presents = 0;
+    g_hw_created_w = g_hw_created_h = 0;
+    const char *keys[] = {"stub_hw"};
+    const char *vals[] = {"gles3_lategeo"};
+    lh_av_info av;
+    CHECK(lh_load(lg, core_path, rom_path, work_dir, work_dir, "lategeo", keys,
+                  vals, 1, &av) == 0,
+          "a GLES request with 0x0 geometry is accepted");
+    int rw = 0, rh = 0;
+    CHECK(lh_hw_render_size(lg, &rw, &rh) == 1 && rw == SRC_W && rh == SRC_H,
+          "the render size comes from the geometry after the load");
+    lh_start(lg);
+    msleep(200);
+    CHECK(atomic_load(&g_hw_creates) == 1 && g_hw_created_w == SRC_W &&
+              g_hw_created_h == SRC_H,
+          "the context is created at the final size");
+    CHECK(lh_hw_active(lg) == 1 && atomic_load(&g_hw_presents) > 0,
+          "frames are presented on the hardware path");
+    lh_stop(lg);
+    lh_destroy(lg);
+
+    lh_host *ng = lh_create(LH_FORMAT_RGBA8888, make_callbacks());
+    lh_set_hw_backend(ng, &good, NULL);
+    g_hw_creates = 0;
+    const char *ng_vals[] = {"gles3_nogeo"};
+    CHECK(lh_load(ng, core_path, rom_path, work_dir, work_dir, "nogeo", keys,
+                  ng_vals, 1, &av) == LH_ERR_CONTENT_REJECTED,
+          "a core that never declares a size fails the load");
+    CHECK(atomic_load(&g_hw_creates) == 0 && lh_hw_render_size(ng, &rw, &rh) == 0,
+          "and no context or render size is left behind");
+    lh_destroy(ng);
   }
 
   {
@@ -2523,9 +2696,11 @@ int main(int argc, char **argv) {
   test_probe_options_without_content(core_path, work_dir);
   test_probe_refused_during_session(core_path, rom_path, work_dir);
   test_probe_bad_path_leaves_host_usable(core_path, rom_path, work_dir);
+  test_core_calls_share_one_thread(core_path, rom_path, work_dir);
   test_input_latch();
   test_input_transition_latch();
   test_analog_passthrough();
+  test_pointer_tap_latch();
   test_analog_via_core(core_path, rom_path, work_dir);
   test_analog_stick_ports(core_path, rom_path, work_dir);
   test_vfs_zip(core_path, work_dir);

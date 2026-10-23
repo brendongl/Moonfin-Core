@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "لغة العرض المفضّلة",
     "offlineBannerTitle": "أنت غير متصل بالإنترنت",
     "offlineBannerSubtitle": "عرض التحميلات الخاصة بك",
-    "offlineBannerAction": "التحميلات",
     "serverUnreachableBannerTitle": "تعذّر الوصول إلى الخادم",
     "serverUnreachableBannerSubtitle": "التشغيل من التحميلات حتى عودة الخادم",
     "contextMenuHideFromContinueWatching": "إخفاء من مواصلة المشاهدة",

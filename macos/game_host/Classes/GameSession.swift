@@ -128,6 +128,35 @@ final class GameSession {
     lh_set_fast_forward(host, Int32(factor))
   }
 
+  func analogStickPorts() -> Int {
+    guard let host else { return 0 }
+    return Int(lh_analog_stick_ports(host))
+  }
+
+  // Same payload shape as Android's channel, which Dart's
+  // CoreControllerType.fromMap reads.
+  func controllerTypes() -> [[String: Any]] {
+    guard let host else { return [] }
+    var result: [[String: Any]] = []
+    for port in 0..<Int(LH_MAX_PORTS) {
+      for i in 0..<lh_controller_type_count(host, Int32(port)) {
+        var type = lh_controller_type()
+        guard lh_get_controller_type(host, Int32(port), i, &type) == 0 else { break }
+        result.append([
+          "port": port,
+          "id": Int(type.id),
+          "label": Self.cString(type.label),
+        ])
+      }
+    }
+    return result
+  }
+
+  func setControllerType(port: Int, device: Int) -> Bool {
+    guard let host else { return false }
+    return lh_set_controller_type(host, Int32(port), UInt32(device)) >= 0
+  }
+
   func saveState() -> Data? {
     guard let host else { return nil }
     let size = lh_serialize_size(host)

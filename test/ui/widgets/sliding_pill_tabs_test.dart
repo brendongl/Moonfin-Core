@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:moonfin/ui/widgets/sliding_pill_tabs.dart';
 import 'package:moonfin_design/moonfin_design.dart';
@@ -83,6 +84,37 @@ void main() {
       ).first,
     );
     expect(stack.clipBehavior, Clip.none);
+  });
+
+  testWidgets('the D-pad leaves past either end of the strip', (tester) async {
+    final node = FocusNode();
+    addTearDown(node.dispose);
+    final exits = <String>[];
+    var selected = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: StatefulBuilder(
+          builder: (context, setState) => SlidingPillTabs(
+            labels: const ['Library', 'Discover'],
+            selectedIndex: selected,
+            onChanged: (i) => setState(() => selected = i),
+            focusNode: node,
+            onExitLeft: () => exits.add('left'),
+            onExitRight: () => exits.add('right'),
+          ),
+        ),
+      ),
+    ));
+    node.requestFocus();
+    await tester.pump();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+
+    expect(selected, 1);
+    expect(exits, ['left', 'right']);
   });
 
   testWidgets('a drag across the pill lands on the segment under the finger',

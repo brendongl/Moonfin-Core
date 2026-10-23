@@ -6,8 +6,6 @@ import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:moonfin_design/moonfin_design.dart';
 import 'package:server_core/server_core.dart';
-import 'package:playback_core/playback_core.dart';
-import '../../../data/services/media_server_client_factory.dart';
 
 import '../../../data/models/aggregated_item.dart';
 import '../../../data/services/background_service.dart';
@@ -21,6 +19,7 @@ import '../../navigation/destinations.dart';
 import '../../widgets/focus/focusable_toolbar_button.dart';
 import '../../widgets/focus/request_initial_focus.dart';
 import '../../widgets/fullscreen_backdrop_switcher.dart';
+import '../../widgets/music/music_navigation.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../util/home_row_title_localizer.dart';
 import '../../widgets/overlay_sheet.dart';
@@ -34,51 +33,8 @@ double get _cardSize => PlatformDetection.useMobileUi
     : (PlatformDetection.isTV ? 168.0 : 148.0);
 const _cardSpacing = 12.0;
 
-/// music library category shown in the chip bar (mobile/TV) and the desktop
-/// rail, routing to the matching all-items screen.
-class _MusicCategory {
-  final IconData icon;
-  final String label;
-  final String route;
-  const _MusicCategory(this.icon, this.label, this.route);
-}
-
-List<_MusicCategory> _musicCategories(BuildContext context, String libraryId) {
-  final l10n = AppLocalizations.of(context);
-  return [
-    _MusicCategory(
-      Icons.person,
-      l10n.artists,
-      Destinations.library(libraryId, includeItemTypes: const ['AlbumArtist']),
-    ),
-    _MusicCategory(
-      Icons.album,
-      l10n.albums,
-      Destinations.library(libraryId, includeItemTypes: const ['MusicAlbum']),
-    ),
-    _MusicCategory(
-      Icons.music_note,
-      l10n.songs,
-      Destinations.library(libraryId, includeItemTypes: const ['Audio']),
-    ),
-    _MusicCategory(
-      Icons.queue_music,
-      l10n.playlists,
-      Destinations.library(libraryId, includeItemTypes: const ['Playlist']),
-    ),
-    _MusicCategory(
-      Icons.category,
-      l10n.genres,
-      Destinations.libraryGenresOf(libraryId),
-    ),
-    _MusicCategory(
-      Icons.favorite,
-      l10n.favorites,
-      Destinations.library(libraryId, favorites: true),
-    ),
-  ];
-}
-
+/// The Classic music library: rows under a Jump Back In card, with category
+/// chips on phones and TV and a category rail on desktop.
 class MusicBrowseScreen extends StatefulWidget {
   final String libraryId;
 
@@ -154,17 +110,13 @@ class _MusicBrowseScreenState extends State<MusicBrowseScreen> {
   }
 
   void _onItemTap(AggregatedItem item) {
-    if (item.type == 'Audio') {
-      unawaited(_playTrackDirectly(context, item));
-      return;
-    }
-    context.push(Destinations.item(item.id, serverId: item.serverId));
+    openMusicItem(context, item);
   }
 
   void _showFilterDialog(BuildContext context) {
     OverlaySheetController.show<void>(
       context,
-      builder: (sheetContext) => _MusicRowVisibilityDialog(
+      builder: (sheetContext) => MusicRowVisibilityDialog(
         libraryName: _vm.libraryName,
         onChanged: () => _vm.load(),
       ),
@@ -172,35 +124,7 @@ class _MusicBrowseScreenState extends State<MusicBrowseScreen> {
   }
 
   VoidCallback? _seeAllForRow(String rowId) {
-    String? route;
-    if (rowId.startsWith('musicalbum_')) {
-      route = Destinations.library(
-        widget.libraryId,
-        includeItemTypes: const ['MusicAlbum'],
-      );
-    } else if (rowId.startsWith('albumartist_')) {
-      route = Destinations.library(
-        widget.libraryId,
-        includeItemTypes: const ['AlbumArtist'],
-      );
-    } else if (rowId.startsWith('musicartist_')) {
-      route = Destinations.library(
-        widget.libraryId,
-        includeItemTypes: const ['MusicArtist'],
-      );
-    } else if (rowId == 'playlists') {
-      route = Destinations.library(
-        widget.libraryId,
-        includeItemTypes: const ['Playlist'],
-      );
-    } else if (rowId.startsWith('favorites_')) {
-      // The row itself only holds albums, so keep the same shape behind See All.
-      route = Destinations.library(
-        widget.libraryId,
-        includeItemTypes: const ['MusicAlbum'],
-        favorites: true,
-      );
-    }
+    final route = musicSeeAllRoute(widget.libraryId, rowId);
     if (route == null) return null;
     final target = route;
     return () => context.push(target);
@@ -481,17 +405,7 @@ class _MusicHero extends StatefulWidget {
 
 class _MusicHeroState extends State<_MusicHero> with FocusStateMixin {
   void _open({bool play = true}) {
-    if (widget.item.type == 'Audio') {
-      unawaited(_playTrackDirectly(context, widget.item));
-      return;
-    }
-    context.push(
-      Destinations.item(
-        widget.item.id,
-        serverId: widget.item.serverId,
-        autoPlay: play,
-      ),
-    );
+    openMusicItem(context, widget.item, autoPlay: play);
   }
 
   @override
@@ -694,7 +608,7 @@ class _MusicCategoryBarState extends State<_MusicCategoryBar>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final categories = _musicCategories(context, widget.libraryId);
+    final categories = musicCategories(context, widget.libraryId);
     return SizedBox(
       height: 56,
       child: ListView.separated(
@@ -731,7 +645,7 @@ class _MusicCategoryRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final categories = _musicCategories(context, libraryId);
+    final categories = musicCategories(context, libraryId);
     final title = libraryName.isEmpty
         ? AppLocalizations.of(context).music
         : libraryName;
@@ -1238,20 +1152,21 @@ class _MusicSquareCardState extends State<_MusicSquareCard>
   }
 }
 
-class _MusicRowVisibilityDialog extends StatefulWidget {
+class MusicRowVisibilityDialog extends StatefulWidget {
   final String libraryName;
   final VoidCallback onChanged;
 
-  const _MusicRowVisibilityDialog({
+  const MusicRowVisibilityDialog({
+    super.key,
     required this.libraryName,
     required this.onChanged,
   });
 
   @override
-  State<_MusicRowVisibilityDialog> createState() => _MusicRowVisibilityDialogState();
+  State<MusicRowVisibilityDialog> createState() => _MusicRowVisibilityDialogState();
 }
 
-class _MusicRowVisibilityDialogState extends State<_MusicRowVisibilityDialog> {
+class _MusicRowVisibilityDialogState extends State<MusicRowVisibilityDialog> {
   final _prefs = GetIt.instance<UserPreferences>();
   late final ScrollController _scrollController;
 
@@ -1569,78 +1484,5 @@ class _DialogCheckboxTileState extends State<_DialogCheckboxTile> {
         ),
       ),
     );
-  }
-}
-
-Future<void> _playTrackDirectly(BuildContext context, AggregatedItem item) async {
-  final navigator = Navigator.of(context, rootNavigator: true);
-  final manager = GetIt.instance<PlaybackManager>();
-  var loadingVisible = true;
-  void dismissLoading() {
-    if (loadingVisible) {
-      loadingVisible = false;
-      navigator.pop();
-    }
-  }
-
-  showDialog(
-    context: context,
-    barrierDismissible: false,
-    builder: (_) => const Center(child: CircularProgressIndicator()),
-  );
-
-  final albumId =
-      item.albumId?.isNotEmpty == true ? item.albumId : item.parentId;
-
-  try {
-    var tracks = <AggregatedItem>[item];
-    var startIndex = 0;
-
-    if (albumId != null && albumId.isNotEmpty) {
-      final factory = GetIt.instance<MediaServerClientFactory>();
-      final client = item.serverId.isNotEmpty
-          ? factory.getClientIfExists(item.serverId) ??
-                GetIt.instance<MediaServerClient>()
-          : GetIt.instance<MediaServerClient>();
-
-      final data = await client.itemsApi.getItems(
-        parentId: albumId,
-        includeItemTypes: const ['Audio'],
-        sortBy: 'ParentIndexNumber,IndexNumber,SortName',
-        fields: 'PrimaryImageAspectRatio,BasicSyncInfo',
-      );
-
-      final loadedTracks = (data['Items'] as List?)
-              ?.whereType<Map>()
-              .map((raw) => raw.cast<String, dynamic>())
-              .where((raw) => raw['Id']?.toString().isNotEmpty == true)
-              .map((raw) => AggregatedItem(
-                    id: raw['Id'].toString(),
-                    serverId: item.serverId,
-                    rawData: raw,
-                  ))
-              .toList() ??
-          const <AggregatedItem>[];
-
-      if (loadedTracks.isNotEmpty) {
-        tracks = loadedTracks;
-        final idx = tracks.indexWhere((t) => t.id == item.id);
-        if (idx >= 0) {
-          startIndex = idx;
-        }
-      }
-    }
-
-    await manager.playItems(tracks, startIndex: startIndex);
-    dismissLoading();
-    if (context.mounted) {
-      context.push(Destinations.audioPlayer);
-    }
-  } catch (_) {
-    dismissLoading();
-    await manager.playItems([item]);
-    if (context.mounted) {
-      context.push(Destinations.audioPlayer);
-    }
   }
 }

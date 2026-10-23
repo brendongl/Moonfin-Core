@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 
+import '../../playback/mpv_client_certificate.dart';
 import '../../util/platform_detection.dart';
 
 abstract class ThemeAudioPlayer {
@@ -26,7 +27,10 @@ class MediaKitThemeAudioPlayer implements ThemeAudioPlayer {
   Future<void> setVolume(double volume) => _player.setVolume(volume);
 
   @override
-  Future<void> open(String url) => _player.open(Media(url));
+  Future<void> open(String url) async {
+    await applyMpvClientCertificate(_player, url);
+    return _player.open(Media(url));
+  }
 
   @override
   Future<void> setLoop() => _player.setPlaylistMode(PlaylistMode.loop);

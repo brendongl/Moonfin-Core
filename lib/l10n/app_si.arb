@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "කැමති සංදර්ශන භාෂාව",
     "offlineBannerTitle": "ඔබ නොබැඳියි",
     "offlineBannerSubtitle": "ඔබේ බාගැනීම් පෙන්වමින්",
-    "offlineBannerAction": "බාගැනීම්",
     "serverUnreachableBannerTitle": "ඔබේ සේවාදායකයට ළඟා විය නොහැක",
     "serverUnreachableBannerSubtitle": "එය නැවත එනතුරු බාගැනීම්වලින් වාදනය කරමින්",
     "contextMenuHideFromContinueWatching": "නැරඹීම දිගටම කරන්නෙන් සඟවන්න",

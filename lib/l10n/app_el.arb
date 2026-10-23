@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "Προτιμώμενη γλώσσα εμφάνισης",
     "offlineBannerTitle": "Είστε εκτός σύνδεσης",
     "offlineBannerSubtitle": "Εμφανίζονται οι λήψεις σας",
-    "offlineBannerAction": "Λήψεις",
     "serverUnreachableBannerTitle": "Δεν είναι δυνατή η σύνδεση με τον διακομιστή σας",
     "serverUnreachableBannerSubtitle": "Αναπαραγωγή από τις λήψεις μέχρι να επανέλθει",
     "contextMenuHideFromContinueWatching": "Απόκρυψη από τη Συνέχιση παρακολούθησης",

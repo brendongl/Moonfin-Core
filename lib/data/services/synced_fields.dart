@@ -86,8 +86,9 @@ class SyncedField {
 /// bespoke code in PluginSyncService: mediaBarMode (falls back to a legacy bool and writes
 /// two preferences), mediaBarContentType (values outside the known set have to be rejected),
 /// sinceYouWatchedNumRows (an int on the wire against an enum locally), mdblistRatingSources
-/// (rating names are translated in both directions), and homeSections and seerrRows (nested
-/// structures).
+/// (rating names are translated in both directions), homeSections and seerrRows (nested
+/// structures), and homeRowImageTypes (one preference per row, see
+/// [encodeHomeRowImageTypes]).
 final List<SyncedField> syncedFields = <SyncedField>[
   SyncedField('hiddenContinueWatchingItems', UserPreferences.hiddenContinueWatchingItems, SyncCodec.text),
   SyncedField('hiddenNextUpSeries', UserPreferences.hiddenNextUpSeries, SyncCodec.text),
@@ -154,6 +155,7 @@ final List<SyncedField> syncedFields = <SyncedField>[
   SyncedField('showLibrariesInToolbar', UserPreferences.showLibrariesInToolbar, SyncCodec.boolean),
   SyncedField('shuffleContentType', UserPreferences.shuffleContentType, SyncCodec.text),
   SyncedField('mergeContinueWatchingNextUp', UserPreferences.mergeContinueWatchingNextUp, SyncCodec.boolean),
+  SyncedField('continueWatchingDefaultAction', UserPreferences.continueWatchingDefaultAction, SyncCodec.enumName, enumValues: prefs.ContinueWatchingDefaultAction.values),
   SyncedField('mergeRecentRowsByType', UserPreferences.mergeRecentRowsByType, SyncCodec.boolean),
   SyncedField('nextUpMaxDays', UserPreferences.nextUpMaxDays, SyncCodec.integer),
   SyncedField('enableMultiServerLibraries', UserPreferences.enableMultiServerLibraries, SyncCodec.boolean),
@@ -174,9 +176,11 @@ final List<SyncedField> syncedFields = <SyncedField>[
   SyncedField('mediaBarIntervalMs', UserPreferences.mediaBarIntervalMs, SyncCodec.integer),
   SyncedField('mediaBarTrailerPreview', UserPreferences.mediaBarTrailerPreview, SyncCodec.boolean),
   SyncedField('mediaBarTrailerAudio', UserPreferences.mediaBarTrailerAudio, SyncCodec.boolean),
+  SyncedField('trailerVolume', UserPreferences.trailerVolume, SyncCodec.integer),
   SyncedField('mediaBarTrailerCaptions', UserPreferences.mediaBarTrailerCaptions, SyncCodec.boolean),
   SyncedField('episodePreviewEnabled', UserPreferences.episodePreviewEnabled, SyncCodec.boolean),
   SyncedField('previewAudioEnabled', UserPreferences.previewAudioEnabled, SyncCodec.boolean),
+  SyncedField('previewVolume', UserPreferences.previewVolume, SyncCodec.integer),
   SyncedField('mediaBarLibraryIds', UserPreferences.mediaBarLibraryIds, SyncCodec.csvList),
   SyncedField('mediaBarCollectionIds', UserPreferences.mediaBarCollectionIds, SyncCodec.csvList),
   SyncedField('mediaBarExcludedGenres', UserPreferences.mediaBarExcludedGenres, SyncCodec.csvList),
@@ -188,7 +192,8 @@ final List<SyncedField> syncedFields = <SyncedField>[
   SyncedField('homeRowsImageType', UserPreferences.homeRowsUniversalImageType, SyncCodec.enumName, enumValues: prefs.ImageType.values),
   SyncedField('homeImageUseSeriesImage', UserPreferences.seriesThumbnailsEnabled, SyncCodec.boolean),
   SyncedField('mediaTypeBadgeBehavior', UserPreferences.mediaTypeBadgeBehavior, SyncCodec.enumName, enumValues: prefs.MediaTypeBadgeBehavior.values),
-  SyncedField('backdropEnabled', UserPreferences.backdropEnabled, SyncCodec.boolean),
+  SyncedField('homeBackdropEnabled', UserPreferences.homeBackdropEnabled, SyncCodec.boolean),
+  SyncedField('detailsBackdropEnabled', UserPreferences.detailsBackdropEnabled, SyncCodec.boolean),
   SyncedField('detailsScreenBlur', UserPreferences.detailsBackgroundBlurAmount, SyncCodec.intAsText),
   SyncedField('browsingBlur', UserPreferences.browsingBackgroundBlurAmount, SyncCodec.intAsText),
   SyncedField('mdblistEnabled', UserPreferences.enableAdditionalRatings, SyncCodec.boolean),
@@ -217,6 +222,7 @@ final List<SyncedField> syncedFields = <SyncedField>[
   SyncedField('autoplayNextEpisode', UserPreferences.autoplayNextEpisode, SyncCodec.boolean),
   SyncedField('cinemaModeEnabled', UserPreferences.cinemaModeEnabled, SyncCodec.boolean),
   SyncedField('cinemaModeEpisodesEnabled', UserPreferences.cinemaModeEpisodesEnabled, SyncCodec.boolean),
+  SyncedField('cinemaModeSkipEnabled', UserPreferences.cinemaModeSkipEnabled, SyncCodec.boolean),
   SyncedField('clockBehavior', UserPreferences.clockBehavior, SyncCodec.enumName, enumValues: prefs.ClockBehavior.values),
   SyncedField('confirmExit', UserPreferences.confirmExit, SyncCodec.boolean),
   SyncedField('crashReportsEnabled', UserPreferences.crashReportsEnabled, SyncCodec.boolean),
@@ -254,7 +260,10 @@ final List<SyncedField> syncedFields = <SyncedField>[
   SyncedField('imdbTopEnglishMoviesEnabled', UserPreferences.imdbTopEnglishMoviesEnabled, SyncCodec.boolean),
   SyncedField('interfaceStyle', UserPreferences.interfaceStyle, SyncCodec.enumName, enumValues: InterfaceStyle.values),
   SyncedField('languageOverride', UserPreferences.languageOverride, SyncCodec.text),
-  SyncedField('libraryPosterSize', UserPreferences.libraryPosterSize, SyncCodec.enumName, enumValues: prefs.PosterSize.values),
+  SyncedField('libraryPosterSize', UserPreferences.libraryPosterSize, SyncCodec.enumName, enumValues: prefs.PosterSize.gridValues),
+  SyncedField('libraryStyle', UserPreferences.libraryStyle, SyncCodec.enumName, enumValues: prefs.LibraryStyle.values),
+  SyncedField('bookLibraryStyle', UserPreferences.bookLibraryStyle, SyncCodec.enumName, enumValues: prefs.BookLibraryStyle.values),
+  SyncedField('musicLibraryStyle', UserPreferences.musicLibraryStyle, SyncCodec.enumName, enumValues: prefs.MusicLibraryStyle.values),
   SyncedField('liveTvChannelSortBy', UserPreferences.liveTvChannelSortBy, SyncCodec.enumName, enumValues: prefs.ChannelSortBy.values),
   SyncedField('liveTvDirectPlayEnabled', UserPreferences.liveTvDirectPlayEnabled, SyncCodec.boolean),
   SyncedField('loadingAnimationImage', UserPreferences.loadingAnimationImage, SyncCodec.enumName, enumValues: prefs.LoadingAnimationImage.values),
@@ -305,13 +314,15 @@ final List<SyncedField> syncedFields = <SyncedField>[
   SyncedField('playbackTimeBelowRight', UserPreferences.playbackTimeBelowRight, SyncCodec.enumName, enumValues: prefs.PlaybackTimeSlot.values),
   SyncedField('musicPlaybackTimeDisplay', UserPreferences.musicPlaybackTimeDisplay, SyncCodec.enumName, enumValues: prefs.PlaybackTimeDisplay.values),
   SyncedField('playerZoomMode', UserPreferences.playerZoomMode, SyncCodec.enumName, enumValues: prefs.ZoomMode.values),
-  SyncedField('playlistPosterSize', UserPreferences.playlistPosterSize, SyncCodec.enumName, enumValues: prefs.PosterSize.values),
+  SyncedField('playlistPosterSize', UserPreferences.playlistPosterSize, SyncCodec.enumName, enumValues: prefs.PosterSize.gridValues),
   SyncedField('playlistsRowShowEpisodes', UserPreferences.playlistsRowShowEpisodes, SyncCodec.boolean),
   SyncedField('playlistsRowSortBy', UserPreferences.playlistsRowSortBy, SyncCodec.enumName, enumValues: prefs.LibrarySortBy.values),
   SyncedField('playlistsRowSortOrder', UserPreferences.playlistsRowSortOrder, SyncCodec.enumName, enumValues: prefs.SortDirection.values),
   SyncedField('preferAudioDescription', UserPreferences.preferAudioDescription, SyncCodec.boolean),
   SyncedField('preferDefaultAudioTrack', UserPreferences.preferDefaultAudioTrack, SyncCodec.boolean),
   SyncedField('preferSdhSubtitles', UserPreferences.preferSdhSubtitles, SyncCodec.boolean),
+  SyncedField('preferTextSubtitles', UserPreferences.preferTextSubtitles, SyncCodec.boolean),
+  SyncedField('preferExternalSubtitles', UserPreferences.preferExternalSubtitles, SyncCodec.boolean),
   SyncedField('preferSystemImeKeyboard', UserPreferences.preferSystemImeKeyboard, SyncCodec.boolean),
   SyncedField('radarrCalendarShowCinema', UserPreferences.radarrCalendarShowCinema, SyncCodec.boolean),
   SyncedField('radarrCalendarShowDate', UserPreferences.radarrCalendarShowDate, SyncCodec.boolean),
@@ -399,3 +410,40 @@ final List<SyncedField> syncedFields = <SyncedField>[
   SyncedField('use24HourClock', UserPreferences.use24HourClock, SyncCodec.boolean),
   SyncedField('videoStartDelay', UserPreferences.videoStartDelay, SyncCodec.integer),
 ];
+
+/// The per-row image types travel as one list of row:type pairs, for example
+/// "genres:thumb,nextup:poster", because Moonbase keeps its admin defaults in XML, which
+/// can't hold a map. Continue Watching is left out since it syncs on its own key.
+String? encodeHomeRowImageTypes(
+  Map<prefs.HomeSectionType, prefs.ImageType> types,
+) {
+  final pairs = [
+    for (final entry in types.entries)
+      if (_carriesHomeRowImageType(entry.key))
+        '${entry.key.serializedName}:${entry.value.name}',
+  ];
+  return pairs.isEmpty ? null : pairs.join(',');
+}
+
+/// Skips any pair whose row or type isn't known. The admin page and the other clients
+/// write this list too, so case is ignored.
+Map<prefs.HomeSectionType, prefs.ImageType> decodeHomeRowImageTypes(
+  String value,
+) {
+  final imageTypes = prefs.ImageType.values.asNameMap();
+  final types = <prefs.HomeSectionType, prefs.ImageType>{};
+  for (final part in value.split(',')) {
+    final pair = part.split(':');
+    if (pair.length != 2) continue;
+    final type = prefs.HomeSectionType.fromSerialized(
+      pair[0].trim().toLowerCase(),
+    );
+    if (!_carriesHomeRowImageType(type)) continue;
+    final imageType = imageTypes[pair[1].trim().toLowerCase()];
+    if (imageType != null) types[type] = imageType;
+  }
+  return types;
+}
+
+bool _carriesHomeRowImageType(prefs.HomeSectionType type) =>
+    type != prefs.HomeSectionType.none && type != prefs.HomeSectionType.resume;

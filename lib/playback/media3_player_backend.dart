@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:get_it/get_it.dart';
 import 'package:playback_core/playback_core.dart';
 
+import '../data/services/client_certificate_service.dart';
 import '../data/services/log_service.dart';
 import '../preference/preference_constants.dart';
 import '../preference/user_preferences.dart';
@@ -16,7 +17,8 @@ import 'known_defects.dart';
 import 'media3_letterbox_crop.dart';
 import 'server_transcode_capabilities.dart';
 
-class Media3PlayerBackend extends PlayerBackend {
+class Media3PlayerBackend extends PlayerBackend
+    implements SubtitleLoadingBackend {
   static const _discontinuityWindowMs = 15000;
   static const _discontinuityThreshold = 3;
   static const _audioSinkErrorThreshold = 2;
@@ -104,11 +106,22 @@ class Media3PlayerBackend extends PlayerBackend {
   StreamSubscription<dynamic>? _eventSub;
 
   Duration _position = Duration.zero;
+
+  /// Where the previous item stopped, while the native ticker may still
+  /// report it for the item that just started.
+  Duration? _previousItemPosition;
+
+  /// How close a tick has to be to [_previousItemPosition] to count as the
+  /// previous item's, and how far a new item has to start from it for the
+  /// check to apply at all: a resume of the same spot is not checked.
+  static const _previousItemTolerance = Duration(milliseconds: 500);
+  static const _newItemJump = Duration(seconds: 1);
   Duration _duration = Duration.zero;
   Duration _buffer = Duration.zero;
   bool _isPlaying = false;
   bool _isBuffering = false;
   double _playbackSpeed = 1.0;
+  Duration? _liveEdge;
   double _volume = 100.0;
   double _audioDelaySeconds = 0.0;
   double _subtitleDelaySeconds = 0.0;
@@ -133,6 +146,20 @@ class Media3PlayerBackend extends PlayerBackend {
   final List<int> _discontinuityTimestamps = <int>[];
   final List<int> _audioSinkErrorTimestamps = <int>[];
   Timer? _audioDelayDebounce;
+  bool _isSubtitleLoading = false;
+  final _subtitleLoadingStream = StreamController<bool>.broadcast();
+
+  @override
+  bool get isSubtitleLoading => _isSubtitleLoading;
+
+  @override
+  Stream<bool> get subtitleLoadingStream => _subtitleLoadingStream.stream;
+
+  void _setSubtitleLoading(bool loading) {
+    if (_disposed || _isSubtitleLoading == loading) return;
+    _isSubtitleLoading = loading;
+    _subtitleLoadingStream.add(loading);
+  }
 
   // Freeze diagnostics: surface decode/render stalls into the in-app report so
   // a frozen-picture playback is visible without adb. See _checkPlaybackWatchdogs.
@@ -210,6 +237,16 @@ class Media3PlayerBackend extends PlayerBackend {
     await _stopActivity();
   }
 
+  /// A tick still describing the previous item. The first tick that does
+  /// not ends the wait, so a real one is never held back for long.
+  bool _isPreviousItemTick(Duration reported) {
+    final previous = _previousItemPosition;
+    if (previous == null) return false;
+    if ((reported - previous).abs() <= _previousItemTolerance) return true;
+    _previousItemPosition = null;
+    return false;
+  }
+
   void _handleEvent(dynamic event) {
     if (_disposed || event is! Map) return;
     final map = event.map((k, v) => MapEntry(k.toString(), v));
@@ -217,14 +254,19 @@ class Media3PlayerBackend extends PlayerBackend {
 
     switch (eventType) {
       case 'state':
+        final reported = Duration(milliseconds: _toInt(map['positionMs']));
+        // Its duration and play state are the previous item's too: taken
+        // here, a resume past that length would count as finished.
+        if (_isPreviousItemTick(reported)) return;
         final wasPlaying = _isPlaying;
         final wasBuffering = _isBuffering;
-        _position = Duration(milliseconds: _toInt(map['positionMs']));
+        _position = reported;
         _duration = Duration(milliseconds: _toInt(map['durationMs']));
         _buffer = Duration(milliseconds: _toInt(map['bufferedMs']));
         _isPlaying = _toBool(map['isPlaying']);
         if (_isPlaying) _startupDeadline?.cancel();
         _isBuffering = _toBool(map['isBuffering']);
+        _setSubtitleLoading(_toBool(map['isSubtitleLoading']));
         // The player's own intent, which isPlaying folds away. Absent from an
         // older native side, so it stays null rather than guessing false.
         _playWhenReady = map.containsKey('playWhenReady')
@@ -239,6 +281,10 @@ class Media3PlayerBackend extends PlayerBackend {
         if (reportedSpeed != null && reportedSpeed > 0) {
           _playbackSpeed = reportedSpeed;
         }
+        final liveEdgeMs = (map['liveEdgeMs'] as num?)?.toInt();
+        _liveEdge = liveEdgeMs == null
+            ? null
+            : Duration(milliseconds: liveEdgeMs);
         if (_isPlaying != wasPlaying || _isBuffering != wasBuffering) {
           _diag(
             'Media3 state: playing=$_isPlaying buffering=$_isBuffering '
@@ -325,6 +371,7 @@ class Media3PlayerBackend extends PlayerBackend {
           _tracksReadyCompleter!.complete();
         }
       case 'viewDisposed':
+        _setSubtitleLoading(false);
         _activityStarted = false;
         _isPlaying = false;
         _isBuffering = false;
@@ -334,6 +381,7 @@ class Media3PlayerBackend extends PlayerBackend {
         _activityActionController.add(map.cast<String, dynamic>());
       case 'playerError':
         _startupDeadline?.cancel();
+        _setSubtitleLoading(false);
         final cause = map['cause']?.toString();
         _diag(
           'Media3 player error: ${map['errorCode'] ?? ''} ${map['message'] ?? ''}'
@@ -343,6 +391,7 @@ class Media3PlayerBackend extends PlayerBackend {
         _errorStream.add(map.cast<String, dynamic>());
       case 'error':
         _startupDeadline?.cancel();
+        _setSubtitleLoading(false);
         final cause = map['cause']?.toString();
         _diag(
           // Sipflix: keep httpStatus in the line — the player-error mapper
@@ -401,6 +450,11 @@ class Media3PlayerBackend extends PlayerBackend {
               ? LogLevel.warning
               : LogLevel.debug,
         );
+      case 'secondarySubtitleError':
+        _diag(
+          'Media3: secondary subtitle failed: ${map['message'] ?? 'unknown error'}',
+          level: LogLevel.warning,
+        );
       case 'nativeErrorRetry':
         _diag(
           'Media3: retrying in place after ${map['errorCodeName'] ?? ''} '
@@ -417,6 +471,11 @@ class Media3PlayerBackend extends PlayerBackend {
         // A track the route killed is a route event, not a tunneling fault,
         // so it must not count toward disabling tunneling for the session.
         if (!deadObject) _onAudioSinkError();
+      case 'startHeldForDisplayMode':
+        _diag(
+          'Media3: held the start ${_toInt(map['heldMs'])}ms '
+          'for the display mode switch to settle',
+        );
       case 'routeFlapResume':
         _diag(
           'Media3: resumed after the audio route came back '
@@ -533,8 +592,9 @@ class Media3PlayerBackend extends PlayerBackend {
           '@${applied.toStringAsFixed(3)} for $content '
           '($behavior, mode ${_toInt(map['appliedDisplayModeId'])})';
     } else {
-      final modes = (map['supportedModes'] as List<dynamic>? ?? const [])
-          .join(', ');
+      final modes = (map['supportedModes'] as List<dynamic>? ?? const []).join(
+        ', ',
+      );
       line =
           'Media3: no display mode fits $content ($behavior'
           '${modes.isEmpty ? '' : ', display offers $modes'})';
@@ -1020,6 +1080,7 @@ class Media3PlayerBackend extends PlayerBackend {
         : payload['url']?.toString() ?? '';
     if (_disposed || url.isEmpty) return;
 
+    _setSubtitleLoading(false);
     _currentUrl = url;
     final mediaType = payload['mediaType']?.toString() ?? 'video';
     final container = payload['container']?.toString();
@@ -1036,6 +1097,17 @@ class Media3PlayerBackend extends PlayerBackend {
     _startupDeadline?.cancel();
 
     _completed = false;
+    // The native ticker keeps reporting the previous item's frozen position
+    // until the new source is set. Left in place, a stop in the first second
+    // reports where the last episode ended, which marks this one watched.
+    // A play before the new source's first tick keeps the previous item's
+    // position: [_position] is only the start position set below.
+    final previous = _previousItemPosition ?? _position;
+    _previousItemPosition = (previous - startPosition).abs() > _newItemJump
+        ? previous
+        : null;
+    _position = startPosition;
+    _positionStream.add(_position);
     _tracksKnown = false;
     _textTrackCount = 0;
     _embeddedCaptionTracks = const [];
@@ -1084,9 +1156,12 @@ class Media3PlayerBackend extends PlayerBackend {
     );
 
     // media3 opens the stream itself rather than through the Dart client, so
-    // the trust setting has to reach it separately.
+    // the trust settings have to reach it separately.
     await _invoke<void>('setAllowUntrustedTls', {
       'enabled': _prefs.get(UserPreferences.allowSelfSignedCerts),
+    });
+    await _invoke<void>('setClientCertificates', {
+      'certificates': nativeClientCertificates(pkcs12: false),
     });
     await _invoke<void>('setDecoderPreferences', {
       'preferFfmpeg': _prefs.get(UserPreferences.preferExoPlayerFfmpeg),
@@ -1101,6 +1176,7 @@ class Media3PlayerBackend extends PlayerBackend {
       ...audioDecoderPreferencesPayload(_prefs),
     });
     _lastFrameRateLine = null;
+    _liveEdge = null;
     _sourceIsLive = payload['isLive'] == true;
     // Reset for a new viewing session, but keep the adjustment when the
     // same session changes quality or restores playback after backgrounding.
@@ -1119,6 +1195,7 @@ class Media3PlayerBackend extends PlayerBackend {
       'videoRangeType': videoRangeType,
       'mediaType': mediaType,
       'videoFrameRate': (payload['videoFrameRate'] as num?)?.toDouble(),
+      'videoStartDelayMs': _prefs.get(UserPreferences.videoStartDelay),
       'videoWidth': (payload['videoWidth'] as num?)?.toInt(),
       'videoHeight': (payload['videoHeight'] as num?)?.toInt(),
       'isLive': _sourceIsLive,
@@ -1127,6 +1204,18 @@ class Media3PlayerBackend extends PlayerBackend {
       'preferredAudioLanguage': preferredAudioLanguage,
       'preferredTextLanguage': preferredSubtitleLanguage,
       'externalSubtitles': payload['externalSubtitles'] ?? const [],
+      if (payload['secondarySubtitleUrl'] is String)
+        'secondarySubtitleUrl': payload['secondarySubtitleUrl'],
+      if (payload['secondarySubtitleCodec'] is String)
+        'secondarySubtitleCodec': payload['secondarySubtitleCodec'],
+      if (payload['secondarySubtitleDelayMs'] is int)
+        'secondarySubtitleDelayMs': payload['secondarySubtitleDelayMs'],
+      if (payload['secondarySubtitleOffset'] is num)
+        'secondarySubtitleOffset': payload['secondarySubtitleOffset'],
+      if (payload['secondarySubtitleFontSize'] is num)
+        'secondarySubtitleFontSize': payload['secondarySubtitleFontSize'],
+      if (payload['secondarySubtitleTextColor'] is int)
+        'secondarySubtitleTextColor': payload['secondarySubtitleTextColor'],
       if (payload['audioTrackOrdinal'] is int)
         'audioTrackOrdinal': payload['audioTrackOrdinal'],
       'selectUndeterminedTextLanguage': false,
@@ -1160,9 +1249,7 @@ class Media3PlayerBackend extends PlayerBackend {
       unawaited(_letterboxCropper.reset());
     } else {
       unawaited(() async {
-        await _letterboxCropper.setEnabled(
-          _prefs.get(UserPreferences.cropBlackBars),
-        );
+        await _configureLetterboxCropper();
         await _letterboxCropper.onSourceOpened(url);
       }());
     }
@@ -1190,6 +1277,14 @@ class Media3PlayerBackend extends PlayerBackend {
   }
 
   @override
+  LiveSeekWindow? get liveSeekWindow {
+    final edge = _liveEdge;
+    return edge == null
+        ? null
+        : LiveSeekWindow(start: Duration.zero, edge: edge);
+  }
+
+  @override
   Future<void> stop() => _teardown('stop');
 
   Future<void> release() => _teardown('release');
@@ -1206,6 +1301,7 @@ class Media3PlayerBackend extends PlayerBackend {
 
   Future<void> _teardown(String command) async {
     _startupDeadline?.cancel();
+    _setSubtitleLoading(false);
     // The watchdogs guard a single item's bring-up, so stopping has to stop
     // the timer too or it keeps warning about a player that was told to stop.
     _watchdogTimer?.cancel();
@@ -1274,6 +1370,7 @@ class Media3PlayerBackend extends PlayerBackend {
       maxBitrateMbps: maxBitrate,
       audioCapabilityProfile: audioCapabilityProfile,
       audioFallbackCodec: _prefs.resolveAudioFallbackCodec(),
+      transcodeAudioCodecs: _prefs.resolveTranscodeAudioCodecs(),
       ac3PassthroughEnabled: _prefs.resolveAc3PassthroughEnabled(),
       eac3PassthroughEnabled: _prefs.resolveEac3PassthroughEnabled(),
       dtsCorePassthroughEnabled: _prefs.resolveDtsCorePassthroughEnabled(),
@@ -1439,6 +1536,32 @@ class Media3PlayerBackend extends PlayerBackend {
   }
 
   @override
+  Future<void> setSecondarySubtitle({String? url, String? codec}) async {
+    await _invoke<void>('setSecondarySubtitle', {'url': url, 'codec': codec});
+  }
+
+  @override
+  Future<void> setSecondarySubtitleDelay(double seconds) async {
+    await _invoke<void>('setSecondarySubtitleDelay', {
+      'seconds': seconds,
+      'delayMs': (seconds * 1000).round(),
+    });
+  }
+
+  @override
+  Future<void> configureSecondarySubtitleStyle({
+    double? fontSize,
+    double? verticalOffset,
+    int? textColor,
+  }) async {
+    await _invoke<void>('configureSecondarySubtitleStyle', {
+      'fontSize': fontSize,
+      'verticalOffset': verticalOffset,
+      'textColor': textColor,
+    });
+  }
+
+  @override
   Future<void> waitForTracksReady() async {
     if (_tracksKnown) {
       return;
@@ -1596,11 +1719,17 @@ class Media3PlayerBackend extends PlayerBackend {
   @override
   bool get canRenderBitmapSubtitles => true;
 
+  Future<void> _configureLetterboxCropper() async {
+    final seconds = _prefs.get(UserPreferences.cropBlackBarsIntervalSeconds);
+    await _letterboxCropper.setRecropInterval(Duration(seconds: seconds));
+    await _letterboxCropper.setEnabled(
+      _prefs.get(UserPreferences.cropBlackBars),
+    );
+  }
+
   void _onPreferencesChanged() {
     if (_disposed) return;
-    unawaited(
-      _letterboxCropper.setEnabled(_prefs.get(UserPreferences.cropBlackBars)),
-    );
+    unawaited(_configureLetterboxCropper());
   }
 
   @override
@@ -1624,6 +1753,7 @@ class Media3PlayerBackend extends PlayerBackend {
     _completedStream.close();
     _errorStream.close();
     _tracksChangedController.close();
+    _subtitleLoadingStream.close();
   }
 }
 
@@ -1691,6 +1821,9 @@ class _Media3LetterboxHost implements Media3LetterboxHost {
   Duration get duration => _backend._duration;
 
   @override
+  double get playbackSpeed => _backend._playbackSpeed;
+
+  @override
   Stream<bool> get playingStream => _backend._playingStream.stream;
 
   @override
@@ -1709,4 +1842,4 @@ enum Media3DoviCompatMode { native, convert, strip, off }
 /// (its Ogg support is audio only), so those route to a server remux here.
 /// AVI and FLV extractors exist in media3 and join in their place.
 const String media3DirectPlayVideoContainers =
-    'avi,dash,flv,hls,m4v,mkv,mov,mp4,ts,vob,webm,xvid';
+    'avi,dash,flv,hls,m4v,mkv,mov,mp4,mpegts,ts,vob,webm,xvid';

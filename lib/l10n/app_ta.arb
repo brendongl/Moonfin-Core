@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "விருப்பமான காட்சி மொழி",
     "offlineBannerTitle": "நீங்கள் ஆஃப்லைனில் உள்ளீர்கள்",
     "offlineBannerSubtitle": "உங்கள் பதிவிறக்கங்களைக் காட்டுகிறது",
-    "offlineBannerAction": "பதிவிறக்கங்கள்",
     "serverUnreachableBannerTitle": "உங்கள் சர்வரை அணுக முடியவில்லை",
     "serverUnreachableBannerSubtitle": "அது திரும்பும் வரை பதிவிறக்கங்களிலிருந்து இயக்குகிறது",
     "contextMenuHideFromContinueWatching": "தொடர்ந்து பார்க்கவும் பிரிவிலிருந்து மறை",

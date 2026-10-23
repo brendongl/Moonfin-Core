@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:moonfin_design/moonfin_design.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +12,8 @@ import '../../../util/error_message.dart';
 import '../providers/admin_user_providers.dart';
 import '../widgets/admin_form_styles.dart';
 import '../widgets/filesystem_browser.dart';
+import 'library_options_defaults.dart';
+import 'library_options_form.dart';
 
 class AdminLibraryAddScreen extends ConsumerStatefulWidget {
   const AdminLibraryAddScreen({super.key});
@@ -27,13 +31,23 @@ class _AdminLibraryAddScreenState
   final List<String> _paths = [];
   bool _saving = false;
 
+  /// The new library's options, null while the chosen type's are loading.
+  Map<String, dynamic>? _options;
+  Map<String, dynamic> _available = const {};
+  List<Map<String, dynamic>> _cultures = const [];
+  List<Map<String, dynamic>> _countries = const [];
+
+  /// Drops a load for a type the admin has since changed.
+  int _optionsLoad = 0;
+
+  /// Photos go in `homevideos` because the server has no `photos` library
+  /// type to create.
   static const _collectionTypes = <String, IconData>{
     'movies': Icons.movie,
     'tvshows': Icons.tv,
     'music': Icons.music_note,
     'musicvideos': Icons.music_video,
     'books': Icons.book,
-    'photos': Icons.photo,
     'homevideos': Icons.videocam,
     'mixed': Icons.folder,
   };
@@ -50,12 +64,10 @@ class _AdminLibraryAddScreenState
         return l10n.musicVideos;
       case 'books':
         return l10n.books;
-      case 'photos':
-        return l10n.photos;
       case 'homevideos':
-        return l10n.homeVideos;
+        return l10n.homeVideosAndPhotos;
       case 'mixed':
-        return l10n.mixedContent;
+        return l10n.mixedMoviesAndShows;
       default:
         return type;
     }
@@ -69,6 +81,9 @@ class _AdminLibraryAddScreenState
 
   void _selectType(String type) {
     final l10n = AppLocalizations.of(context);
+    if (type != _collectionType || _options == null) {
+      unawaited(_loadOptions(type));
+    }
     setState(() {
       _collectionType = type;
       final label = _collectionTypeLabel(type, l10n);
@@ -76,6 +91,33 @@ class _AdminLibraryAddScreenState
         _nameController.text = label;
       }
       _step = 1;
+    });
+  }
+
+  /// Reloads AvailableOptions for each type picked and starts from the
+  /// untouched defaults.
+  Future<void> _loadOptions(String type) async {
+    final load = ++_optionsLoad;
+    setState(() => _options = null);
+    final client = GetIt.instance<MediaServerClient>();
+    // A failed lookup still creates the library, only without provider lists.
+    final available = await client.adminLibraryApi
+        .getAvailableLibraryOptions(type == 'mixed' ? null : type)
+        .catchError((_) => <String, dynamic>{});
+    if (_cultures.isEmpty) {
+      _cultures = await client.adminSystemApi
+          .getCultures()
+          .catchError((_) => <Map<String, dynamic>>[]);
+    }
+    if (_countries.isEmpty) {
+      _countries = await client.adminSystemApi
+          .getCountries()
+          .catchError((_) => <Map<String, dynamic>>[]);
+    }
+    if (!mounted || load != _optionsLoad) return;
+    setState(() {
+      _available = available;
+      _options = newLibraryOptions(available);
     });
   }
 
@@ -98,17 +140,24 @@ class _AdminLibraryAddScreenState
       );
       return;
     }
+    if (_paths.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.adminLibraryFolderRequired)),
+      );
+      return;
+    }
+    final options = _options;
+    if (options == null) return;
     setState(() => _saving = true);
     try {
-      await GetIt.instance<MediaServerClient>()
-          .adminLibraryApi
-          .addVirtualFolder(
-            name: name,
-            collectionType:
-                _collectionType == 'mixed' ? null : _collectionType,
-            paths: _paths.isEmpty ? null : _paths,
-            refreshLibrary: true,
-          );
+      final api = GetIt.instance<MediaServerClient>().adminLibraryApi;
+      await api.addVirtualFolder(
+        name: name,
+        collectionType: _collectionType == 'mixed' ? null : _collectionType,
+        paths: _paths,
+        libraryOptions: options,
+        refreshLibrary: true,
+      );
       ref.invalidate(adminLibrariesProvider);
       if (mounted) context.pop();
     } catch (e) {
@@ -145,7 +194,13 @@ class _AdminLibraryAddScreenState
 
   Widget _buildStepper() {
     final l10n = AppLocalizations.of(context);
-    final labels = [l10n.type, l10n.name, l10n.paths, l10n.confirm];
+    final labels = [
+      l10n.type,
+      l10n.name,
+      l10n.paths,
+      l10n.adminLibraryTabOptions,
+      l10n.confirm,
+    ];
     return Row(
       children: List.generate(labels.length, (i) {
         final isCurrent = i == _step;
@@ -193,6 +248,8 @@ class _AdminLibraryAddScreenState
       case 2:
         return _buildPathsStep();
       case 3:
+        return _buildOptionsStep();
+      case 4:
         return _buildConfirmStep();
       default:
         return const SizedBox.shrink();
@@ -262,10 +319,18 @@ class _AdminLibraryAddScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        TextFormField(
-          controller: _nameController,
-          decoration: adminInputDecoration(label: l10n.adminLibraryName),
-          textInputAction: TextInputAction.next,
+        adminGlassGroup(
+          context,
+          children: [
+            adminFieldRow(
+              label: l10n.adminLibraryName,
+              child: TextFormField(
+                controller: _nameController,
+                decoration: adminInputDecoration(),
+                textInputAction: TextInputAction.next,
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 24),
         Row(
@@ -293,22 +358,30 @@ class _AdminLibraryAddScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (_paths.isNotEmpty) ...[
-          Text(l10n.adminSelectedPaths,
-              style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 8),
-          ...List.generate(_paths.length, (i) => ListTile(
-            leading: const Icon(Icons.folder),
-            title: Text(_paths[i],
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 13)),
-            trailing: IconButton(
-              icon: const Icon(Icons.remove_circle_outline),
-              onPressed: () => _removePath(i),
-            ),
-            dense: true,
-          )),
-          const Divider(),
-        ],
+        adminSectionLabel(context, l10n.adminSelectedPaths,
+            icon: Icons.folder_outlined),
+        adminGlassGroup(
+          context,
+          children: [
+            if (_paths.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(AppSpacing.spaceLg),
+                child: Text(l10n.adminLibraryFolderRequired),
+              ),
+            ...List.generate(_paths.length, (i) => ListTile(
+              leading: const Icon(Icons.folder),
+              title: Text(_paths[i],
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 13)),
+              trailing: IconButton(
+                icon: const Icon(Icons.remove_circle_outline),
+                tooltip: l10n.adminRemovePath,
+                onPressed: () => _removePath(i),
+              ),
+              dense: true,
+            )),
+          ],
+        ),
+        const SizedBox(height: 12),
         Text(l10n.adminBrowseFilesystem,
             style: Theme.of(context).textTheme.titleSmall),
         const SizedBox(height: 8),
@@ -326,7 +399,50 @@ class _AdminLibraryAddScreenState
             ),
             const SizedBox(width: 8),
             FilledButton(
-              onPressed: () => setState(() => _step = 3),
+              onPressed:
+                  _paths.isEmpty ? null : () => setState(() => _step = 3),
+              child: Text(l10n.next),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOptionsStep() {
+    final l10n = AppLocalizations.of(context);
+    final options = _options;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: options == null
+              ? const Center(child: CircularProgressIndicator())
+              : ListView(
+                  children: [
+                    for (final part in LibraryOptionsPart.values)
+                      LibraryOptionsForm(
+                        part: part,
+                        options: options,
+                        available: _available,
+                        collectionType: _collectionType,
+                        cultures: _cultures,
+                        countries: _countries,
+                        onChanged: () {},
+                      ),
+                  ],
+                ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            TextButton(
+              onPressed: () => setState(() => _step = 2),
+              child: Text(l10n.back),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed: options == null ? null : () => setState(() => _step = 4),
               child: Text(l10n.next),
             ),
           ],
@@ -358,14 +474,7 @@ class _AdminLibraryAddScreenState
                   const SizedBox(height: 8),
                   Text(l10n.paths,
                       style: Theme.of(context).textTheme.titleSmall),
-                  if (_paths.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(l10n.adminNoPathsAdded,
-                          style: const TextStyle(fontStyle: FontStyle.italic)),
-                    )
-                  else
-                    ...(_paths).map((p) => Padding(
+                  ...(_paths).map((p) => Padding(
                           padding: const EdgeInsets.only(top: 4),
                           child: Text(p,
                               style: const TextStyle(
@@ -380,7 +489,7 @@ class _AdminLibraryAddScreenState
         Row(
           children: [
             TextButton(
-              onPressed: _saving ? null : () => setState(() => _step = 2),
+              onPressed: _saving ? null : () => setState(() => _step = 3),
               child: Text(l10n.back),
             ),
             const SizedBox(width: 12),

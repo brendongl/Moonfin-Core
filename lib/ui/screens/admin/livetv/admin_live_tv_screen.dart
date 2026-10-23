@@ -1,16 +1,23 @@
-import 'dart:convert';
-
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get_it/get_it.dart';
-import 'package:moonfin_design/moonfin_design.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../../../l10n/app_localizations.dart';
+import '../../../../util/platform_detection.dart';
 import '../../../util/error_message.dart';
 import '../../../widgets/adaptive/adaptive_dialog.dart';
+import '../../detail/modern/widgets/details_tab_bar.dart';
+import '../admin_draft.dart';
+import '../admin_nav.dart';
+import '../providers/admin_user_providers.dart';
 import '../widgets/admin_form_styles.dart';
+import '../widgets/admin_settings_search.dart';
+import '../widgets/premiere_note.dart';
+import 'live_tv_dialogs.dart';
 
+/// Live TV in two tabs: tuners and guide providers, which save at once, and
+/// recording settings, a draft over the named configuration 'livetv'.
 class AdminLiveTvScreen extends StatefulWidget {
   const AdminLiveTvScreen({super.key});
 
@@ -18,1053 +25,316 @@ class AdminLiveTvScreen extends StatefulWidget {
   State<AdminLiveTvScreen> createState() => _AdminLiveTvScreenState();
 }
 
-class _AdminLiveTvScreenState extends State<AdminLiveTvScreen> {
+class _AdminLiveTvScreenState extends State<AdminLiveTvScreen>
+    with AdminDraftHost {
   bool _loading = true;
   bool _discovering = false;
-  bool _savingConfig = false;
   bool _refreshingGuide = false;
   String? _error;
+  int _tab = 0;
+  int _browsed = 0;
+  final _tabNodes = <int, FocusNode>{};
 
+  /// The draft's working copy of 'livetv', edited by the Recordings tab.
+  Map<String, dynamic>? _config;
   List<Map<String, dynamic>> _tuners = const [];
   List<Map<String, dynamic>> _providers = const [];
-  List<Map<String, dynamic>> _discoveredTuners = const [];
-  Map<String, dynamic> _config = const {};
+  List<Map<String, dynamic>> _discovered = const [];
+
+  /// The guide sources Add offers. Emby lists its own.
+  List<String> _guideSources = const ['SchedulesDirect', 'xmltv'];
 
   AdminLiveTvApi get _api => GetIt.instance<MediaServerClient>().adminLiveTvApi;
+
+  EmbyAdminApi? get _emby => AdminServerScope.isEmby(context)
+      ? GetIt.instance<MediaServerClient>().embyAdminApi
+      : null;
 
   @override
   void initState() {
     super.initState();
-    _loadAll();
+    AdminSettingAnchor.pending.addListener(_onSearch);
+    _load();
   }
 
-  String _friendlyError(Object error) {
-    final l10n = AppLocalizations.of(context);
-    if (error is DioException) {
-      final status = error.response?.statusCode;
-      if (status == 404 || status == 405 || status == 501) {
-        return l10n.adminLiveTvNotAvailable;
-      }
+  @override
+  void dispose() {
+    AdminSettingAnchor.pending.removeListener(_onSearch);
+    for (final node in _tabNodes.values) {
+      node.dispose();
     }
-    return describeError(error, l10n);
+    super.dispose();
   }
 
-  Future<void> _loadAll() async {
+  FocusNode _tabNode(int index) => _tabNodes.putIfAbsent(
+      index, () => FocusNode(debugLabel: 'admin_live_tv_tab_$index'));
+
+  /// Only the Recordings rows and the two lists carry anchors.
+  static int? _tabFor(String? anchor) {
+    if (anchor == null || !anchor.startsWith('live-tv.')) return null;
+    return anchor == 'live-tv.TunerHosts' ||
+            anchor == 'live-tv.ListingProviders'
+        ? 0
+        : 1;
+  }
+
+  /// A search result on the other tab switches to it before the row reveals.
+  void _onSearch() {
+    final tab = _tabFor(AdminSettingAnchor.pending.value);
+    if (tab != null && tab != _tab && mounted) setState(() => _tab = tab);
+  }
+
+  void _setLists(Map<String, dynamic> config) {
+    _tuners = liveTvMaps(config['TunerHosts']);
+    _providers = liveTvMaps(config['ListingProviders']);
+  }
+
+  Future<void> _load() async {
     setState(() {
       _loading = true;
       _error = null;
     });
-
     try {
       final config = await _api.getLiveTvConfiguration();
-      final tuners = (config['TunerHosts'] as List<dynamic>? ?? const [])
-          .whereType<Map>()
-          .map((item) => item.cast<String, dynamic>())
-          .toList();
-      final providers = (config['ListingProviders'] as List<dynamic>? ?? const [])
-          .whereType<Map>()
-          .map((item) => item.cast<String, dynamic>())
-          .toList();
+      final sources = await _emby
+          ?.getAvailableListingProviders()
+          .catchError((_) => [<String, dynamic>{'Id': 'xmltv'}]);
       if (!mounted) return;
       setState(() {
-        _tuners = tuners;
-        _providers = providers;
         _config = config;
+        _setLists(config);
+        if (sources != null) {
+          // Only the sources this page has a form for.
+          _guideSources = [
+            for (final s in sources)
+              if (const {'xmltv', 'embygn'}.contains(s['Id'])) s['Id'] as String,
+          ];
+        }
+        _tab = _tabFor(AdminSettingAnchor.pending.value) ?? _tab;
         _loading = false;
       });
+      hostDraft(
+        AdminDraft.single(
+          working: config,
+          reload: _api.getLiveTvConfiguration,
+          post: _api.updateLiveTvConfiguration,
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = _friendlyError(e);
+        _error = describeError(e, AppLocalizations.of(context));
         _loading = false;
       });
     }
   }
 
-  String _display(Map<String, dynamic> item, List<String> keys, {String? fallback}) {
-    for (final key in keys) {
-      final value = item[key];
-      if (value == null) continue;
-      final text = value.toString().trim();
-      if (text.isNotEmpty) return text;
+  /// Re-reads the lists after an immediate action. The draft keeps its own
+  /// copy, and its save reloads the object anyway.
+  Future<void> _refreshLists() async {
+    try {
+      final config = await _api.getLiveTvConfiguration();
+      if (mounted) setState(() => _setLists(config));
+    } catch (e) {
+      if (mounted) _snack(describeError(e, AppLocalizations.of(context)));
     }
-    return fallback ?? AppLocalizations.of(context).unknown;
   }
 
-  String _idOf(Map<String, dynamic> item) {
-    return _display(item, const ['Id', 'ID', 'Guid', 'Name'], fallback: '');
+  void _snack(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
-  int _intValue(dynamic value) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    return int.tryParse(value?.toString() ?? '') ?? 0;
-  }
-
-  String _guideDaysText() {
+  Future<bool> _confirmDelete(String title, String message) async {
     final l10n = AppLocalizations.of(context);
-    final days = (_config['GuideDays'] as num?)?.toInt();
-    return days == null
-        ? l10n.adminGuideDaysAuto
-        : l10n.adminGuideDaysValue(days);
-  }
-
-  Widget _dialogSectionLabel(String text) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(2, 16, 2, 8),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Text(
-          text.toUpperCase(),
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.1,
-            color: AppColorScheme.accent.withValues(alpha: 0.9),
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog.adaptive(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          adaptiveDialogAction(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l10n.cancel),
           ),
-        ),
+          adaptiveDialogAction(
+            isDestructive: true,
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(l10n.delete),
+          ),
+        ],
       ),
     );
-  }
-
-  Future<void> _discoverTuners() async {
-    if (_discovering) return;
-    setState(() => _discovering = true);
-    try {
-      final found = await _api.discoverTuners();
-      if (!mounted) return;
-      setState(() {
-        _discoveredTuners = found;
-        _discovering = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _discovering = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppLocalizations.of(context).adminTunerDiscoveryFailed(_friendlyError(e)))),
-      );
-    }
+    return ok == true;
   }
 
   Future<List<(String, String)>> _loadTunerTypes() async {
     final l10n = AppLocalizations.of(context);
-    final fallback = <(String, String)>[
+    try {
+      final types = [
+        for (final t in await _api.getTunerHostTypes())
+          if ((t['Id']?.toString() ?? '').isNotEmpty)
+            (t['Id'].toString(), t['Name']?.toString() ?? t['Id'].toString()),
+      ];
+      if (types.isNotEmpty) return types;
+    } catch (_) {}
+    return [
       ('m3u', l10n.adminTunerTypeM3u),
       ('hdhomerun', l10n.adminTunerTypeHdHomerun),
     ];
-    try {
-      final types = await _api.getTunerHostTypes();
-      final parsed = <(String, String)>[];
-      for (final type in types) {
-        final id = _display(type, const ['Id', 'Type'], fallback: '');
-        final name = _display(type, const ['Name'], fallback: id);
-        if (id.isNotEmpty) parsed.add((id, name));
-      }
-      return parsed.isEmpty ? fallback : parsed;
-    } catch (_) {
-      return fallback;
-    }
   }
 
-  Future<void> _showAddTunerDialog({Map<String, dynamic>? seed}) async {
-    final source = seed ?? const <String, dynamic>{};
-    final existingId = _display(source, const ['Id'], fallback: '');
-    final isEdit = existingId.isNotEmpty;
-    final deviceId = _display(source, const ['DeviceId'], fallback: '');
-
+  Future<void> _editTuner([Map<String, dynamic> seed = const {}]) async {
     final types = await _loadTunerTypes();
     if (!mounted) return;
-
-    var type = _display(source, const ['Type', 'TunerType'], fallback: types.first.$1);
-    if (!types.any((t) => t.$1 == type)) type = types.first.$1;
-
-    final urlController = TextEditingController(
-      text: _display(source, const ['Url', 'Path', 'ImportUrl'], fallback: ''),
-    );
-    final nameController = TextEditingController(
-      text: _display(source, const ['FriendlyName', 'Name'], fallback: ''),
-    );
-    final userAgentController = TextEditingController(
-      text: _display(source, const ['UserAgent'], fallback: ''),
-    );
-    final tunerCountController = TextEditingController(
-      text: (_intValue(source['TunerCount'])).toString(),
-    );
-    final fallbackBitrate = _intValue(source['FallbackMaxStreamingBitrate']);
-    final fallbackBitrateController = TextEditingController(
-      text: fallbackBitrate > 0 ? (fallbackBitrate / 1000000).toString() : '',
-    );
-
-    var importFavoritesOnly = source['ImportFavoritesOnly'] as bool? ?? false;
-    var allowHwTranscoding = source['AllowHWTranscoding'] as bool? ?? false;
-    var allowFmp4 = source['AllowFmp4TranscodingContainer'] as bool? ?? false;
-    var allowStreamSharing = source['AllowStreamSharing'] as bool? ?? true;
-    var enableStreamLooping = source['EnableStreamLooping'] as bool? ?? false;
-    var ignoreDts = source['IgnoreDts'] as bool? ?? true;
-    var readAtNativeFramerate = source['ReadAtNativeFramerate'] as bool? ?? true;
-
-    final l10n = AppLocalizations.of(context);
-    final payload = await showDialog<Map<String, dynamic>>(
+    final saved = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog.adaptive(
-        title: Text(isEdit ? l10n.adminEditTuner : l10n.adminAddTuner),
-        content: SizedBox(
-          width: 400,
-          child: StatefulBuilder(
-            builder: (ctx, setLocal) {
-              final isHd = type == 'hdhomerun';
-              return SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    DropdownButtonFormField<String>(
-                      initialValue: type,
-                      decoration: adminInputDecoration(label: l10n.adminTunerType),
-                      items: types
-                          .map((t) => DropdownMenuItem(
-                                value: t.$1,
-                                child: Text(t.$2),
-                              ))
-                          .toList(),
-                      onChanged: (value) {
-                        if (value != null) setLocal(() => type = value);
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: urlController,
-                      decoration: adminInputDecoration(
-                        label: isHd
-                            ? l10n.adminTunerIpAddress
-                            : l10n.adminTunerFileOrUrl,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: nameController,
-                      decoration: adminInputDecoration(
-                        label: l10n.adminTunerFriendlyName,
-                      ),
-                    ),
-                    if (!isHd) ...[
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: userAgentController,
-                        decoration: adminInputDecoration(
-                          label: l10n.adminTunerUserAgent,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: tunerCountController,
-                        keyboardType: TextInputType.number,
-                        decoration: adminInputDecoration(
-                          label: l10n.adminTunerCount,
-                          helper: l10n.adminTunerCountHelp,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: fallbackBitrateController,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      decoration: adminInputDecoration(
-                        label: l10n.adminTunerFallbackBitrate,
-                        suffixText: 'Mbps',
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    if (isHd) ...[
-                      adminSwitchRow(
-                        title: l10n.adminTunerImportFavoritesOnly,
-                        value: importFavoritesOnly,
-                        onChanged: (v) => setLocal(() => importFavoritesOnly = v),
-                      ),
-                      adminSwitchRow(
-                        title: l10n.adminTunerAllowHwTranscoding,
-                        value: allowHwTranscoding,
-                        onChanged: (v) => setLocal(() => allowHwTranscoding = v),
-                      ),
-                    ] else ...[
-                      adminSwitchRow(
-                        title: l10n.adminTunerAllowFmp4,
-                        value: allowFmp4,
-                        onChanged: (v) => setLocal(() => allowFmp4 = v),
-                      ),
-                      adminSwitchRow(
-                        title: l10n.adminTunerAllowStreamSharing,
-                        value: allowStreamSharing,
-                        onChanged: (v) => setLocal(() => allowStreamSharing = v),
-                      ),
-                      adminSwitchRow(
-                        title: l10n.adminTunerEnableStreamLooping,
-                        value: enableStreamLooping,
-                        onChanged: (v) => setLocal(() => enableStreamLooping = v),
-                      ),
-                      adminSwitchRow(
-                        title: l10n.adminTunerIgnoreDts,
-                        value: ignoreDts,
-                        onChanged: (v) => setLocal(() => ignoreDts = v),
-                      ),
-                      adminSwitchRow(
-                        title: l10n.adminTunerReadAtNativeFramerate,
-                        value: readAtNativeFramerate,
-                        onChanged: (v) => setLocal(() => readAtNativeFramerate = v),
-                      ),
-                    ],
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
-        actions: [
-          adaptiveDialogAction(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(l10n.cancel),
-          ),
-          FilledButton(
-            onPressed: () {
-              final url = urlController.text.trim();
-              final name = nameController.text.trim();
-              final userAgent = userAgentController.text.trim();
-              final mbps = double.tryParse(fallbackBitrateController.text.trim());
-              Navigator.pop(ctx, <String, dynamic>{
-                if (isEdit) 'Id': existingId,
-                if (deviceId.isNotEmpty) 'DeviceId': deviceId,
-                'Type': type,
-                'Url': url.isEmpty ? null : url,
-                'FriendlyName': name.isEmpty ? null : name,
-                'UserAgent': userAgent.isEmpty ? null : userAgent,
-                'TunerCount':
-                    int.tryParse(tunerCountController.text.trim()) ?? 0,
-                'FallbackMaxStreamingBitrate':
-                    mbps == null ? null : (mbps * 1000000).round(),
-                'ImportFavoritesOnly': importFavoritesOnly,
-                'AllowHWTranscoding': allowHwTranscoding,
-                'AllowFmp4TranscodingContainer': allowFmp4,
-                'AllowStreamSharing': allowStreamSharing,
-                'EnableStreamLooping': enableStreamLooping,
-                'IgnoreDts': ignoreDts,
-                'ReadAtNativeFramerate': readAtNativeFramerate,
-              });
-            },
-            child: Text(isEdit ? l10n.save : l10n.add),
-          ),
-        ],
+      builder: (_) => LiveTvTunerDialog(
+        api: _api,
+        types: types,
+        seed: seed,
+        emby: AdminServerScope.isEmby(context),
       ),
     );
+    if (saved != true || !mounted) return;
+    _snack(AppLocalizations.of(context).adminLiveTvTunerSaved);
+    setState(() => _discovered = [
+          for (final d in _discovered)
+            if (!identical(d, seed)) d,
+        ]);
+    await _refreshLists();
+  }
 
-    urlController.dispose();
-    nameController.dispose();
-    userAgentController.dispose();
-    tunerCountController.dispose();
-    fallbackBitrateController.dispose();
-
-    if (payload == null || !mounted) return;
+  Future<void> _deleteTuner(Map<String, dynamic> tuner) async {
+    final l10n = AppLocalizations.of(context);
+    if (!await _confirmDelete(
+      l10n.adminLiveTvDeleteTuner,
+      l10n.adminLiveTvDeleteTunerConfirm,
+    )) {
+      return;
+    }
     try {
-      await _api.addTunerHost(payload);
-      await _loadAll();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppLocalizations.of(context).adminTunerAdded)),
-      );
+      await _api.removeTunerHost(tuner['Id'].toString());
+      await _refreshLists();
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppLocalizations.of(context).adminTunerAddFailed(_friendlyError(e)))),
-      );
+      _snack(l10n.adminTunerRemoveFailed(describeError(e, l10n)));
     }
   }
 
-  List<String> _splitCategories(String text) {
-    return text
-        .split('|')
-        .map((value) => value.trim())
-        .where((value) => value.isNotEmpty)
-        .toList();
+  Future<void> _discover() async {
+    final l10n = AppLocalizations.of(context);
+    setState(() => _discovering = true);
+    try {
+      final found = await _api.discoverTuners();
+      if (!mounted) return;
+      setState(() => _discovered = found);
+      if (found.isEmpty) _snack(l10n.adminLiveTvNoNewDevices);
+    } catch (e) {
+      _snack(l10n.adminTunerDiscoveryFailed(describeError(e, l10n)));
+    } finally {
+      if (mounted) setState(() => _discovering = false);
+    }
   }
 
-  Future<void> _showAddProviderDialog({Map<String, dynamic>? seed}) async {
-    final source = seed ?? const <String, dynamic>{};
-    final existingId = _display(source, const ['Id'], fallback: '');
-    final isEdit = existingId.isNotEmpty;
+  /// The name of a guide source type, null for one this page can't edit.
+  static String? _sourceName(String type, AppLocalizations l10n) =>
+      switch (type.toLowerCase()) {
+        'xmltv' => l10n.adminProviderXmltv,
+        'schedulesdirect' => l10n.adminProviderSchedulesDirect,
+        'embygn' => l10n.adminProviderEmbyGuide,
+        _ => null,
+      };
 
-    final seedType = _display(source, const ['Type'], fallback: 'xmltv');
-    var kind = seedType.toLowerCase() == 'schedulesdirect'
-        ? 'SchedulesDirect'
-        : 'xmltv';
-
-    // XMLTV fields.
-    final pathController = TextEditingController(
-      text: _display(source, const ['Path', 'Url'], fallback: ''),
-    );
-    final moviePrefixController = TextEditingController(
-      text: _display(source, const ['MoviePrefix'], fallback: ''),
-    );
-    final userAgentController = TextEditingController(
-      text: _display(source, const ['UserAgent'], fallback: ''),
-    );
-    final moviesController = TextEditingController(
-      text: (source['MovieCategories'] as List?)?.join('|') ?? '',
-    );
-    final kidsController = TextEditingController(
-      text: (source['KidsCategories'] as List?)?.join('|') ?? '',
-    );
-    final newsController = TextEditingController(
-      text: (source['NewsCategories'] as List?)?.join('|') ?? '',
-    );
-    final sportsController = TextEditingController(
-      text: (source['SportsCategories'] as List?)?.join('|') ?? '',
-    );
-
-    // Schedules Direct fields.
-    final usernameController = TextEditingController(
-      text: _display(source, const ['Username'], fallback: ''),
-    );
-    final passwordController = TextEditingController();
-    final zipController = TextEditingController(
-      text: _display(source, const ['ZipCode'], fallback: ''),
-    );
-    var enableAllTuners = source['EnableAllTuners'] as bool? ?? true;
-    var country = _display(source, const ['Country'], fallback: '');
-    var listingsId = _display(source, const ['ListingsId'], fallback: '');
-    var providerId = existingId;
-    var loadingListings = false;
-    String? listingsError;
-    var countries = <Map<String, dynamic>>[];
-    var listings = <Map<String, dynamic>>[];
-
-    try {
-      countries = await _api.getSchedulesDirectCountries();
-    } catch (_) {}
+  /// [type] is 'xmltv', 'SchedulesDirect' or Emby's 'embygn'. A new XMLTV
+  /// provider starts from the server's default.
+  Future<void> _editProvider(
+    String type, [
+    Map<String, dynamic>? stored,
+  ]) async {
+    final l10n = AppLocalizations.of(context);
+    final xmltv = type.toLowerCase() == 'xmltv';
+    var seed = stored ?? const <String, dynamic>{};
+    if (xmltv && stored == null) {
+      try {
+        seed = await _api.getDefaultListingProvider();
+      } catch (e) {
+        _snack(describeError(e, l10n));
+        return;
+      }
+    }
     if (!mounted) return;
-
-    final l10n = AppLocalizations.of(context);
-    final payload = await showDialog<Map<String, dynamic>>(
+    final saved = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog.adaptive(
-        title: Text(isEdit ? l10n.adminEditProvider : l10n.adminAddProvider),
-        content: SizedBox(
-          width: 400,
-          child: StatefulBuilder(
-            builder: (ctx, setLocal) {
-              Future<void> fetchListings() async {
-                setLocal(() {
-                  loadingListings = true;
-                  listingsError = null;
-                });
-                try {
-                  final login = await _api.addListingProvider(
-                    {
-                      if (providerId.isNotEmpty) 'Id': providerId,
-                      'Type': 'SchedulesDirect',
-                      'Username': usernameController.text.trim(),
-                      'Password': passwordController.text,
-                    },
-                    validateLogin: true,
-                  );
-                  final id = _display(login, const ['Id'], fallback: providerId);
-                  final found = await _api.getListingProviderLineups(
-                    providerId: id,
-                    location: zipController.text.trim(),
-                    country: country,
-                  );
-                  setLocal(() {
-                    providerId = id;
-                    listings = found;
-                    loadingListings = false;
-                    if (!found.any((e) => _display(e, const ['Id']) == listingsId)) {
-                      listingsId = '';
-                    }
-                  });
-                } catch (e) {
-                  setLocal(() {
-                    loadingListings = false;
-                    listingsError = _friendlyError(e);
-                  });
-                }
-              }
-
-              return SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    DropdownButtonFormField<String>(
-                      initialValue: kind,
-                      decoration: adminInputDecoration(label: l10n.adminProviderType),
-                      items: [
-                        DropdownMenuItem(
-                          value: 'xmltv',
-                          child: Text(l10n.adminProviderXmltv),
-                        ),
-                        DropdownMenuItem(
-                          value: 'SchedulesDirect',
-                          child: Text(l10n.adminProviderSchedulesDirect),
-                        ),
-                      ],
-                      onChanged: isEdit
-                          ? null
-                          : (value) {
-                              if (value != null) setLocal(() => kind = value);
-                            },
-                    ),
-                    const SizedBox(height: 12),
-                    if (kind == 'xmltv') ...[
-                      TextField(
-                        controller: pathController,
-                        decoration:
-                            adminInputDecoration(label: l10n.adminXmltvPath),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: userAgentController,
-                        decoration: adminInputDecoration(
-                          label: l10n.adminTunerUserAgent,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: moviePrefixController,
-                        decoration: adminInputDecoration(
-                          label: l10n.adminXmltvMoviePrefix,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: moviesController,
-                        decoration: adminInputDecoration(
-                          label: l10n.adminXmltvMovieCategories,
-                          helper: l10n.adminXmltvCategoriesHelp,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: kidsController,
-                        decoration: adminInputDecoration(
-                          label: l10n.adminXmltvKidsCategories,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: newsController,
-                        decoration: adminInputDecoration(
-                          label: l10n.adminXmltvNewsCategories,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: sportsController,
-                        decoration: adminInputDecoration(
-                          label: l10n.adminXmltvSportsCategories,
-                        ),
-                      ),
-                    ] else ...[
-                      TextField(
-                        controller: usernameController,
-                        decoration:
-                            adminInputDecoration(label: l10n.adminSdUsername),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: passwordController,
-                        obscureText: true,
-                        decoration:
-                            adminInputDecoration(label: l10n.adminSdPassword),
-                      ),
-                      const SizedBox(height: 12),
-                      adminCodeDropdown(
-                        label: l10n.adminSdCountry,
-                        defaultLabel: l10n.adminSdCountrySelect,
-                        current: country,
-                        rawItems: countries.map((c) => (
-                              _display(c, const ['ShortName', 'Id'], fallback: ''),
-                              _display(c, const ['FullName', 'Name'], fallback: ''),
-                            )),
-                        onChanged: (value) =>
-                            setLocal(() => country = value ?? ''),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: zipController,
-                        decoration:
-                            adminInputDecoration(label: l10n.adminSdPostalCode),
-                      ),
-                      const SizedBox(height: 12),
-                      OutlinedButton.icon(
-                        onPressed: loadingListings ? null : fetchListings,
-                        icon: loadingListings
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.download),
-                        label: Text(l10n.adminSdGetListings),
-                      ),
-                      if (listingsError != null) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          listingsError!,
-                          style: TextStyle(color: Theme.of(ctx).colorScheme.error),
-                        ),
-                      ],
-                      if (listings.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        DropdownButtonFormField<String>(
-                          initialValue: listingsId.isEmpty ? null : listingsId,
-                          isExpanded: true,
-                          decoration:
-                              adminInputDecoration(label: l10n.adminSdListings),
-                          items: listings
-                              .map((e) => DropdownMenuItem(
-                                    value: _display(e, const ['Id']),
-                                    child: Text(_display(e, const ['Name', 'Id'])),
-                                  ))
-                              .toList(),
-                          onChanged: (value) =>
-                              setLocal(() => listingsId = value ?? ''),
-                        ),
-                      ],
-                    ],
-                    adminSwitchRow(
-                      title: l10n.adminEnableAllTuners,
-                      value: enableAllTuners,
-                      onChanged: (v) => setLocal(() => enableAllTuners = v),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
-        actions: [
-          adaptiveDialogAction(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(l10n.cancel),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (kind == 'xmltv') {
-                Navigator.pop(ctx, <String, dynamic>{
-                  if (isEdit) 'Id': existingId,
-                  'Type': 'xmltv',
-                  'Path': pathController.text.trim(),
-                  'MoviePrefix': moviePrefixController.text.trim().isEmpty
-                      ? null
-                      : moviePrefixController.text.trim(),
-                  'UserAgent': userAgentController.text.trim().isEmpty
-                      ? null
-                      : userAgentController.text.trim(),
-                  'MovieCategories': _splitCategories(moviesController.text),
-                  'KidsCategories': _splitCategories(kidsController.text),
-                  'NewsCategories': _splitCategories(newsController.text),
-                  'SportsCategories': _splitCategories(sportsController.text),
-                  'EnableAllTuners': enableAllTuners,
-                });
-              } else {
-                Navigator.pop(ctx, <String, dynamic>{
-                  if (providerId.isNotEmpty) 'Id': providerId,
-                  'Type': 'SchedulesDirect',
-                  'Username': usernameController.text.trim(),
-                  if (passwordController.text.isNotEmpty)
-                    'Password': passwordController.text,
-                  'ListingsId': listingsId,
-                  'Country': country,
-                  'ZipCode': zipController.text.trim(),
-                  'EnableAllTuners': enableAllTuners,
-                });
-              }
-            },
-            child: Text(isEdit ? l10n.save : l10n.add),
-          ),
-        ],
-      ),
+      builder: (_) => xmltv
+          ? LiveTvXmltvDialog(api: _api, seed: seed, tuners: _tuners)
+          : LiveTvSchedulesDirectDialog(
+              api: _api,
+              seed: seed,
+              tuners: _tuners,
+              embyGuide: type.toLowerCase() == 'embygn',
+            ),
     );
-
-    pathController.dispose();
-    moviePrefixController.dispose();
-    userAgentController.dispose();
-    moviesController.dispose();
-    kidsController.dispose();
-    newsController.dispose();
-    sportsController.dispose();
-    usernameController.dispose();
-    passwordController.dispose();
-    zipController.dispose();
-
-    if (payload == null || !mounted) return;
-
-    try {
-      await _api.addListingProvider(
-        payload,
-        validateListings: payload['Type'] == 'SchedulesDirect',
-      );
-      await _loadAll();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppLocalizations.of(context).adminProviderAdded)),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppLocalizations.of(context).adminProviderAddFailed(_friendlyError(e)))),
-      );
-    }
+    if (saved != true || !mounted) return;
+    _snack(l10n.adminLiveTvProviderSaved);
+    await _refreshLists();
   }
 
-  Future<void> _removeTuner(Map<String, dynamic> tuner) async {
-    final id = _idOf(tuner);
-    if (id.isEmpty) return;
-    try {
-      await _api.removeTunerHost(id);
-      await _loadAll();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppLocalizations.of(context).adminTunerRemoveFailed(_friendlyError(e)))),
-      );
-    }
-  }
-
-  Future<void> _resetTuner(Map<String, dynamic> tuner) async {
-    final id = _idOf(tuner);
-    if (id.isEmpty) return;
-    try {
-      await _api.resetTuner(id);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppLocalizations.of(context).adminTunerResetRequested)),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      final l10n = AppLocalizations.of(context);
-      final message = e is DioException && e.response?.statusCode == 400
-          ? l10n.adminTunerResetNotSupported
-          : l10n.adminTunerResetFailed(_friendlyError(e));
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
-    }
-  }
-
-  Future<void> _refreshGuideData() async {
-    if (_refreshingGuide) return;
-    setState(() => _refreshingGuide = true);
+  Future<void> _deleteProvider(Map<String, dynamic> provider) async {
     final l10n = AppLocalizations.of(context);
+    if (!await _confirmDelete(
+      l10n.adminLiveTvDeleteProvider,
+      l10n.adminLiveTvDeleteProviderConfirm,
+    )) {
+      return;
+    }
+    try {
+      await _api.removeListingProvider(provider['Id'].toString());
+      await _refreshLists();
+    } catch (e) {
+      _snack(l10n.adminProviderRemoveFailed(describeError(e, l10n)));
+    }
+  }
+
+  Future<void> _mapChannels(Map<String, dynamic> provider) => showDialog(
+        context: context,
+        builder: (_) => LiveTvChannelMapperDialog(
+          api: _api,
+          providerId: provider['Id'].toString(),
+          emby: _emby,
+        ),
+      );
+
+  TaskInfo? _guideTask(WidgetRef ref) => ref
+      .watch(adminTasksProvider)
+      .valueOrNull
+      ?.where((t) => t.key == 'RefreshGuide')
+      .firstOrNull;
+
+  Future<void> _refreshGuide() async {
+    final l10n = AppLocalizations.of(context);
+    setState(() => _refreshingGuide = true);
     try {
       final tasksApi = GetIt.instance<MediaServerClient>().adminTasksApi;
-      final tasks = await tasksApi.getTasks();
-      final task = tasks.firstWhere(
-        (t) => t['Key'] == 'RefreshGuide',
-        orElse: () => const <String, dynamic>{},
-      );
-      final id = (task['Id'] ?? '').toString();
+      // Visible tasks only, since the server hides this one while no tuner is
+      // set up.
+      final tasks = await tasksApi.getTasks(isHidden: false);
+      final id = tasks
+              .firstWhere(
+                (t) => t['Key'] == 'RefreshGuide',
+                orElse: () => const <String, dynamic>{},
+              )['Id']
+              ?.toString() ??
+          '';
       if (id.isEmpty) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.adminGuideRefreshUnavailable)),
-        );
+        _snack(l10n.adminGuideRefreshUnavailable);
         return;
       }
       await tasksApi.startTask(id);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.adminGuideRefreshStarted)),
-      );
+      _snack(l10n.adminGuideRefreshStarted);
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_friendlyError(e))),
-      );
+      _snack(describeError(e, l10n));
     } finally {
       if (mounted) setState(() => _refreshingGuide = false);
-    }
-  }
-
-  Future<void> _removeProvider(Map<String, dynamic> provider) async {
-    final id = _idOf(provider);
-    if (id.isEmpty) return;
-    try {
-      await _api.removeListingProvider(id);
-      await _loadAll();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppLocalizations.of(context).adminProviderRemoveFailed(_friendlyError(e)))),
-      );
-    }
-  }
-
-  Future<void> _saveRecordingSettings() async {
-    final prePadding = _intValue(
-      _config['PrePaddingSeconds'] ?? _config['PrePaddingMinutes'],
-    );
-    final postPadding = _intValue(
-      _config['PostPaddingSeconds'] ?? _config['PostPaddingMinutes'],
-    );
-    final recordingPath = (_config['RecordingPath'] ?? '').toString();
-    final seriesPath = (_config['SeriesRecordingPath'] ?? '').toString();
-
-    final preController = TextEditingController(
-      text: (prePadding ~/ 60).toString(),
-    );
-    final postController = TextEditingController(
-      text: (postPadding ~/ 60).toString(),
-    );
-    final recPathController = TextEditingController(text: recordingPath);
-    final seriesPathController = TextEditingController(text: seriesPath);
-    final moviePathController = TextEditingController(
-      text: (_config['MovieRecordingPath'] ?? '').toString(),
-    );
-    final postProcessorController = TextEditingController(
-      text: (_config['RecordingPostProcessor'] ?? '').toString(),
-    );
-    final postProcessorArgsController = TextEditingController(
-      text: (_config['RecordingPostProcessorArguments'] ?? '').toString(),
-    );
-
-    const guideDayOptions = <int?>[null, 1, 2, 3, 5, 7, 14];
-    final rawGuideDays = (_config['GuideDays'] as num?)?.toInt();
-    var guideDays = guideDayOptions.contains(rawGuideDays) ? rawGuideDays : null;
-    var saveNfo = _config['SaveRecordingNFO'] as bool? ?? true;
-    var saveImages = _config['SaveRecordingImages'] as bool? ?? true;
-
-    final l10n = AppLocalizations.of(context);
-    final updated = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (ctx) => AlertDialog.adaptive(
-        title: Text(l10n.adminRecordingSettings),
-        content: SizedBox(
-          width: 400,
-          child: StatefulBuilder(
-            builder: (ctx, setLocal) => SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _dialogSectionLabel(l10n.adminLiveTvSectionTiming),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: preController,
-                          keyboardType: TextInputType.number,
-                          decoration:
-                              adminInputDecoration(label: l10n.adminPrePadding),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          controller: postController,
-                          keyboardType: TextInputType.number,
-                          decoration:
-                              adminInputDecoration(label: l10n.adminPostPadding),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  DropdownButtonFormField<int?>(
-                    initialValue: guideDays,
-                    decoration: adminInputDecoration(label: l10n.adminGuideDays),
-                    items: [
-                      for (final d in guideDayOptions)
-                        DropdownMenuItem(
-                          value: d,
-                          child: Text(d == null
-                              ? l10n.adminGuideDaysAuto
-                              : l10n.adminGuideDaysValue(d)),
-                        ),
-                    ],
-                    onChanged: (v) => setLocal(() => guideDays = v),
-                  ),
-                  _dialogSectionLabel(l10n.adminLiveTvSectionPaths),
-                  TextField(
-                    controller: recPathController,
-                    decoration:
-                        adminInputDecoration(label: l10n.adminRecordingPath),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: seriesPathController,
-                    decoration: adminInputDecoration(
-                        label: l10n.adminSeriesRecordingPath),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: moviePathController,
-                    decoration: adminInputDecoration(
-                        label: l10n.adminMovieRecordingPath),
-                  ),
-                  _dialogSectionLabel(l10n.adminLiveTvSectionPostProcessing),
-                  TextField(
-                    controller: postProcessorController,
-                    decoration: adminInputDecoration(
-                        label: l10n.adminRecordingPostProcessor),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: postProcessorArgsController,
-                    decoration: adminInputDecoration(
-                        label: l10n.adminRecordingPostProcessorArgs),
-                  ),
-                  const SizedBox(height: 16),
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: AppColorScheme.onSurface.withValues(alpha: 0.05),
-                      borderRadius: AppRadius.circular(14),
-                    ),
-                    child: Column(
-                      children: [
-                        adminSwitchRow(
-                          title: l10n.adminSaveRecordingNfo,
-                          value: saveNfo,
-                          onChanged: (v) => setLocal(() => saveNfo = v),
-                        ),
-                        Divider(
-                          height: 0.5,
-                          thickness: 0.5,
-                          indent: 16,
-                          color:
-                              AppColorScheme.onSurface.withValues(alpha: 0.10),
-                        ),
-                        adminSwitchRow(
-                          title: l10n.adminSaveRecordingImages,
-                          value: saveImages,
-                          onChanged: (v) => setLocal(() => saveImages = v),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        actions: [
-          adaptiveDialogAction(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(l10n.cancel),
-          ),
-          FilledButton(
-            onPressed: () {
-              final preMinutes = int.tryParse(preController.text.trim()) ?? 0;
-              final postMinutes = int.tryParse(postController.text.trim()) ?? 0;
-              Navigator.pop(ctx, {
-                ..._config,
-                'PrePaddingSeconds': preMinutes * 60,
-                'PostPaddingSeconds': postMinutes * 60,
-                'GuideDays': guideDays,
-                'RecordingPath': recPathController.text.trim(),
-                'SeriesRecordingPath': seriesPathController.text.trim(),
-                'MovieRecordingPath': moviePathController.text.trim(),
-                'RecordingPostProcessor': postProcessorController.text.trim(),
-                'RecordingPostProcessorArguments':
-                    postProcessorArgsController.text.trim(),
-                'SaveRecordingNFO': saveNfo,
-                'SaveRecordingImages': saveImages,
-              });
-            },
-            child: Text(l10n.save),
-          ),
-        ],
-      ),
-    );
-
-    preController.dispose();
-    postController.dispose();
-    recPathController.dispose();
-    seriesPathController.dispose();
-    moviePathController.dispose();
-    postProcessorController.dispose();
-    postProcessorArgsController.dispose();
-
-    if (updated == null || !mounted) return;
-
-    setState(() => _savingConfig = true);
-    try {
-      await _api.updateLiveTvConfiguration(updated);
-      if (!mounted) return;
-      setState(() {
-        _config = updated;
-        _savingConfig = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppLocalizations.of(context).adminRecordingSettingsSaved)),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _savingConfig = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppLocalizations.of(context).adminSettingsSaveFailed(_friendlyError(e)))),
-      );
-    }
-  }
-
-  Future<void> _setChannelMappings() async {
-    final controller = TextEditingController();
-    final payload = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (ctx) => AlertDialog.adaptive(
-        title: Text(AppLocalizations.of(context).adminSetChannelMappings),
-        content: TextField(
-          controller: controller,
-          decoration: InputDecoration(
-            labelText: AppLocalizations.of(context).adminMappingJson,
-            hintText: AppLocalizations.of(context).adminMappingJsonHint,
-            border: OutlineInputBorder(),
-          ),
-          minLines: 4,
-          maxLines: 8,
-        ),
-        actions: [
-          adaptiveDialogAction(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(AppLocalizations.of(context).cancel),
-          ),
-          FilledButton(
-            onPressed: () {
-              final text = controller.text.trim();
-              if (text.isEmpty) {
-                Navigator.pop(ctx, const <String, dynamic>{});
-                return;
-              }
-              try {
-                final decoded = jsonDecode(text);
-                if (decoded is Map<String, dynamic>) {
-                  Navigator.pop(ctx, decoded);
-                } else {
-                  Navigator.pop(ctx, {'Mappings': decoded});
-                }
-              } catch (_) {
-                Navigator.pop(ctx, null);
-              }
-            },
-            child: Text(AppLocalizations.of(context).adminApply),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-
-    if (payload == null || !mounted) return;
-
-    try {
-      await _api.setChannelMappings(payload);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppLocalizations.of(context).adminChannelMappingsUpdated)),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppLocalizations.of(context).adminChannelMappingsUpdateFailed(_friendlyError(e)))),
-      );
     }
   }
 
@@ -1073,263 +343,373 @@ class _AdminLiveTvScreenState extends State<AdminLiveTvScreen> {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
-
-    if (_error != null) {
+    final l10n = AppLocalizations.of(context);
+    if (_error != null || _config == null) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(AppLocalizations.of(context).adminLiveTvLoadFailed),
+            Text(l10n.adminLiveTvLoadFailed,
+                style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
-            Text(_error!, textAlign: TextAlign.center),
-            const SizedBox(height: 12),
-            FilledButton.tonal(
-              onPressed: _loadAll,
-              child: Text(AppLocalizations.of(context).retry),
-            ),
+            Text(_error ?? l10n.adminUnknownError,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall),
+            const SizedBox(height: 16),
+            FilledButton.tonal(onPressed: _load, child: Text(l10n.retry)),
           ],
         ),
       );
     }
 
+    final bottomSafe = MediaQuery.of(context).padding.bottom;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: EdgeInsets.fromLTRB(16, 20, 16, bottomSafe + 40),
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                AppLocalizations.of(context).adminLiveTvTitle,
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-            ),
-            IconButton(
-              tooltip: AppLocalizations.of(context).refresh,
-              onPressed: _loadAll,
-              icon: const Icon(Icons.refresh),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        _sectionCard(
+        adminScreenHeader(
           context,
-          title: AppLocalizations.of(context).adminTunerDevices,
-          action: FilledButton.tonalIcon(
-            onPressed: () => _showAddTunerDialog(),
-            icon: const Icon(Icons.add),
-            label: Text(AppLocalizations.of(context).adminAddTuner),
-          ),
-          child: _tuners.isEmpty
-              ? Text(AppLocalizations.of(context).adminNoTunerHosts)
-              : Column(
-                  children: _tuners.map((tuner) {
-                    final name = _display(tuner, const ['FriendlyName', 'Name']);
-                    final type = _display(tuner, const ['Type', 'TunerType']);
-                    final id = _idOf(tuner);
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(name),
-                      subtitle: Text(type),
-                      trailing: Wrap(
-                        spacing: 4,
-                        children: [
-                          IconButton(
-                            tooltip: AppLocalizations.of(context).edit,
-                            onPressed: id.isEmpty
-                                ? null
-                                : () => _showAddTunerDialog(seed: tuner),
-                            icon: const Icon(Icons.edit_outlined),
-                          ),
-                          IconButton(
-                            tooltip: AppLocalizations.of(context).adminReset,
-                            onPressed: id.isEmpty ? null : () => _resetTuner(tuner),
-                            icon: const Icon(Icons.restart_alt),
-                          ),
-                          IconButton(
-                            tooltip: AppLocalizations.of(context).delete,
-                            onPressed: id.isEmpty ? null : () => _removeTuner(tuner),
-                            icon: const Icon(Icons.delete_outline),
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                ),
+          title: l10n.adminDrawerLiveTv,
+          icon: Icons.live_tv,
         ),
-        const SizedBox(height: 12),
-        _sectionCard(
-          context,
-          title: AppLocalizations.of(context).adminGuideProviders,
-          action: FilledButton.tonalIcon(
-            onPressed: _showAddProviderDialog,
-            icon: const Icon(Icons.add),
-            label: Text(AppLocalizations.of(context).adminAddGuideProvider),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: OutlinedButton.icon(
-                  onPressed: _refreshingGuide ? null : _refreshGuideData,
-                  icon: _refreshingGuide
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.refresh),
-                  label: Text(AppLocalizations.of(context).adminRefreshGuideData),
-                ),
-              ),
-              const SizedBox(height: 8),
-              if (_providers.isEmpty)
-                Text(AppLocalizations.of(context).adminNoListingProviders)
-              else
-                ..._providers.map((provider) {
-                  final name = _display(provider, const ['Name', 'Type']);
-                  final url =
-                      _display(provider, const ['Url', 'Path'], fallback: '');
-                  final id = _idOf(provider);
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(name),
-                    subtitle: url.isEmpty ? null : Text(url),
-                    trailing: Wrap(
-                      spacing: 4,
-                      children: [
-                        IconButton(
-                          tooltip: AppLocalizations.of(context).edit,
-                          onPressed: id.isEmpty
-                              ? null
-                              : () => _showAddProviderDialog(seed: provider),
-                          icon: const Icon(Icons.edit_outlined),
-                        ),
-                        IconButton(
-                          tooltip: AppLocalizations.of(context).delete,
-                          onPressed:
-                              id.isEmpty ? null : () => _removeProvider(provider),
-                          icon: const Icon(Icons.delete_outline),
-                        ),
-                      ],
-                    ),
-                  );
-                }),
-            ],
-          ),
+        PremiereNote(message: (l) => l.adminPremiereNoteLiveTv),
+        DetailsTabBar(
+          segmented: true,
+          wrap: PlatformDetection.useMobileUi,
+          labels: [l10n.adminLiveTvTabSources, l10n.adminLiveTvTabRecordings],
+          selectedIndex: _tab,
+          onSelect: (i) => setState(() => _tab = i),
+          focusNodeFor: _tabNode,
         ),
-        const SizedBox(height: 12),
-        _sectionCard(
-          context,
-          title: AppLocalizations.of(context).adminRecordingSettings,
-          action: FilledButton.tonalIcon(
-            onPressed: _savingConfig ? null : _saveRecordingSettings,
-            icon: const Icon(Icons.save),
-            label: Text(AppLocalizations.of(context).edit),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(AppLocalizations.of(context).adminRecordingPathDisplay(_display(_config, const ['RecordingPath'], fallback: AppLocalizations.of(context).adminNotSet))),
-              const SizedBox(height: 4),
-              Text(AppLocalizations.of(context).adminSeriesPathDisplay(_display(_config, const ['SeriesRecordingPath'], fallback: AppLocalizations.of(context).adminNotSet))),
-              const SizedBox(height: 4),
-              Text(AppLocalizations.of(context).adminPrePaddingDisplay(_intValue(_config['PrePaddingSeconds']) ~/ 60)),
-              const SizedBox(height: 4),
-              Text(AppLocalizations.of(context).adminPostPaddingDisplay(_intValue(_config['PostPaddingSeconds']) ~/ 60)),
-              const SizedBox(height: 4),
-              Text(AppLocalizations.of(context)
-                  .adminGuideDaysDisplay(_guideDaysText())),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        _sectionCard(
-          context,
-          title: AppLocalizations.of(context).adminTunerDiscovery,
-          actionBelowTitle: true,
-          action: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              FilledButton.tonalIcon(
-                onPressed: _discovering ? null : _discoverTuners,
-                icon: const Icon(Icons.radar),
-                label: Text(AppLocalizations.of(context).adminDiscover),
-              ),
-              const SizedBox(width: 8),
-              FilledButton.tonal(
-                onPressed: _setChannelMappings,
-                child: Text(AppLocalizations.of(context).adminChannelMappings),
-              ),
-            ],
-          ),
-          child: _discovering
-              ? const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8),
-                  child: LinearProgressIndicator(),
-                )
-              : _discoveredTuners.isEmpty
-                  ? Text(AppLocalizations.of(context).adminNoDiscoveredTuners)
-                  : Column(
-                      children: _discoveredTuners.map((item) {
-                        final name = _display(item, const ['FriendlyName', 'Name']);
-                        final type = _display(item, const ['Type', 'TunerType']);
-                        return ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(name),
-                          subtitle: Text(type),
-                          trailing: FilledButton.tonal(
-                            onPressed: () => _showAddTunerDialog(seed: item),
-                            child: Text(AppLocalizations.of(context).add),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-        ),
+        if (_tab == 0) ..._sourcesTab(l10n) else _recordingsTab(l10n),
       ],
     );
   }
 
-  Widget _sectionCard(
-    BuildContext context, {
-    required String title,
-    required Widget child,
-    Widget? action,
-    bool actionBelowTitle = false,
-  }) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+  Widget? _subtitle(Object? value) {
+    final text = value?.toString() ?? '';
+    return text.isEmpty ? null : Text(text);
+  }
+
+  Widget _actionRow(List<Widget> buttons) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        child: Wrap(spacing: 8, runSpacing: 8, children: buttons),
+      );
+
+  List<Widget> _sourcesTab(AppLocalizations l10n) {
+    return [
+      adminSectionLabel(
+        context,
+        l10n.adminTunerDevices,
+        icon: Icons.settings_input_antenna,
+      ),
+      AdminSettingAnchor(
+        id: 'live-tv.TunerHosts',
+        child: adminGlassGroup(
+          context,
           children: [
-            if (!actionBelowTitle)
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ),
-                  ?action,
-                ],
-              )
-            else ...[
-              Text(
-                title,
-                style: Theme.of(context).textTheme.titleMedium,
+            if (_tuners.isEmpty) ListTile(title: Text(l10n.adminNoTunerHosts)),
+            for (final tuner in _tuners)
+              ListTile(
+                leading: const Icon(Icons.dvr),
+                title: Text(liveTvTunerName(tuner, l10n)),
+                subtitle: _subtitle(tuner['Url']),
+                onTap: () => _editTuner(tuner),
+                trailing: IconButton(
+                  tooltip: l10n.delete,
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () => _deleteTuner(tuner),
+                ),
               ),
-              if (action != null) ...[
-                const SizedBox(height: 8),
-                action,
-              ],
-            ],
-            const SizedBox(height: 8),
-            child,
+            for (final device in _discovered)
+              ListTile(
+                leading: const Icon(Icons.radar),
+                title: Text(liveTvTunerName(device, l10n)),
+                subtitle: _subtitle(device['Url']),
+                trailing: FilledButton.tonal(
+                  onPressed: () => _editTuner(device),
+                  child: Text(l10n.add),
+                ),
+              ),
+            _actionRow([
+              FilledButton.tonalIcon(
+                onPressed: _editTuner,
+                icon: const Icon(Icons.add),
+                label: Text(l10n.adminLiveTvAddTuner),
+              ),
+              OutlinedButton.icon(
+                onPressed: _discovering ? null : _discover,
+                icon: _discovering ? liveTvSpinner() : const Icon(Icons.radar),
+                label: Text(l10n.adminLiveTvDetectDevices),
+              ),
+            ]),
           ],
         ),
       ),
+      adminSectionLabel(
+        context,
+        l10n.adminGuideProviders,
+        icon: Icons.event_note_outlined,
+      ),
+      AdminSettingAnchor(
+        id: 'live-tv.ListingProviders',
+        child: adminGlassGroup(
+          context,
+          children: [
+            if (_providers.isEmpty)
+              ListTile(title: Text(l10n.adminNoListingProviders)),
+            for (final provider in _providers) _providerTile(provider, l10n),
+            _actionRow([
+              MenuAnchor(
+                menuChildren: [
+                  for (final type in _guideSources)
+                    MenuItemButton(
+                      onPressed: () => _editProvider(type),
+                      child: Text(_sourceName(type, l10n)!),
+                    ),
+                ],
+                builder: (context, menu, _) => FilledButton.tonalIcon(
+                  onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+                  icon: const Icon(Icons.add),
+                  label: Text(l10n.adminLiveTvAddProvider),
+                ),
+              ),
+              Consumer(
+                builder: (context, ref, _) {
+                  final busy = _refreshingGuide ||
+                      _guideTask(ref)?.state == 'Running';
+                  return OutlinedButton.icon(
+                    onPressed: busy ? null : _refreshGuide,
+                    icon: busy ? liveTvSpinner() : const Icon(Icons.refresh),
+                    label: Text(l10n.adminLiveTvRefreshGuide),
+                  );
+                },
+              ),
+            ]),
+            Consumer(
+              builder: (context, ref, _) {
+                final task = _guideTask(ref);
+                if (task?.state != 'Running') return const SizedBox.shrink();
+                final pct = task!.currentProgressPercentage;
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                  child: LinearProgressIndicator(
+                    minHeight: 6,
+                    borderRadius: BorderRadius.circular(4),
+                    value: pct == null ? null : pct / 100,
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    ];
+  }
+
+  Widget _providerTile(Map<String, dynamic> provider, AppLocalizations l10n) {
+    final type = provider['Type']?.toString() ?? '';
+    final name = _sourceName(type, l10n);
+    final path = provider['Path']?.toString() ?? '';
+    return ListTile(
+      leading: const Icon(Icons.event_note_outlined),
+      title: Text(name ?? (type.isEmpty ? l10n.unknown : type)),
+      subtitle: _subtitle(path.isEmpty ? provider['ListingsId'] : path),
+      onTap: name == null ? null : () => _editProvider(type, provider),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            tooltip: l10n.adminLiveTvMapChannels,
+            icon: const Icon(Icons.location_searching),
+            onPressed: () => _mapChannels(provider),
+          ),
+          IconButton(
+            tooltip: l10n.delete,
+            icon: const Icon(Icons.delete_outline),
+            onPressed: () => _deleteProvider(provider),
+          ),
+        ],
+      ),
     );
   }
+
+  void _set(String key, Object? value) {
+    setState(() => _config![key] = value);
+    edited();
+  }
+
+  void _put(String key, Object? value) {
+    _config![key] = value;
+    edited();
+  }
+
+  Widget _recordingsTab(AppLocalizations l10n) {
+    return draftKeyed(
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          adminSection(
+            context,
+            title: l10n.adminLiveTvSectionGuide,
+            icon: Icons.calendar_month_outlined,
+            children: [
+              _guideDaysRow(l10n),
+              if (_config!.containsKey('WakeServer'))
+                _switchRow('WakeServer', l10n.adminLiveTvWakeServer),
+            ],
+          ),
+          adminSection(
+            context,
+            title: l10n.adminLiveTvSectionPaths,
+            icon: Icons.folder_outlined,
+            children: [
+              _pathRow(
+                'RecordingPath',
+                l10n.adminLiveTvRecordingPath,
+                helper: l10n.adminLiveTvRecordingPathHelp,
+              ),
+              _pathRow('MovieRecordingPath', l10n.adminMovieRecordingPath),
+              _pathRow('SeriesRecordingPath', l10n.adminSeriesRecordingPath),
+            ],
+          ),
+          adminSection(
+            context,
+            title: l10n.adminLiveTvSectionDefaultRecording,
+            icon: Icons.timer_outlined,
+            children: [
+              _paddingRow(
+                'PrePaddingSeconds',
+                l10n.adminLiveTvStartWhenPossible,
+                l10n.adminLiveTvMinutesBefore,
+              ),
+              _paddingRow(
+                'PostPaddingSeconds',
+                l10n.adminLiveTvStopWhenPossible,
+                l10n.adminLiveTvMinutesAfter,
+              ),
+            ],
+          ),
+          adminSection(
+            context,
+            title: l10n.adminLiveTvSectionPostProcessing,
+            icon: Icons.terminal,
+            children: [
+              _pathRow(
+                'RecordingPostProcessor',
+                l10n.adminRecordingPostProcessor,
+                files: true,
+              ),
+              adminFieldRow(
+                label: l10n.adminRecordingPostProcessorArgs,
+                anchor: 'live-tv.RecordingPostProcessorArguments',
+                child: TextFormField(
+                  initialValue:
+                      _config!['RecordingPostProcessorArguments']?.toString() ??
+                          '',
+                  decoration: adminInputDecoration(),
+                  onChanged: (v) => _put('RecordingPostProcessorArguments', v),
+                ),
+              ),
+            ],
+          ),
+          // Emby has neither.
+          if (_config!.containsKey('SaveRecordingNFO'))
+            adminSection(
+              context,
+              title: l10n.adminLiveTvSectionMetadata,
+              icon: Icons.description_outlined,
+              children: [
+                _switchRow('SaveRecordingNFO', l10n.adminSaveRecordingNfo),
+                _switchRow('SaveRecordingImages', l10n.adminSaveRecordingImages),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _guideDaysRow(AppLocalizations l10n) {
+    final days = (_config!['GuideDays'] as num?)?.toInt();
+    return adminFieldRow(
+      label: l10n.adminLiveTvGuideDays,
+      helper: l10n.adminLiveTvGuideDaysHelp,
+      anchor: 'live-tv.GuideDays',
+      child: DropdownButtonFormField<int?>(
+        initialValue: days,
+        isExpanded: true,
+        decoration: adminInputDecoration(),
+        items: [
+          DropdownMenuItem(value: null, child: Text(l10n.adminGuideDaysAuto)),
+          for (var d = 1; d <= 14; d++)
+            DropdownMenuItem(value: d, child: Text('$d')),
+          // Keeps a stored value outside 1 to 14 listed.
+          if (days != null && (days < 1 || days > 14))
+            DropdownMenuItem(value: days, child: Text('$days')),
+        ],
+        onChanged: (v) => _set('GuideDays', v),
+      ),
+    );
+  }
+
+  Widget _pathRow(
+    String key,
+    String label, {
+    String? helper,
+    bool files = false,
+  }) {
+    final l10n = AppLocalizations.of(context);
+    return adminFieldRow(
+      label: label,
+      helper: helper,
+      anchor: 'live-tv.$key',
+      child: TextFormField(
+        // Re-keyed only when a browse result lands, so typing keeps focus.
+        key: ValueKey('$key#$_browsed'),
+        initialValue: _config![key]?.toString() ?? '',
+        decoration: adminInputDecoration(
+          suffixIcon: IconButton(
+            icon: const Icon(Icons.folder_open),
+            tooltip: l10n.adminBrowse,
+            onPressed: () async {
+              final path = await pickServerPath(
+                context,
+                initial: files ? null : _config![key]?.toString(),
+                files: files,
+                writable: !files,
+              );
+              if (path == null || !mounted) return;
+              _browsed++;
+              _set(key, path);
+            },
+          ),
+        ),
+        onChanged: (v) => _put(key, v),
+      ),
+    );
+  }
+
+  /// Minutes on screen, seconds on the server, with no rounding to whole
+  /// minutes.
+  Widget _paddingRow(String key, String label, String suffix) {
+    final seconds = (_config![key] as num?)?.toInt() ?? 0;
+    return adminFieldRow(
+      label: label,
+      anchor: 'live-tv.$key',
+      child: TextFormField(
+        initialValue:
+            seconds % 60 == 0 ? '${seconds ~/ 60}' : '${seconds / 60}',
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: adminInputDecoration(suffixText: suffix),
+        onChanged: (v) =>
+            _put(key, ((double.tryParse(v.trim()) ?? 0) * 60).round()),
+      ),
+    );
+  }
+
+  Widget _switchRow(String key, String title) => adminSwitchRow(
+        title: title,
+        anchor: 'live-tv.$key',
+        value: _config![key] as bool? ?? true,
+        onChanged: (v) => _set(key, v),
+      );
 }

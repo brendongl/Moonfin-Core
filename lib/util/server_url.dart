@@ -3,6 +3,20 @@ import 'package:server_core/server_core.dart' show MediaServerClient;
 
 final _schemeRegex = RegExp(r'^[a-zA-Z][a-zA-Z0-9+.-]*://');
 
+/// Whether a download row's [stored] server belongs to the server known as
+/// [serverId] at [baseUrl]. Rows keep the app's server id, or the server's
+/// URL when the item came straight from a client.
+bool isStoredServer(
+  String stored, {
+  required String serverId,
+  required String baseUrl,
+}) {
+  if (stored == serverId) return true;
+  if (!stored.contains('://')) return false;
+  final storedUrl = normalizeServerBaseUrl(stored);
+  return storedUrl.isNotEmpty && storedUrl == normalizeServerBaseUrl(baseUrl);
+}
+
 String normalizeServerBaseUrl(String input) {
   final trimmed = input.trim();
   if (trimmed.isEmpty) return '';
@@ -40,6 +54,37 @@ String normalizeServerBaseUrl(String input) {
   return _stripTrailingSlash(
     normalizedPath.isEmpty ? authority : '$authority$normalizedPath',
   );
+}
+
+/// [resolvedAddress] with its host in the Unicode spelling the user typed, or
+/// null when [enteredAddress] doesn't spell that same host in Unicode.
+///
+/// Typed Punycode is never decoded, so a lookalike entered as xn-- stays
+/// encoded.
+String? serverDisplayAddress({
+  required String enteredAddress,
+  required String resolvedAddress,
+}) {
+  final entered = enteredAddress.trim();
+  final enteredUri = Uri.tryParse(
+    _schemeRegex.hasMatch(entered) ? entered : 'https://$entered',
+  );
+  final resolvedUri = Uri.tryParse(resolvedAddress);
+  if (enteredUri == null || resolvedUri == null) return null;
+
+  String enteredHost;
+  try {
+    enteredHost = Uri.decodeComponent(enteredUri.host);
+  } catch (_) {
+    return null;
+  }
+
+  if (!enteredHost.runes.any((rune) => rune > 0x7f) ||
+      _normalizeServerHost(enteredUri.host) != resolvedUri.host) {
+    return null;
+  }
+
+  return resolvedAddress.replaceFirst(resolvedUri.host, enteredHost);
 }
 
 String _normalizeServerHost(String host) {
@@ -86,6 +131,19 @@ String _stripTrailingSlash(String value) {
     return value.substring(0, value.length - 1);
   }
   return value;
+}
+
+/// The jellyfin-web page that approves a Quick Connect [code], or null when
+/// there is no server address or code to build it from.
+///
+/// Concatenated rather than resolved, which keeps a reverse proxy's base path.
+/// The page reads the code from the query string, so a phone that is already
+/// signed in approves with one tap instead of typing it.
+String? quickConnectApprovalUrl(String baseUrl, String code) {
+  final base = normalizeServerBaseUrl(baseUrl);
+  final digits = code.replaceAll(RegExp(r'\s'), '');
+  if (base.isEmpty || digits.isEmpty) return null;
+  return '$base/web/#/quickconnect?code=${Uri.encodeQueryComponent(digits)}';
 }
 
 /// Appends the access token query parameter so the URL authenticates itself.

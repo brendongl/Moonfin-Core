@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:moonfin_design/moonfin_design.dart';
 
@@ -43,8 +45,43 @@ class NouveauSegmentedSelector<T> extends StatefulWidget {
 class NouveauSegmentedSelectorState<T>
     extends State<NouveauSegmentedSelector<T>> {
   final Map<T, FocusNode> _focusNodes = {};
+  final ScrollController _scrollController = ScrollController();
 
   T? _hoveredValue;
+
+  @override
+  void initState() {
+    super.initState();
+    _revealSelectedAfterLayout(animate: false);
+  }
+
+  @override
+  void didUpdateWidget(NouveauSegmentedSelector<T> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Seasons can arrive after the selection, and a new list can move the
+    // selected segment without its focus changing.
+    final valuesChanged = !listEquals(widget.values, oldWidget.values);
+    if (valuesChanged || widget.selectedValue != oldWidget.selectedValue) {
+      _revealSelectedAfterLayout(evenIfFocused: valuesChanged);
+    }
+  }
+
+  // A selected segment can start off screen with nothing focused, like a
+  // series opening on a late season. A focus move already scrolls itself.
+  void _revealSelectedAfterLayout({
+    bool animate = true,
+    bool evenIfFocused = false,
+  }) {
+    final selected = widget.selectedValue;
+    if (selected == null ||
+        (!evenIfFocused && (_focusNodes[selected]?.hasFocus ?? false))) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollSegmentIntoView(selected, animate: animate);
+    });
+  }
 
   FocusNode _focusNodeFor(T value) {
     return _focusNodes.putIfAbsent(
@@ -81,9 +118,63 @@ class NouveauSegmentedSelectorState<T>
   }
 
   void _handleFocusChanged(bool focused, T value) {
-    if (focused && widget.selectOnFocus && value != widget.selectedValue) {
+    if (!focused) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollSegmentIntoView(value);
+    });
+
+    if (widget.selectOnFocus && value != widget.selectedValue) {
       widget.onValueActivated(value);
     }
+  }
+
+  // Moves only this row, by the least amount that shows the whole segment.
+  // Scrollable.ensureVisible would also scroll the page the row sits in.
+  void _scrollSegmentIntoView(T value, {bool animate = true}) {
+    if (!mounted || !_scrollController.hasClients) {
+      return;
+    }
+
+    final segment = _focusNodes[value]?.context?.findRenderObject();
+    if (segment == null || !segment.attached) {
+      return;
+    }
+
+    final viewport = RenderAbstractViewport.maybeOf(segment);
+    if (viewport == null) {
+      return;
+    }
+
+    final position = _scrollController.position;
+    final atLeadingEdge = viewport.getOffsetToReveal(segment, 0).offset;
+    final atTrailingEdge = viewport.getOffsetToReveal(segment, 1).offset;
+
+    final double target;
+    if (position.pixels > atLeadingEdge) {
+      target = atLeadingEdge;
+    } else if (position.pixels < atTrailingEdge) {
+      target = atTrailingEdge;
+    } else {
+      return;
+    }
+
+    final offset = target.clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if (!animate) {
+      _scrollController.jumpTo(offset);
+      return;
+    }
+
+    _scrollController.animateTo(
+      offset,
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   @override
@@ -91,6 +182,8 @@ class NouveauSegmentedSelectorState<T>
     for (final node in _focusNodes.values) {
       node.dispose();
     }
+
+    _scrollController.dispose();
 
     super.dispose();
   }
@@ -107,15 +200,20 @@ class NouveauSegmentedSelectorState<T>
         border: Border.all(color: foreground.withValues(alpha: 0.12)),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        clipBehavior: Clip.none,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (var index = 0; index < widget.values.length; index++)
-              _buildSegment(context, index, widget.values[index]),
-          ],
+      // Keeps segments scrolled past either end inside the pill's outline.
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(17),
+        child: SingleChildScrollView(
+          controller: _scrollController,
+          scrollDirection: Axis.horizontal,
+          clipBehavior: Clip.none,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var index = 0; index < widget.values.length; index++)
+                _buildSegment(context, index, widget.values[index]),
+            ],
+          ),
         ),
       ),
     );

@@ -12,6 +12,15 @@ typedef DownloadRef = ({
   String downloadSource,
 });
 
+/// A completed episode download, with what smart downloads needs to swap it.
+typedef DownloadedEpisodeRef = ({
+  String itemId,
+  String serverId,
+  String seriesId,
+  String qualityPreset,
+  DateTime? downloadedAt,
+});
+
 class OfflineRepository {
   final OfflineDatabase _db;
 
@@ -93,13 +102,18 @@ class OfflineRepository {
   /// used when resolving an online/offline progress conflict. When
   /// [metadataJson] is given it is written too, so the displayed UserData
   /// (which the UI reads from metadata) stays consistent with the new ticks.
+  /// [serverId] limits the write to that server's row, as another server's
+  /// download can share an Emby id.
   Future<void> setSyncedPlaybackPosition(
     String itemId,
     int positionTicks, {
     String? metadataJson,
+    String? serverId,
   }) async {
     await (_db.update(_db.downloadedItems)
-          ..where((t) => t.itemId.equals(itemId)))
+          ..where((t) => serverId == null
+              ? t.itemId.equals(itemId)
+              : t.itemId.equals(itemId) & t.serverId.equals(serverId)))
         .write(DownloadedItemsCompanion(
       playbackPositionTicks: Value(positionTicks),
       progressSynced: const Value(true),
@@ -256,6 +270,35 @@ class OfflineRepository {
         .go();
   }
 
+  /// Every completed episode download that knows its series, without the
+  /// metadata blobs.
+  Future<List<DownloadedEpisodeRef>> getDownloadedEpisodes() async {
+    final t = _db.downloadedItems;
+    final query = _db.selectOnly(t)
+      ..addColumns([
+        t.itemId,
+        t.serverId,
+        t.seriesId,
+        t.qualityPreset,
+        t.downloadedAt,
+      ])
+      ..where(
+        t.downloadStatus.equals(2) &
+            t.type.equals('Episode') &
+            t.seriesId.isNotNull(),
+      );
+    return [
+      for (final row in await query.get())
+        (
+          itemId: row.read(t.itemId)!,
+          serverId: row.read(t.serverId)!,
+          seriesId: row.read(t.seriesId)!,
+          qualityPreset: row.read(t.qualityPreset)!,
+          downloadedAt: row.read(t.downloadedAt),
+        ),
+    ];
+  }
+
   /// Id, status and source of every download row, without the metadata
   /// blobs: what batch queueing and the auto-download check need.
   Future<List<DownloadRef>> getDownloadRefs() async {
@@ -323,6 +366,13 @@ class OfflineRepository {
     final rows = await query.get();
     return rows.isNotEmpty ? rows.first : null;
   }
+
+  /// Every server's row for [itemId]. Emby ids are plain numbers, so two
+  /// servers can each have one.
+  Future<List<DownloadedItem>> getItemsWithId(String itemId) =>
+      (_db.select(_db.downloadedItems)
+            ..where((t) => t.itemId.equals(itemId)))
+          .get();
 
   Future<bool> isAvailableOffline(String itemId) async {
     final item = await getItem(itemId);

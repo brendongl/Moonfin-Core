@@ -38,6 +38,16 @@ resolve_flutter() {
   exit 1
 }
 
+# Builds both flavors by default, or just one when given mobile or tv.
+TARGET="${1:-all}"
+case "$TARGET" in
+  all|mobile|tv) ;;
+  *)
+    echo "Usage: $0 [all|mobile|tv]" >&2
+    exit 1
+    ;;
+esac
+
 FLUTTER="$(resolve_flutter)"
 
 VERSION_LINE=$(grep '^version:' "$REPO_ROOT/pubspec.yaml" | sed 's/version:[[:space:]]*//' | tr -d '[:space:]')
@@ -72,104 +82,108 @@ echo "Cleaning previous Flutter outputs..."
 echo "Resolving packages..."
 "$FLUTTER" pub get
 
-echo "Building Android release APK (arm64-v8a, armeabi-v7a, x86_64)..."
-"$FLUTTER" build apk --release \
-  --flavor mobile \
-  --build-name "$APP_VERSION" \
-  --build-number "$APP_BUILD_NUMBER" \
-  --dart-define=DISTRIBUTION_CHANNEL=apk
+if [ "$TARGET" != tv ]; then
+  echo "Building Android release APK (arm64-v8a, armeabi-v7a, x86_64)..."
+  "$FLUTTER" build apk --release \
+    --flavor mobile \
+    --build-name "$APP_VERSION" \
+    --build-number "$APP_BUILD_NUMBER" \
+    --dart-define=DISTRIBUTION_CHANNEL=apk
 
-if [ ! -f "$APK_SOURCE" ]; then
-  echo "Error: APK not found at $APK_SOURCE" >&2
-  exit 1
+  if [ ! -f "$APK_SOURCE" ]; then
+    echo "Error: APK not found at $APK_SOURCE" >&2
+    exit 1
+  fi
+
+  cp "$APK_SOURCE" "$APK_OUTPUT"
+
+  if [ -x "$PAGE_SIZE_CHECKER" ]; then
+    echo "Running 16 KB page-size compatibility check on APK (informational only)..."
+    "$PAGE_SIZE_CHECKER" "$APK_SOURCE" || echo "Warning: APK 16 KB page-size check failed (not blocking)" >&2
+  fi
+
+  echo "APK created: $APK_SOURCE"
+  echo "APK copied to root: $APK_OUTPUT"
+
+  echo "Building Android App Bundle..."
+  if ! "$FLUTTER" build appbundle --release \
+    --flavor mobile \
+    --build-name "$APP_VERSION" \
+    --build-number "$APP_BUILD_NUMBER" \
+    --dart-define=DISTRIBUTION_CHANNEL=aab; then
+    echo "Flutter appbundle build failed. Retrying with Gradle bundleRelease fallback..."
+    (
+      cd "$REPO_ROOT/android"
+      ./gradlew bundleMobileRelease
+    )
+  fi
+
+  if [ ! -f "$BUNDLE_SOURCE" ]; then
+    echo "Error: App Bundle not found at $BUNDLE_SOURCE" >&2
+    exit 1
+  fi
+
+  cp "$BUNDLE_SOURCE" "$BUNDLE_OUTPUT"
+
+  if [ -x "$PAGE_SIZE_CHECKER" ]; then
+    echo "Running 16 KB page-size compatibility check on App Bundle..."
+    "$PAGE_SIZE_CHECKER" "$BUNDLE_SOURCE"
+  fi
+
+  echo "App Bundle created: $BUNDLE_SOURCE"
+  echo "App Bundle copied to root: $BUNDLE_OUTPUT"
 fi
 
-cp "$APK_SOURCE" "$APK_OUTPUT"
+if [ "$TARGET" != mobile ]; then
+  echo "Building Android TV release APK..."
+  "$FLUTTER" build apk --release \
+    --flavor androidTv \
+    --build-name "$TV_VERSION" \
+    --build-number "$TV_BUILD_NUMBER" \
+    --dart-define=MOONFIN_FORCE_TV=true \
+    --dart-define=DISTRIBUTION_CHANNEL=android_tv_apk
 
-if [ -x "$PAGE_SIZE_CHECKER" ]; then
-  echo "Running 16 KB page-size compatibility check on APK (informational only)..."
-  "$PAGE_SIZE_CHECKER" "$APK_SOURCE" || echo "Warning: APK 16 KB page-size check failed (not blocking)" >&2
+  if [ ! -f "$TV_APK_SOURCE" ]; then
+    echo "Error: TV APK not found at $TV_APK_SOURCE" >&2
+    exit 1
+  fi
+
+  cp "$TV_APK_SOURCE" "$TV_APK_OUTPUT"
+
+  if [ -x "$PAGE_SIZE_CHECKER" ]; then
+    echo "Running 16 KB page-size compatibility check on TV APK (informational only)..."
+    "$PAGE_SIZE_CHECKER" "$TV_APK_SOURCE" || echo "Warning: TV APK 16 KB page-size check failed (not blocking)" >&2
+  fi
+
+  echo "TV APK created: $TV_APK_SOURCE"
+  echo "TV APK copied to root: $TV_APK_OUTPUT"
+
+  echo "Building Android TV App Bundle..."
+  if ! "$FLUTTER" build appbundle --release \
+    --flavor androidTv \
+    --build-name "$TV_VERSION" \
+    --build-number "$TV_BUILD_NUMBER" \
+    --dart-define=MOONFIN_FORCE_TV=true \
+    --dart-define=DISTRIBUTION_CHANNEL=android_tv_aab; then
+    echo "Flutter appbundle build failed. Retrying with Gradle bundleAndroidTvRelease fallback..."
+    (
+      cd "$REPO_ROOT/android"
+      ./gradlew bundleAndroidTvRelease
+    )
+  fi
+
+  if [ ! -f "$TV_BUNDLE_SOURCE" ]; then
+    echo "Error: TV App Bundle not found at $TV_BUNDLE_SOURCE" >&2
+    exit 1
+  fi
+
+  cp "$TV_BUNDLE_SOURCE" "$TV_BUNDLE_OUTPUT"
+
+  if [ -x "$PAGE_SIZE_CHECKER" ]; then
+    echo "Running 16 KB page-size compatibility check on TV App Bundle..."
+    "$PAGE_SIZE_CHECKER" "$TV_BUNDLE_SOURCE"
+  fi
+
+  echo "TV App Bundle created: $TV_BUNDLE_SOURCE"
+  echo "TV App Bundle copied to root: $TV_BUNDLE_OUTPUT"
 fi
-
-echo "APK created: $APK_SOURCE"
-echo "APK copied to root: $APK_OUTPUT"
-
-echo "Building Android App Bundle..."
-if ! "$FLUTTER" build appbundle --release \
-  --flavor mobile \
-  --build-name "$APP_VERSION" \
-  --build-number "$APP_BUILD_NUMBER" \
-  --dart-define=DISTRIBUTION_CHANNEL=aab; then
-  echo "Flutter appbundle build failed. Retrying with Gradle bundleRelease fallback..."
-  (
-    cd "$REPO_ROOT/android"
-    ./gradlew bundleMobileRelease
-  )
-fi
-
-if [ ! -f "$BUNDLE_SOURCE" ]; then
-  echo "Error: App Bundle not found at $BUNDLE_SOURCE" >&2
-  exit 1
-fi
-
-cp "$BUNDLE_SOURCE" "$BUNDLE_OUTPUT"
-
-if [ -x "$PAGE_SIZE_CHECKER" ]; then
-  echo "Running 16 KB page-size compatibility check on App Bundle..."
-  "$PAGE_SIZE_CHECKER" "$BUNDLE_SOURCE"
-fi
-
-echo "App Bundle created: $BUNDLE_SOURCE"
-echo "App Bundle copied to root: $BUNDLE_OUTPUT"
-
-echo "Building Android TV release APK..."
-"$FLUTTER" build apk --release \
-  --flavor androidTv \
-  --build-name "$TV_VERSION" \
-  --build-number "$TV_BUILD_NUMBER" \
-  --dart-define=MOONFIN_FORCE_TV=true \
-  --dart-define=DISTRIBUTION_CHANNEL=android_tv_apk
-
-if [ ! -f "$TV_APK_SOURCE" ]; then
-  echo "Error: TV APK not found at $TV_APK_SOURCE" >&2
-  exit 1
-fi
-
-cp "$TV_APK_SOURCE" "$TV_APK_OUTPUT"
-
-if [ -x "$PAGE_SIZE_CHECKER" ]; then
-  echo "Running 16 KB page-size compatibility check on TV APK (informational only)..."
-  "$PAGE_SIZE_CHECKER" "$TV_APK_SOURCE" || echo "Warning: TV APK 16 KB page-size check failed (not blocking)" >&2
-fi
-
-echo "TV APK created: $TV_APK_SOURCE"
-echo "TV APK copied to root: $TV_APK_OUTPUT"
-
-echo "Building Android TV App Bundle..."
-if ! "$FLUTTER" build appbundle --release \
-  --flavor androidTv \
-  --build-name "$TV_VERSION" \
-  --build-number "$TV_BUILD_NUMBER" \
-  --dart-define=MOONFIN_FORCE_TV=true \
-  --dart-define=DISTRIBUTION_CHANNEL=android_tv_aab; then
-  echo "Flutter appbundle build failed. Retrying with Gradle bundleAndroidTvRelease fallback..."
-  (
-    cd "$REPO_ROOT/android"
-    ./gradlew bundleAndroidTvRelease
-  )
-fi
-
-if [ ! -f "$TV_BUNDLE_SOURCE" ]; then
-  echo "Error: TV App Bundle not found at $TV_BUNDLE_SOURCE" >&2
-  exit 1
-fi
-
-cp "$TV_BUNDLE_SOURCE" "$TV_BUNDLE_OUTPUT"
-
-if [ -x "$PAGE_SIZE_CHECKER" ]; then
-  echo "Running 16 KB page-size compatibility check on TV App Bundle..."
-  "$PAGE_SIZE_CHECKER" "$TV_BUNDLE_SOURCE"
-fi
-
-echo "TV App Bundle created: $TV_BUNDLE_SOURCE"
-echo "TV App Bundle copied to root: $TV_BUNDLE_OUTPUT"

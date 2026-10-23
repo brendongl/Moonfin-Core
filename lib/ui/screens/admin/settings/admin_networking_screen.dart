@@ -5,8 +5,12 @@ import 'package:server_core/server_core.dart';
 
 import '../../../../l10n/app_localizations.dart';
 import '../../../util/error_message.dart';
+import '../admin_draft.dart';
 import '../widgets/admin_form_styles.dart';
 import '../widgets/filesystem_browser.dart';
+import 'admin_number_input.dart';
+
+const _publishedKey = 'PublishedServerUriBySubnet';
 
 class AdminNetworkingScreen extends StatefulWidget {
   const AdminNetworkingScreen({super.key});
@@ -15,14 +19,28 @@ class AdminNetworkingScreen extends StatefulWidget {
   State<AdminNetworkingScreen> createState() => _AdminNetworkingScreenState();
 }
 
-class _AdminNetworkingScreenState extends State<AdminNetworkingScreen> {
+class _AdminNetworkingScreenState extends State<AdminNetworkingScreen>
+    with AdminDraftHost {
   late final AdminSystemApi _api;
   Map<String, dynamic>? _config;
   bool _loading = true;
-  bool _saving = false;
   String? _error;
   bool _showCertBrowser = false;
+
+  /// Bumped when the browser picks a certificate, so the path field shows it.
+  /// Keying on the value would rebuild the field on every keystroke.
+  int _certPicks = 0;
   final _listControllers = <String, TextEditingController>{};
+
+  // PublishedServerUriBySubnet is read as one `all=` entry, or `internal=`
+  // and `external=` entries. Other entries (a subnet or an interface) are
+  // kept and listed on their own.
+  bool _samePublished = true;
+  String _pubAll = '';
+  String _pubInternal = '';
+  String _pubExternal = '';
+  List<String> _pubOther = [];
+  int? _pubRevision;
 
   @override
   void initState() {
@@ -51,6 +69,15 @@ class _AdminNetworkingScreenState extends State<AdminNetworkingScreen> {
         _config = config;
         _loading = false;
       });
+      // The server replaces the whole NetworkConfiguration on save, so the
+      // full map goes back, keeping the keys this page doesn't show.
+      hostDraft(
+        AdminDraft.single(
+          working: config,
+          reload: () => _api.getNamedConfiguration('network'),
+          post: (value) => _api.updateNamedConfiguration('network', value),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -60,29 +87,51 @@ class _AdminNetworkingScreenState extends State<AdminNetworkingScreen> {
     }
   }
 
-  Future<void> _save() async {
-    if (_config == null) return;
-    setState(() => _saving = true);
-    try {
-      await _api.updateNamedConfiguration('network', _config!);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(AppLocalizations.of(context).adminNetworkingSaved),
-            duration: Duration(seconds: 5),
-          ),
-        );
+  void _set(String key, Object? value) {
+    setState(() => _config![key] = value);
+    edited();
+  }
+
+  List<String> _strings(String key) =>
+      [for (final v in (_config![key] as List<dynamic>?) ?? const []) '$v'];
+
+  void _parsePublished() {
+    _pubRevision = draft?.revision;
+    final entries = _strings(_publishedKey);
+    _pubAll = _pubInternal = _pubExternal = '';
+    _pubOther = [];
+    if (entries.length == 1 && !entries.first.contains('=')) {
+      _pubAll = entries.first;
+    } else {
+      for (final entry in entries) {
+        final split = entry.indexOf('=');
+        final uri = entry.substring(split + 1);
+        switch (split < 0 ? '' : entry.substring(0, split)) {
+          case 'all':
+            _pubAll = uri;
+          case 'internal':
+            _pubInternal = uri;
+          case 'external':
+            _pubExternal = uri;
+          default:
+            _pubOther.add(entry);
+        }
       }
-    } catch (e) {
-      if (mounted) {
-        final l10n = AppLocalizations.of(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.adminSettingsSaveFailed(describeError(e, l10n)))),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
     }
+    _samePublished =
+        _pubAll.isNotEmpty || (_pubInternal.isEmpty && _pubExternal.isEmpty);
+  }
+
+  void _writePublished() {
+    final all = _pubAll.trim();
+    final internal = _pubInternal.trim();
+    final external = _pubExternal.trim();
+    _set(_publishedKey, [
+      if (_samePublished && all.isNotEmpty) 'all=$all',
+      if (!_samePublished && internal.isNotEmpty) 'internal=$internal',
+      if (!_samePublished && external.isNotEmpty) 'external=$external',
+      ..._pubOther,
+    ]);
   }
 
   @override
@@ -108,6 +157,8 @@ class _AdminNetworkingScreenState extends State<AdminNetworkingScreen> {
         ),
       );
     }
+    // Discard and Save replace the working map, so read it again.
+    if (_pubRevision != draft?.revision) _parsePublished();
 
     return ListView(
       padding: EdgeInsets.fromLTRB(16, 20, 16, bottomSafe + 40),
@@ -118,295 +169,352 @@ class _AdminNetworkingScreenState extends State<AdminNetworkingScreen> {
           subtitle: l10n.adminNetworkingRestartWarning,
           icon: Icons.lan_outlined,
         ),
-        adminSection(
-          context,
-          title: l10n.adminNetworkingRemoteAccess,
-          icon: Icons.public,
-          children: [
-            _switchTile('EnableRemoteAccess', l10n.adminNetworkingRemoteAccess),
-          ],
-        ),
-        adminSectionLabel(context, l10n.adminNetworkingPorts,
-            icon: Icons.settings_ethernet),
-        _portField('HttpServerPortNumber', 'InternalHttpPort', l10n.adminNetworkingHttpPort),
-        const SizedBox(height: AppSpacing.spaceMd),
-        _portField('HttpsPortNumber', 'InternalHttpsPort', l10n.adminNetworkingHttpsPort),
-        const SizedBox(height: AppSpacing.spaceMd),
-        _intField('PublicHttpPort', l10n.adminNetworkingPublicHttpPort),
-        const SizedBox(height: AppSpacing.spaceMd),
-        _intField('PublicHttpsPort', l10n.adminNetworkingPublicHttpsPort),
-        const SizedBox(height: AppSpacing.spaceMd),
-        _textField('BaseUrl', l10n.adminNetworkingBaseUrl,
-            hint: l10n.adminNetworkingBaseUrlHint),
-        adminSection(
-          context,
-          title: l10n.adminNetworkingIpSettings,
-          icon: Icons.settings_input_antenna,
-          children: [
-            _switchTile('EnableIPv4', l10n.adminNetworkingEnableIpv4),
-            _switchTile('EnableIPv6', l10n.adminNetworkingEnableIpv6),
-            _switchTile('AutoDiscovery', l10n.adminNetworkingAutoDiscovery),
-          ],
-        ),
-        adminSection(
-          context,
-          title: l10n.adminNetworkingHttps,
-          icon: Icons.lock_outline,
-          children: [
-            _switchTile('EnableHttps', l10n.adminNetworkingEnableHttps),
-            _switchTile('RequireHttps', l10n.adminNetworkingRequireHttps),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.spaceMd),
-        _certPathField(),
-        const SizedBox(height: AppSpacing.spaceMd),
-        _textField('CertificatePassword', l10n.adminNetworkingCertPassword),
-        adminSectionLabel(context, l10n.adminNetworkingLocalNetwork,
-            icon: Icons.router_outlined),
-        _listEditor(
-          'LocalNetworkAddresses',
-          l10n.adminNetworkingLocalAddresses,
-          hint: l10n.adminNetworkingAddressHint,
-        ),
-        const SizedBox(height: AppSpacing.spaceLg),
-        _listEditor(
-          'LocalNetworkSubnets',
-          l10n.adminNetworkingLocalSubnets,
-          hint: l10n.adminNetworkingLocalSubnetsHint,
-        ),
-        const SizedBox(height: AppSpacing.spaceLg),
-        _listEditor(
-          'KnownProxies',
-          l10n.adminNetworkingKnownProxies,
-          hint: l10n.adminNetworkingProxyHint,
-        ),
-        adminSectionLabel(context, l10n.adminNetworkingPublishedUris,
-            icon: Icons.link),
-        _listEditor(
-          'PublishedServerUriBySubnet',
-          l10n.adminNetworkingPublishedUris,
-          hint: l10n.adminNetworkingPublishedUriHint,
-        ),
-        adminSectionLabel(context, l10n.adminNetworkingRemoteIpFilter,
-            icon: Icons.filter_alt_outlined),
-        _filterModeSelector(),
-        const SizedBox(height: AppSpacing.spaceMd),
-        _listEditor(
-          'RemoteIPFilter',
-          l10n.adminNetworkingRemoteIpFilterLabel,
-          hint: l10n.adminNetworkingAddressHint,
-        ),
-        const SizedBox(height: AppSpacing.spaceXl),
-        adminSaveButton(
-          label: l10n.save,
-          saving: _saving,
-          onPressed: _save,
+        draftKeyed(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              adminSection(
+                context,
+                title: l10n.adminNetworkingSectionServerAddress,
+                icon: Icons.dns_outlined,
+                children: [
+                  _portField('InternalHttpPort', l10n.adminNetworkingLocalHttpPort,
+                      helper: l10n.adminNetworkingLocalHttpPortHelp),
+                  _switchTile('EnableHttps', l10n.adminNetworkingEnableHttps,
+                      subtitle: l10n.adminNetworkingEnableHttpsHelp),
+                  _portField('InternalHttpsPort',
+                      l10n.adminNetworkingLocalHttpsPort,
+                      helper: l10n.adminNetworkingLocalHttpsPortHelp),
+                  _textField('BaseUrl', l10n.adminNetworkingBaseUrl,
+                      helper: l10n.adminNetworkingBaseUrlHelp,
+                      hint: l10n.adminNetworkingBaseUrlHint),
+                  _listField('LocalNetworkAddresses',
+                      l10n.adminNetworkingBindAddress,
+                      helper: l10n.adminNetworkingBindAddressHelp,
+                      hint: l10n.adminNetworkingAddressHint),
+                  _listField('LocalNetworkSubnets',
+                      l10n.adminNetworkingLocalSubnets,
+                      helper: l10n.adminNetworkingLanNetworksHelp,
+                      hint: l10n.adminNetworkingAddressHint),
+                  _listField('KnownProxies', l10n.adminNetworkingKnownProxies,
+                      helper: l10n.adminNetworkingKnownProxiesHelp,
+                      hint: l10n.adminNetworkingProxyHint),
+                ],
+              ),
+              adminSection(
+                context,
+                title: l10n.adminNetworkingSectionHttps,
+                icon: Icons.lock_outline,
+                children: [
+                  _switchTile('RequireHttps', l10n.adminNetworkingRequireHttps,
+                      subtitle: l10n.adminNetworkingRequireHttpsHint),
+                  _certPathField(l10n),
+                  _textField('CertificatePassword',
+                      l10n.adminNetworkingCertPassword,
+                      helper: l10n.adminNetworkingCertPasswordHelp,
+                      obscure: true),
+                ],
+              ),
+              adminSection(
+                context,
+                title: l10n.adminNetworkingSectionRemoteAccess,
+                icon: Icons.public,
+                children: [
+                  _switchTile('EnableRemoteAccess', l10n.adminNetworkingAllowRemote,
+                      subtitle: l10n.adminNetworkingAllowRemoteHelp),
+                  _listField('RemoteIPFilter',
+                      l10n.adminNetworkingRemoteIpFilterLabel,
+                      helper: l10n.adminNetworkingRemoteIpFilterHelp,
+                      hint: l10n.adminNetworkingAddressHint),
+                  _filterModeField(l10n),
+                  _portField('PublicHttpPort', l10n.adminNetworkingPublicHttpPort,
+                      helper: l10n.adminNetworkingPublicHttpPortHelp),
+                  _portField('PublicHttpsPort',
+                      l10n.adminNetworkingPublicHttpsPort,
+                      helper: l10n.adminNetworkingPublicHttpsPortHelp),
+                ],
+              ),
+              adminSection(
+                context,
+                title: l10n.adminNetworkingSectionIpProtocols,
+                icon: Icons.settings_input_antenna,
+                children: [
+                  _switchTile('EnableIPv4', l10n.adminNetworkingEnableIpv4),
+                  _switchTile('EnableIPv6', l10n.adminNetworkingEnableIpv6),
+                ],
+              ),
+              adminSection(
+                context,
+                title: l10n.adminNetworkingSectionDiscovery,
+                icon: Icons.wifi_tethering,
+                children: [
+                  _switchTile('AutoDiscovery', l10n.adminNetworkingAutoDiscoveryLabel,
+                      subtitle: l10n.adminNetworkingAutoDiscoveryHelp),
+                ],
+              ),
+              adminSection(
+                context,
+                title: l10n.adminNetworkingSectionFirewall,
+                icon: Icons.link,
+                children: _publishedRows(l10n),
+              ),
+            ],
+          ),
         ),
       ],
     );
   }
 
-  Widget _textField(String key, String label, {String? hint}) {
-    return TextFormField(
-      initialValue: _config![key]?.toString() ?? '',
-      decoration: adminInputDecoration(label: label, hint: hint),
-      onChanged: (v) => _config![key] = v,
+  List<Widget> _publishedRows(AppLocalizations l10n) {
+    Widget uriField(String label, String helper, String value,
+            ValueChanged<String> onChanged) =>
+        adminFieldRow(
+          label: label,
+          helper: helper,
+          child: TextFormField(
+            // The switch swaps these fields in place, and a key per field
+            // keeps one field's text from showing up in the next.
+            key: ValueKey(label),
+            initialValue: value,
+            decoration: adminInputDecoration(),
+            keyboardType: TextInputType.url,
+            onChanged: (v) {
+              onChanged(v);
+              _writePublished();
+            },
+          ),
+        );
+
+    return [
+      adminSwitchRow(
+        title: l10n.adminNetworkingSamePublishedUri,
+        anchor: 'networking.$_publishedKey',
+        value: _samePublished,
+        onChanged: (v) {
+          _samePublished = v;
+          _writePublished();
+        },
+      ),
+      if (_samePublished)
+        uriField(l10n.adminNetworkingPublishedUri,
+            l10n.adminNetworkingPublishedUriHelp, _pubAll, (v) => _pubAll = v)
+      else ...[
+        uriField(l10n.adminNetworkingInternalUri,
+            l10n.adminNetworkingInternalUriHelp, _pubInternal,
+            (v) => _pubInternal = v),
+        uriField(l10n.adminNetworkingExternalUri,
+            l10n.adminNetworkingExternalUriHelp, _pubExternal,
+            (v) => _pubExternal = v),
+      ],
+      adminFieldRow(
+        label: l10n.adminNetworkingOtherPublishedUris,
+        helper: l10n.adminNetworkingOtherPublishedUrisHelp,
+        child: _listEditor(
+          id: 'publishedOther',
+          items: _pubOther,
+          hint: l10n.adminNetworkingOtherPublishedUriHint,
+          onChanged: (items) {
+            _pubOther = items;
+            _writePublished();
+          },
+        ),
+      ),
+    ];
+  }
+
+  Widget _textField(
+    String key,
+    String label, {
+    String? helper,
+    String? hint,
+    bool obscure = false,
+  }) {
+    return adminFieldRow(
+      label: label,
+      helper: helper,
+      anchor: 'networking.$key',
+      child: TextFormField(
+        initialValue: _config![key]?.toString() ?? '',
+        obscureText: obscure,
+        decoration: adminInputDecoration(hint: hint),
+        onChanged: (v) {
+          _config![key] = v;
+          edited();
+        },
+      ),
     );
   }
 
-  Widget _intField(String key, String label) {
-    return TextFormField(
-      initialValue: (_config![key] as num?)?.toString() ?? '0',
-      decoration: adminInputDecoration(label: label),
-      keyboardType: TextInputType.number,
-      onChanged: (v) => _config![key] = int.tryParse(v) ?? 0,
+  /// A port box. A cleared one saves the server's default port, never 0.
+  Widget _portField(String key, String label, {String? helper}) {
+    return adminFieldRow(
+      label: label,
+      helper: helper,
+      anchor: 'networking.$key',
+      child: adminNumberInput(
+        text: (_config![key] as num?)?.toString() ?? '',
+        fallback: key.contains('Https') ? 8920 : 8096,
+        min: 1,
+        max: 65535,
+        onChanged: (n) {
+          _config![key] = n;
+          edited();
+        },
+      ),
     );
   }
 
-  Widget _portField(String legacyKey, String modernKey, String label) {
-    final String key = _config!.containsKey(modernKey) ? modernKey : legacyKey;
-    return TextFormField(
-      initialValue: (_config![key] as num?)?.toString() ?? '0',
-      decoration: adminInputDecoration(label: label),
-      keyboardType: TextInputType.number,
-      onChanged: (v) {
-        final val = int.tryParse(v) ?? 0;
-        _config![key] = val;
-        if (_config!.containsKey(modernKey)) {
-          _config![modernKey] = val;
-        }
-        if (_config!.containsKey(legacyKey)) {
-          _config![legacyKey] = val;
-        }
-      },
-    );
-  }
-
-  Widget _switchTile(String key, String title) {
+  Widget _switchTile(String key, String title, {String? subtitle}) {
     return adminSwitchRow(
       title: title,
+      subtitle: subtitle,
+      anchor: 'networking.$key',
       value: _config![key] as bool? ?? false,
-      onChanged: (v) => setState(() => _config![key] = v),
+      onChanged: (v) => _set(key, v),
     );
   }
 
-  Widget _certPathField() {
-    final l10n = AppLocalizations.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: TextFormField(
-                key: ValueKey(_config!['CertificatePath']),
-                initialValue: _config!['CertificatePath']?.toString() ?? '',
-                decoration:
-                    adminInputDecoration(label: l10n.adminNetworkingCertPath),
-                onChanged: (v) => _config!['CertificatePath'] = v,
+  Widget _certPathField(AppLocalizations l10n) {
+    const key = 'CertificatePath';
+    return adminFieldRow(
+      label: l10n.adminNetworkingCustomCertPath,
+      helper: l10n.adminNetworkingCertPathHelp,
+      anchor: 'networking.$key',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  key: ValueKey(_certPicks),
+                  initialValue: _config![key]?.toString() ?? '',
+                  decoration: adminInputDecoration(),
+                  onChanged: (v) {
+                    _config![key] = v;
+                    edited();
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: Icon(_showCertBrowser ? Icons.close : Icons.folder_open),
+                tooltip:
+                    _showCertBrowser ? l10n.adminCloseBrowser : l10n.adminBrowse,
+                onPressed: () =>
+                    setState(() => _showCertBrowser = !_showCertBrowser),
+              ),
+            ],
+          ),
+          if (_showCertBrowser) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 300,
+              child: FilesystemBrowser(
+                initialPath: _config![key]?.toString(),
+                // The certificate is a .pfx file, so list files too.
+                includeFiles: true,
+                onPathSelected: (path) {
+                  _showCertBrowser = false;
+                  _certPicks++;
+                  _set(key, path);
+                },
               ),
             ),
-            const SizedBox(width: 8),
-            IconButton(
-              icon:
-                  Icon(_showCertBrowser ? Icons.close : Icons.folder_open),
-              tooltip: _showCertBrowser ? l10n.adminCloseBrowser : l10n.adminBrowse,
-              onPressed: () =>
-                  setState(() => _showCertBrowser = !_showCertBrowser),
-            ),
           ],
-        ),
-        if (_showCertBrowser) ...[
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 300,
-            child: FilesystemBrowser(
-              initialPath: _config!['CertificatePath']?.toString(),
-              onPathSelected: (path) {
-                setState(() {
-                  _config!['CertificatePath'] = path;
-                  _showCertBrowser = false;
-                });
-              },
-            ),
-          ),
         ],
-      ],
+      ),
     );
   }
 
-  Widget _filterModeSelector() {
-    final l10n = AppLocalizations.of(context);
-    final isBlacklist =
-        _config!['IsRemoteIPFilterBlacklist'] as bool? ?? false;
-    return Row(
-      children: [
-        ChoiceChip(
-          label: Text(l10n.adminNetworkingWhitelist),
-          selected: !isBlacklist,
-          onSelected: (v) {
-            if (v) {
-              setState(
-                  () => _config!['IsRemoteIPFilterBlacklist'] = false);
-            }
-          },
-        ),
-        const SizedBox(width: 8),
-        ChoiceChip(
-          label: Text(l10n.adminNetworkingBlacklist),
-          selected: isBlacklist,
-          onSelected: (v) {
-            if (v) {
-              setState(
-                  () => _config!['IsRemoteIPFilterBlacklist'] = true);
-            }
-          },
-        ),
-      ],
+  Widget _filterModeField(AppLocalizations l10n) {
+    const key = 'IsRemoteIPFilterBlacklist';
+    return adminFieldRow(
+      label: l10n.adminNetworkingRemoteIpFilterMode,
+      anchor: 'networking.$key',
+      child: DropdownButtonFormField<bool>(
+        initialValue: _config![key] as bool? ?? false,
+        isExpanded: true,
+        decoration: adminInputDecoration(),
+        items: [
+          DropdownMenuItem(
+              value: false, child: Text(l10n.adminNetworkingWhitelist)),
+          DropdownMenuItem(
+              value: true, child: Text(l10n.adminNetworkingBlacklist)),
+        ],
+        onChanged: (v) => _set(key, v ?? false),
+      ),
     );
   }
 
-  TextEditingController _controllerFor(String key) {
-    return _listControllers.putIfAbsent(key, () => TextEditingController());
+  Widget _listField(String key, String label, {String? helper, String? hint}) {
+    return adminFieldRow(
+      label: label,
+      helper: helper,
+      anchor: 'networking.$key',
+      child: _listEditor(
+        id: key,
+        items: _strings(key),
+        hint: hint,
+        onChanged: (items) => _set(key, items),
+      ),
+    );
   }
 
-  void _addListItem(String key) {
-    final controller = _controllerFor(key);
-    final v = controller.text.trim();
-    if (v.isEmpty) return;
-    final items = List<String>.from(
-        (_config![key] as List<dynamic>?) ?? <dynamic>[]);
-    items.add(v);
-    _config![key] = items;
-    controller.clear();
-    setState(() {});
-  }
-
-  Widget _listEditor(String key, String label, {String? hint}) {
-    final items = List<String>.from(
-        (_config![key] as List<dynamic>?) ?? <dynamic>[]);
-    final controller = _controllerFor(key);
+  Widget _listEditor({
+    required String id,
+    required List<String> items,
+    required ValueChanged<List<String>> onChanged,
+    String? hint,
+  }) {
+    final controller =
+        _listControllers.putIfAbsent(id, () => TextEditingController());
+    void add() {
+      final v = controller.text.trim();
+      if (v.isEmpty) return;
+      controller.clear();
+      onChanged([...items, v]);
+    }
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(label,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppColorScheme.onSurface.withValues(alpha: 0.85),
-            )),
-        if (hint != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 2, bottom: 4),
-            child: Text(hint,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppColorScheme.onSurface.withValues(alpha: 0.5),
-                )),
-          ),
-        const SizedBox(height: AppSpacing.spaceSm),
-        if (items.isNotEmpty)
+        if (items.isNotEmpty) ...[
           Wrap(
             spacing: AppSpacing.spaceSm,
             runSpacing: AppSpacing.spaceXs,
-            children: items
-                .asMap()
-                .entries
-                .map((entry) => Chip(
-                      label: Text(entry.value,
-                          style: const TextStyle(
-                              fontFamily: 'monospace', fontSize: 12.5)),
-                      onDeleted: () {
-                        setState(() {
-                          items.removeAt(entry.key);
-                          _config![key] = items;
-                        });
-                      },
-                      backgroundColor:
-                          AppColorScheme.onSurface.withValues(alpha: 0.06),
-                      side: BorderSide(
-                          color: AppColorScheme.onSurface
-                              .withValues(alpha: 0.10)),
-                    ))
-                .toList(),
+            children: [
+              for (var i = 0; i < items.length; i++)
+                Chip(
+                  label: Text(items[i],
+                      style: const TextStyle(
+                          fontFamily: 'monospace', fontSize: 12.5)),
+                  onDeleted: () => onChanged([...items]..removeAt(i)),
+                  backgroundColor:
+                      AppColorScheme.onSurface.withValues(alpha: 0.06),
+                  side: BorderSide(
+                      color: AppColorScheme.onSurface.withValues(alpha: 0.10)),
+                ),
+            ],
           ),
-        if (items.isNotEmpty) const SizedBox(height: AppSpacing.spaceSm),
+          const SizedBox(height: AppSpacing.spaceSm),
+        ],
         Row(
           children: [
             Expanded(
               child: TextField(
                 controller: controller,
                 decoration: adminInputDecoration(
-                  hint: AppLocalizations.of(context).adminNetworkingAddEntry,
+                  hint: hint ?? AppLocalizations.of(context).adminNetworkingAddEntry,
                 ),
-                onSubmitted: (_) => _addListItem(key),
+                onSubmitted: (_) => add(),
               ),
             ),
             const SizedBox(width: AppSpacing.spaceSm),
             IconButton.filledTonal(
+              tooltip: AppLocalizations.of(context).adminNetworkingAddEntry,
               icon: const Icon(Icons.add),
-              onPressed: () => _addListItem(key),
+              onPressed: add,
             ),
           ],
         ),

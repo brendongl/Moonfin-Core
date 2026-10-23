@@ -12,7 +12,10 @@ downloaded rather than bundled.
   isolated) and resolving its entry points.
 - The environment callback, mirroring the tvOS `GameSession` switch: pixel
   format, system and save directories, legacy `SET_VARIABLES` options, geometry.
-- A run-loop thread with two pacing modes: wall clock by default, or audio-buffer
+- One emulation thread for every call into the core. `lh_load` creates it to
+  run `retro_init` and `retro_load_game`, and the same thread runs the frames,
+  the jobs, and the unload. Some cores keep per-thread state from `retro_init`.
+- A run loop with two pacing modes: wall clock by default, or audio-buffer
   paced once the platform's audio device is pulling (`lh_set_audio_paced`), so
   audio drives frame timing.
 - Converting the core's 0RGB1555 / XRGB8888 / RGB565 output into RGBA or BGRA in

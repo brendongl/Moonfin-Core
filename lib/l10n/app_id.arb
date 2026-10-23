@@ -8653,7 +8653,6 @@
     "adminGeneralDisplayLanguage": "Bahasa tampilan pilihan",
     "offlineBannerTitle": "Anda sedang offline",
     "offlineBannerSubtitle": "Menampilkan unduhan Anda",
-    "offlineBannerAction": "Unduhan",
     "serverUnreachableBannerTitle": "Tidak dapat menjangkau server Anda",
     "serverUnreachableBannerSubtitle": "Memutar dari unduhan hingga server kembali tersedia",
     "contextMenuHideFromContinueWatching": "Sembunyikan dari Lanjut Menonton",

@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "Предпочитан език на показване",
     "offlineBannerTitle": "Нямате връзка",
     "offlineBannerSubtitle": "Показват се изтеглянията ви",
-    "offlineBannerAction": "Изтегляния",
     "serverUnreachableBannerTitle": "Сървърът не е достъпен",
     "serverUnreachableBannerSubtitle": "Възпроизвеждане от изтеглянията, докато се възстанови",
     "contextMenuHideFromContinueWatching": "Скриване от „Продължете да гледате“",

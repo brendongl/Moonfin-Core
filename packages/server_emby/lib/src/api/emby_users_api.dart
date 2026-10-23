@@ -23,6 +23,10 @@ class EmbyUsersApi implements UsersApi {
   }
 
   @override
+  Future<List<AccessSchedule>?> getAccessSchedules(String userId) async =>
+      const [];
+
+  @override
   Future<UserConfiguration> getUserConfiguration() async {
     final userId = _getUserId();
     final response = await _dio.get('/Users/$userId');

@@ -83,9 +83,6 @@ class _RemoteControlSheetState extends State<_RemoteControlSheet>
         case PlaystateMessage():
         case GeneralCommandMessage():
           _refresh();
-        case ServerEventMessage(:final type)
-            when type == 'SessionsStart' || type == 'SessionsStop':
-          _refresh();
         default:
           break;
       }

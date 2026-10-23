@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "Ngôn ngữ hiển thị ưu tiên",
     "offlineBannerTitle": "Bạn đang ngoại tuyến",
     "offlineBannerSubtitle": "Đang hiển thị các mục đã tải xuống",
-    "offlineBannerAction": "Tải xuống",
     "serverUnreachableBannerTitle": "Không kết nối được máy chủ của bạn",
     "serverUnreachableBannerSubtitle": "Đang phát từ các mục đã tải xuống cho đến khi máy chủ hoạt động lại",
     "contextMenuHideFromContinueWatching": "Ẩn khỏi Tiếp tục xem",

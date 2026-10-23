@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "Сонгосон харуулах хэл",
     "offlineBannerTitle": "Та офлайн байна",
     "offlineBannerSubtitle": "Таны татсан зүйлсийг харуулж байна",
-    "offlineBannerAction": "Татсан зүйлс",
     "serverUnreachableBannerTitle": "Таны сервертэй холбогдож чадсангүй",
     "serverUnreachableBannerSubtitle": "Сэргэх хүртэл татсан зүйлсээс тоглуулж байна",
     "contextMenuHideFromContinueWatching": "Үргэлжлүүлэн үзэхээс нуух",

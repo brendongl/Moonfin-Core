@@ -24,10 +24,14 @@ class JellyfinAdminEnvironmentApi implements AdminEnvironmentApi {
   }
 
   @override
-  Future<void> validatePath(String path) async {
+  Future<void> validatePath(
+    String path, {
+    bool writable = false,
+    bool? isFile,
+  }) async {
     await _dio.post(
       '/Environment/ValidatePath',
-      data: {'ValidateWritable': false, 'Path': path},
+      data: {'ValidateWritable': writable, 'Path': path, 'IsFile': ?isFile},
     );
   }
 

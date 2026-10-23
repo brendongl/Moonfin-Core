@@ -1098,6 +1098,10 @@ class OfflineItemsApi implements ItemsApi {
       const [];
 
   @override
+  Future<List<Map<String, dynamic>>> getAdditionalParts(String itemId) async =>
+      const [];
+
+  @override
   Future<List<Map<String, dynamic>>> getMediaSegments(String itemId) async =>
       const [];
 

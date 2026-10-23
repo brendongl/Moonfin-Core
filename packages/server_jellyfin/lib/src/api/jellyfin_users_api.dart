@@ -13,6 +13,15 @@ class JellyfinUsersApi implements UsersApi {
   }
 
   @override
+  Future<List<AccessSchedule>?> getAccessSchedules(String userId) async {
+    // By id rather than /Users/Me: the server lets this one through outside the
+    // schedule and turns the other away.
+    final response = await _dio.get('/Users/$userId');
+    final user = ServerUser.fromJson(response.data as Map<String, dynamic>);
+    return user.policy?.accessSchedules;
+  }
+
+  @override
   Future<UserConfiguration> getUserConfiguration() async {
     final response = await _dio.get('/Users/Me');
     final data = response.data as Map<String, dynamic>;

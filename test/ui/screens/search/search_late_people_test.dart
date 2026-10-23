@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:jellyfin_preference/jellyfin_preference.dart';
@@ -218,5 +219,35 @@ void main() {
       FocusManager.instance.primaryFocus,
       Focus.of(tester.element(find.text('Folder One').first)),
     );
+  });
+
+  // The mic is the trailing icon in the pill, so right reaches it and left
+  // comes back.
+  testWidgets('TV D-pad moves from the field to the mic and back', (
+    tester,
+  ) async {
+    PlatformDetection.setInterfaceLayout(InterfaceLayout.tv);
+    tester.view.physicalSize = const Size(1920, 1080);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: const SearchScreen(),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 1));
+    bool micFocused() =>
+        Focus.of(tester.element(find.byIcon(Icons.mic_none))).hasFocus;
+    expect(micFocused(), isFalse);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(micFocused(), isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    expect(micFocused(), isFalse);
   });
 }

@@ -15,7 +15,7 @@ Duration get navigationAnimationDuration {
 
 const Curve _kScrollCurve = Curves.easeOut;
 
-void scrollListToIndex(
+Future<void> scrollListToIndex(
   ScrollController controller,
   int index, {
   required double itemExtent,
@@ -24,15 +24,19 @@ void scrollListToIndex(
   Duration? duration,
   Curve curve = _kScrollCurve,
 }) {
-  if (!controller.hasClients) return;
+  if (!controller.hasClients) return Future<void>.value();
   final effectiveDuration = duration ?? navigationAnimationDuration;
   final maxOffset = controller.position.maxScrollExtent;
   final target = (index * itemExtent).clamp(0.0, maxOffset);
   if (animate) {
-    controller.animateTo(target, duration: effectiveDuration, curve: curve);
-  } else {
-    controller.jumpTo(target);
+    return controller.animateTo(
+      target,
+      duration: effectiveDuration,
+      curve: curve,
+    );
   }
+  controller.jumpTo(target);
+  return Future<void>.value();
 }
 
 double computeAlignmentForBand({

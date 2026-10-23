@@ -64,9 +64,33 @@ String activityTimeAgo(DateTime date, AppLocalizations l10n, {bool compact = tru
   return l10n.adminActivityJustNow;
 }
 
+/// The server's LogLevel names, in the order the severity filter lists them.
+const activitySeverities = [
+  'Trace',
+  'Debug',
+  'Information',
+  'Warning',
+  'Error',
+  'Critical',
+  'None',
+];
+
+String activitySeverityLabel(String severity, AppLocalizations l10n) =>
+    switch (severity) {
+      'Trace' => l10n.adminLogLevelTrace,
+      'Debug' => l10n.adminLogLevelDebug,
+      'Information' => l10n.adminLogLevelInformation,
+      'Warning' => l10n.adminLogLevelWarning,
+      'Error' => l10n.adminLogLevelError,
+      'Critical' => l10n.adminLogLevelCritical,
+      'None' => l10n.adminLogLevelNone,
+      _ => severity,
+    };
+
 (Color, Widget) activitySeverityIndicator(String severity, ThemeData theme) {
   switch (severity.toLowerCase()) {
     case 'error':
+    case 'critical':
       return (
         theme.colorScheme.error,
         Icon(Icons.error_outline, size: 15, color: theme.colorScheme.error),
@@ -74,11 +98,11 @@ String activityTimeAgo(DateTime date, AppLocalizations l10n, {bool compact = tru
     case 'warning':
     case 'warn':
       return (
-        AppColorScheme.statusPending,
+        AppColorScheme.recordingScheduled,
         Icon(
           Icons.warning_amber,
           size: 15,
-          color: AppColorScheme.statusPending,
+          color: AppColorScheme.recordingScheduled,
         ),
       );
     case 'information':

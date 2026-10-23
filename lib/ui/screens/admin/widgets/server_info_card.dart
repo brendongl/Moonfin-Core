@@ -19,39 +19,30 @@ class ServerInfoCard extends StatelessWidget {
       fallback: l10n.unknown,
     );
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return adminSection(
+      context,
+      title: l10n.adminServerInfo,
+      icon: Icons.dns,
       children: [
-        adminSectionLabel(context, l10n.adminServerInfo, icon: Icons.dns),
-        adminGlassGroup(
-          context,
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.spaceLg,
-                vertical: AppSpacing.spaceMd,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _row(l10n.name, systemInfo['ServerName'] as String? ?? ''),
-                  _row(l10n.version, systemInfo['Version'] as String? ?? ''),
-                  _row(l10n.os, os),
-                  if (systemInfo['HasPendingRestart'] == true)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Chip(
-                        avatar: Icon(Icons.warning,
-                            size: 16, color: theme.colorScheme.error),
-                        label: Text(l10n.adminRestartPending),
-                        backgroundColor: theme.colorScheme.errorContainer,
-                      ),
-                    ),
-                ],
+        _row(l10n.name, systemInfo['ServerName'] as String? ?? ''),
+        _row(l10n.version, systemInfo['Version'] as String? ?? ''),
+        _row(l10n.os, os),
+        if (systemInfo['HasPendingRestart'] == true)
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.spaceLg,
+              vertical: AppSpacing.spaceSm,
+            ),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Chip(
+                avatar: Icon(Icons.warning,
+                    size: 16, color: theme.colorScheme.error),
+                label: Text(l10n.adminRestartPending),
+                backgroundColor: theme.colorScheme.errorContainer,
               ),
             ),
-          ],
-        ),
+          ),
       ],
     );
   }
@@ -71,18 +62,8 @@ class ServerInfoCard extends StatelessWidget {
     return fallback;
   }
 
-  Widget _row(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 80,
-            child: Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
-          ),
-          Expanded(child: Text(value, overflow: TextOverflow.ellipsis)),
-        ],
-      ),
-    );
-  }
+  Widget _row(String label, String value) => adminFieldRow(
+        label: label,
+        child: SelectableText(value),
+      );
 }

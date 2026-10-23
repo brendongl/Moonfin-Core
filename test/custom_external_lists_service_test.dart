@@ -1,11 +1,50 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
+import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_it/get_it.dart';
+import 'package:server_core/server_core.dart';
 import 'package:jellyfin_preference/jellyfin_preference.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:moonfin/preference/home_section_config.dart';
 import 'package:moonfin/data/services/custom_external_lists_service.dart';
+import 'package:moonfin/l10n/current_app_localizations.dart';
+
+/// Answers one custom row, when the test lets it.
+class _HeldAnswer implements HttpClientAdapter {
+  final Completer<void> release = Completer<void>();
+
+  @override
+  Future<ResponseBody> fetch(RequestOptions options, Stream<Uint8List>? requestStream, Future<void>? cancelFuture) async {
+    await release.future;
+    final body = {
+      'success': true,
+      'items': [
+        {'name': 'Carrie', 'type': 'Movie', 'providerIds': {'Tmdb': '7340'}},
+      ],
+    };
+    return ResponseBody.fromString(jsonEncode(body), 200, headers: {
+      Headers.contentTypeHeader: [Headers.jsonContentType],
+    });
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+class _SignedIn extends Fake implements MediaServerClient {
+  @override
+  String get baseUrl => 'http://server';
+  @override
+  String? get accessToken => 'token';
+  @override
+  String? get userId => 'adult';
+  @override
+  DeviceInfo get deviceInfo => const DeviceInfo(id: 'phone', name: 'Phone', appName: 'Moonfin', appVersion: 'test');
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -120,12 +159,169 @@ void main() {
       expect(items, hasLength(1));
     });
 
+    test('drops a row an older plugin sent with posters as backdrops', () async {
+      await service.saveCustomRowToCache(config, [
+        ImdbExternalListItem(
+          imdbId: 'tt1',
+          tmdbId: '',
+          title: 'Cached Film',
+          type: 'Movie',
+          posterUrl: 'https://m.media-amazon.com/poster.jpg',
+          backdropUrl: 'https://m.media-amazon.com/poster.jpg',
+        ),
+      ]);
+
+      expect(await service.loadCustomRowFromCache(config), isEmpty);
+    });
+
     test('an old row still answers when there is no server to ask', () async {
       await ageCacheBy(const Duration(days: 5));
 
       expect(await service.loadCustomRowFromCache(config), hasLength(1));
       // No MediaServerClient is registered, which is the offline path.
       expect(await service.fetchCustomRow(config), hasLength(1));
+    });
+
+    test('partitions cache by language code', () async {
+      final itemEn = ImdbExternalListItem(
+        imdbId: 'tt0245429',
+        title: 'Spirited Away',
+        type: 'Movie',
+        backdropUrl: 'http://server/backdrop.jpg',
+      );
+      final itemFr = ImdbExternalListItem(
+        imdbId: 'tt0245429',
+        title: 'Le Voyage de Chihiro',
+        type: 'Movie',
+        backdropUrl: 'http://server/backdrop.jpg',
+      );
+
+      await service.saveCustomRowToCache(config, [itemEn], language: 'en');
+      await service.saveCustomRowToCache(config, [itemFr], language: 'fr');
+
+      final cachedEn = await service.loadCustomRowFromCache(config, language: 'en');
+      expect(cachedEn, hasLength(1));
+      expect(cachedEn.first.title, 'Spirited Away');
+
+      final cachedFr = await service.loadCustomRowFromCache(config, language: 'fr');
+      expect(cachedFr, hasLength(1));
+      expect(cachedFr.first.title, 'Le Voyage de Chihiro');
+
+      // Spanish has no cache saved yet; cache-first caller with maxAge gets empty list to trigger network fetch
+      final cachedEs = await service.loadCustomRowFromCache(
+        config,
+        maxAge: CustomExternalListsService.cacheMaxAge,
+        language: 'es',
+      );
+      expect(cachedEs, isEmpty);
+    });
+
+    test('never reads the shared row from before the cache was scoped, even offline', () async {
+      final legacyFile = File('${tempDir.path}/custom_chart_custom_row_cache_age.json');
+      final legacyItem = ImdbExternalListItem(
+        imdbId: 'tt_legacy',
+        tmdbId: '999',
+        title: 'Legacy Film',
+        type: 'Movie',
+        backdropUrl: 'http://server/backdrop.jpg',
+      );
+      await legacyFile.writeAsString(jsonEncode([legacyItem.toJson()]));
+
+      // It may have been written for another account, so an empty row beats it.
+      expect(await service.loadCustomRowFromCache(config, language: 'de'), isEmpty);
+    });
+  });
+
+  group('CustomExternalLists cache scope', () {
+    HomeSectionConfig config([String section = 'custom_row_cache_scope']) => HomeSectionConfig.pluginDynamic(
+          serverId: 'custom',
+          pluginSection: section,
+          pluginDisplayText: 'Trending',
+          pluginAdditionalData: jsonEncode({'source': 'tmdb_chart', 'type': 'trending/all/week'}),
+          pluginSource: HomeSectionPluginSource.custom,
+          enabled: true,
+          order: 1,
+        );
+
+    List<ImdbExternalListItem> row(String title) => [
+          ImdbExternalListItem(imdbId: 'tt1', tmdbId: '1', title: title, type: 'Movie', backdropUrl: 'http://server/b.jpg'),
+        ];
+
+    Future<File> legacyRow() async {
+      final file = File('${tempDir.path}/custom_chart_custom_row_cache_scope.json');
+      await file.writeAsString(jsonEncode(row('Carrie').map((item) => item.toJson()).toList()));
+      return file;
+    }
+
+    setUp(() async {
+      SharedPreferences.setMockInitialValues({});
+      final store = PreferenceStore();
+      await store.init();
+    });
+
+    test('a row cached for one account is not read back by another', () async {
+      final adult = CustomExternalListsService(cacheScope: () => 'adult');
+      final child = CustomExternalListsService(cacheScope: () => 'child');
+      await adult.saveCustomRowToCache(config(), row('Carrie'));
+
+      expect(await child.loadCustomRowFromCache(config()), isEmpty);
+      expect((await adult.loadCustomRowFromCache(config())).single.title, 'Carrie');
+      expect((await adult.cacheFile(config(), 'en')).path, endsWith('custom_chart_custom_row_cache_scope_adult_en.json'));
+    });
+
+    test('with nobody signed in the name leaves the user out', () async {
+      final nobody = CustomExternalListsService(cacheScope: () => null);
+      expect((await nobody.cacheFile(config(), 'en')).path, endsWith('custom_chart_custom_row_cache_scope_en.json'));
+    });
+
+    test('a row from before the cache was scoped goes when a scoped one is written', () async {
+      final adult = CustomExternalListsService(cacheScope: () => 'adult');
+      final legacy = await legacyRow();
+
+      await adult.saveCustomRowToCache(config(), row('Elf'));
+
+      expect(legacy.existsSync(), isFalse);
+      expect((await adult.loadCustomRowFromCache(config())).single.title, 'Elf');
+    });
+
+    test('a row from before the cache was scoped goes when a scoped fetch starts, before any answer', () async {
+      final child = CustomExternalListsService(cacheScope: () => 'child');
+      final legacy = await legacyRow();
+
+      await child.dropLegacyCache(config());
+
+      expect(legacy.existsSync(), isFalse);
+      expect(await child.loadCustomRowFromCache(config()), isEmpty);
+    });
+
+    test('an answer is saved under the account that fetched it', () async {
+      final answer = _HeldAnswer();
+      final service = CustomExternalListsService(cacheScope: () => 'adult', dio: Dio()..httpClientAdapter = answer);
+      GetIt.instance.registerSingleton<MediaServerClient>(_SignedIn());
+      addTearDown(() => GetIt.instance.unregister<MediaServerClient>());
+
+      final fetch = service.fetchCustomRow(config('custom_row_fetched'));
+      answer.release.complete();
+
+      expect((await fetch).single.title, 'Carrie');
+      expect((await service.loadCustomRowFromCache(config('custom_row_fetched'))).single.title, 'Carrie');
+    });
+
+    test('an answer that arrives after another account signed in is dropped', () async {
+      var scope = 'adult';
+      final answer = _HeldAnswer();
+      final service = CustomExternalListsService(cacheScope: () => scope, dio: Dio()..httpClientAdapter = answer);
+      GetIt.instance.registerSingleton<MediaServerClient>(_SignedIn());
+      addTearDown(() => GetIt.instance.unregister<MediaServerClient>());
+
+      final fetch = service.fetchCustomRow(config('custom_row_switched'));
+      await Future<void>.delayed(Duration.zero);
+      scope = 'child';
+      answer.release.complete();
+
+      expect(await fetch, isEmpty);
+      expect(await service.loadCustomRowFromCache(config('custom_row_switched')), isEmpty);
+      expect(await CustomExternalListsService(cacheScope: () => 'adult').loadCustomRowFromCache(config('custom_row_switched')), isEmpty);
     });
   });
 
@@ -274,6 +470,34 @@ void main() {
       expect(sorted[0].imdbId, '1');
       expect(sorted[1].imdbId, '2');
       expect(sorted[2].imdbId, '3');
+    });
+  });
+
+  group('currentAppLocale resolution', () {
+    test('resolves supported locales', () {
+      expect(currentAppLocale(const Locale('fr')).languageCode, 'fr');
+      expect(currentAppLocale(const Locale('es')).languageCode, 'es');
+      expect(currentAppLocale(const Locale('de', 'DE')).languageCode, 'de');
+    });
+
+    test('falls back to English for unsupported device locales', () {
+      expect(currentAppLocale(const Locale('is')).languageCode, 'en');
+      expect(currentAppLocale(const Locale('tlh')).languageCode, 'en');
+    });
+
+    test('keeps the script and country the app supports', () {
+      expect(
+        currentAppLocale(
+          const Locale.fromSubtags(
+            languageCode: 'zh',
+            scriptCode: 'Hant',
+            countryCode: 'TW',
+          ),
+        ),
+        const Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hant'),
+      );
+      expect(currentAppLocale(const Locale('pt', 'BR')), const Locale('pt', 'BR'));
+      expect(currentAppLocale(const Locale('es', 'CO')), const Locale('es'));
     });
   });
 }

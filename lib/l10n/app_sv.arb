@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "Föredraget visningsspråk",
     "offlineBannerTitle": "Du är offline",
     "offlineBannerSubtitle": "Visar dina nedladdningar",
-    "offlineBannerAction": "Nedladdningar",
     "serverUnreachableBannerTitle": "Kan inte nå din server",
     "serverUnreachableBannerSubtitle": "Spelar från nedladdningar tills den är tillbaka",
     "contextMenuHideFromContinueWatching": "Dölj från Fortsätt titta",

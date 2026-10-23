@@ -9,7 +9,6 @@ import '../../l10n/app_localizations.dart';
 import '../../util/platform_detection.dart';
 import '../navigation/app_router.dart';
 import '../navigation/destinations.dart';
-import '../screens/downloads/downloads_panel.dart';
 import 'status_banner_pill.dart';
 
 /// Floating glass pill shown while the device is offline or the server is
@@ -126,20 +125,14 @@ class _OfflineBannerState extends ConsumerState<OfflineBanner>
             color: tint,
           )
         else ...[
-          BannerActionCapsule(
-            label: isServerUnavailable
-                ? l10n.offlineSwitchServer
-                : l10n.offlineBannerAction,
-            tint: tint,
-            onTap: () {
-              if (isServerUnavailable) {
-                appRouter.go(Destinations.serverSelect);
-              } else {
-                showDownloadsDialog(context);
-              }
-            },
-          ),
-          const SizedBox(width: 2),
+          if (isServerUnavailable) ...[
+            BannerActionCapsule(
+              label: l10n.offlineSwitchServer,
+              tint: tint,
+              onTap: () => appRouter.go(Destinations.serverSelect),
+            ),
+            const SizedBox(width: 2),
+          ],
           IconButton(
             onPressed: _dismiss,
             icon: Icon(

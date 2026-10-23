@@ -685,11 +685,15 @@ build_appimage() {
 APPDIR="$(cd "$(dirname "$0")" && pwd)"
 export LD_LIBRARY_PATH="$APPDIR/lib:$LD_LIBRARY_PATH"
 
+# nix-ld only hands NixOS programs their libraries once they start, and ldd
+# runs Nix's own loader, which never looks there, so the check adds them.
+check_lib_path="$LD_LIBRARY_PATH${NIX_LD_LIBRARY_PATH:+:$NIX_LD_LIBRARY_PATH}"
+
 resolve_exact_lib() {
   local lib_name="$1"
   local old_ifs="$IFS"
   IFS=':'
-  for lib_dir in $LD_LIBRARY_PATH; do
+  for lib_dir in $check_lib_path; do
     [ -n "$lib_dir" ] && [ -e "$lib_dir/$lib_name" ] && IFS="$old_ifs" && return 0
   done
   IFS="$old_ifs"
@@ -701,7 +705,7 @@ resolve_exact_lib() {
   return 1
 }
 
-ldd_output="$(ldd "$APPDIR/moonfin" 2>/dev/null || true)"
+ldd_output="$(LD_LIBRARY_PATH="$check_lib_path" ldd "$APPDIR/moonfin" 2>/dev/null || true)"
 
 # Only "libfoo.so => not found" lines name a missing library. Symbol version
 # lines start with the binary path, so matching bare "not found" reports the
@@ -795,11 +799,15 @@ build_tarball() {
 APPDIR="$(cd "$(dirname "$0")" && pwd)"
 export LD_LIBRARY_PATH="$APPDIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
+# nix-ld only hands NixOS programs their libraries once they start, and ldd
+# runs Nix's own loader, which never looks there, so the check adds them.
+check_lib_path="$LD_LIBRARY_PATH${NIX_LD_LIBRARY_PATH:+:$NIX_LD_LIBRARY_PATH}"
+
 resolve_exact_lib() {
   lib_name="$1"
   old_ifs="$IFS"
   IFS=':'
-  for lib_dir in $LD_LIBRARY_PATH; do
+  for lib_dir in $check_lib_path; do
     [ -n "$lib_dir" ] && [ -e "$lib_dir/$lib_name" ] && IFS="$old_ifs" && return 0
   done
   IFS="$old_ifs"
@@ -811,7 +819,14 @@ resolve_exact_lib() {
   return 1
 }
 
-missing_libs="$(ldd "$APPDIR/moonfin-bin" 2>/dev/null | awk '/not found/ {print $1}' | sort -u || true)"
+ldd_output="$(LD_LIBRARY_PATH="$check_lib_path" ldd "$APPDIR/moonfin-bin" 2>/dev/null || true)"
+
+# Only "libfoo.so => not found" lines name a missing library. Symbol version
+# lines start with the binary path, so matching bare "not found" reports the
+# binary itself as missing.
+missing_libs="$(printf '%s\n' "$ldd_output" | awk '$2 == "=>" && $3 == "not" && $4 == "found" {print $1}' | sort -u)"
+version_errors="$(printf '%s\n' "$ldd_output" | grep -F 'not found' | grep -v ' => ' || true)"
+
 if ! resolve_exact_lib libsqlite3.so; then
   missing_libs="$(printf '%s\n%s\n' "$missing_libs" "libsqlite3.so" | awk 'NF' | sort -u)"
 fi
@@ -820,6 +835,16 @@ if [ -n "$missing_libs" ]; then
   echo "Moonfin cannot start. Missing shared libraries:" >&2
   printf '  - %s\n' $missing_libs >&2
   echo "Install the missing libraries for your distro and retry." >&2
+  exit 127
+fi
+
+if [ -n "$version_errors" ]; then
+  echo "Moonfin cannot start. A library your system provides is missing symbols" >&2
+  echo "this build needs:" >&2
+  printf '%s\n' "$version_errors" >&2
+  echo "That library has to be bundled with the app for your distro." >&2
+  echo "Please report this output so the next build carries it." >&2
+  echo "A deb, rpm, flatpak or snap build works in the meantime." >&2
   exit 127
 fi
 
@@ -842,6 +867,7 @@ Dependencies:
   - WebKitGTK 4.1 runtime (libwebkit2gtk-4.1-0)
   - libflutter_linux_gtk (bundled)
   - Additional runtime libs are bundled when available (libmpv, libsecret)
+  - xdg-user-dirs
 
 Requirements:
   - X11 or Wayland display server
@@ -916,7 +942,7 @@ EOF
   # glibc is deliberately not bundled, so the build host's version is the oldest
   # one the package can run on. Declaring it turns a wall of loader errors at
   # launch into a refused install that names the glibc the machine needs.
-  local depends="libgtk-3-0, libglib2.0-0, libsecret-1-0, libwebkit2gtk-4.1-0"
+  local depends="libgtk-3-0, libglib2.0-0, libsecret-1-0, libwebkit2gtk-4.1-0, xdg-user-dirs"
   local glibc
   glibc="$(required_glibc_version "$pkg_root/usr/lib/moonfin")"
   if [ -n "$glibc" ]; then
@@ -987,6 +1013,7 @@ Version:        ${version}
 Release:        1
 Summary:        Jellyfin & Emby media client
 License:        GPL-3.0-only
+Requires:       xdg-user-dirs
 
 %description
 Moonfin is a media client for Jellyfin and Emby servers,
@@ -1220,13 +1247,26 @@ command: moonfin
 
 finish-args:
   - --share=network
+  - --share=ipc
   - --socket=fallback-x11
   - --socket=wayland
-  - --device=dri
+  # GPU and gamepads. --device=input is narrower, but the Ubuntu flatpak-builder
+  # in CI is too old to build it.
+  - --device=all
   - --socket=pulseaudio
-  - --socket=session-bus
+  # MPRIS media controls
+  - --own-name=org.mpris.MediaPlayer2.moonfin
+  # Saved logins (flutter_secure_storage via libsecret)
+  - --talk-name=org.freedesktop.secrets
+  # Keep the screen awake during playback (wakelock_plus)
+  - --talk-name=org.freedesktop.ScreenSaver
+  # Desktop notifications (flutter_local_notifications)
+  - --talk-name=org.freedesktop.Notifications
+  # Online/offline detection (connectivity_plus)
   - --system-talk-name=org.freedesktop.NetworkManager
-  - --filesystem=home
+  # Earlier builds kept the offline database here. It's read once to copy it
+  # into the app's own data folder.
+  - --filesystem=xdg-documents/Moonfin:ro
 
 modules:
   - name: appstream-compose-shim
@@ -1293,7 +1333,14 @@ modules:
           return 1
         }
 
-        missing_libs="\$(ldd /app/moonfin/moonfin 2>/dev/null | awk '/not found/ {print \$1}' | sort -u || true)"
+        ldd_output="\$(ldd /app/moonfin/moonfin 2>/dev/null || true)"
+
+        # Only "libfoo.so => not found" lines name a missing library. Symbol
+        # version lines start with the binary path, so matching bare "not found"
+        # reports the binary itself as missing.
+        missing_libs="\$(printf '%s\\n' "\$ldd_output" | awk '\$2 == "=>" && \$3 == "not" && \$4 == "found" {print \$1}' | sort -u)"
+        version_errors="\$(printf '%s\\n' "\$ldd_output" | grep -F 'not found' | grep -v ' => ' || true)"
+
         if ! resolve_exact_lib libsqlite3.so; then
           missing_libs="\$(printf '%s\\n%s\\n' "\$missing_libs" "libsqlite3.so" | awk 'NF' | sort -u)"
         fi
@@ -1302,6 +1349,15 @@ modules:
           echo "Moonfin cannot start. Missing shared libraries:" >&2
           printf '  - %s\\n' \$missing_libs >&2
           echo "Install the missing libraries in the runtime and retry." >&2
+          exit 127
+        fi
+
+        if [ -n "\$version_errors" ]; then
+          echo "Moonfin cannot start. A library the Flatpak runtime provides is missing" >&2
+          echo "symbols this build needs:" >&2
+          printf '%s\\n' "\$version_errors" >&2
+          echo "The bundled libraries were built against a newer system than the runtime." >&2
+          echo "Please report this output." >&2
           exit 127
         fi
 

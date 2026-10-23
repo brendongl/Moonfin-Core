@@ -262,6 +262,20 @@ void main() {
       );
     });
 
+    test('includes the renderer only once it is known', () async {
+      final logs = await _service(loggingEnabled: true);
+      addTearDown(() => PlatformDetection.setRenderer(null));
+
+      PlatformDetection.setRenderer(null);
+      expect(logs.exportText(), isNot(contains('Renderer:')));
+
+      PlatformDetection.setRenderer('Impeller (auto, GPU Mali-G31)');
+      expect(
+        logs.exportText(),
+        contains('Renderer: Impeller (auto, GPU Mali-G31)'),
+      );
+    });
+
     test('can be bounded to the newest entries', () async {
       final logs = await _service(loggingEnabled: true);
       logs.clear();

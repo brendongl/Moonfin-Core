@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get_it/get_it.dart';
@@ -11,7 +9,7 @@ import '../providers/admin_user_providers.dart';
 import 'admin_form_styles.dart';
 
 /// Live view of currently running scheduled tasks with progress bars. Renders
-/// nothing when no task is running. Polls while mounted so progress stays fresh.
+/// nothing when no task is running. The ScheduledTasksInfo feed moves it.
 class RunningTasksCard extends ConsumerStatefulWidget {
   const RunningTasksCard({super.key});
 
@@ -20,23 +18,7 @@ class RunningTasksCard extends ConsumerStatefulWidget {
 }
 
 class _RunningTasksCardState extends ConsumerState<RunningTasksCard> {
-  Timer? _timer;
-
   AdminTasksApi get _api => GetIt.instance<MediaServerClient>().adminTasksApi;
-
-  @override
-  void initState() {
-    super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 2), (_) {
-      ref.invalidate(adminTasksProvider);
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
 
   Future<void> _stop(String id) async {
     final l10n = AppLocalizations.of(context);
@@ -48,9 +30,6 @@ class _RunningTasksCardState extends ConsumerState<RunningTasksCard> {
           SnackBar(content: Text(l10n.adminTaskStopFailed(describeError(e, l10n)))),
         );
       }
-    }
-    if (mounted) {
-      ref.invalidate(adminTasksProvider);
     }
   }
 
@@ -75,7 +54,6 @@ class _RunningTasksCardState extends ConsumerState<RunningTasksCard> {
               _RunningTaskRow(task: task, onStop: () => _stop(task.id)),
           ],
         ),
-        const SizedBox(height: 16),
       ],
     );
   }

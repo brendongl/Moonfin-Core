@@ -21,7 +21,10 @@ class JellyfinSystemApi implements SystemApi {
   @override
   Future<bool> ping() async {
     try {
-      final response = await _dio.get('/System/Ping');
+      final response = await _dio.get(
+        '/System/Ping',
+        options: Options(responseType: ResponseType.plain),
+      );
       return response.statusCode == 200;
     } catch (_) {
       return false;

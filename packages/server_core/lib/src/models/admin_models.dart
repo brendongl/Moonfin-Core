@@ -55,6 +55,9 @@ class ActivityLogEntry {
   final String type;
   final DateTime date;
   final String? userId;
+
+  /// The item the entry is about, when there is one.
+  final String? itemId;
   final String severity;
 
   const ActivityLogEntry({
@@ -65,6 +68,7 @@ class ActivityLogEntry {
     required this.type,
     required this.date,
     this.userId,
+    this.itemId,
     this.severity = 'Information',
   });
 
@@ -76,8 +80,19 @@ class ActivityLogEntry {
         shortOverview: json['ShortOverview'] as String?,
         type: json['Type'] as String? ?? '',
         date: DateTime.parse(json['Date'] as String),
-        userId: json['UserId'] as String?,
-        severity: json['Severity'] as String? ?? 'Information',
+        // Emby sends its numeric internal user id.
+        userId: json['UserId']?.toString(),
+        itemId: (json['ItemId'] as String?)?.isEmpty ?? true
+            ? null
+            : json['ItemId'] as String,
+        // Emby's level names, read as the ones the UI knows.
+        severity: switch (json['Severity'] as String?) {
+          null => 'Information',
+          'Info' => 'Information',
+          'Warn' => 'Warning',
+          'Fatal' => 'Critical',
+          final s => s,
+        },
       );
 }
 
@@ -285,6 +300,9 @@ class FolderStorageInfo {
 class TaskInfo {
   final String id;
   final String name;
+
+  /// The stable task key, e.g. `RefreshLibrary`, since ids differ per server.
+  final String? key;
   final String? description;
   final String? category;
   final String state;
@@ -295,6 +313,7 @@ class TaskInfo {
   const TaskInfo({
     required this.id,
     required this.name,
+    this.key,
     this.description,
     this.category,
     this.state = 'Idle',
@@ -306,6 +325,7 @@ class TaskInfo {
   factory TaskInfo.fromJson(Map<String, dynamic> json) => TaskInfo(
         id: json['Id'] as String? ?? '',
         name: json['Name'] as String? ?? '',
+        key: json['Key'] as String?,
         description: json['Description'] as String?,
         category: json['Category'] as String?,
         state: json['State'] as String? ?? 'Idle',
@@ -351,12 +371,16 @@ class TaskTriggerInfo {
   final String? dayOfWeek;
   final int? maxRuntimeTicks;
 
+  /// The event an Emby `SystemEventTrigger` waits for, e.g. `WakeFromSleep`.
+  final String? systemEvent;
+
   const TaskTriggerInfo({
     required this.type,
     this.timeOfDayTicks,
     this.intervalTicks,
     this.dayOfWeek,
     this.maxRuntimeTicks,
+    this.systemEvent,
   });
 
   factory TaskTriggerInfo.fromJson(Map<String, dynamic> json) =>
@@ -366,6 +390,7 @@ class TaskTriggerInfo {
         intervalTicks: json['IntervalTicks'] as int?,
         dayOfWeek: json['DayOfWeek'] as String?,
         maxRuntimeTicks: json['MaxRuntimeTicks'] as int?,
+        systemEvent: json['SystemEvent'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -374,5 +399,6 @@ class TaskTriggerInfo {
         if (intervalTicks != null) 'IntervalTicks': intervalTicks,
         if (dayOfWeek != null) 'DayOfWeek': dayOfWeek,
         if (maxRuntimeTicks != null) 'MaxRuntimeTicks': maxRuntimeTicks,
+        if (systemEvent != null) 'SystemEvent': systemEvent,
       };
 }

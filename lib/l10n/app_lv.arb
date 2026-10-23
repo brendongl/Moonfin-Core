@@ -8505,7 +8505,6 @@
     "adminGeneralDisplayLanguage": "Vēlamā attēlošanas valoda",
     "offlineBannerTitle": "Jūs esat bezsaistē",
     "offlineBannerSubtitle": "Tiek rādītas jūsu lejupielādes",
-    "offlineBannerAction": "Lejupielādes",
     "serverUnreachableBannerTitle": "Nevar sasniegt serveri",
     "serverUnreachableBannerSubtitle": "Līdz servera atjaunošanai atskaņo no lejupielādēm",
     "contextMenuHideFromContinueWatching": "Slēpt no “Turpināt skatīties”",

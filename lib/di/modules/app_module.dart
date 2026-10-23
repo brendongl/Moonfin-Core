@@ -1,9 +1,14 @@
+import 'dart:async';
+
+import 'package:dio/dio.dart';
 import 'package:get_it/get_it.dart';
 import 'package:jellyfin_preference/jellyfin_preference.dart';
 import 'package:playback_core/playback_core.dart';
 import 'package:server_core/server_core.dart';
 
+import '../../auth/models/user.dart';
 import '../../auth/repositories/session_repository.dart';
+import '../../auth/repositories/user_repository.dart';
 import '../../auth/store/authentication_store.dart';
 import '../../auth/store/credential_store.dart';
 import '../../data/repositories/anime_marker_repository.dart';
@@ -21,6 +26,7 @@ import '../../data/repositories/search_repository.dart';
 import '../../data/repositories/item_mutation_repository.dart';
 import '../../util/game_library.dart';
 import '../../data/services/background_service.dart';
+import '../../data/services/access_schedule_service.dart';
 import '../../data/services/app_update_service.dart';
 import '../../data/services/upcoming_episode_service.dart';
 import '../../data/services/cast/airplay_provider.dart';
@@ -35,10 +41,14 @@ import '../../data/services/cast/remote_session_cast_provider.dart';
 import '../../data/services/achievements_service.dart';
 import '../../data/services/plugin_sync_service.dart';
 import '../../data/services/server_messages_service.dart';
+import '../../data/services/server_pin_service.dart';
 import '../../data/services/retro_artwork/retro_artwork_activity_gate.dart';
 import '../../data/services/retro_artwork/retro_artwork_cache.dart';
 import '../../data/services/retro_artwork/retro_artwork_disk_cache.dart';
+import '../../data/services/connectivity_service.dart';
 import '../../data/services/custom_external_lists_service.dart';
+import '../../data/services/download_service.dart';
+import '../../data/services/remove_watched_service.dart';
 import '../../data/services/row_data_source.dart';
 import '../../data/services/socket_handler.dart';
 import '../../data/services/pending_rating_store.dart';
@@ -47,9 +57,12 @@ import '../../data/services/user_data_sync.dart';
 import '../../data/services/theme_music_service.dart';
 import '../../data/viewmodels/media_bar_view_model.dart';
 import '../../data/viewmodels/seerr_discover_view_model.dart';
+import '../../playback/current_playing_item.dart';
 import '../../playback/external_player_service.dart';
 import '../../preference/seerr_preferences.dart';
 import '../../preference/user_preferences.dart';
+import '../../ui/navigation/app_router.dart';
+import '../../ui/navigation/destinations.dart';
 import '../../ui/screensaver/screensaver_controller.dart';
 import '../../ui/screens/home/home_view_model.dart';
 import '../../ui/screens/setup/setup_wizard_gate.dart';
@@ -88,6 +101,43 @@ void resetUserScopedSingletons() {
   _registerUserScopedSingletons();
 }
 
+StreamSubscription<User?>? _accessScheduleUserSubscription;
+
+/// The signed in user's access schedule, or null when it can't be read.
+Future<List<AccessSchedule>?> _loadAccessSchedules(String userId) =>
+    _getIt<MediaServerClient>().usersApi.getAccessSchedules(userId);
+
+/// Whether the server is turning the signed in user away right now. Jellyfin
+/// answers /Users/Me with 403 outside the user's schedule, by its own clock.
+Future<bool?> _serverRefusesUser() async {
+  try {
+    await _getIt<MediaServerClient>().usersApi.getCurrentUser();
+    return false;
+  } on DioException catch (e) {
+    return e.response?.statusCode == 403 ? true : null;
+  }
+}
+
+/// Stops whatever is playing when the user's access schedule closes.
+Future<void> _stopPlaybackForAccessSchedule() async {
+  // Each step is best effort, so one that fails doesn't leave the rest undone.
+  try {
+    await _getIt<PlaybackManager>().stop(userInitiated: false);
+  } catch (_) {}
+  try {
+    if (_getIt.isRegistered<ThemeMusicService>()) {
+      _getIt<ThemeMusicService>().stop();
+    }
+  } catch (_) {}
+  // A trailer, a photo or a game plays in its own screen, which only leaving
+  // that screen stops. A player is pushed over whichever tab launched it, so
+  // the router's uri stays on that tab and only the match list names what is
+  // on screen.
+  final matches = appRouter.routerDelegate.currentConfiguration.matches;
+  final path = matches.isEmpty ? '' : matches.last.matchedLocation;
+  if (Destinations.isPlayerRoute(path)) appRouter.go(Destinations.home);
+}
+
 void registerAppModule() {
   _getIt.registerLazySingleton(() => RetroArtworkActivityGate());
   _getIt.registerLazySingletonAsync<RetroArtworkByteCache>(
@@ -111,6 +161,25 @@ void registerAppModule() {
     ),
     dispose: (controller) => controller.dispose(),
   );
+  _getIt.registerLazySingleton(() {
+    final users = _getIt<UserRepository>();
+    final service = AccessScheduleService(
+      loadSchedules: _loadAccessSchedules,
+      onBlocked: _stopPlaybackForAccessSchedule,
+      serverRefuses: _serverRefusesUser,
+    );
+    // An administrator has no schedule to enforce.
+    String? watched(User? user) =>
+        user == null || user.isAdministrator ? null : user.id;
+    service.setUser(watched(users.currentUser));
+    _accessScheduleUserSubscription = users.currentUserStream.listen(
+      (user) => service.setUser(watched(user)),
+    );
+    return service;
+  }, dispose: (service) {
+    unawaited(_accessScheduleUserSubscription?.cancel());
+    service.dispose();
+  });
   _getIt.registerLazySingleton(() => SetupWizardGate(_getIt<UserPreferences>()));
   _getIt.registerLazySingleton(() => const NativeCastChannel());
   _getIt.registerLazySingleton(() => const NativeDlnaChannel());
@@ -154,6 +223,9 @@ void registerAppModule() {
     dispose: (service) => service.dispose(),
   );
   _getIt.registerLazySingleton(
+    () => ServerPinService(deviceInfo: _getIt<DeviceInfo>()),
+  );
+  _getIt.registerLazySingleton(
     () => ServerMessagesService(_getIt<PreferenceStore>()),
     dispose: (service) => service.dispose(),
   );
@@ -165,6 +237,37 @@ void registerAppModule() {
   );
   _getIt.registerLazySingleton<SyncService>(
     () => SyncService(_getIt<OfflineRepository>(), _getIt<PendingRatingStore>()),
+  );
+  _getIt.registerLazySingleton(
+    () => RemoveWatchedService(
+      repository: _getIt<OfflineRepository>(),
+      prefs: _getIt<UserPreferences>(),
+      // Resolved per delete: the download service is replaced on every
+      // server or account switch.
+      deleteDownload: (item, {required serverId}) async =>
+          _getIt.isRegistered<DownloadService>() &&
+          await _getIt<DownloadService>().deleteServerDownload(
+            item,
+            serverId: serverId,
+          ),
+      signedInServer: () {
+        if (!_getIt.isRegistered<MediaServerClient>()) return null;
+        if (_getIt.isRegistered<ConnectivityService>() &&
+            !_getIt<ConnectivityService>().canReachServer) {
+          return null;
+        }
+        final client = _getIt<MediaServerClient>();
+        return (
+          client: client,
+          serverId: _getIt<MediaServerClientFactory>().serverIdOf(client),
+        );
+      },
+      syncInFlight: () =>
+          _getIt.isRegistered<ConnectivityService>() &&
+          _getIt<ConnectivityService>().isSyncing,
+      playingItemId: currentPlayingItemId,
+    )..start(),
+    dispose: (service) => service.dispose(),
   );
   _getIt.registerLazySingleton(() => const ExternalPlayerService());
 

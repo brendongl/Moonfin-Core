@@ -16,6 +16,8 @@ String canonicalSubtitleCodec(String? codec) {
       return 'vtt';
     case 'ttml':
       return 'ttml';
+    case 'pgssub':
+      return 'pgssub';
     case 'subrip':
     case 'srt':
     case 'mov_text':

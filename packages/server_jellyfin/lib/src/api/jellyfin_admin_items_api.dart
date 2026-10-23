@@ -10,71 +10,58 @@ class JellyfinAdminItemsApi implements AdminItemsApi {
 
   @override
   Future<void> updateItem(String itemId, Map<String, dynamic> itemData) async {
-    await _requestWithFallback<void>(
-      methods: const ['POST', 'PUT'],
-      paths: ['/Items/$itemId'],
-      data: itemData,
-      convert: _ignoreResponse,
-    );
+    await _dio.post('/Items/$itemId', data: itemData);
   }
 
   @override
   Future<Map<String, dynamic>> getMetadataEditor(String itemId) async {
-    return _requestWithFallback<Map<String, dynamic>>(
-      methods: const ['GET'],
-      paths: ['/Items/$itemId/MetadataEditor'],
-      convert: (data) {
-        if (data is Map<String, dynamic>) return data;
-        return const {};
-      },
-    );
+    final response = await _dio.get('/Items/$itemId/MetadataEditor');
+    final data = response.data;
+    return data is Map<String, dynamic> ? data : const {};
   }
 
+  /// An empty [contentType] removes the override, which is how the server
+  /// offers "Inherit".
   @override
   Future<void> updateContentType(String itemId, String contentType) async {
-    await _requestWithFallback<void>(
-      methods: const ['POST'],
-      paths: ['/Items/$itemId/ContentType'],
+    await _dio.post(
+      '/Items/$itemId/ContentType',
       queryParameters: {'ContentType': contentType},
-      convert: _ignoreResponse,
     );
   }
 
+  /// The server has no Recursive parameter, so sending it changes nothing.
   @override
   Future<void> refreshItem(
     String itemId, {
     bool? recursive,
     bool? replaceAllMetadata,
     bool? replaceAllImages,
+    bool? regenerateTrickplay,
     MetadataRefreshMode metadataRefreshMode = MetadataRefreshMode.defaultRefresh,
     MetadataRefreshMode imageRefreshMode = MetadataRefreshMode.defaultRefresh,
   }) async {
-    await _requestWithFallback<void>(
-      methods: const ['POST'],
-      paths: ['/Items/$itemId/Refresh'],
+    await _dio.post(
+      '/Items/$itemId/Refresh',
       queryParameters: {
         'Recursive': ?recursive,
         'MetadataRefreshMode': metadataRefreshMode.toServerString(),
         'ImageRefreshMode': imageRefreshMode.toServerString(),
         'ReplaceAllMetadata': ?replaceAllMetadata,
         'ReplaceAllImages': ?replaceAllImages,
+        'RegenerateTrickplay': ?regenerateTrickplay,
       },
-      convert: _ignoreResponse,
     );
   }
 
   @override
   Future<List<Map<String, dynamic>>> getExternalIdInfos(String itemId) async {
-    return _requestWithFallback<List<Map<String, dynamic>>>(
-      methods: const ['GET'],
-      paths: [
-        '/Items/$itemId/ExternalIdInfos',
-        '/Items/$itemId/ExternalIds',
-      ],
-      convert: _asList,
-    );
+    final response = await _dio.get('/Items/$itemId/ExternalIdInfos');
+    return _asList(response.data);
   }
 
+  /// The server has a search route per type it can identify (Movie, Trailer,
+  /// MusicVideo, Series, BoxSet, MusicArtist, MusicAlbum, Person, Book).
   @override
   Future<List<Map<String, dynamic>>> searchRemote(
     String searchType,
@@ -82,19 +69,19 @@ class JellyfinAdminItemsApi implements AdminItemsApi {
   ) async {
     final normalized = switch (searchType.toLowerCase()) {
       'movie' => 'Movie',
+      'trailer' => 'Trailer',
+      'musicvideo' => 'MusicVideo',
       'series' => 'Series',
       'boxset' => 'BoxSet',
       'person' => 'Person',
       'musicalbum' => 'MusicAlbum',
       'musicartist' => 'MusicArtist',
+      'book' => 'Book',
       _ => searchType,
     };
-    return _requestWithFallback<List<Map<String, dynamic>>>(
-      methods: const ['POST'],
-      paths: ['/Items/RemoteSearch/$normalized', '/Items/RemoteSearch/$searchType'],
-      data: query,
-      convert: _asList,
-    );
+    final response =
+        await _dio.post('/Items/RemoteSearch/$normalized', data: query);
+    return _asList(response.data);
   }
 
   @override
@@ -109,15 +96,10 @@ class JellyfinAdminItemsApi implements AdminItemsApi {
     Map<String, dynamic> result, {
     bool replaceAllImages = true,
   }) async {
-    await _requestWithFallback<void>(
-      methods: const ['POST'],
-      paths: [
-        '/Items/RemoteSearch/Apply/$itemId',
-        '/Items/$itemId/RemoteSearch/Apply',
-      ],
+    await _dio.post(
+      '/Items/RemoteSearch/Apply/$itemId',
       queryParameters: {'replaceAllImages': replaceAllImages},
       data: result,
-      convert: _ignoreResponse,
     );
   }
 
@@ -130,9 +112,8 @@ class JellyfinAdminItemsApi implements AdminItemsApi {
     String? providerName,
     bool? includeAllLanguages,
   }) async {
-    return _requestWithFallback<Map<String, dynamic>>(
-      methods: const ['GET'],
-      paths: ['/Items/$itemId/RemoteImages'],
+    final response = await _dio.get(
+      '/Items/$itemId/RemoteImages',
       queryParameters: {
         'Type': imageType.toServerString(),
         'StartIndex': ?startIndex,
@@ -141,26 +122,25 @@ class JellyfinAdminItemsApi implements AdminItemsApi {
           'ProviderName': providerName,
         'IncludeAllLanguages': ?includeAllLanguages,
       },
-      convert: (data) {
-        if (data is Map<String, dynamic>) {
-          return {
-            'Images': _asList(data['Images']),
-            'Providers': (data['Providers'] is List)
-                ? (data['Providers'] as List)
-                    .map((entry) => entry.toString())
-                    .where((entry) => entry.isNotEmpty)
-                    .toList()
-                : const <String>[],
-            'TotalRecordCount': data['TotalRecordCount'] ?? 0,
-          };
-        }
-        return const {
-          'Images': <Map<String, dynamic>>[],
-          'Providers': <String>[],
-          'TotalRecordCount': 0,
-        };
-      },
     );
+    final data = response.data;
+    if (data is! Map<String, dynamic>) {
+      return const {
+        'Images': <Map<String, dynamic>>[],
+        'Providers': <String>[],
+        'TotalRecordCount': 0,
+      };
+    }
+    return {
+      'Images': _asList(data['Images']),
+      'Providers': (data['Providers'] is List)
+          ? (data['Providers'] as List)
+              .map((entry) => entry.toString())
+              .where((entry) => entry.isNotEmpty)
+              .toList()
+          : const <String>[],
+      'TotalRecordCount': data['TotalRecordCount'] ?? 0,
+    };
   }
 
   @override
@@ -169,14 +149,12 @@ class JellyfinAdminItemsApi implements AdminItemsApi {
     required ImageType imageType,
     required String imageUrl,
   }) async {
-    await _requestWithFallback<void>(
-      methods: const ['POST'],
-      paths: ['/Items/$itemId/RemoteImages/Download'],
+    await _dio.post(
+      '/Items/$itemId/RemoteImages/Download',
       queryParameters: {
         'Type': imageType.toServerString(),
         'ImageUrl': imageUrl,
       },
-      convert: _ignoreResponse,
     );
   }
 
@@ -223,48 +201,5 @@ class JellyfinAdminItemsApi implements AdminItemsApi {
       }
     }
     return const [];
-  }
-
-  void _ignoreResponse(dynamic _) {}
-
-  Future<T> _requestWithFallback<T>({
-    required List<String> methods,
-    required List<String> paths,
-    Map<String, dynamic>? queryParameters,
-    Object? data,
-    required T Function(dynamic data) convert,
-  }) async {
-    DioException? lastDioError;
-
-    for (final path in paths) {
-      for (final method in methods) {
-        try {
-          final response = switch (method) {
-            'GET' => await _dio.get(path, queryParameters: queryParameters),
-            'POST' => await _dio.post(
-                path,
-                queryParameters: queryParameters,
-                data: data,
-              ),
-            'PUT' => await _dio.put(
-                path,
-                queryParameters: queryParameters,
-                data: data,
-              ),
-            _ => throw ArgumentError('Unknown HTTP method: $method'),
-          };
-          return convert(response.data);
-        } on DioException catch (e) {
-          final status = e.response?.statusCode;
-          if (status == 404 || status == 405 || status == 501) {
-            lastDioError = e;
-            continue;
-          }
-          rethrow;
-        }
-      }
-    }
-
-    throw lastDioError ?? StateError('No admin item endpoint responded');
   }
 }

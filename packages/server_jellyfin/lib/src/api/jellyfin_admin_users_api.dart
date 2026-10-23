@@ -41,27 +41,8 @@ class JellyfinAdminUsersApi implements AdminUsersApi {
   }
 
   @override
-  Future<void> updateUser(String userId, Map<String, dynamic> userData) async {
-    final payload = <String, dynamic>{
-      'Name': userData['Name'],
-      'Configuration': userData['Configuration'] ?? <String, dynamic>{},
-    };
-
-    try {
-      await _dio.post(
-        '/Users',
-        queryParameters: {'userId': userId},
-        data: payload,
-      );
-    } on DioException catch (e) {
-      final status = e.response?.statusCode;
-      if (status == 400 || status == 404 || status == 405) {
-        await _dio.post('/Users/$userId', data: payload);
-        return;
-      }
-      rethrow;
-    }
-  }
+  Future<void> updateUser(String userId, Map<String, dynamic> user) =>
+      _postWithLegacy('/Users', '/Users/$userId', userId, user);
 
   @override
   Future<void> updateUserPolicy(
@@ -74,15 +55,45 @@ class JellyfinAdminUsersApi implements AdminUsersApi {
   @override
   Future<void> updateUserPassword(
     String userId, {
+    String? currentPassword,
     String? newPassword,
     bool resetPassword = false,
-  }) async {
-    await _dio.post(
-      '/Users/$userId/Password',
-      data: {
+  }) =>
+      _postWithLegacy('/Users/Password', '/Users/$userId/Password', userId, {
+        'CurrentPw': ?currentPassword,
         'NewPw': ?newPassword,
         'ResetPassword': resetPassword,
-      },
+      });
+
+  @override
+  Future<List<Map<String, dynamic>>> getChannels({
+    bool? supportsMediaDeletion,
+  }) async {
+    final response = await _dio.get(
+      '/Channels',
+      queryParameters: {'supportsMediaDeletion': ?supportsMediaDeletion},
     );
+    final items = (response.data as Map<String, dynamic>)['Items'] as List?;
+    return [for (final item in items ?? const []) item as Map<String, dynamic>];
+  }
+
+  /// Posts to the `?userId=` route, falling back to the older `/Users/{id}`
+  /// route for servers that only have that one.
+  Future<void> _postWithLegacy(
+    String path,
+    String legacyPath,
+    String userId,
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      await _dio.post(path, queryParameters: {'userId': userId}, data: data);
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      if (status == 400 || status == 404 || status == 405) {
+        await _dio.post(legacyPath, data: data);
+        return;
+      }
+      rethrow;
+    }
   }
 }

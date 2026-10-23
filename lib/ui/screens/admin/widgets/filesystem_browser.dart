@@ -9,10 +9,18 @@ class FilesystemBrowser extends StatefulWidget {
   final String? initialPath;
   final ValueChanged<String> onPathSelected;
 
+  /// Lists files too and picks one when tapped (certificate files).
+  final bool includeFiles;
+
+  /// Asks the server to confirm it can write to the chosen folder.
+  final bool validateWritable;
+
   const FilesystemBrowser({
     super.key,
     this.initialPath,
     required this.onPathSelected,
+    this.includeFiles = false,
+    this.validateWritable = false,
   });
 
   @override
@@ -100,7 +108,7 @@ class _FilesystemBrowserState extends State<FilesystemBrowser> {
       final contents = await _envApi.getDirectoryContents(
         path,
         includeDirectories: true,
-        includeFiles: false,
+        includeFiles: widget.includeFiles,
       );
       if (!mounted) return;
       setState(() {
@@ -130,12 +138,18 @@ class _FilesystemBrowserState extends State<FilesystemBrowser> {
     }
   }
 
-  Future<void> _validateAndSelect() async {
+  Future<void> _validateAndSelect({bool isFile = false}) async {
     final path = _pathController.text.trim();
     if (path.isEmpty) return;
     setState(() => _validationError = null);
     try {
-      await _envApi.validatePath(path);
+      await _envApi.validatePath(
+        path,
+        writable: widget.validateWritable && !isFile,
+        // A typed path can be a file or a folder, and false would make the
+        // server accept only a folder.
+        isFile: isFile ? true : null,
+      );
       if (!mounted) return;
       widget.onPathSelected(path);
     } catch (e) {
@@ -212,7 +226,14 @@ class _FilesystemBrowserState extends State<FilesystemBrowser> {
                   title: Text(name),
                   subtitle: path != name ? Text(path, style: const TextStyle(fontSize: 12)) : null,
                   dense: true,
-                  onTap: () => _loadDirectory(path),
+                  onTap: () {
+                    if (isDir || !widget.includeFiles) {
+                      _loadDirectory(path);
+                    } else {
+                      _pathController.text = path;
+                      _validateAndSelect(isFile: true);
+                    }
+                  },
                 );
               },
             ),

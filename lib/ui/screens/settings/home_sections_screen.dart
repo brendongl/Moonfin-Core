@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 
 import 'package:animated_reorderable_list/animated_reorderable_list.dart';
@@ -10,6 +11,9 @@ import 'package:jellyfin_preference/jellyfin_preference.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../../data/models/aggregated_item.dart';
+import '../../../data/repositories/multi_server_repository.dart';
+import '../../../data/repositories/seerr_repository.dart';
+import '../../../data/services/seerr/seerr_discover_sliders.dart';
 import '../../../data/utils/playlist_utils.dart';
 import '../../../data/services/plugin_sync_service.dart';
 import '../../../preference/home_section_config.dart';
@@ -20,12 +24,12 @@ import '../../../preference/seerr_row_config.dart';
 import '../../../util/extensions.dart';
 import '../../../util/focus/scroll_utils.dart';
 import '../../../util/platform_detection.dart';
+import '../../../util/server_url.dart';
 import '../../navigation/route_lifecycle_observer.dart';
-import '../../widgets/overlay_sheet.dart';
-import '../../widgets/poster_size_settings_dialog.dart';
 import '../../widgets/skeleton/skeleton_shimmer.dart';
 import '../../widgets/settings/clean_settings_typography.dart';
 import '../../widgets/settings/preference_tiles.dart';
+import '../../widgets/settings/settings_section_header.dart';
 import '../../../l10n/app_localizations.dart';
 import 'settings_app_bar.dart';
 
@@ -82,9 +86,7 @@ BoxDecoration _homeSectionTileDecoration(
 }
 
 class HomeSectionsScreen extends StatefulWidget {
-  final bool showGeneralOptions;
-
-  const HomeSectionsScreen({super.key, this.showGeneralOptions = true});
+  const HomeSectionsScreen({super.key});
 
   @override
   State<HomeSectionsScreen> createState() => _HomeSectionsScreenState();
@@ -94,8 +96,6 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
     with RouteAware {
   final _prefs = GetIt.instance<UserPreferences>();
   ModalRoute<dynamic>? _observedRoute;
-  static const _rowsTypeDescription =
-      'Classic keeps per-row image type and info overlay. Modern uses portrait-to-backdrop rows.';
   late List<HomeSectionConfig> _sections;
   HomeSectionConfig? _mediaBarConfig;
   final _focusNodes = <FocusNode>[];
@@ -104,6 +104,26 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
   bool _showOverlay = true;
 
   final Set<String> _emptySectionIds = {};
+
+  /// Turns false once the server answers with no Live TV channels, which hides
+  /// the rows that need Live TV.
+  bool _serverHasLiveTv = true;
+
+  /// The disabled groups that are open, by [_getSectionCategory]. General
+  /// starts open since it's short.
+  final Set<int> _openGroups = {1};
+  final Map<int, FocusNode> _groupHeaderFocusNodes = {};
+
+  /// Seerr slider rows whose slider Seerr still has but this client can't
+  /// show, so they stay in the layout without being offered.
+  Set<String> _unshownSeerrSliderIds = const {};
+
+  /// The names of the other servers signed in on this device, by address, so
+  /// a collection picked from one of them says where it's from.
+  Map<String, String> _otherServerNames = const {};
+
+  String? _otherServerName(HomeSectionConfig section) =>
+      _otherServerNames[normalizeServerBaseUrl(section.serverId ?? '')];
 
   static FavoriteTypeFilter _favoriteFilterForSection(HomeSectionType type) {
     return switch (type) {
@@ -128,6 +148,7 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
     final tasks = <Future<void>>[];
 
     final newEmptyIds = <String>{};
+    var hasLiveTv = true;
     void setEmpty(String stableId, bool isEmpty) {
       if (isEmpty) {
         newEmptyIds.add(stableId);
@@ -320,6 +341,19 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
                 );
                 final items = response['Items'] as List? ?? [];
                 setEmpty(stableId, items.isEmpty);
+                hasLiveTv = items.isNotEmpty;
+              } catch (_) {}
+            }());
+            break;
+          case HomeSectionType.onNow:
+            tasks.add(() async {
+              try {
+                final response = await client.liveTvApi.getRecommendedPrograms(
+                  limit: 1,
+                  isAiring: true,
+                );
+                final items = response['Items'] as List? ?? [];
+                setEmpty(stableId, items.isEmpty);
               } catch (_) {}
             }());
             break;
@@ -389,6 +423,7 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
         _emptySectionIds
           ..clear()
           ..addAll(newEmptyIds);
+        _serverHasLiveTv = hasLiveTv;
       });
     }
   }
@@ -451,7 +486,8 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
   }
 
   bool _isSeerrSectionType(HomeSectionType type) {
-    return type == HomeSectionType.seerrRecentRequests ||
+    return type == HomeSectionType.seerrShortcuts ||
+        type == HomeSectionType.seerrRecentRequests ||
         type == HomeSectionType.seerrWatchlist ||
         type == HomeSectionType.seerrRecentlyAdded ||
         type == HomeSectionType.seerrPopularMovies ||
@@ -494,7 +530,9 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
     if (section.type == HomeSectionType.playlists) {
       return 5;
     }
-    if (_isSeerrSectionType(section.type)) {
+    if (_isSeerrSectionType(section.type) ||
+        section.type == HomeSectionType.radarrCalendar ||
+        section.type == HomeSectionType.sonarrCalendar) {
       return 6;
     }
     // general builtins (resume, nextUp, etc.)
@@ -516,49 +554,11 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
     }
   }
 
-  bool _isAnyTmdbSectionEnabled() {
-    return _prefs.get(UserPreferences.tmdbPopularMoviesEnabled) ||
-        _prefs.get(UserPreferences.tmdbTopRatedMoviesEnabled) ||
-        _prefs.get(UserPreferences.tmdbNowPlayingMoviesEnabled) ||
-        _prefs.get(UserPreferences.tmdbUpcomingMoviesEnabled) ||
-        _prefs.get(UserPreferences.tmdbPopularTvEnabled) ||
-        _prefs.get(UserPreferences.tmdbTopRatedTvEnabled) ||
-        _prefs.get(UserPreferences.tmdbAiringTodayTvEnabled) ||
-        _prefs.get(UserPreferences.tmdbOnTheAirTvEnabled) ||
-        _prefs.get(UserPreferences.tmdbTrendingMovieDailyEnabled) ||
-        _prefs.get(UserPreferences.tmdbTrendingMovieWeeklyEnabled) ||
-        _prefs.get(UserPreferences.tmdbTrendingTvDailyEnabled) ||
-        _prefs.get(UserPreferences.tmdbTrendingTvWeeklyEnabled) ||
-        _prefs.get(UserPreferences.tmdbTrendingAllWeeklyEnabled);
-  }
+  bool _isAnyTmdbSectionEnabled() =>
+      UserPreferences.tmdbSectionEnabled.values.any(_prefs.get);
 
   bool _isTmdbRowEnabled(HomeSectionType type) {
-    final prefKey = switch (type) {
-      HomeSectionType.tmdbPopularMovies =>
-        UserPreferences.tmdbPopularMoviesEnabled,
-      HomeSectionType.tmdbTopRatedMovies =>
-        UserPreferences.tmdbTopRatedMoviesEnabled,
-      HomeSectionType.tmdbNowPlayingMovies =>
-        UserPreferences.tmdbNowPlayingMoviesEnabled,
-      HomeSectionType.tmdbUpcomingMovies =>
-        UserPreferences.tmdbUpcomingMoviesEnabled,
-      HomeSectionType.tmdbPopularTv => UserPreferences.tmdbPopularTvEnabled,
-      HomeSectionType.tmdbTopRatedTv => UserPreferences.tmdbTopRatedTvEnabled,
-      HomeSectionType.tmdbAiringTodayTv =>
-        UserPreferences.tmdbAiringTodayTvEnabled,
-      HomeSectionType.tmdbOnTheAirTv => UserPreferences.tmdbOnTheAirTvEnabled,
-      HomeSectionType.tmdbTrendingMovieDaily =>
-        UserPreferences.tmdbTrendingMovieDailyEnabled,
-      HomeSectionType.tmdbTrendingMovieWeekly =>
-        UserPreferences.tmdbTrendingMovieWeeklyEnabled,
-      HomeSectionType.tmdbTrendingTvDaily =>
-        UserPreferences.tmdbTrendingTvDailyEnabled,
-      HomeSectionType.tmdbTrendingTvWeekly =>
-        UserPreferences.tmdbTrendingTvWeeklyEnabled,
-      HomeSectionType.tmdbTrendingAllWeekly =>
-        UserPreferences.tmdbTrendingAllWeeklyEnabled,
-      _ => null,
-    };
+    final prefKey = UserPreferences.tmdbSectionEnabled[type];
     if (prefKey == null) return false;
     return _prefs.get(prefKey);
   }
@@ -617,21 +617,8 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
         type == HomeSectionType.imdbTopEnglishMovies;
   }
 
-  bool _isTmdbSectionType(HomeSectionType type) {
-    return type == HomeSectionType.tmdbPopularMovies ||
-        type == HomeSectionType.tmdbTopRatedMovies ||
-        type == HomeSectionType.tmdbNowPlayingMovies ||
-        type == HomeSectionType.tmdbUpcomingMovies ||
-        type == HomeSectionType.tmdbPopularTv ||
-        type == HomeSectionType.tmdbTopRatedTv ||
-        type == HomeSectionType.tmdbAiringTodayTv ||
-        type == HomeSectionType.tmdbOnTheAirTv ||
-        type == HomeSectionType.tmdbTrendingMovieDaily ||
-        type == HomeSectionType.tmdbTrendingMovieWeekly ||
-        type == HomeSectionType.tmdbTrendingTvDaily ||
-        type == HomeSectionType.tmdbTrendingTvWeekly ||
-        type == HomeSectionType.tmdbTrendingAllWeekly;
-  }
+  bool _isTmdbSectionType(HomeSectionType type) =>
+      UserPreferences.isTmdbSectionType(type);
 
   bool _isHiddenByRowVisibilityGates(HomeSectionConfig section) {
     final showFavoritesRows = _prefs.get(UserPreferences.displayFavoritesRows);
@@ -651,6 +638,10 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
         ((section.isBuiltin && _isCollectionsSectionType(section.type)) ||
             (section.isPluginDynamic &&
                 section.pluginSource == HomeSectionPluginSource.collections));
+    final hiddenByServer =
+        section.pluginSource == HomeSectionPluginSource.collections &&
+        _otherServerName(section) != null &&
+        !_prefs.get(UserPreferences.enableMultiServerLibraries);
     final hiddenByGenres =
         !showGenresRows &&
         ((section.isBuiltin && _isGenresSectionType(section.type)) ||
@@ -661,12 +652,31 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
         ((section.isBuiltin && _isPlaylistsSectionType(section.type)) ||
             (section.isPluginDynamic &&
                 section.pluginSource == HomeSectionPluginSource.playlists));
+    final hiddenByStudios =
+        section.type == HomeSectionType.studios &&
+        !_prefs.get(UserPreferences.displayStudiosRows);
+    final hiddenByLiveTv =
+        !_serverHasLiveTv &&
+        (section.type == HomeSectionType.liveTv ||
+            section.type == HomeSectionType.onNow ||
+            section.type == HomeSectionType.activeRecordings);
+    final hiddenByCalendars =
+        (section.type == HomeSectionType.radarrCalendar &&
+            !_prefs.get(UserPreferences.enableRadarrCalendar)) ||
+        (section.type == HomeSectionType.sonarrCalendar &&
+            !_prefs.get(UserPreferences.enableSonarrCalendar));
     final hiddenBySeerr =
-        _isSeerrSectionType(section.type) &&
-        (!showSeerrRows ||
-            !GetIt.instance<SeerrPreferences>().isSeerrHomeRowEnabled(
-              section.type,
-            ));
+        (_isSeerrSectionType(section.type) &&
+            (!showSeerrRows ||
+                !GetIt.instance<SeerrPreferences>().isSeerrHomeRowEnabled(
+                  section.type,
+                ))) ||
+        // Like Seerr's own rows, a slider row switched off goes back to Seerr
+        // Lists, where it's switched on again.
+        (isSeerrSliderSection(section) &&
+            (!showSeerrRows ||
+                !section.enabled ||
+                _unshownSeerrSliderIds.contains(section.stableId)));
     final hiddenByImdb =
         _isImdbSectionType(section.type) &&
         (!showImdbRows || !_isImdbRowEnabled(section.type));
@@ -699,8 +709,12 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
 
     return hiddenByFavorites ||
         hiddenByCollections ||
+        hiddenByServer ||
         hiddenByGenres ||
         hiddenByPlaylists ||
+        hiddenByStudios ||
+        hiddenByLiveTv ||
+        hiddenByCalendars ||
         hiddenBySeerr ||
         hiddenByImdb ||
         hiddenByTmdb ||
@@ -730,6 +744,62 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
       visible.add(i);
     }
     return visible;
+  }
+
+  String _groupLabel(int category, AppLocalizations l10n) => switch (category) {
+    2 => l10n.collections,
+    3 => l10n.favorites,
+    4 => l10n.homeRowsGenresAndStudios,
+    5 => l10n.playlists,
+    6 => l10n.seerr,
+    7 => l10n.homeRowsExternalLists,
+    _ => l10n.general,
+  };
+
+  FocusNode _groupHeaderNode(int category) => _groupHeaderFocusNodes
+      .putIfAbsent(category, () => FocusNode(debugLabel: 'group_$category'));
+
+  /// The Disabled heading, then a header per kind of row with its rows below
+  /// while the group is open.
+  List<Widget> _buildDisabledGroups(
+    List<int> visibleIndices,
+    AppLocalizations l10n, {
+    required bool hasEnabledRows,
+    required Widget Function(BuildContext context, int sectionIndex)
+    rowBuilder,
+  }) {
+    final groups = SplayTreeMap<int, List<int>>();
+    for (final i in visibleIndices) {
+      if (_sections[i].enabled) continue;
+      groups.putIfAbsent(_getSectionCategory(_sections[i]), () => []).add(i);
+    }
+    if (groups.isEmpty) return const [];
+    return [
+      SliverToBoxAdapter(child: SettingsSectionHeader(l10n.disabled)),
+      for (final MapEntry(key: category, value: rows) in groups.entries) ...[
+        SliverToBoxAdapter(
+          child: _SectionGroupHeader(
+            key: ValueKey('group_$category'),
+            focusNode: _groupHeaderNode(category),
+            label: _groupLabel(category, l10n),
+            count: rows.length,
+            open: _openGroups.contains(category),
+            autofocus: !hasEnabledRows && category == groups.firstKey(),
+            onToggle: () => setState(() {
+              if (!_openGroups.remove(category)) _openGroups.add(category);
+            }),
+          ),
+        ),
+        if (_openGroups.contains(category))
+          SliverPadding(
+            padding: const EdgeInsets.only(left: 16),
+            sliver: SliverList.builder(
+              itemCount: rows.length,
+              itemBuilder: (context, i) => rowBuilder(context, rows[i]),
+            ),
+          ),
+      ],
+    ];
   }
 
   @override
@@ -850,23 +920,29 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
       _showOverlay = true;
     });
     try {
-      final collectionsFuture = _fetchCollectionsForHomeSections();
+      final collectionsFuture = _fetchCollectionsPerServer();
       final genresFuture = _fetchGenresForHomeSections();
       final playlistsFuture = _fetchPlaylistsForHomeSections();
+      final seerrSlidersFuture = _fetchSeerrSlidersForHomeSections();
       final discoveredCollections = await collectionsFuture;
       final discoveredGenres = await genresFuture;
       final discoveredPlaylists = await playlistsFuture;
+      final discoveredSeerrSliders = await seerrSlidersFuture;
       if (!mounted) return;
       var changed = false;
       setState(() {
         final mergedPluginSections = _mergeDiscoveredPluginSections();
-        final mergedCollectionSections = _mergeCollectionSections(
-          discoveredCollections,
-        );
+        final mergedCollectionSections = [
+          for (final MapEntry(key: serverId, value: collections)
+              in discoveredCollections.entries)
+            _mergeCollectionSections(serverId, collections),
+        ].contains(true);
         final mergedGenreSections = _mergeGenreSections(discoveredGenres);
         final mergedPlaylistSections = _mergePlaylistSections(
           discoveredPlaylists,
         );
+        final mergedSeerrSliderSections = discoveredSeerrSliders != null &&
+            _mergeSeerrSliderSections(discoveredSeerrSliders);
 
         final beforeIds = _sections.map((s) => s.stableId).toList();
         _sortSectionsEnabledAboveDisabled();
@@ -883,6 +959,7 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
             mergedCollectionSections ||
             mergedGenreSections ||
             mergedPlaylistSections ||
+            mergedSeerrSliderSections ||
             sortChanged;
         _rebuildFocusNodes();
       });
@@ -913,15 +990,49 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
     return false;
   }
 
-  Future<List<_DiscoveredCollectionRow>>
-  _fetchCollectionsForHomeSections() async {
+  /// This server's collections and, with multi-server libraries on, every
+  /// other signed-in server's, by the address their rows are stamped with. A
+  /// server that couldn't be reached is left out, so its rows are kept.
+  Future<Map<String, List<_DiscoveredCollectionRow>>>
+  _fetchCollectionsPerServer() async {
+    final active = GetIt.instance<MediaServerClient>();
+    var others = const <ServerUserSession>[];
+    try {
+      others = [
+        for (final session in await GetIt.instance<MultiServerRepository>()
+            .getLoggedInServers())
+          if (normalizeServerBaseUrl(session.client.baseUrl) !=
+              normalizeServerBaseUrl(active.baseUrl))
+            session,
+      ];
+    } catch (_) {}
+    _otherServerNames = {
+      for (final session in others)
+        normalizeServerBaseUrl(session.client.baseUrl): session.server.name,
+    };
+
+    final clients = [
+      active,
+      if (_prefs.get(UserPreferences.enableMultiServerLibraries))
+        for (final session in others) session.client,
+    ];
+    final found = await Future.wait(
+      clients.map(_fetchCollectionsForHomeSections),
+    );
+    return {
+      for (var i = 0; i < clients.length; i++) clients[i].baseUrl: ?found[i],
+    };
+  }
+
+  Future<List<_DiscoveredCollectionRow>?> _fetchCollectionsForHomeSections(
+    MediaServerClient client,
+  ) async {
     final showCollectionsRows = _prefs.get(
       UserPreferences.displayCollectionsRows,
     );
     if (!showCollectionsRows) return const <_DiscoveredCollectionRow>[];
 
     try {
-      final client = GetIt.instance<MediaServerClient>();
       const pageSize = 250;
       var startIndex = 0;
       int? total;
@@ -964,13 +1075,14 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
 
       return all;
     } catch (_) {
-      return const <_DiscoveredCollectionRow>[];
+      return null;
     }
   }
 
-  bool _mergeCollectionSections(List<_DiscoveredCollectionRow> discovered) {
-    final client = GetIt.instance<MediaServerClient>();
-    final serverId = client.baseUrl;
+  bool _mergeCollectionSections(
+    String serverId,
+    List<_DiscoveredCollectionRow> discovered,
+  ) {
     var changed = false;
 
     final existing = <String, HomeSectionConfig>{
@@ -1252,6 +1364,58 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
     return changed;
   }
 
+  /// Every slider on Seerr's discover page. Null when Seerr can't be reached,
+  /// so a failed read leaves the rows in place instead of reading as every
+  /// slider having been deleted.
+  Future<List<SeerrDiscoverSlider>?> _fetchSeerrSlidersForHomeSections() async {
+    if (!GetIt.instance<PluginSyncService>().seerrAvailable) return null;
+    try {
+      final repo = await GetIt.instance.getAsync<SeerrRepository>();
+      await repo.ensureInitialized();
+      if (!repo.isAvailable) return null;
+      return await repo.getDiscoverSliders(force: true);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Keeps the slider rows put on Home from Seerr Lists in step with Seerr.
+  /// Sliders are picked there, so none are added here.
+  bool _mergeSeerrSliderSections(List<SeerrDiscoverSlider> sliders) {
+    final serverId = GetIt.instance<MediaServerClient>().baseUrl;
+    var changed = false;
+
+    // Another server's Seerr may number its sliders the same way, so only
+    // this server's rows are matched against the list.
+    bool isOwnSlider(HomeSectionConfig s) =>
+        isSeerrSliderSection(s) && s.serverId == serverId;
+
+    for (var i = 0; i < _sections.length; i++) {
+      if (!isOwnSlider(_sections[i])) continue;
+      final slider = findSeerrSliderFor(_sections[i], sliders);
+      if (slider == null) continue;
+      if (_sections[i].pluginDisplayText != slider.title) {
+        _sections[i] = _sections[i].copyWith(pluginDisplayText: slider.title);
+        changed = true;
+      }
+    }
+
+    // Only a slider Seerr no longer has is dropped. One it still has but this
+    // client can't show, switched off for now or of a type a newer client
+    // knows, keeps its entry and state and is just left out of the list.
+    final before = _sections.length;
+    _sections.removeWhere(
+      (s) => isOwnSlider(s) && findSeerrSliderFor(s, sliders) == null,
+    );
+    if (_sections.length != before) changed = true;
+    _unshownSeerrSliderIds = {
+      for (final s in _sections.where(isOwnSlider))
+        if (findSeerrSliderFor(s, sliders)?.isSupported == false) s.stableId,
+    };
+
+    return changed;
+  }
+
   void _rebuildFocusNodes() {
     final activeIds = _sections.map((s) => s.stableId).toSet();
 
@@ -1285,6 +1449,9 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
     }
     _focusNodesByStableId.clear();
     _focusNodes.clear();
+    for (final n in _groupHeaderFocusNodes.values) {
+      n.dispose();
+    }
     super.dispose();
   }
 
@@ -1317,30 +1484,9 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
 
   void _syncIndividualPreferences() {
     Preference<bool>? mapToPref(HomeSectionType type) {
+      final tmdb = UserPreferences.tmdbSectionEnabled[type];
+      if (tmdb != null) return tmdb;
       return switch (type) {
-        HomeSectionType.tmdbPopularMovies =>
-          UserPreferences.tmdbPopularMoviesEnabled,
-        HomeSectionType.tmdbTopRatedMovies =>
-          UserPreferences.tmdbTopRatedMoviesEnabled,
-        HomeSectionType.tmdbNowPlayingMovies =>
-          UserPreferences.tmdbNowPlayingMoviesEnabled,
-        HomeSectionType.tmdbUpcomingMovies =>
-          UserPreferences.tmdbUpcomingMoviesEnabled,
-        HomeSectionType.tmdbPopularTv => UserPreferences.tmdbPopularTvEnabled,
-        HomeSectionType.tmdbTopRatedTv => UserPreferences.tmdbTopRatedTvEnabled,
-        HomeSectionType.tmdbAiringTodayTv =>
-          UserPreferences.tmdbAiringTodayTvEnabled,
-        HomeSectionType.tmdbOnTheAirTv => UserPreferences.tmdbOnTheAirTvEnabled,
-        HomeSectionType.tmdbTrendingMovieDaily =>
-          UserPreferences.tmdbTrendingMovieDailyEnabled,
-        HomeSectionType.tmdbTrendingMovieWeekly =>
-          UserPreferences.tmdbTrendingMovieWeeklyEnabled,
-        HomeSectionType.tmdbTrendingTvDaily =>
-          UserPreferences.tmdbTrendingTvDailyEnabled,
-        HomeSectionType.tmdbTrendingTvWeekly =>
-          UserPreferences.tmdbTrendingTvWeeklyEnabled,
-        HomeSectionType.tmdbTrendingAllWeekly =>
-          UserPreferences.tmdbTrendingAllWeeklyEnabled,
         HomeSectionType.imdbTop250Movies =>
           UserPreferences.imdbTop250MoviesEnabled,
         HomeSectionType.imdbTop250TvShows =>
@@ -1395,12 +1541,20 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
   }
 
   void _toggleSection(int index, bool enabled) {
-    if (!enabled && _isSeerrSectionType(_sections[index].type)) {
-      _disableSeerrHomeRow(_sections[index].type);
+    final toggled = _sections[index];
+    final toggledStableId = toggled.stableId;
+    final category = _getSectionCategory(toggled);
+    // The rows the toggled one leaves: the Enabled list, or its disabled group.
+    final leaving = [
+      for (final i in _visibleSectionIndices())
+        if (_sections[i].enabled == toggled.enabled &&
+            (toggled.enabled || _getSectionCategory(_sections[i]) == category))
+          _sections[i].stableId,
+    ];
+    final at = leaving.indexOf(toggledStableId);
+    if (!enabled && _isSeerrSectionType(toggled.type)) {
+      _disableSeerrHomeRow(toggled.type);
     }
-    final visibleIndicesBefore = _visibleSectionIndices();
-    final visibleIndex = visibleIndicesBefore.indexOf(index);
-    final toggledStableId = _sections[index].stableId;
 
     final nodeMap = <String, FocusNode>{};
     for (var i = 0; i < _sections.length; i++) {
@@ -1427,26 +1581,27 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
 
     _save();
 
-    // Keep focus on the neighbor that slid into the toggled row's visible slot
-    // so the viewport stays put. If the toggled row didn't vacate its slot (it
-    // was the last visible row), step to the previous neighbor instead.
-    final visibleIndicesAfter = _visibleSectionIndices();
-    if (visibleIndex >= 0 && visibleIndicesAfter.isNotEmpty) {
-      var targetVisibleIndex = visibleIndex.clamp(
-        0,
-        visibleIndicesAfter.length - 1,
+    // Focus the row that slides into the toggled one's place, so ticking down
+    // a group or unticking down the Enabled list keeps going. Inner rows of a
+    // merged tile aren't listed and keep their focus.
+    if (at < 0) return;
+    final neighborId = at + 1 < leaving.length
+        ? leaving[at + 1]
+        : (at > 0 ? leaving[at - 1] : null);
+    if (neighborId != null) {
+      _focusSectionAndEnsureVisible(
+        _sections.indexWhere((s) => s.stableId == neighborId),
       );
-      final toggledActualAfter = _sections.indexWhere(
-        (s) => s.stableId == toggledStableId,
+    } else if (enabled) {
+      _focusSectionAndEnsureVisible(
+        _sections.indexWhere((s) => s.stableId == toggledStableId),
       );
-      final toggledVisibleAfter = visibleIndicesAfter.indexOf(
-        toggledActualAfter,
+    } else {
+      focusItemAndEnsureVisible(
+        isMounted: () => mounted,
+        focusNodes: [_groupHeaderNode(category)],
+        index: 0,
       );
-      if (toggledVisibleAfter == targetVisibleIndex && targetVisibleIndex > 0) {
-        targetVisibleIndex -= 1;
-      }
-      final targetActualIndex = visibleIndicesAfter[targetVisibleIndex];
-      _focusSectionAndEnsureVisible(targetActualIndex);
     }
   }
 
@@ -1660,6 +1815,7 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
         HomeSectionType.genres => l10n.genres,
         HomeSectionType.studios => l10n.studios,
         HomeSectionType.liveTv => l10n.liveTV,
+        HomeSectionType.onNow => l10n.onNow,
         HomeSectionType.seerrShortcuts => l10n.seerrShortcutsRow,
         HomeSectionType.seerrRecentRequests => l10n.recentRequests,
         HomeSectionType.seerrWatchlist => l10n.yourWatchlist,
@@ -1704,35 +1860,8 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
         HomeSectionType.none => l10n.none,
       };
 
-  String _posterSizeLabel(PosterSize size, AppLocalizations l10n) =>
-      switch (size) {
-        PosterSize.small => l10n.small,
-        PosterSize.medium => l10n.medium,
-        PosterSize.large => l10n.large,
-        PosterSize.extraLarge => l10n.extraLarge,
-      };
-
-  String _rowsStyleLabel(HomeRowsStyle style) => switch (style) {
-    HomeRowsStyle.v1 => 'Classic',
-    HomeRowsStyle.v2 => 'Modern',
-  };
-
-  Future<void> _showPosterSizeDialog() async {
-    await showFocusRestoringDialog<void>(
-      context: context,
-      builder: (ctx) => withCleanSettingsTypography(
-        ctx,
-        PosterSizeSettingsDialog(
-          prefs: _prefs,
-          onChanged: () => setState(() {}),
-        ),
-      ),
-    );
-  }
-
   Widget _buildLoadingOverlay(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
     return Positioned.fill(
       child: AnimatedOpacity(
         opacity: _isLoading ? 1.0 : 0.0,
@@ -1752,42 +1881,6 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
               physics: const NeverScrollableScrollPhysics(),
               padding: const EdgeInsets.only(top: 8, bottom: 32),
               children: [
-                if (widget.showGeneralOptions)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: colorScheme.surfaceContainerLow.withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Column(
-                        children: const [
-                          Row(
-                            children: [
-                              SkeletonBox(width: 24, height: 24, borderRadius: BorderRadius.all(Radius.circular(6))),
-                              SizedBox(width: 16),
-                              Expanded(
-                                child: SkeletonBox(width: 180, height: 16, borderRadius: BorderRadius.all(Radius.circular(4))),
-                              ),
-                              SkeletonBox(width: 44, height: 24, borderRadius: BorderRadius.all(Radius.circular(12))),
-                            ],
-                          ),
-                          SizedBox(height: 16),
-                          Row(
-                            children: [
-                              SkeletonBox(width: 24, height: 24, borderRadius: BorderRadius.all(Radius.circular(6))),
-                              SizedBox(width: 16),
-                              Expanded(
-                                child: SkeletonBox(width: 160, height: 16, borderRadius: BorderRadius.all(Radius.circular(4))),
-                              ),
-                              SkeletonBox(width: 44, height: 24, borderRadius: BorderRadius.all(Radius.circular(12))),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
                 for (int i = 0; i < 9; i++)
                   Padding(
                     padding: _kHomeSectionTileOuterPadding,
@@ -1864,7 +1957,7 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
       Scaffold(
         appBar: buildSettingsAppBar(
           context,
-          Text(l10n.homeSections),
+          Text(l10n.homeRows),
           actions: [
             IconButton(
               icon: const Icon(Icons.restore),
@@ -1902,547 +1995,41 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
     );
   }
 
-  Widget _buildHeader(AppLocalizations l10n) {
-    return Column(
-      children: [
-        ListTile(
-          leading: const Icon(Icons.photo_size_select_large),
-          title: Text(l10n.cardSize),
-          subtitle: Text(
-            _posterSizeLabel(_prefs.get(UserPreferences.posterSize), l10n),
-          ),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: _showPosterSizeDialog,
-        ),
-        const Divider(),
-        EnumPreferenceTile<HomeRowsStyle>(
-          preference: UserPreferences.homeRowsStyle,
-          title: l10n.rowsType,
-          icon: Icons.view_carousel,
-          description: _rowsTypeDescription,
-          labelOf: _rowsStyleLabel,
-          onChanged: () {
-            setState(() {});
-            _pushSyncSettings();
-          },
-        ),
-        if (_prefs.get(UserPreferences.homeRowsStyle) == HomeRowsStyle.v2) ...[
-          const Divider(),
-          SwitchListTile.adaptive(
-            secondary: const Icon(Icons.photo_library_outlined),
-            title: Text(l10n.modernCardsOnMyMediaRow),
-            subtitle: Text(l10n.modernCardsOnMyMediaRowDescription),
-            value: _prefs.get(UserPreferences.modernCardsOnMyMediaRow),
-            onChanged: (value) async {
-              await _prefs.set(UserPreferences.modernCardsOnMyMediaRow, value);
-              setState(() {});
-              _pushSyncSettings();
-            },
-          ),
-        ],
-        const Divider(),
-        SwitchListTile.adaptive(
-          secondary: const Icon(Icons.merge_type),
-          title: Text(l10n.mergeContinueWatchingAndNextUp),
-          subtitle: Text(l10n.combineBothRows),
-          value: _prefs.get(UserPreferences.mergeContinueWatchingNextUp),
-          onChanged: (value) {
-            _setMergeContinueWatchingNextUp(value);
-            if (value) {
-              setState(_enforceMergeAdjacency);
-              _save();
-            } else {
-              setState(() {});
-            }
-          },
-        ),
-      ],
-    );
-  }
-
   Widget _buildReorderableList(AppLocalizations l10n) {
     final visibleIndices = _visibleSectionIndices();
-    final items = [for (final i in visibleIndices) _sections[i]];
+    final enabledIndices = [
+      for (final i in visibleIndices)
+        if (_sections[i].enabled) i,
+    ];
     return CustomScrollView(
       slivers: [
-        if (widget.showGeneralOptions)
-          SliverToBoxAdapter(child: _buildHeader(l10n)),
-        ReorderableAnimatedListImpl<HomeSectionConfig>(
-          items: items,
-          dragStartDelay: PlatformDetection.useMobileUi
-              ? const Duration(milliseconds: 500)
-              : Duration.zero,
-          scrollDirection: Axis.vertical,
-          buildDefaultDragHandles: true,
-          // Comparing the enabled state and turning off swap detection makes a
-          // toggled row read as a removal from its old slot and an insert at
-          // its sorted slot, so it animates instead of jumping.
-          isSameItem: (a, b) =>
-              a.stableId == b.stableId && a.enabled == b.enabled,
-          enableSwap: true,
-          enterTransition: [FadeIn(), SizeAnimation()],
-          exitTransition: [FadeIn(), SizeAnimation()],
-          onReorder: (oldIndex, newIndex) {
-            // The list reports newIndex as the final target position, so it
-            // does not need an index shift.
-            if (oldIndex < 0 || oldIndex >= visibleIndices.length) return;
-            if (newIndex < 0 || newIndex > visibleIndices.length) return;
-
-            final fromActual = visibleIndices[oldIndex];
-            var toActual = newIndex >= visibleIndices.length
-                ? _sections.length
-                : visibleIndices[newIndex];
-
-            if (toActual > fromActual) {
-              toActual--;
-            }
-
-            if (toActual == fromActual) return;
-
-            _moveSection(fromActual, toActual);
-          },
+        SliverToBoxAdapter(child: SettingsSectionHeader(l10n.enabled)),
+        SliverReorderableList(
+          itemCount: enabledIndices.length,
+          onReorderItem: (oldIndex, newIndex) =>
+              _reorderEnabled(enabledIndices, oldIndex, newIndex),
           itemBuilder: (context, index) {
-            final sectionIndex = visibleIndices[index];
-            final section = _sections[sectionIndex];
-            final isEmpty = _emptySectionIds.contains(section.stableId);
-
-            final mergeEnabled = _prefs.get(
-              UserPreferences.mergeContinueWatchingNextUp,
+            final row = _buildTouchRow(
+              context,
+              l10n,
+              enabledIndices[index],
+              dragIndex: index,
             );
-            final isMergedResume =
-                mergeEnabled && section.type == HomeSectionType.resume;
-
-            if (isMergedResume) {
-              final nextUpIndex = _sections.indexWhere(
-                (s) => s.type == HomeSectionType.nextUp,
-              );
-              if (nextUpIndex >= 0) {
-                final nextUpSection = _sections[nextUpIndex];
-                final isNextUpEmpty = _emptySectionIds.contains(
-                  nextUpSection.stableId,
-                );
-
-                return Padding(
-                  key: const ValueKey('merged_resume_nextup'),
-                  padding: _kHomeSectionTileOuterPadding,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.surfaceContainerLow.withValues(alpha: 0.82),
-                      borderRadius: AppRadius.circular(_kHomeSectionTileRadius),
-                      border: Border.all(
-                        color: const Color(0xFF00F0FF), // Neon cyan border
-                        width: 1.5,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              // 1. Continue Watching Tile
-                              Opacity(
-                                opacity: isEmpty ? 0.45 : 1.0,
-                                child: ListTile(
-                                  focusColor: Colors.transparent,
-                                  hoverColor: Colors.transparent,
-                                  contentPadding: const EdgeInsets.only(
-                                    left: 16,
-                                    right: 8,
-                                    top: 4,
-                                    bottom: 4,
-                                  ),
-                                  minLeadingWidth: 44,
-                                  horizontalTitleGap: 14,
-                                  leading: buildSettingsLeadingIconShell(
-                                    context,
-                                    icon: Icon(
-                                      (section.enabled && !isEmpty)
-                                          ? Icons.check_box
-                                          : Icons.check_box_outline_blank,
-                                    ),
-                                    focused: false,
-                                    iconColor: AppColorScheme.onSurface
-                                        .withValues(alpha: 0.78),
-                                  ),
-                                  title: Text(
-                                    _labelFor(section, l10n),
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      fontFamily: kCleanSettingsFontFamily,
-                                    ),
-                                  ),
-                                  onTap: isEmpty
-                                      ? null
-                                      : () => _toggleSection(
-                                          sectionIndex,
-                                          !section.enabled,
-                                        ),
-                                ),
-                              ),
-                              const Divider(
-                                height: 1,
-                                color: Color(0xFF00F0FF),
-                                indent: 16,
-                                endIndent: 16,
-                              ),
-                              // 2. Next Up Tile
-                              Opacity(
-                                opacity: isNextUpEmpty ? 0.45 : 1.0,
-                                child: ListTile(
-                                  focusColor: Colors.transparent,
-                                  hoverColor: Colors.transparent,
-                                  contentPadding: const EdgeInsets.only(
-                                    left: 16,
-                                    right: 8,
-                                    top: 4,
-                                    bottom: 4,
-                                  ),
-                                  minLeadingWidth: 44,
-                                  horizontalTitleGap: 14,
-                                  leading: buildSettingsLeadingIconShell(
-                                    context,
-                                    icon: Icon(
-                                      (nextUpSection.enabled && !isNextUpEmpty)
-                                          ? Icons.check_box
-                                          : Icons.check_box_outline_blank,
-                                    ),
-                                    focused: false,
-                                    iconColor: AppColorScheme.onSurface
-                                        .withValues(alpha: 0.78),
-                                  ),
-                                  title: Text(
-                                    _labelFor(nextUpSection, l10n),
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      fontFamily: kCleanSettingsFontFamily,
-                                    ),
-                                  ),
-                                  onTap: isNextUpEmpty
-                                      ? null
-                                      : () => _toggleSection(
-                                          nextUpIndex,
-                                          !nextUpSection.enabled,
-                                        ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        // Centered unified drag handle
-                        Padding(
-                          padding: const EdgeInsets.only(right: 16),
-                          child: ReorderableDragStartListener(
-                            index: index,
-                            child: const Icon(
-                              Icons.drag_handle,
-                              color: Color(0xFF00F0FF), // Neon cyan handle
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }
-            }
-
-            final mergeCalendarsEnabled = _prefs.get(
-              UserPreferences.mergeRadarrSonarrCalendars,
-            );
-            final isMergedCalendars =
-                mergeCalendarsEnabled &&
-                section.type == HomeSectionType.radarrCalendar;
-
-            if (isMergedCalendars) {
-              final sonarrIndex = _sections.indexWhere(
-                (s) => s.type == HomeSectionType.sonarrCalendar,
-              );
-              if (sonarrIndex >= 0) {
-                final sonarrSection = _sections[sonarrIndex];
-                final isSonarrEmpty = _emptySectionIds.contains(
-                  sonarrSection.stableId,
-                );
-
-                return Padding(
-                  key: const ValueKey('merged_radarr_sonarr_calendars'),
-                  padding: _kHomeSectionTileOuterPadding,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.surfaceContainerLow.withValues(alpha: 0.82),
-                      borderRadius: AppRadius.circular(_kHomeSectionTileRadius),
-                      border: Border.all(
-                        color: const Color(0xFF00F0FF), // Neon cyan border
-                        width: 1.5,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              // 1. Radarr Calendar Tile
-                              Opacity(
-                                opacity: isEmpty ? 0.45 : 1.0,
-                                child: ListTile(
-                                  focusColor: Colors.transparent,
-                                  hoverColor: Colors.transparent,
-                                  contentPadding: const EdgeInsets.only(
-                                    left: 16,
-                                    right: 8,
-                                    top: 4,
-                                    bottom: 4,
-                                  ),
-                                  minLeadingWidth: 44,
-                                  horizontalTitleGap: 14,
-                                  leading: buildSettingsLeadingIconShell(
-                                    context,
-                                    icon: Icon(
-                                      (section.enabled && !isEmpty)
-                                          ? Icons.check_box
-                                          : Icons.check_box_outline_blank,
-                                    ),
-                                    focused: false,
-                                    iconColor: AppColorScheme.onSurface
-                                        .withValues(alpha: 0.78),
-                                  ),
-                                  title: Text(
-                                    _labelFor(section, l10n),
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      fontFamily: kCleanSettingsFontFamily,
-                                    ),
-                                  ),
-                                  onTap: isEmpty
-                                      ? null
-                                      : () => _toggleSection(
-                                          sectionIndex,
-                                          !section.enabled,
-                                        ),
-                                ),
-                              ),
-                              const Divider(
-                                height: 1,
-                                color: Color(0xFF00F0FF),
-                                indent: 16,
-                                endIndent: 16,
-                              ),
-                              // 2. Sonarr Calendar Tile
-                              Opacity(
-                                opacity: isSonarrEmpty ? 0.45 : 1.0,
-                                child: ListTile(
-                                  focusColor: Colors.transparent,
-                                  hoverColor: Colors.transparent,
-                                  contentPadding: const EdgeInsets.only(
-                                    left: 16,
-                                    right: 8,
-                                    top: 4,
-                                    bottom: 4,
-                                  ),
-                                  minLeadingWidth: 44,
-                                  horizontalTitleGap: 14,
-                                  leading: buildSettingsLeadingIconShell(
-                                    context,
-                                    icon: Icon(
-                                      (sonarrSection.enabled && !isSonarrEmpty)
-                                          ? Icons.check_box
-                                          : Icons.check_box_outline_blank,
-                                    ),
-                                    focused: false,
-                                    iconColor: AppColorScheme.onSurface
-                                        .withValues(alpha: 0.78),
-                                  ),
-                                  title: Text(
-                                    _labelFor(sonarrSection, l10n),
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      fontFamily: kCleanSettingsFontFamily,
-                                    ),
-                                  ),
-                                  onTap: isSonarrEmpty
-                                      ? null
-                                      : () => _toggleSection(
-                                          sonarrIndex,
-                                          !sonarrSection.enabled,
-                                        ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        // Centered unified drag handle
-                        Padding(
-                          padding: const EdgeInsets.only(right: 16),
-                          child: ReorderableDragStartListener(
-                            index: index,
-                            child: const Icon(
-                              Icons.drag_handle,
-                              color: Color(0xFF00F0FF), // Neon cyan handle
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }
-            }
-
-            return Padding(
-              key: ValueKey('${section.stableId}:${section.enabled}'),
-              padding: _kHomeSectionTileOuterPadding,
-              child: Opacity(
-                opacity: isEmpty ? 0.45 : 1.0,
-                child: Container(
-                  decoration: _homeSectionTileDecoration(
-                    context,
-                    focused: false,
-                  ),
-                  child: ListTile(
-                    focusColor: Colors.transparent,
-                    hoverColor: Colors.transparent,
-                    contentPadding: _kHomeSectionTileContentPadding,
-                    minLeadingWidth: 44,
-                    horizontalTitleGap: 14,
-                    leading: buildSettingsLeadingIconShell(
-                      context,
-                      icon: Icon(
-                        (section.enabled && !isEmpty)
-                            ? Icons.check_box
-                            : Icons.check_box_outline_blank,
-                      ),
-                      focused: false,
-                      iconColor: AppColorScheme.onSurface.withValues(
-                        alpha: 0.78,
-                      ),
-                    ),
-                    title: Row(
-                      children: [
-                        Text(
-                          _labelFor(section, l10n),
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            fontFamily: kCleanSettingsFontFamily,
-                          ),
-                        ),
-                        if (isEmpty) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.red.withValues(alpha: 0.15),
-                              borderRadius: AppRadius.circular(4),
-                              border: Border.all(
-                                color: Colors.red.withValues(alpha: 0.5),
-                                width: 0.8,
-                              ),
-                            ),
-                            child: Text(
-                              l10n.empty,
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: Colors.red,
-                                fontWeight: FontWeight.bold,
-                                fontFamily: kCleanSettingsFontFamily,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    subtitle: section.isPluginDynamic
-                        ? Text(
-                            _pluginSubtitle(section),
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontFamily: kCleanSettingsFontFamily,
-                              color: AppColorScheme.onSurface.withValues(
-                                alpha: 0.7,
-                              ),
-                            ),
-                          )
-                        : (_isAudioSectionType(section.type)
-                              ? Text(
-                                  'Audio row',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontFamily: kCleanSettingsFontFamily,
-                                    color: AppColorScheme.onSurface.withValues(
-                                      alpha: 0.7,
-                                    ),
-                                  ),
-                                )
-                              : (_isSeerrSectionType(section.type)
-                                    ? Text(
-                                        'Seerr Discovery Rows',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontFamily: kCleanSettingsFontFamily,
-                                          color: AppColorScheme.onSurface
-                                              .withValues(alpha: 0.7),
-                                        ),
-                                      )
-                                    : (_isImdbSectionType(section.type)
-                                          ? Text(
-                                              'IMDb List',
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                fontFamily:
-                                                    kCleanSettingsFontFamily,
-                                                color: AppColorScheme.onSurface
-                                                    .withValues(alpha: 0.7),
-                                              ),
-                                            )
-                                          : (_isTmdbSectionType(section.type)
-                                                ? Text(
-                                                    'TMDB Lists',
-                                                    style: TextStyle(
-                                                      fontSize: 12,
-                                                      fontFamily:
-                                                          kCleanSettingsFontFamily,
-                                                      color: AppColorScheme
-                                                          .onSurface
-                                                          .withValues(
-                                                            alpha: 0.7,
-                                                          ),
-                                                    ),
-                                                  )
-                                                : null)))),
-                    onTap: isEmpty
-                        ? null
-                        : () => _toggleSection(sectionIndex, !section.enabled),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        ReorderableDragStartListener(
-                          index: index,
-                          child: Icon(
-                            Icons.drag_handle,
-                            color: AppColorScheme.onSurface.withValues(
-                              alpha: 0.7,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            );
+            return PlatformDetection.useMobileUi
+                ? ReorderableDelayedDragStartListener(
+                    key: row.key,
+                    index: index,
+                    child: row,
+                  )
+                : row;
           },
+        ),
+        ..._buildDisabledGroups(
+          visibleIndices,
+          l10n,
+          hasEnabledRows: enabledIndices.isNotEmpty,
+          rowBuilder: (context, sectionIndex) =>
+              _buildTouchRow(context, l10n, sectionIndex),
         ),
         SliverToBoxAdapter(
           child: SizedBox(height: 16 + MediaQuery.paddingOf(context).bottom),
@@ -2451,102 +2038,597 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
     );
   }
 
+  /// Puts the enabled row at [oldIndex] of [enabledIndices] beside the one at
+  /// [newIndex]. A merged tile's hidden partner follows its anchor through
+  /// [_enforceMergeAdjacency].
+  void _reorderEnabled(List<int> enabledIndices, int oldIndex, int newIndex) {
+    if (oldIndex == newIndex) return;
+    final targetId = _sections[enabledIndices[newIndex]].stableId;
+    setState(() {
+      final moved = _sections.removeAt(enabledIndices[oldIndex]);
+      final target = _sections.indexWhere((s) => s.stableId == targetId);
+      _sections.insert(newIndex > oldIndex ? target + 1 : target, moved);
+      _rebuildFocusNodes();
+      _enforceMergeAdjacency();
+    });
+    _save();
+  }
+
+  /// A mouse drags a row by its handle straight away. On a phone the whole row
+  /// takes a long press instead, so a swipe over the handle still scrolls.
+  Widget _dragHandle(int index, Widget icon) => PlatformDetection.useMobileUi
+      ? icon
+      : ReorderableDragStartListener(index: index, child: icon);
+
+  Widget _buildTouchRow(
+    BuildContext context,
+    AppLocalizations l10n,
+    int sectionIndex, {
+    int? dragIndex,
+  }) {
+    final section = _sections[sectionIndex];
+    final isEmpty = _emptySectionIds.contains(section.stableId);
+
+    final mergeEnabled = _prefs.get(
+      UserPreferences.mergeContinueWatchingNextUp,
+    );
+    final isMergedResume =
+        mergeEnabled && section.type == HomeSectionType.resume;
+
+    if (isMergedResume) {
+      final nextUpIndex = _sections.indexWhere(
+        (s) => s.type == HomeSectionType.nextUp,
+      );
+      if (nextUpIndex >= 0) {
+        final nextUpSection = _sections[nextUpIndex];
+        final isNextUpEmpty = _emptySectionIds.contains(
+          nextUpSection.stableId,
+        );
+
+        return Padding(
+          key: const ValueKey('merged_resume_nextup'),
+          padding: _kHomeSectionTileOuterPadding,
+          child: Container(
+            decoration: BoxDecoration(
+              color: Theme.of(
+                context,
+              ).colorScheme.surfaceContainerLow.withValues(alpha: 0.82),
+              borderRadius: AppRadius.circular(_kHomeSectionTileRadius),
+              border: Border.all(
+                color: const Color(0xFF00F0FF), // Neon cyan border
+                width: 1.5,
+              ),
+            ),
+            child: Material(
+              type: MaterialType.transparency,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // 1. Continue Watching Tile
+                        Opacity(
+                          opacity: isEmpty ? 0.45 : 1.0,
+                          child: ListTile(
+                            focusColor: Colors.transparent,
+                            hoverColor: Colors.transparent,
+                            contentPadding: const EdgeInsets.only(
+                              left: 16,
+                              right: 8,
+                              top: 4,
+                              bottom: 4,
+                            ),
+                            minLeadingWidth: 44,
+                            horizontalTitleGap: 14,
+                            leading: buildSettingsLeadingIconShell(
+                              context,
+                              icon: Icon(
+                                (section.enabled && !isEmpty)
+                                    ? Icons.check_box
+                                    : Icons.check_box_outline_blank,
+                              ),
+                              focused: false,
+                              iconColor: AppColorScheme.onSurface
+                                  .withValues(alpha: 0.78),
+                            ),
+                            title: Text(
+                              _labelFor(section, l10n),
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                fontFamily: kCleanSettingsFontFamily,
+                              ),
+                            ),
+                            onTap: isEmpty
+                                ? null
+                                : () => _toggleSection(
+                                    sectionIndex,
+                                    !section.enabled,
+                                  ),
+                          ),
+                        ),
+                        const Divider(
+                          height: 1,
+                          color: Color(0xFF00F0FF),
+                          indent: 16,
+                          endIndent: 16,
+                        ),
+                        // 2. Next Up Tile
+                        Opacity(
+                          opacity: isNextUpEmpty ? 0.45 : 1.0,
+                          child: ListTile(
+                            focusColor: Colors.transparent,
+                            hoverColor: Colors.transparent,
+                            contentPadding: const EdgeInsets.only(
+                              left: 16,
+                              right: 8,
+                              top: 4,
+                              bottom: 4,
+                            ),
+                            minLeadingWidth: 44,
+                            horizontalTitleGap: 14,
+                            leading: buildSettingsLeadingIconShell(
+                              context,
+                              icon: Icon(
+                                (nextUpSection.enabled && !isNextUpEmpty)
+                                    ? Icons.check_box
+                                    : Icons.check_box_outline_blank,
+                              ),
+                              focused: false,
+                              iconColor: AppColorScheme.onSurface
+                                  .withValues(alpha: 0.78),
+                            ),
+                            title: Text(
+                              _labelFor(nextUpSection, l10n),
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                fontFamily: kCleanSettingsFontFamily,
+                              ),
+                            ),
+                            onTap: isNextUpEmpty
+                                ? null
+                                : () => _toggleSection(
+                                    nextUpIndex,
+                                    !nextUpSection.enabled,
+                                  ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Centered unified drag handle
+                  if (dragIndex != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 16),
+                      child: _dragHandle(
+                        dragIndex,
+                        const Icon(
+                          Icons.drag_handle,
+                          color: Color(0xFF00F0FF), // Neon cyan handle
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }
+    }
+
+    final mergeCalendarsEnabled = _prefs.get(
+      UserPreferences.mergeRadarrSonarrCalendars,
+    );
+    final isMergedCalendars =
+        mergeCalendarsEnabled &&
+        section.type == HomeSectionType.radarrCalendar;
+
+    if (isMergedCalendars) {
+      final sonarrIndex = _sections.indexWhere(
+        (s) => s.type == HomeSectionType.sonarrCalendar,
+      );
+      if (sonarrIndex >= 0) {
+        final sonarrSection = _sections[sonarrIndex];
+        final isSonarrEmpty = _emptySectionIds.contains(
+          sonarrSection.stableId,
+        );
+
+        return Padding(
+          key: const ValueKey('merged_radarr_sonarr_calendars'),
+          padding: _kHomeSectionTileOuterPadding,
+          child: Container(
+            decoration: BoxDecoration(
+              color: Theme.of(
+                context,
+              ).colorScheme.surfaceContainerLow.withValues(alpha: 0.82),
+              borderRadius: AppRadius.circular(_kHomeSectionTileRadius),
+              border: Border.all(
+                color: const Color(0xFF00F0FF), // Neon cyan border
+                width: 1.5,
+              ),
+            ),
+            child: Material(
+              type: MaterialType.transparency,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // 1. Radarr Calendar Tile
+                        Opacity(
+                          opacity: isEmpty ? 0.45 : 1.0,
+                          child: ListTile(
+                            focusColor: Colors.transparent,
+                            hoverColor: Colors.transparent,
+                            contentPadding: const EdgeInsets.only(
+                              left: 16,
+                              right: 8,
+                              top: 4,
+                              bottom: 4,
+                            ),
+                            minLeadingWidth: 44,
+                            horizontalTitleGap: 14,
+                            leading: buildSettingsLeadingIconShell(
+                              context,
+                              icon: Icon(
+                                (section.enabled && !isEmpty)
+                                    ? Icons.check_box
+                                    : Icons.check_box_outline_blank,
+                              ),
+                              focused: false,
+                              iconColor: AppColorScheme.onSurface
+                                  .withValues(alpha: 0.78),
+                            ),
+                            title: Text(
+                              _labelFor(section, l10n),
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                fontFamily: kCleanSettingsFontFamily,
+                              ),
+                            ),
+                            onTap: isEmpty
+                                ? null
+                                : () => _toggleSection(
+                                    sectionIndex,
+                                    !section.enabled,
+                                  ),
+                          ),
+                        ),
+                        const Divider(
+                          height: 1,
+                          color: Color(0xFF00F0FF),
+                          indent: 16,
+                          endIndent: 16,
+                        ),
+                        // 2. Sonarr Calendar Tile
+                        Opacity(
+                          opacity: isSonarrEmpty ? 0.45 : 1.0,
+                          child: ListTile(
+                            focusColor: Colors.transparent,
+                            hoverColor: Colors.transparent,
+                            contentPadding: const EdgeInsets.only(
+                              left: 16,
+                              right: 8,
+                              top: 4,
+                              bottom: 4,
+                            ),
+                            minLeadingWidth: 44,
+                            horizontalTitleGap: 14,
+                            leading: buildSettingsLeadingIconShell(
+                              context,
+                              icon: Icon(
+                                (sonarrSection.enabled && !isSonarrEmpty)
+                                    ? Icons.check_box
+                                    : Icons.check_box_outline_blank,
+                              ),
+                              focused: false,
+                              iconColor: AppColorScheme.onSurface
+                                  .withValues(alpha: 0.78),
+                            ),
+                            title: Text(
+                              _labelFor(sonarrSection, l10n),
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                fontFamily: kCleanSettingsFontFamily,
+                              ),
+                            ),
+                            onTap: isSonarrEmpty
+                                ? null
+                                : () => _toggleSection(
+                                    sonarrIndex,
+                                    !sonarrSection.enabled,
+                                  ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Centered unified drag handle
+                  if (dragIndex != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 16),
+                      child: _dragHandle(
+                        dragIndex,
+                        const Icon(
+                          Icons.drag_handle,
+                          color: Color(0xFF00F0FF), // Neon cyan handle
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }
+    }
+
+    return Padding(
+      key: ValueKey('${section.stableId}:${section.enabled}'),
+      padding: _kHomeSectionTileOuterPadding,
+      child: Opacity(
+        opacity: isEmpty ? 0.45 : 1.0,
+        child: Container(
+          decoration: _homeSectionTileDecoration(
+            context,
+            focused: false,
+          ),
+          child: Material(
+            type: MaterialType.transparency,
+            child: ListTile(
+              focusColor: Colors.transparent,
+              hoverColor: Colors.transparent,
+              contentPadding: _kHomeSectionTileContentPadding,
+              minLeadingWidth: 44,
+              horizontalTitleGap: 14,
+              leading: buildSettingsLeadingIconShell(
+                context,
+                icon: Icon(
+                  (section.enabled && !isEmpty)
+                      ? Icons.check_box
+                      : Icons.check_box_outline_blank,
+                ),
+                focused: false,
+                iconColor: AppColorScheme.onSurface.withValues(
+                  alpha: 0.78,
+                ),
+              ),
+              title: Row(
+                children: [
+                  Text(
+                    _labelFor(section, l10n),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: kCleanSettingsFontFamily,
+                    ),
+                  ),
+                  if (isEmpty) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withValues(alpha: 0.15),
+                        borderRadius: AppRadius.circular(4),
+                        border: Border.all(
+                          color: Colors.red.withValues(alpha: 0.5),
+                          width: 0.8,
+                        ),
+                      ),
+                      child: Text(
+                        l10n.empty,
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.red,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: kCleanSettingsFontFamily,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              subtitle: section.isPluginDynamic
+                  ? Text(
+                      _pluginSubtitle(section),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontFamily: kCleanSettingsFontFamily,
+                        color: AppColorScheme.onSurface.withValues(
+                          alpha: 0.7,
+                        ),
+                      ),
+                    )
+                  : (_isAudioSectionType(section.type)
+                        ? Text(
+                            'Audio row',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontFamily: kCleanSettingsFontFamily,
+                              color: AppColorScheme.onSurface.withValues(
+                                alpha: 0.7,
+                              ),
+                            ),
+                          )
+                        : (_isSeerrSectionType(section.type)
+                              ? Text(
+                                  'Seerr Discovery Rows',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontFamily: kCleanSettingsFontFamily,
+                                    color: AppColorScheme.onSurface
+                                        .withValues(alpha: 0.7),
+                                  ),
+                                )
+                              : (_isImdbSectionType(section.type)
+                                    ? Text(
+                                        'IMDb List',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontFamily:
+                                              kCleanSettingsFontFamily,
+                                          color: AppColorScheme.onSurface
+                                              .withValues(alpha: 0.7),
+                                        ),
+                                      )
+                                    : (_isTmdbSectionType(section.type)
+                                          ? Text(
+                                              'TMDB Lists',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontFamily:
+                                                    kCleanSettingsFontFamily,
+                                                color: AppColorScheme
+                                                    .onSurface
+                                                    .withValues(
+                                                      alpha: 0.7,
+                                                    ),
+                                              ),
+                                            )
+                                          : null)))),
+              onTap: isEmpty
+                  ? null
+                  : () => _toggleSection(sectionIndex, !section.enabled),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (dragIndex != null)
+                    _dragHandle(
+                      dragIndex,
+                      Icon(
+                        Icons.drag_handle,
+                        color: AppColorScheme.onSurface.withValues(
+                          alpha: 0.7,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildTvList(AppLocalizations l10n) {
     final visibleIndices = _visibleSectionIndices();
-    final items = [for (final i in visibleIndices) _sections[i]];
+    final enabledIndices = [
+      for (final i in visibleIndices)
+        if (_sections[i].enabled) i,
+    ];
+    final items = [for (final i in enabledIndices) _sections[i]];
+
+    // [position] is the row's place in the Enabled list. Disabled rows have
+    // none, so they don't move and don't take the first focus.
+    Widget buildRow(BuildContext context, int sectionIndex, {int? position}) {
+      final section = _sections[sectionIndex];
+      final isEmpty = _emptySectionIds.contains(section.stableId);
+      final isFirst = position == null || position == 0;
+      final isLast = position == null || position == enabledIndices.length - 1;
+      final autofocus = position == 0;
+      final mergeEnabled = _prefs.get(
+        UserPreferences.mergeContinueWatchingNextUp,
+      );
+      final mergeCalendarsEnabled = _prefs.get(
+        UserPreferences.mergeRadarrSonarrCalendars,
+      );
+
+      if (mergeEnabled && section.type == HomeSectionType.resume) {
+        final nextUpIndex = _sections.indexWhere(
+          (s) => s.type == HomeSectionType.nextUp,
+        );
+        if (nextUpIndex >= 0) {
+          return _buildMergedTvTile(
+            context,
+            sectionIndex,
+            nextUpIndex,
+            l10n,
+            isFirst,
+            isLast,
+            autofocus: autofocus,
+          );
+        }
+      }
+
+      if (mergeCalendarsEnabled &&
+          section.type == HomeSectionType.radarrCalendar) {
+        final sonarrIndex = _sections.indexWhere(
+          (s) => s.type == HomeSectionType.sonarrCalendar,
+        );
+        if (sonarrIndex >= 0) {
+          return _buildMergedTvTile(
+            context,
+            sectionIndex,
+            sonarrIndex,
+            l10n,
+            isFirst,
+            isLast,
+            autofocus: autofocus,
+          );
+        }
+      }
+
+      return _HomeSectionTile(
+        key: ValueKey('${section.stableId}:${section.enabled}'),
+        focusNode: _focusNodes[sectionIndex],
+        type: section.type,
+        autofocus: autofocus,
+        label: _labelFor(section, l10n),
+        subtitle: section.isPluginDynamic
+            ? _pluginSubtitle(section)
+            : (_isAudioSectionType(section.type)
+                  ? 'Audio row'
+                  : (_isSeerrSectionType(section.type)
+                        ? 'Seerr Discovery Rows'
+                        : (_isImdbSectionType(section.type)
+                              ? 'IMDb List'
+                              : (_isTmdbSectionType(section.type)
+                                    ? 'TMDB Lists'
+                                    : null)))),
+        enabled: section.enabled,
+        isFirst: isFirst,
+        isLast: isLast,
+        isEmpty: isEmpty,
+        onToggle: (enabled) => _toggleSection(sectionIndex, enabled),
+        onMoveUp: () {
+          if (isFirst) return;
+          _moveSection(sectionIndex, enabledIndices[position - 1]);
+        },
+        onMoveDown: () {
+          if (isLast) return;
+          _moveSection(sectionIndex, enabledIndices[position + 1]);
+        },
+      );
+    }
+
     return CustomScrollView(
       cacheExtent: 3000.0,
       slivers: [
-        if (widget.showGeneralOptions)
-          SliverToBoxAdapter(child: _buildHeader(l10n)),
+        SliverToBoxAdapter(child: SettingsSectionHeader(l10n.enabled)),
         ReorderableAnimatedListImpl<HomeSectionConfig>(
           items: items,
           scrollDirection: Axis.vertical,
-          // Comparing the enabled state and turning off swap detection makes a
-          // toggled row read as a removal from its old slot and an insert at
-          // its sorted slot, so it animates instead of jumping.
-          isSameItem: (a, b) =>
-              a.stableId == b.stableId && a.enabled == b.enabled,
+          isSameItem: (a, b) => a.stableId == b.stableId,
           enableSwap: true,
           enterTransition: [FadeIn(), SizeAnimation()],
           exitTransition: [FadeIn(), SizeAnimation()],
-          itemBuilder: (context, index) {
-            final visibleIndex = index;
-            final sectionIndex = visibleIndices[visibleIndex];
-            final section = _sections[sectionIndex];
-            final isEmpty = _emptySectionIds.contains(section.stableId);
-            final mergeEnabled = _prefs.get(
-              UserPreferences.mergeContinueWatchingNextUp,
-            );
-            final mergeCalendarsEnabled = _prefs.get(
-              UserPreferences.mergeRadarrSonarrCalendars,
-            );
-
-            if (mergeEnabled && section.type == HomeSectionType.resume) {
-              final nextUpIndex = _sections.indexWhere(
-                (s) => s.type == HomeSectionType.nextUp,
-              );
-              if (nextUpIndex >= 0) {
-                return _buildMergedTvTile(
-                  context,
-                  sectionIndex,
-                  nextUpIndex,
-                  l10n,
-                  visibleIndex == 0,
-                  visibleIndex == visibleIndices.length - 1,
-                );
-              }
-            }
-
-            if (mergeCalendarsEnabled &&
-                section.type == HomeSectionType.radarrCalendar) {
-              final sonarrIndex = _sections.indexWhere(
-                (s) => s.type == HomeSectionType.sonarrCalendar,
-              );
-              if (sonarrIndex >= 0) {
-                return _buildMergedTvTile(
-                  context,
-                  sectionIndex,
-                  sonarrIndex,
-                  l10n,
-                  visibleIndex == 0,
-                  visibleIndex == visibleIndices.length - 1,
-                );
-              }
-            }
-
-            return _HomeSectionTile(
-              key: ValueKey('${section.stableId}:${section.enabled}'),
-              focusNode: _focusNodes[sectionIndex],
-              type: section.type,
-              autofocus: visibleIndex == 0,
-              label: _labelFor(section, l10n),
-              subtitle: section.isPluginDynamic
-                  ? _pluginSubtitle(section)
-                  : (_isAudioSectionType(section.type)
-                        ? 'Audio row'
-                        : (_isSeerrSectionType(section.type)
-                              ? 'Seerr Discovery Rows'
-                              : (_isImdbSectionType(section.type)
-                                    ? 'IMDb List'
-                                    : (_isTmdbSectionType(section.type)
-                                          ? 'TMDB Lists'
-                                          : null)))),
-              enabled: section.enabled,
-              isFirst: visibleIndex == 0,
-              isLast: visibleIndex == visibleIndices.length - 1,
-              isEmpty: isEmpty,
-              onToggle: (enabled) => _toggleSection(sectionIndex, enabled),
-              onMoveUp: () {
-                if (visibleIndex == 0) return;
-                _moveSection(sectionIndex, visibleIndices[visibleIndex - 1]);
-              },
-              onMoveDown: () {
-                if (visibleIndex >= visibleIndices.length - 1) return;
-                _moveSection(sectionIndex, visibleIndices[visibleIndex + 1]);
-              },
-            );
-          },
+          itemBuilder: (context, index) =>
+              buildRow(context, enabledIndices[index], position: index),
+        ),
+        ..._buildDisabledGroups(
+          visibleIndices,
+          l10n,
+          hasEnabledRows: enabledIndices.isNotEmpty,
+          rowBuilder: buildRow,
         ),
       ],
     );
@@ -2558,8 +2640,9 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
     int nextUpSectionIndex,
     AppLocalizations l10n,
     bool isFirst,
-    bool isLast,
-  ) {
+    bool isLast, {
+    required bool autofocus,
+  }) {
     final resumeSection = _sections[resumeSectionIndex];
     final nextUpSection = _sections[nextUpSectionIndex];
     final isResumeEmpty = _emptySectionIds.contains(resumeSection.stableId);
@@ -2618,7 +2701,7 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
                   isEmpty: isResumeEmpty,
                   isFirst: isFirst,
                   isLast: isLast,
-                  autofocus: isFirst,
+                  autofocus: autofocus,
                   showArrows:
                       resumeFocused || (!resumeFocused && !nextUpFocused),
                   onToggle: (enabled) =>
@@ -2858,9 +2941,16 @@ class _HomeSectionsScreenState extends State<HomeSectionsScreen>
 
   String _pluginSubtitle(HomeSectionConfig section) {
     return switch (section.pluginSource) {
-      HomeSectionPluginSource.collections => 'Collections row',
+      HomeSectionPluginSource.collections => switch (_otherServerName(
+        section,
+      )) {
+        final server? => 'Collections row from $server',
+        null => 'Collections row',
+      },
       HomeSectionPluginSource.genres => 'Genres row',
       HomeSectionPluginSource.playlists => 'Playlists row',
+      HomeSectionPluginSource.seerr =>
+        AppLocalizations.of(context).seerrDiscoveryRows,
       HomeSectionPluginSource.custom => (() {
         Map<String, dynamic> rowConfig = {};
         try {
@@ -3123,6 +3213,121 @@ class _HomeSectionTileState extends State<_HomeSectionTile> {
                             : AppColorScheme.onSurface.withValues(alpha: 0.7),
                       ),
                   ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionGroupHeader extends StatefulWidget {
+  final FocusNode focusNode;
+  final String label;
+  final int count;
+  final bool open;
+  final bool autofocus;
+  final VoidCallback onToggle;
+
+  const _SectionGroupHeader({
+    super.key,
+    required this.focusNode,
+    required this.label,
+    required this.count,
+    required this.open,
+    this.autofocus = false,
+    required this.onToggle,
+  });
+
+  @override
+  State<_SectionGroupHeader> createState() => _SectionGroupHeaderState();
+}
+
+class _SectionGroupHeaderState extends State<_SectionGroupHeader> {
+  late bool _focused = widget.focusNode.hasFocus;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = _focused
+        ? AppColors.black.withValues(alpha: 0.87)
+        : AppColorScheme.onSurface;
+    final muted = _focused
+        ? AppColors.black.withValues(alpha: 0.54)
+        : AppColorScheme.onSurface.withValues(alpha: 0.7);
+
+    return Focus(
+      focusNode: widget.focusNode,
+      autofocus: widget.autofocus,
+      onFocusChange: (f) {
+        if (_focused != f && mounted) setState(() => _focused = f);
+        if (f) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted || !_focused) return;
+            Scrollable.ensureVisible(
+              context,
+              duration: const Duration(milliseconds: 120),
+              curve: Curves.easeOut,
+              alignment: 0.2,
+              alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+            );
+          });
+        }
+      },
+      onKeyEvent: (node, event) {
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+        if (event.logicalKey == LogicalKeyboardKey.select ||
+            event.logicalKey == LogicalKeyboardKey.enter) {
+          widget.onToggle();
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: Padding(
+        padding: _kHomeSectionTileOuterPadding,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 90),
+          curve: Curves.easeOut,
+          decoration: _homeSectionTileDecoration(context, focused: _focused),
+          child: Material(
+            type: MaterialType.transparency,
+            child: ListTile(
+              onTap: widget.onToggle,
+              focusColor: Colors.transparent,
+              hoverColor: Colors.transparent,
+              contentPadding: _kHomeSectionTileContentPadding,
+              leading: AnimatedRotation(
+                turns: widget.open ? 0.25 : 0,
+                duration: const Duration(milliseconds: 150),
+                child: Icon(Icons.chevron_right, color: muted),
+              ),
+              title: Text(
+                widget.label,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  fontFamily: kCleanSettingsFontFamily,
+                  color: foreground,
+                ),
+              ),
+              trailing: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: muted.withValues(alpha: 0.12),
+                  borderRadius: AppRadius.circular(999),
+                ),
+                child: Text(
+                  '${widget.count}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: kCleanSettingsFontFamily,
+                    color: muted,
+                  ),
                 ),
               ),
             ),

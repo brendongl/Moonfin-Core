@@ -13,6 +13,7 @@ abstract class AdminItemsApi {
     bool? recursive,
     bool? replaceAllMetadata,
     bool? replaceAllImages,
+    bool? regenerateTrickplay,
     MetadataRefreshMode metadataRefreshMode = MetadataRefreshMode.defaultRefresh,
     MetadataRefreshMode imageRefreshMode = MetadataRefreshMode.defaultRefresh,
   });

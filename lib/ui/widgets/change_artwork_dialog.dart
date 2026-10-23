@@ -11,6 +11,7 @@ import '../../l10n/app_localizations.dart';
 import '../util/error_message.dart';
 import '../../util/focus/key_event_utils.dart';
 import '../../util/home_refresh_helper.dart';
+import '../../util/image_mime.dart';
 import '../../util/platform_detection.dart';
 import '../../auth/repositories/user_repository.dart';
 import '../../auth/repositories/session_repository.dart';
@@ -878,6 +879,16 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
       if (result == null || result.files.isEmpty) return;
 
       final file = result.files.first;
+      // The server stores the image under this type.
+      final mimeType = imageContentTypeForFileName(file.name);
+      if (mimeType == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(l10n.adminUnsupportedImageFormat)),
+          );
+        }
+        return;
+      }
       var fileBytes = file.bytes;
 
       if (fileBytes == null && file.path != null) {
@@ -891,11 +902,6 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
       setState(() {
         _actionInProgress.add(category);
       });
-
-      final extension = file.extension?.toLowerCase() ?? 'jpg';
-      final mimeType = extension == 'png'
-          ? 'image/png'
-          : (extension == 'webp' ? 'image/webp' : 'image/jpeg');
 
       final client = GetIt.instance<MediaServerClient>();
       await client.adminItemsApi.uploadItemImage(
@@ -1057,8 +1063,6 @@ class _ChangeArtworkDialogState extends State<ChangeArtworkDialog> {
       borderRadius: 4,
       disableScale: true,
       useBackgroundFocus: true,
-      focusColor: AppColorScheme.accent,
-      suppressFocusGlow: true,
       onSelect: () => _navigateToItem(targetId),
       onNavigateLeft: onNavigateLeft,
       onNavigateRight: onNavigateRight,

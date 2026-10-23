@@ -9,8 +9,10 @@ import 'package:server_core/server_core.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../util/error_message.dart';
 import '../../navigation/destinations.dart';
+import 'admin_nav.dart';
 import 'providers/admin_media_analytics_provider.dart';
 import 'providers/admin_status_providers.dart';
+import 'providers/admin_user_providers.dart';
 import 'widgets/admin_form_styles.dart';
 import 'widgets/admin_media_summary_section.dart';
 import 'widgets/server_info_card.dart';
@@ -33,8 +35,6 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   final ScrollController _scrollController = ScrollController();
   Map<String, dynamic>? _systemInfo;
   StorageInfo? _storageInfo;
-  ActivityLogResult _activityLog = const ActivityLogResult();
-  List<Map<String, dynamic>> _sessions = [];
   String? _error;
   bool _loading = true;
 
@@ -74,15 +74,11 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       final results = await Future.wait<Object?>([
         _client.systemApi.getSystemInfo(),
         _loadStorageInfo(),
-        _loadActivityLog(),
-        _loadSessions(),
       ]);
       if (!mounted) return;
       final systemInfo =
           Map<String, dynamic>.from(results[0] as Map<String, dynamic>);
       final storageInfo = results[1] as StorageInfo?;
-      final activityLog = results[2] as ActivityLogResult;
-      final sessions = results[3] as List<Map<String, dynamic>>;
 
       final osDisplay =
           (systemInfo['OperatingSystemDisplayName'] ?? '').toString().trim();
@@ -97,8 +93,6 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       setState(() {
         _systemInfo = systemInfo;
         _storageInfo = storageInfo;
-        _activityLog = activityLog;
-        _sessions = sessions;
         _loading = false;
       });
     } catch (e) {
@@ -118,21 +112,17 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     }
   }
 
-  Future<ActivityLogResult> _loadActivityLog() async {
-    try {
-      return await _client.adminSystemApi.getActivityLog(limit: 10);
-    } catch (_) {
-      return const ActivityLogResult();
-    }
+  Future<void> _refresh() async {
+    ref
+      ..invalidate(adminDashboardActivityProvider)
+      ..invalidate(adminDashboardAlertsProvider)
+      ..invalidate(adminMediaSummaryProvider);
+    await _loadData();
   }
 
-  Future<List<Map<String, dynamic>>> _loadSessions() async {
-    try {
-      return await _client.sessionApi.getSessions();
-    } catch (_) {
-      return const [];
-    }
-  }
+  void _openActivity(bool userActivity) => context.push(
+        '${Destinations.adminActivity}?useractivity=$userActivity',
+      );
 
   String _inferOsFromStorage(StorageInfo storage) {
     final paths = [
@@ -178,6 +168,13 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     final l10n = AppLocalizations.of(context);
     final mediaSummary = ref.watch(adminMediaSummaryProvider);
     final notificationSummary = ref.watch(adminNotificationSummaryProvider);
+    // One sessions list for the count and the card, kept live by its feed.
+    final sessionCount = ref.watch(
+      adminSessionsProvider.select((s) => s.valueOrNull?.length ?? 0),
+    );
+    final activity = ref.watch(adminDashboardActivityProvider).valueOrNull;
+    final alerts = ref.watch(adminDashboardAlertsProvider).valueOrNull;
+    final isEmby = AdminServerScope.isEmby(context);
 
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
@@ -203,10 +200,15 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     return Listener(
       onPointerSignal: _onPointerSignal,
       child: RefreshIndicator(
-        onRefresh: _loadData,
+        onRefresh: _refresh,
         child: ListView(
           controller: _scrollController,
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            20,
+            16,
+            MediaQuery.of(context).padding.bottom + 40,
+          ),
           children: [
             adminScreenHeader(
               context,
@@ -214,48 +216,39 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
               icon: Icons.dashboard,
             ),
             if (notificationSummary.valueOrNull case final summary?
-                when summary.count > 0) ...[
+                when summary.count > 0)
               _AdminAttentionCard(summary: summary),
-              const SizedBox(height: 16),
-            ],
             _DashboardKpiStrip(
-              sessionCount: _sessions.length,
-              errorCount: _activityLog.items
-                  .where((e) => e.severity.toLowerCase() == 'error')
-                  .length,
-              warningCount: _activityLog.items.where((e) {
-                final s = e.severity.toLowerCase();
-                return s == 'warning' || s == 'warn';
-              }).length,
+              sessionCount: sessionCount,
+              alertCount: alerts?.totalRecordCount ?? 0,
               worstStorageFill: _worstStorageFill(_storageInfo),
+              // Emby reports its folders without their sizes.
+              showDisk: !isEmby,
             ),
-            const SizedBox(height: 16),
-            const RunningTasksCard(),
             ServerInfoCard(systemInfo: _systemInfo!),
-            const SizedBox(height: 16),
             ServerActionsCard(
               client: _client,
-              canSelfRestart: _systemInfo!['CanSelfRestart'] as bool? ?? false,
-              onActionComplete: _loadData,
+              // Jellyfin's flag is obsolete, so only Emby's counts.
+              canRestart: !isEmby || _systemInfo!['CanSelfRestart'] != false,
             ),
-            const SizedBox(height: 16),
             mediaSummary.when(
-              loading: () => const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Center(child: CircularProgressIndicator()),
-                ),
+              loading: () => const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(child: CircularProgressIndicator()),
               ),
-              error: (_, _) => Card(
-                child: ListTile(
-                  leading: const Icon(Icons.perm_media_outlined),
-                  title: Text(l10n.adminMediaOverview),
-                  subtitle: Text(l10n.adminMediaTotalsError),
-                  trailing: FilledButton.tonal(
-                    onPressed: () => ref.invalidate(adminMediaSummaryProvider),
-                    child: Text(l10n.retry),
+              error: (_, _) => adminSection(
+                context,
+                title: l10n.adminMediaOverview,
+                icon: Icons.perm_media_outlined,
+                children: [
+                  ListTile(
+                    title: Text(l10n.adminMediaTotalsError),
+                    trailing: FilledButton.tonal(
+                      onPressed: () => ref.invalidate(adminMediaSummaryProvider),
+                      child: Text(l10n.retry),
+                    ),
                   ),
-                ),
+                ],
               ),
               data: (summary) => AdminMediaSummarySection(
                 summary: summary,
@@ -263,14 +256,23 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                 onOpenAnalytics: () => context.push(Destinations.adminAnalytics),
               ),
             ),
-            const SizedBox(height: 16),
+            const RunningTasksCard(),
             const ActiveSessionsCard(),
-            const SizedBox(height: 16),
-            ActivityLogCard(activityLog: _activityLog),
-            if (_storageInfo != null) ...[
-              const SizedBox(height: 16),
-              ServerPathsCard(storageInfo: _storageInfo!),
-            ],
+            ActivityLogCard(
+              title: l10n.adminRecentActivity,
+              icon: Icons.history,
+              entries: activity?.items ?? const [],
+              onOpen: () => _openActivity(true),
+            ),
+            if (alerts != null && alerts.items.isNotEmpty)
+              ActivityLogCard(
+                title: l10n.adminDashboardAlerts,
+                icon: Icons.notification_important_outlined,
+                entries: alerts.items,
+                showOverview: false,
+                onOpen: () => _openActivity(false),
+              ),
+            if (_storageInfo != null) ServerPathsCard(storageInfo: _storageInfo!),
           ],
         ),
       ),
@@ -288,75 +290,59 @@ class _AdminAttentionCard extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
 
-    return Card(
-      color: theme.colorScheme.errorContainer.withValues(alpha: 0.22),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.notification_important,
-                  color: theme.colorScheme.error,
-                ),
-                const SizedBox(width: 8),
+    return adminSection(
+      context,
+      title: l10n.needsAttention,
+      icon: Icons.notification_important,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.spaceLg,
+            vertical: AppSpacing.spaceMd,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (summary.hasPluginUpdates)
+                Text(l10n.adminPluginUpdatesAvailable(summary.pluginUpdateCount)),
+              if (summary.hasRestartPendingPlugins)
+                Text(l10n.adminPluginsRequiringRestart(
+                    summary.restartPendingPluginCount)),
+              if (summary.restartPendingPlugins.isNotEmpty) ...[
+                const SizedBox(height: 4),
                 Text(
-                  l10n.needsAttention,
-                  style: theme.textTheme.titleMedium,
+                  summary.restartPendingPlugins.take(3).join(', '),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
-            ),
-            const SizedBox(height: 10),
-            if (summary.hasPluginUpdates)
-              Text(l10n.adminPluginUpdatesAvailable(summary.pluginUpdateCount)),
-            if (summary.hasRestartPendingPlugins)
-              Text(l10n.adminPluginsRequiringRestart(summary.restartPendingPluginCount)),
-            if (summary.restartPendingPlugins.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                summary.restartPendingPlugins.take(3).join(', '),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+              if (summary.hasFailedTasks)
+                Text(
+                  l10n.adminFailedScheduledTasks(summary.failedTaskCount),
+                  style: TextStyle(color: theme.colorScheme.error),
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
             ],
-            if (summary.hasFailedTasks)
-              Text(l10n.adminFailedScheduledTasks(summary.failedTaskCount)),
-            if (summary.hasAlerts)
-              Text(l10n.adminRecentAlertEntries(summary.alertCount)),
-            if ((summary.latestAlertText ?? '').isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Text(
-                'Latest alert: ${summary.latestAlertText}',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }
 
 class _DashboardKpiStrip extends StatelessWidget {
   final int sessionCount;
-  final int errorCount;
-  final int warningCount;
+  final int alertCount;
   final double? worstStorageFill;
+  final bool showDisk;
 
   const _DashboardKpiStrip({
     required this.sessionCount,
-    required this.errorCount,
-    required this.warningCount,
+    required this.alertCount,
     this.worstStorageFill,
+    required this.showDisk,
   });
 
   @override
@@ -369,58 +355,45 @@ class _DashboardKpiStrip extends StatelessWidget {
         : fill >= 0.90
             ? theme.colorScheme.error
             : fill >= 0.75
-          ? AppColorScheme.statusPending
-          : AppColorScheme.statusAvailable;
+                ? AppColorScheme.recordingScheduled
+                : AppColorScheme.statusAvailable;
 
-    return Row(
-      children: [
-        Expanded(
-          child: _StatCard(
-            icon: Icons.people_alt_outlined,
-            label: l10n.sessions,
-            value: '$sessionCount',
-            color: theme.colorScheme.primary,
-            theme: theme,
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.spaceLg),
+      child: Row(
+        children: [
+          Expanded(
+            child: _StatCard(
+              icon: Icons.people_alt_outlined,
+              label: l10n.sessions,
+              value: '$sessionCount',
+              color: theme.colorScheme.primary,
+            ),
           ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _StatCard(
-            icon: Icons.error_outline,
-            label: l10n.errors,
-            value: '$errorCount',
-            color: errorCount > 0
-                ? theme.colorScheme.error
-                : theme.colorScheme.onSurfaceVariant,
-            highlight: errorCount > 0,
-            theme: theme,
+          const SizedBox(width: 8),
+          Expanded(
+            child: _StatCard(
+              icon: Icons.notification_important_outlined,
+              label: l10n.adminDashboardAlerts,
+              value: '$alertCount',
+              color: alertCount > 0
+                  ? AppColorScheme.recordingScheduled
+                  : theme.colorScheme.onSurfaceVariant,
+            ),
           ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _StatCard(
-            icon: Icons.warning_amber_outlined,
-            label: l10n.warnings,
-            value: '$warningCount',
-            color: warningCount > 0
-              ? AppColorScheme.statusPending
-                : theme.colorScheme.onSurfaceVariant,
-            highlight: warningCount > 0,
-            theme: theme,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _StatCard(
-            icon: Icons.storage_outlined,
-            label: l10n.disk,
-            value: fill != null ? '${(fill * 100).round()}%' : '—',
-            color: storageColor,
-            highlight: (fill ?? 0) >= 0.90,
-            theme: theme,
-          ),
-        ),
-      ],
+          if (showDisk) ...[
+            const SizedBox(width: 8),
+            Expanded(
+              child: _StatCard(
+                icon: Icons.storage_outlined,
+                label: l10n.disk,
+                value: fill != null ? '${(fill * 100).round()}%' : '-',
+                color: storageColor,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -430,25 +403,18 @@ class _StatCard extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
-  final bool highlight;
-  final ThemeData theme;
 
   const _StatCard({
     required this.icon,
     required this.label,
     required this.value,
     required this.color,
-    required this.theme,
-    this.highlight = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      color: highlight
-          ? color.withValues(alpha: 0.12)
-          : theme.colorScheme.surfaceContainerLow,
-      elevation: 0,
+    final theme = Theme.of(context);
+    return adminListCard(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
         child: Column(

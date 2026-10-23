@@ -329,7 +329,7 @@ final class CarPlayBridge: NSObject {
       listItem.setImage(cached)
       return
     }
-    URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+    MoonfinURLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
       guard let self, let data, let image = UIImage(data: data) else { return }
       self.artworkCache.setObject(image, forKey: key)
       DispatchQueue.main.async {

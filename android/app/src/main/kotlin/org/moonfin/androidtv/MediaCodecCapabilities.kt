@@ -10,6 +10,8 @@ import android.util.Size
 object MediaCodecCapabilities {
     private const val MIME_VIDEO_AV1 = "video/av01"
     private const val MIME_VIDEO_VC1 = "video/wvc1"
+    // Some MediaTek TVs list their VC-1 decoder as video/VC1.
+    private const val MIME_VIDEO_VC1_ALIAS = "video/vc1"
 
     private fun buildCodecInfos(includeSoftwareDecoders: Boolean): Array<MediaCodecInfo> {
         val codecListKind = if (includeSoftwareDecoders) {
@@ -258,13 +260,16 @@ object MediaCodecCapabilities {
             codecInfos,
         )
 
-        val supportsVc1 = hasCodecForMime(MIME_VIDEO_VC1, codecInfos)
+        val supportsVc1 = hasCodecForMime(MIME_VIDEO_VC1, codecInfos) ||
+            hasCodecForMime(MIME_VIDEO_VC1_ALIAS, codecInfos)
         val supportsMpeg4 = hasCodecForMime(MediaFormat.MIMETYPE_VIDEO_MPEG4, codecInfos)
 
         val maxResolutionAvc = getMaxResolution(MediaFormat.MIMETYPE_VIDEO_AVC, codecInfos)
         val maxResolutionHevc = getMaxResolution(MediaFormat.MIMETYPE_VIDEO_HEVC, codecInfos)
         val maxResolutionAv1 = getMaxResolution(MIME_VIDEO_AV1, codecInfos)
         val maxResolutionVc1 = getMaxResolution(MIME_VIDEO_VC1, codecInfos)
+            .takeIf { it.width > 0 }
+            ?: getMaxResolution(MIME_VIDEO_VC1_ALIAS, codecInfos)
 
         return mapOf(
             "supportsDvP5" to supportsDvP5,
@@ -437,8 +442,12 @@ object MediaCodecCapabilities {
                 continue
             }
 
+            // getCapabilitiesForType only takes the type exactly as the codec
+            // declared it, and decoders don't agree on case.
+            val type = info.supportedTypes.firstOrNull { it.equals(mime, ignoreCase = true) }
+                ?: continue
             val capabilities = runCatching {
-                info.getCapabilitiesForType(mime)
+                info.getCapabilitiesForType(type)
             }.getOrNull() ?: continue
             val videoCapabilities = capabilities.videoCapabilities ?: continue
             val supportedWidth = videoCapabilities.supportedWidths?.upper ?: continue

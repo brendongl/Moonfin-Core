@@ -67,6 +67,9 @@ static struct retro_hw_render_callback hw_cb;
 #define STUB_PREF_SENTINEL 999u
 static unsigned hw_pref_value;
 static int hw_pref_rc;
+// stub_hw=gles3_lategeo reports 0x0 geometry until retro_load_game ends, as
+// PPSSPP does. gles3_nogeo never reports a size. 0 normal, 1 late, 2 never.
+static int32_t geo_zero_mode;
 
 static void stub_context_reset(void) {
   hw_reset_count++;
@@ -125,6 +128,22 @@ static retro_environment_t thread_waits_cb = stub_thread_waits_marker;
 static int thread_waits_rc;
 static int thread_waits_called;
 static int thread_waits_result;
+
+// The thread each kind of call last arrived on, reported from retro_deinit
+// under stub_thread_report.
+static int32_t thread_report_mode;
+static unsigned long long tid_init;
+static unsigned long long tid_load;
+static unsigned long long tid_run;
+static unsigned long long tid_job;
+
+static unsigned long long stub_thread_id(void) {
+#ifdef _WIN32
+  return (unsigned long long)GetCurrentThreadId();
+#else
+  return (unsigned long long)(uintptr_t)pthread_self();
+#endif
+}
 
 // Holds onto a GET_VARIABLE pointer across frames the way a real core does,
 // so the host's promise that the pointer stays readable for the life of the
@@ -263,13 +282,14 @@ void retro_set_environment(retro_environment_t cb) {
       {"stub_bad_pitch", "Bad pitch; off|on"},
       {"stub_vfs_dir_check", "VFS dir check; off|on"},
       {"stub_analog_check", "Analog check; off|on"},
-      {"stub_hw", "Hardware render; off|gles3|gles2|vulkan"},
+      {"stub_hw", "Hardware render; off|gles3|gles2|vulkan|gles3_lategeo|gles3_nogeo"},
       {"stub_analog_query", "Analog query ports; off|p0|p1|p0p1|p1btn|p2"},
       {"stub_repeat_geometry", "Repeat geometry; off|on"},
       {"stub_unserved", "Probe unserved env commands; off|on"},
       {"stub_input_thread", "Read input off-thread; off|on"},
       {"stub_no_poll", "Never call input_poll; off|on"},
       {"stub_waits_report", "Report thread-waits state; off|on"},
+      {"stub_thread_report", "Report the thread of each call; off|on"},
       {NULL, NULL},
   };
   env_cb(RETRO_ENVIRONMENT_SET_VARIABLES, (void *)vars);
@@ -450,13 +470,23 @@ static void probe_analog(void) {
                                  RETRO_DEVICE_ID_LIGHTGUN_SCREEN_X);
   int16_t pointer_x =
       input_state_cb(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_X);
+  int16_t pointer_y =
+      input_state_cb(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_Y);
+  int16_t pointer_pressed = input_state_cb(0, RETRO_DEVICE_POINTER, 0,
+                                           RETRO_DEVICE_ID_POINTER_PRESSED);
+  int16_t pointer_count = input_state_cb(0, RETRO_DEVICE_POINTER, 0,
+                                         RETRO_DEVICE_ID_POINTER_COUNT);
+  // A second touch is never reported: the host carries one pointer per port.
+  int16_t pointer2_pressed = input_state_cb(0, RETRO_DEVICE_POINTER, 1,
+                                            RETRO_DEVICE_ID_POINTER_PRESSED);
 
   char text[256];
   snprintf(text, sizeof(text),
           "stub analog lx=%d ly=%d rx=%d ry=%d l2=%d r2=%d db=%d ds=%d "
-          "mx=%d gx=%d px=%d",
+          "mx=%d gx=%d px=%d py=%d pp=%d pc=%d p2=%d",
           lx, ly, rx, ry, l2, r2, derived_b, derived_start, mouse_x, gun_x,
-          pointer_x);
+          pointer_x, pointer_y, pointer_pressed, pointer_count,
+          pointer2_pressed);
   struct retro_message msg = {text, 1};
   env_cb(RETRO_ENVIRONMENT_SET_MESSAGE, &msg);
 }
@@ -505,6 +535,11 @@ void retro_set_input_state(retro_input_state_t cb) { input_state_cb = cb; }
 // Real cores log from retro_init and call the pointer without checking it, so
 // the stub does the same to keep the host honest about GET_LOG_INTERFACE.
 void retro_init(void) {
+  tid_init = stub_thread_id();
+  tid_load = tid_run = tid_job = 0;
+  struct retro_variable report = {"stub_thread_report", NULL};
+  env_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &report);
+  thread_report_mode = report.value && strcmp(report.value, "on") == 0;
   frame_counter = 0;
   memset(controller_devices, 0, sizeof(controller_devices));
   // A restart reloads the core into the same process, and the host drains its
@@ -520,7 +555,15 @@ void retro_init(void) {
   log_cb = logging.log;
   logging.log(RETRO_LOG_DEBUG, "stub core init %d\n", 0);
 }
-void retro_deinit(void) {}
+void retro_deinit(void) {
+  if (!thread_report_mode) return;
+  char buf[192];
+  snprintf(buf, sizeof(buf),
+           "stub threads init=%llu load=%llu run=%llu job=%llu deinit=%llu",
+           tid_init, tid_load, tid_run, tid_job, stub_thread_id());
+  struct retro_message msg = {buf, 180};
+  env_cb(RETRO_ENVIRONMENT_SET_MESSAGE, &msg);
+}
 unsigned retro_api_version(void) { return RETRO_API_VERSION; }
 
 void retro_get_system_info(struct retro_system_info *info) {
@@ -533,13 +576,14 @@ void retro_get_system_info(struct retro_system_info *info) {
 
 void retro_get_system_av_info(struct retro_system_av_info *info) {
   memset(info, 0, sizeof(*info));
+  info->timing.fps = 60.0;
+  info->timing.sample_rate = 44100.0;
+  if (geo_zero_mode) return;
   info->geometry.base_width = STUB_WIDTH;
   info->geometry.base_height = STUB_HEIGHT;
   info->geometry.max_width = STUB_WIDTH;
   info->geometry.max_height = STUB_HEIGHT;
   info->geometry.aspect_ratio = (float)STUB_WIDTH / (float)STUB_HEIGHT;
-  info->timing.fps = 60.0;
-  info->timing.sample_rate = 44100.0;
 }
 
 // Packs 8-bit r/g/b into [dst] using [fmt], mirroring the host's unpack_pixel
@@ -559,6 +603,7 @@ static void write_pixel(uint8_t *dst, enum retro_pixel_format fmt, unsigned r,
 }
 
 bool retro_load_game(const struct retro_game_info *game) {
+  tid_load = stub_thread_id();
   shutdown_frame = 0;
   did_shutdown = 0;
   // Before any early return: the stub stays mapped between loads, so these
@@ -568,6 +613,7 @@ bool retro_load_game(const struct retro_game_info *game) {
   hw_reset_count = 0;
   hw_destroy_count = 0;
   hw_fb_queries = 0;
+  geo_zero_mode = 0;
   hw_pref_value = STUB_PREF_SENTINEL;
   hw_pref_rc = env_cb(RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER, &hw_pref_value)
                    ? 1
@@ -611,6 +657,8 @@ bool retro_load_game(const struct retro_game_info *game) {
     } else {
       hw_cb.context_type = RETRO_HW_CONTEXT_OPENGLES3;
       hw_cb.version_major = 3;
+      if (strcmp(hw_var.value, "gles3_lategeo") == 0) geo_zero_mode = 1;
+      if (strcmp(hw_var.value, "gles3_nogeo") == 0) geo_zero_mode = 2;
     }
     hw_cb.context_reset = stub_context_reset;
     hw_cb.context_destroy = stub_context_destroy;
@@ -730,6 +778,7 @@ bool retro_load_game(const struct retro_game_info *game) {
     env_cb(RETRO_ENVIRONMENT_SET_MESSAGE, &umsg);
   }
 
+  if (geo_zero_mode == 1) geo_zero_mode = 0;
   return true;
 }
 
@@ -776,6 +825,7 @@ static void read_input_off_thread(void) {
 #endif
 
 void retro_run(void) {
+  tid_run = stub_thread_id();
   stash_step();
   // Joined before returning, so the read is strictly inside this retro_run
   // and the harness can assert on it right after a frame.
@@ -882,7 +932,10 @@ void retro_run(void) {
 
 void retro_reset(void) { frame_counter = 0; }
 
-size_t retro_serialize_size(void) { return sizeof(frame_counter) * 4; }
+size_t retro_serialize_size(void) {
+  tid_job = stub_thread_id();
+  return sizeof(frame_counter) * 4;
+}
 
 bool retro_serialize(void *data, size_t size) {
   if (size < sizeof(frame_counter) * 4) return false;

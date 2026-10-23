@@ -3,19 +3,49 @@ import 'package:go_router/go_router.dart';
 import 'package:moonfin_design/moonfin_design.dart';
 
 import '../../../l10n/app_localizations.dart';
+import '../../../preference/preference_constants.dart';
 import '../../../util/focus/key_event_utils.dart';
+import '../../../util/platform_detection.dart';
 import '../../navigation/destinations.dart';
+import '../../widgets/bottom_nav/bottom_navbar.dart';
 import '../../widgets/focus/request_initial_focus.dart';
+import '../../widgets/navigation_layout.dart';
+import '../../widgets/top_toolbar.dart';
 
 class LiveTvScreen extends StatelessWidget {
   const LiveTvScreen({super.key});
 
+  // TV leaves on the remote's Back and the app never opens this page there, so
+  // only the other layouts get the navbar.
+  static bool get _showNavbar => !PlatformDetection.isTV;
+
   @override
-  Widget build(BuildContext context) =>
-      RequestInitialFocus(child: _buildContent(context));
+  Widget build(BuildContext context) {
+    final page = _buildContent(context);
+    return RequestInitialFocus(
+      child: _showNavbar
+          ? Scaffold(
+              backgroundColor: Colors.black,
+              body: NavigationLayout(showBackButton: true, child: page),
+            )
+          : page,
+    );
+  }
 
   Widget _buildContent(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    // The navbar draws over the page, and a left or bottom one puts the back
+    // button in the corner the title uses.
+    final position =
+        NavigationLayout.positionNotifier.value ?? NavbarPosition.top;
+    final topInset = !_showNavbar
+        ? 0.0
+        : position == NavbarPosition.top
+        ? TopToolbar.heightFor(context)
+        : 56.0;
+    final leftInset = _showNavbar && position == NavbarPosition.left
+        ? 72.0
+        : 0.0;
     final items = <({IconData icon, String title, VoidCallback onTap})>[
       (
         icon: Icons.tv,
@@ -64,7 +94,12 @@ class LiveTvScreen extends StatelessWidget {
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 1240),
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(32, 28, 32, 32),
+                    padding: EdgeInsets.fromLTRB(
+                      32 + leftInset,
+                      28 + topInset,
+                      32,
+                      bottomNavContentPadding(context, 32),
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [

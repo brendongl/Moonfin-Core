@@ -28,7 +28,6 @@ Future<T?> showStyledPlayerDialog<T>(
     barrierDismissible: barrierDismissible,
     builder: (dialogContext) {
       final mediaQuery = MediaQuery.of(dialogContext);
-      final glass = AppColorScheme.isGlass;
 
       return ValueListenableBuilder<bool>(
         valueListenable: CustomTVTextField.isKeyboardVisibleNotifier,
@@ -40,32 +39,29 @@ Future<T?> showStyledPlayerDialog<T>(
             mediaQuery.viewInsets.bottom,
             keyboardSpace,
           );
-          final maxDialogHeight = mediaQuery.size.height -
+          final maxDialogHeight =
+              mediaQuery.size.height -
               mediaQuery.padding.vertical -
               effectiveBottomInset -
               24;
 
-          final inner = Container(
+          final inner = playerDialogPanel(
             constraints: BoxConstraints(
               minWidth: 340,
               maxWidth: maxWidth,
               maxHeight: maxDialogHeight,
             ),
-            decoration: glass
-                ? null
-                : BoxDecoration(
-                    color: AppColorScheme.surface.withValues(alpha: 0.9),
-                    borderRadius: AppRadius.circular(20),
-                    border: Border.fromBorderSide(
-                      ThemeRegistry.active.borders.chipBorder,
-                    ),
-                  ),
             padding: const EdgeInsets.symmetric(vertical: 20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Padding(
-                  padding: EdgeInsets.fromLTRB(24, 0, 24, subtitle != null ? 4 : 12),
+                  padding: EdgeInsets.fromLTRB(
+                    24,
+                    0,
+                    24,
+                    subtitle != null ? 4 : 12,
+                  ),
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
@@ -92,15 +88,23 @@ Future<T?> showStyledPlayerDialog<T>(
                       ),
                     ),
                   ),
-                Container(height: 1, color: Colors.white.withValues(alpha: 0.08)),
+                Container(
+                  height: 1,
+                  color: Colors.white.withValues(alpha: 0.08),
+                ),
                 const SizedBox(height: 8),
                 Flexible(child: builder(dialogContext)),
                 if (showCancel) ...[
                   const SizedBox(height: 4),
-                  Container(height: 1, color: Colors.white.withValues(alpha: 0.08)),
+                  Container(
+                    height: 1,
+                    color: Colors.white.withValues(alpha: 0.08),
+                  ),
                   const SizedBox(height: 4),
                   _TrackRow(
-                    option: TrackOption(label: AppLocalizations.of(dialogContext).cancel),
+                    option: TrackOption(
+                      label: AppLocalizations.of(dialogContext).cancel,
+                    ),
                     isSelected: false,
                     onTap: () => Navigator.pop(dialogContext),
                     dimmed: true,
@@ -118,19 +122,43 @@ Future<T?> showStyledPlayerDialog<T>(
                 ? const EdgeInsets.fromLTRB(40, 20, 40, 360)
                 : const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
             backgroundColor: Colors.transparent,
-            child: glass
-                ? GlassSurface(
-                    cornerRadius: 20,
-                    reinforced: true,
-                    fallbackColor: Colors.transparent,
-                    child: inner,
-                  )
-                : inner,
+            child: inner,
           );
         },
       );
     },
   );
+}
+
+/// The panel the player's dialogs sit in, on glass when the theme uses it.
+Widget playerDialogPanel({
+  required BoxConstraints constraints,
+  required EdgeInsets padding,
+  required Widget child,
+}) {
+  final glass = AppColorScheme.isGlass;
+  final panel = Container(
+    constraints: constraints,
+    decoration: glass
+        ? null
+        : BoxDecoration(
+            color: AppColorScheme.surface.withValues(alpha: 0.9),
+            borderRadius: AppRadius.circular(20),
+            border: Border.fromBorderSide(
+              ThemeRegistry.active.borders.chipBorder,
+            ),
+          ),
+    padding: padding,
+    child: child,
+  );
+  return glass
+      ? GlassSurface(
+          cornerRadius: 20,
+          reinforced: true,
+          fallbackColor: Colors.transparent,
+          child: panel,
+        )
+      : panel;
 }
 
 class TrackOption {
@@ -155,6 +183,10 @@ class TrackOption {
   /// hiding it: the list keeps its shape and the row says why it is inert.
   final bool enabled;
 
+  /// Shown in place of the selection mark, for a row that opens something
+  /// rather than picks a track.
+  final IconData? icon;
+
   const TrackOption({
     required this.label,
     this.subtitle,
@@ -164,6 +196,7 @@ class TrackOption {
     this.scrollLabel = false,
     this.scrollSubtitle = false,
     this.enabled = true,
+    this.icon,
   });
 }
 
@@ -232,7 +265,9 @@ class _TrackRowState extends State<_TrackRow> {
   @override
   void initState() {
     super.initState();
-    _focusNode.addListener(() => setState(() => _isFocused = _focusNode.hasFocus));
+    _focusNode.addListener(
+      () => setState(() => _isFocused = _focusNode.hasFocus),
+    );
   }
 
   @override
@@ -245,11 +280,11 @@ class _TrackRowState extends State<_TrackRow> {
   Widget build(BuildContext context) {
     final focusColor = Color(_prefs.get(UserPreferences.focusColor).colorValue);
     final labelColor = widget.dimmed
-      ? Colors.white.withValues(alpha: 0.5)
-      : Colors.white.withValues(alpha: _isFocused ? 0.95 : 0.8);
+        ? Colors.white.withValues(alpha: 0.5)
+        : Colors.white.withValues(alpha: _isFocused ? 0.95 : 0.8);
     final subtitleColor = widget.dimmed
-      ? Colors.white.withValues(alpha: 0.35)
-      : Colors.white.withValues(alpha: _isFocused ? 0.72 : 0.6);
+        ? Colors.white.withValues(alpha: 0.35)
+        : Colors.white.withValues(alpha: _isFocused ? 0.72 : 0.6);
 
     return Focus(
       focusNode: _focusNode,
@@ -269,19 +304,34 @@ class _TrackRowState extends State<_TrackRow> {
         onTap: widget.option.enabled ? widget.onTap : null,
         child: Container(
           width: double.infinity,
-          color: _isFocused ? focusColor.withValues(alpha: 0.2) : Colors.transparent,
+          color: _isFocused
+              ? focusColor.withValues(alpha: 0.2)
+              : Colors.transparent,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           child: Row(
             children: [
-              if (widget.isSelected)
+              if (widget.option.icon case final icon?)
                 Padding(
                   padding: const EdgeInsets.only(right: 12),
-                  child: Icon(Icons.check_circle, color: AppColorScheme.accent, size: 20),
+                  child: Icon(icon, color: Colors.white70, size: 20),
+                )
+              else if (widget.isSelected)
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Icon(
+                    Icons.check_circle,
+                    color: AppColorScheme.accent,
+                    size: 20,
+                  ),
                 )
               else
                 const Padding(
                   padding: EdgeInsets.only(right: 12),
-                  child: Icon(Icons.radio_button_unchecked, color: Colors.white38, size: 20),
+                  child: Icon(
+                    Icons.radio_button_unchecked,
+                    color: Colors.white38,
+                    size: 20,
+                  ),
                 ),
               Expanded(
                 child: Column(
@@ -297,10 +347,9 @@ class _TrackRowState extends State<_TrackRow> {
                         widget.option.label,
                         style: TextStyle(fontSize: 16, color: labelColor),
                         maxLines: widget.option.labelMaxLines,
-                        overflow:
-                            widget.option.labelMaxLines == 1
-                                ? TextOverflow.ellipsis
-                                : null,
+                        overflow: widget.option.labelMaxLines == 1
+                            ? TextOverflow.ellipsis
+                            : null,
                       ),
                     if (widget.option.subtitle != null)
                       (widget.option.scrollSubtitle
@@ -327,10 +376,12 @@ class _TrackRowState extends State<_TrackRow> {
                           spacing: 6,
                           runSpacing: 6,
                           children: widget.option.badges
-                              .map((badge) => _OptionBadge(
-                                    label: badge,
-                                    dimmed: widget.dimmed,
-                                  ))
+                              .map(
+                                (badge) => _OptionBadge(
+                                  label: badge,
+                                  dimmed: widget.dimmed,
+                                ),
+                              )
                               .toList(growable: false),
                         ),
                       ),

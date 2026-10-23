@@ -11,16 +11,22 @@ package org.moonfin.nativevideo
  * Selection is also what keeps this quiet on video that is about to play. A
  * track that exceeds what its decoder claims still gets selected, and would
  * have read as unsupported.
+ *
+ * A video the extractor can't read at all, like VC-1 remuxed into MPEG-TS,
+ * never shows up as a track. That only counts once the player is ready, since
+ * the track list is empty until the source is prepared, and only when the
+ * server said the item has video, so radio and audio-only files stay quiet.
  */
 internal fun shouldReportUnsupportedVideo(
     mediaType: String,
     isPreview: Boolean,
     alreadyReported: Boolean,
+    sourceHasVideo: Boolean,
+    isReady: Boolean,
     hasVideoTrack: Boolean,
     videoSelected: Boolean,
-): Boolean =
-    mediaType != "audio" &&
-        !isPreview &&
-        !alreadyReported &&
-        hasVideoTrack &&
-        !videoSelected
+): Boolean {
+    if (mediaType == "audio" || isPreview || alreadyReported) return false
+    if (!hasVideoTrack) return sourceHasVideo && isReady
+    return !videoSelected
+}

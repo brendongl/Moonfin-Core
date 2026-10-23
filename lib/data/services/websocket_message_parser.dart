@@ -32,16 +32,16 @@ class WebSocketMessageParser {
       'ServerShuttingDown' => const ServerShuttingDownMessage(),
       'SessionEnded' => _parseSessionEnded(data),
       'ScheduledTaskEnded' => _parseScheduledTaskEnded(data),
+      'Sessions' => SessionsMessage(_mapList(data)),
+      'ScheduledTasksInfo' => ScheduledTasksInfoMessage(_mapList(data)),
+      // The *Start and *Stop names are subscriptions the client sends, never
+      // messages the server pushes, so they have no case here.
       'MoonfinEvent' ||
-      'SessionsStart' ||
-      'SessionsStop' ||
-      'ScheduledTasksInfoStart' ||
-      'ScheduledTasksInfoStop' ||
       'PackageInstallationCompleted' ||
       'PackageInstallationFailed' ||
-      'PluginInstalled' ||
-      'PluginUninstalled' ||
-      'UserCreated' ||
+      'PackageInstallationCancelled' ||
+      'PackageUninstalled' ||
+      'RestartRequired' ||
       'UserDeleted' ||
       'UserUpdated' ||
       'ActivityLogEntry' => ServerEventMessage(
@@ -129,6 +129,12 @@ class WebSocketMessageParser {
       status: status,
     );
   }
+
+  static List<Map<String, dynamic>> _mapList(dynamic data) => [
+    if (data is List)
+      for (final entry in data)
+        if (entry is Map) Map<String, dynamic>.from(entry),
+  ];
 
   static List<String> _stringList(Map<String, dynamic> data, String key) =>
       (data[key] as List<dynamic>?)?.map((e) => e.toString()).toList() ??

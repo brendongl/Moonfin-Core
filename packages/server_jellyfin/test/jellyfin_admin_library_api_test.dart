@@ -60,4 +60,32 @@ void main() {
 
     expect(request?.data, isEmpty);
   });
+
+  test('library options go out with the folders laid over them', () async {
+    await api.addVirtualFolder(
+      name: 'Shows',
+      collectionType: 'tvshows',
+      paths: ['/media/shows'],
+      libraryOptions: {'Enabled': true, 'EnableRealtimeMonitor': true},
+    );
+
+    expect(request?.data, {
+      'LibraryOptions': {
+        'Enabled': true,
+        'EnableRealtimeMonitor': true,
+        'PathInfos': [
+          {'Path': '/media/shows'},
+        ],
+      },
+    });
+  });
+
+  // The server only scans when asked.
+  test('adding a folder can ask for a scan', () async {
+    await api.addMediaPath('Movies', '/media/more', refreshLibrary: true);
+
+    expect(request?.path, '/Library/VirtualFolders/Paths');
+    expect(request?.queryParameters, {'refreshLibrary': true});
+    expect(request?.data, {'Name': 'Movies', 'Path': '/media/more'});
+  });
 }

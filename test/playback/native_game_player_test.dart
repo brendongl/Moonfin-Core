@@ -12,6 +12,52 @@ void main() {
         .setMockMethodCallHandler(controlChannel, null);
   });
 
+  group('touch pad analog and pointer', () {
+    test('setPadState and setPointer send their arguments by name', () async {
+      final calls = <MethodCall>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(controlChannel, (call) async {
+            calls.add(call);
+            return null;
+          });
+      final player = NativeGamePlayerChannel();
+
+      await player.setPadState(0, 1, -2, 3, -4, l2: 5, r2: 6);
+      await player.setPointer(0, true, 555, -666);
+
+      expect(calls.map((c) => c.method), ['setPadState', 'setPointer']);
+      expect(calls[0].arguments, {
+        'port': 0,
+        'lx': 1,
+        'ly': -2,
+        'rx': 3,
+        'ry': -4,
+        'l2': 5,
+        'r2': 6,
+      });
+      expect(calls[1].arguments, {
+        'port': 0,
+        'pressed': true,
+        'x': 555,
+        'y': -666,
+      });
+    });
+
+    test('analogStickPorts returns the host answer, 0 when it fails', () async {
+      var fail = false;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(controlChannel, (call) async {
+            if (fail) throw PlatformException(code: 'nope');
+            return 0x5;
+          });
+      final player = NativeGamePlayerChannel();
+
+      expect(await player.analogStickPorts(), 0x5);
+      fail = true;
+      expect(await player.analogStickPorts(), 0);
+    });
+  });
+
   test(
     'restart() propagates a restart_unavailable PlatformException to the caller',
     () async {

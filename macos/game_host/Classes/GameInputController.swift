@@ -136,6 +136,24 @@ final class GameInputController {
     maskLock.unlock()
   }
 
+  // Dart's on-screen sticks. Physical sticks are folded into d-pad bits
+  // above, so Dart is the only analog source here and nothing merges.
+  func setDartPadState(
+    lx: Int16, ly: Int16, rx: Int16, ry: Int16, l2: UInt16, r2: UInt16
+  ) {
+    maskLock.lock()
+    if let host {
+      lh_set_pad_state(host, 0, maskLocked(forPort: 0), lx, ly, rx, ry, l2, r2)
+    }
+    maskLock.unlock()
+  }
+
+  func setPointer(pressed: Bool, x: Int16, y: Int16) {
+    maskLock.lock()
+    if let host { lh_set_pointer(host, 0, pressed ? 1 : 0, x, y) }
+    maskLock.unlock()
+  }
+
   func pulse(index: Int, durationMs: Int) {
     guard index >= 0, index < 16 else { return }
     let bit = UInt16(1) << UInt16(index)

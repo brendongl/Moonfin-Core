@@ -157,7 +157,7 @@ object Media3Transmux {
 
         // Transformer opens the stream itself, so the trust setting has to be
         // armed here. Playback may not have pushed it yet this session.
-        InsecureTls.setAllowed(args.allowUntrustedTls)
+        TlsPolicy.setAllowUntrusted(args.allowUntrustedTls)
 
         val outputFile = File(args.outputPath)
         val httpFactory = DefaultHttpDataSource.Factory()
