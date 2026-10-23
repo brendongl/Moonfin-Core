@@ -1,4 +1,5 @@
 import '../../../sipflix/sipflix_4k_policy.dart';
+import '../../../sipflix/sipflix_route_selector.dart';
 import 'dart:async';
 import '../../../sipflix/sipflix_sign_in.dart';
 import 'dart:convert';
@@ -213,6 +214,9 @@ class _HomeShellState extends State<_HomeShell>
     // Sipflix: the account moved and the box followed it — say so once.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(SipflixMigrationNotice.showIfPending(context));
+      if (mounted && GetIt.instance.isRegistered<SipflixRouteSelector>()) {
+        unawaited(GetIt.instance<SipflixRouteSelector>().refreshIfStale());
+      }
     });
     if (homeRefreshBus.consumePending()) {
       _viewModel.refresh(preserveExisting: true);
@@ -2068,8 +2072,15 @@ class _ContentRowsState extends State<_ContentRows>
       return '';
     }
 
+    if (Sipflix4kPolicy.isDelta(item.serverId) &&
+        Sipflix4kPolicy.selectableSources(
+          item.mediaSources, serverRef: item.serverId,
+        ).isEmpty) {
+      return '';
+    }
     final preferredSourceId = Sipflix4kPolicy.defaultSource(
       item.mediaSources,
+      serverRef: item.serverId,
     )?['Id']?.toString();
     // A channel item's lone placeholder source can't be transcoded by id, so
     // it's left off and the server picks the file it probes.

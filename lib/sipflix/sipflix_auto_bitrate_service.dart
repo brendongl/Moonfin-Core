@@ -1,11 +1,15 @@
 import 'dart:async';
 
 import 'package:logger/logger.dart';
+import 'package:get_it/get_it.dart';
+import 'package:server_core/server_core.dart';
 
 import '../data/services/media_server_client_factory.dart';
 import '../preference/user_preferences.dart';
 import 'sipflix_bandwidth_probe.dart';
 import 'sipflix_log.dart';
+import 'sipflix_route_selector.dart';
+import 'sipflix_servers.dart';
 
 /// Sipflix: keeps the measured link speed behind the "Auto" quality setting
 /// fresh, so Auto caps at what the connection can actually carry instead of
@@ -24,10 +28,10 @@ class SipflixAutoBitrateService {
     required MediaServerClientFactory clientFactory,
     SipflixBandwidthProbe? probe,
     Logger? logger,
-  })  : _prefs = prefs,
-        _clientFactory = clientFactory,
-        _probe = probe ?? SipflixBandwidthProbe(),
-        _logger = logger ?? sipflixLogger();
+  }) : _prefs = prefs,
+       _clientFactory = clientFactory,
+       _probe = probe ?? SipflixBandwidthProbe(),
+       _logger = logger ?? sipflixLogger();
 
   final UserPreferences _prefs;
   final MediaServerClientFactory _clientFactory;
@@ -45,8 +49,9 @@ class SipflixAutoBitrateService {
     if (at <= 0 || _prefs.get(UserPreferences.measuredBandwidthMbps) <= 0) {
       return true;
     }
-    final age =
-        DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(at));
+    final age = DateTime.now().difference(
+      DateTime.fromMillisecondsSinceEpoch(at),
+    );
     return age.isNegative || age > UserPreferences.measuredBandwidthTtl;
   }
 
@@ -61,25 +66,59 @@ class SipflixAutoBitrateService {
     if (_inFlight || isPlaybackActive) return null;
     if (!force && !needsMeasurement) return null;
     _inFlight = true;
+    SipflixRouteSelector? reservedSelector;
     try {
-      final client = _clientFactory.getActiveClient();
+      final getIt = GetIt.instance;
+      final selector = getIt.isRegistered<SipflixRouteSelector>()
+          ? getIt<SipflixRouteSelector>()
+          : null;
+      // Route probes and bitrate probes share the link: never measure in
+      // parallel, or each reads the bandwidth stolen by the other.
+      if (selector?.isRunning == true) return null;
+      await selector?.refreshIfStale();
+      if (selector?.isRunning == true) return null;
+      final client = getIt.isRegistered<MediaServerClient>()
+          ? getIt<MediaServerClient>()
+          : _clientFactory.getActiveClient();
+      final def = SipflixServers.defForRef(client.baseUrl);
+      if (client.serverType != ServerType.emby ||
+          def == null ||
+          def.routes.length < 2)
+        return null;
+      if (selector != null) {
+        if (!selector.beginBandwidthMeasurement()) return null;
+        reservedSelector = selector;
+      }
+      final address = client.baseUrl;
+      final token = client.accessToken;
       final mbps = await _probe.measureMbps(
-        baseUrl: client.baseUrl,
-        accessToken: client.accessToken,
+        baseUrl: address,
+        accessToken: token,
       );
-      if (mbps == null || mbps <= 0) return null;
+      final active = getIt.isRegistered<MediaServerClient>()
+          ? getIt<MediaServerClient>()
+          : _clientFactory.getActiveClient();
+      if (!identical(active, client) ||
+          client.baseUrl != address ||
+          client.accessToken != token ||
+          selector?.isRunning == true)
+        return null;
+      if (mbps == null || !mbps.isFinite || mbps <= 0) return null;
       await _prefs.set(UserPreferences.measuredBandwidthMbps, mbps);
       await _prefs.set(
         UserPreferences.measuredBandwidthAt,
         DateTime.now().millisecondsSinceEpoch,
       );
-      _logger.i('Sipflix auto bitrate: measured ${mbps.toStringAsFixed(1)} Mbps '
-          '-> cap ${_prefs.autoBitrateCapMbps() ?? "unlimited"} Mbps');
+      _logger.i(
+        'Sipflix auto bitrate: measured ${mbps.toStringAsFixed(1)} Mbps '
+        '-> cap ${_prefs.autoBitrateCapMbps() ?? "unlimited"} Mbps',
+      );
       return mbps;
     } catch (e) {
       _logger.d('Sipflix auto bitrate refresh skipped: $e');
       return null;
     } finally {
+      reservedSelector?.endBandwidthMeasurement();
       _inFlight = false;
     }
   }

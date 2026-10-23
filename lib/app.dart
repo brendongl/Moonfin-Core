@@ -43,6 +43,7 @@ import 'ui/navigation/home_refresh_bus.dart';
 import 'ui/theme/app_theme.dart';
 import 'ui/theme/app_theme_controller.dart';
 import 'sipflix/sipflix_ota_updater.dart';
+import 'sipflix/sipflix_route_selector.dart';
 import 'ui/widgets/app_update_banner.dart';
 import 'ui/widgets/cast_mini_player.dart';
 import 'ui/widgets/video_mini_player.dart';
@@ -1168,6 +1169,14 @@ class _ConnectivityListenerState extends ConsumerState<_ConnectivityListener>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final coordinator = ref.read(syncPlayRuntimeCoordinatorProvider);
+    if (GetIt.instance.isRegistered<SipflixRouteSelector>()) {
+      final selector = GetIt.instance<SipflixRouteSelector>();
+      if (state == AppLifecycleState.resumed) {
+        unawaited(selector.refreshIfStale());
+      } else {
+        selector.cancel();
+      }
+    }
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
       coordinator.appDidEnterBackground();

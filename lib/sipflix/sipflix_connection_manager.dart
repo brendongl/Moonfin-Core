@@ -63,6 +63,30 @@ class SipflixConnectionManager {
   ) async {
     await serverRepo.updateServer(server.copyWith(address: route.url));
 
+    _retargetClients(server, route, clientFactory);
+  }
+
+  /// Automatic selection rechecks ownership immediately before synchronously
+  /// retargeting. No await separates that check from the live-client update,
+  /// so playback starting during disk persistence already uses the new route.
+  static Future<bool> applyAutomaticRoute(
+    Server server,
+    SipflixRouteDef route,
+    ServerRepository serverRepo,
+    MediaServerClientFactory clientFactory, {
+    required bool Function() stillCurrent,
+  }) async {
+    if (!stillCurrent()) return false;
+    _retargetClients(server, route, clientFactory);
+    await serverRepo.updateServer(server.copyWith(address: route.url));
+    return true;
+  }
+
+  static void _retargetClients(
+    Server server,
+    SipflixRouteDef route,
+    MediaServerClientFactory clientFactory,
+  ) {
     // The factory's client and the registered singleton are two wrappers over
     // the same raw client, so this is belt and braces — but the singleton is
     // registered before some screens ever ask the factory, and missing either
@@ -75,9 +99,8 @@ class SipflixConnectionManager {
       // Only retarget the singleton when it is this server's client; on a
       // multi-server install it could belong to somebody else entirely.
       final activeAddr = normalizeServerBaseUrl(active.baseUrl);
-      final isThisServer = SipflixServers.routesFor(server).any(
-        (r) => normalizeServerBaseUrl(r.url) == activeAddr,
-      );
+      final isThisServer = SipflixServers.routesFor(server)
+          .any((r) => normalizeServerBaseUrl(r.url) == activeAddr);
       if (isThisServer) active.baseUrl = route.url;
     }
   }

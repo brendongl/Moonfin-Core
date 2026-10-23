@@ -6,6 +6,7 @@ import 'package:get_it/get_it.dart';
 import 'package:logger/logger.dart';
 
 import 'sipflix_log.dart';
+
 import 'package:playback_core/playback_core.dart';
 
 import '../auth/repositories/server_repository.dart';
@@ -18,6 +19,9 @@ import 'sipflix_bandwidth_probe.dart';
 import 'sipflix_bitrate_watchdog.dart';
 import 'sipflix_connection_manager.dart';
 import 'sipflix_servers.dart';
+import 'sipflix_route_selector.dart';
+
+import 'package:server_core/server_core.dart';
 
 /// Sipflix "Stream Preflight": an opt-in, per-play connection check.
 ///
@@ -33,8 +37,8 @@ import 'sipflix_servers.dart';
 /// hour, and a resume the next evening should not trust yesterday's numbers.
 class SipflixPreflightController {
   SipflixPreflightController({SipflixBandwidthProbe? probe, Logger? logger})
-      : _probe = probe ?? SipflixBandwidthProbe(),
-        _logger = logger ?? sipflixLogger();
+    : _probe = probe ?? SipflixBandwidthProbe(),
+      _logger = logger ?? sipflixLogger();
 
   final SipflixBandwidthProbe _probe;
   final Logger _logger;
@@ -86,10 +90,49 @@ class SipflixPreflightController {
 
   /// The [PlaybackManager.preflightHook] entry point.
   Future<PlaybackPreflightResult?> runForItem(dynamic item) async {
-    final prefs = GetIt.instance<UserPreferences>();
-    if (!prefs.get(UserPreferences.preflightEnabled)) return null;
+    if (item is! AggregatedItem) return null;
+    final getIt = GetIt.instance;
+    final prefs = getIt<UserPreferences>();
+    final client = getIt<MediaServerClientFactory>().getClientIfExists(
+      item.serverId,
+    );
+    final def =
+        SipflixServers.defForRef(item.serverId) ??
+        SipflixServers.defForRef(client?.baseUrl ?? '');
+    final selector = getIt.isRegistered<SipflixRouteSelector>()
+        ? getIt<SipflixRouteSelector>()
+        : null;
+    if (!shouldRun(
+      manualEveryPlay: prefs.get(UserPreferences.preflightEnabled),
+      adaptiveEnabled: prefs.get(UserPreferences.adaptivePreflightEnabled),
+      isEmby: client?.serverType == ServerType.emby,
+      routeCount: def?.routes.length ?? 0,
+      uncertain:
+          selector?.needsPreflight(
+            item.serverId,
+            client?.baseUrl ?? '',
+            _requiredMbpsFor(item),
+          ) ??
+          true,
+    ))
+      return null;
     return runFor(item);
   }
+
+  /// Explicit every-play checks win; adaptive mode only checks uncertain paths.
+  static bool shouldRun({
+    required bool manualEveryPlay,
+    required bool adaptiveEnabled,
+    required bool isEmby,
+    required int routeCount,
+    required bool uncertain,
+  }) =>
+      isEmby &&
+      routeCount > 1 &&
+      (manualEveryPlay || (adaptiveEnabled && uncertain));
+
+  static int? preserveManualCap(String preference, int? measuredCap) =>
+      int.tryParse(preference) ?? measuredCap;
 
   /// Run the check for [item] regardless of the per-play setting.
   ///
@@ -105,18 +148,40 @@ class SipflixPreflightController {
     if (!SipflixServers.isSipflixServerRef(item.serverId)) return null;
     if (!GetIt.instance<ConnectivityService>().isOnline) return null;
 
+    final getIt = GetIt.instance;
+    final client = getIt<MediaServerClientFactory>().getClientIfExists(
+      item.serverId,
+    );
+    final def =
+        SipflixServers.defForRef(item.serverId) ??
+        SipflixServers.defForRef(client?.baseUrl ?? '');
+    if (client?.serverType != ServerType.emby ||
+        (def?.routes.length ?? 0) < 2) {
+      return null;
+    }
     _running = true;
+    SipflixRouteSelector? reservedSelector;
     try {
-      return await _run(item).timeout(overallTimeout, onTimeout: () {
-        _logger.w('Sipflix preflight timed out — playing normally');
-        _activeProgress?.abort();
-        _activePage?.close();
-        return null;
-      });
+      if (getIt.isRegistered<SipflixRouteSelector>()) {
+        final selector = getIt<SipflixRouteSelector>();
+        await selector.cancelAndWait();
+        if (!selector.beginBandwidthMeasurement()) return null;
+        reservedSelector = selector;
+      }
+      return await _run(item).timeout(
+        overallTimeout,
+        onTimeout: () {
+          _logger.w('Sipflix preflight timed out — playing normally');
+          _activeProgress?.abort();
+          _activePage?.close();
+          return null;
+        },
+      );
     } catch (e) {
       _logger.w('Sipflix preflight failed: $e');
       return null;
     } finally {
+      reservedSelector?.endBandwidthMeasurement();
       _activeProgress = null;
       _activePage = null;
       _running = false;
@@ -129,10 +194,27 @@ class SipflixPreflightController {
     final token = client?.accessToken;
     if (client == null || token == null || token.isEmpty) return null;
 
+    var expectedAddress = client.baseUrl;
+    bool stillCurrent() {
+      if (!identical(factory.getClientIfExists(item.serverId), client) ||
+          client.accessToken != token ||
+          client.baseUrl != expectedAddress) {
+        return false;
+      }
+      if (GetIt.instance.isRegistered<PlaybackManager>()) {
+        return identical(
+          GetIt.instance<PlaybackManager>().queueService.currentItem,
+          item,
+        );
+      }
+      return true;
+    }
+
     // The item's own server, so Delta and iDuck test their routes, not
     // AlphaV2's.
     final serverRepo = GetIt.instance<ServerRepository>();
-    final def = SipflixServers.defForRef(item.serverId) ??
+    final def =
+        SipflixServers.defForRef(item.serverId) ??
         SipflixServers.defForRef(client.baseUrl);
     final server = SipflixServers.findServer(
       serverRepo.servers,
@@ -171,12 +253,12 @@ class SipflixPreflightController {
     try {
       final results = <({SipflixRouteDef route, SipflixRouteMeasurement m})>[];
       for (final route in routes) {
-        if (progress.aborted) break;
+        if (progress.aborted || !stillCurrent()) break;
         progress.markTesting(route.id);
         final m = await _probe.measureRoute(
           baseUrl: route.url,
           accessToken: token,
-          isCancelled: () => progress.aborted,
+          isCancelled: () => progress.aborted || !stillCurrent(),
         );
         if (m != null) {
           results.add((route: route, m: m));
@@ -185,7 +267,7 @@ class SipflixPreflightController {
           progress.markFailed(route.id);
         }
       }
-      if (progress.aborted || results.isEmpty) return null;
+      if (progress.aborted || !stillCurrent() || results.isEmpty) return null;
 
       final decision = decide(
         results: results,
@@ -200,18 +282,31 @@ class SipflixPreflightController {
       if (server != null &&
           SipflixConnectionManager.currentRoute(server).id !=
               decision.route.id) {
-        await SipflixConnectionManager.applyRoute(
+        final applied = await SipflixConnectionManager.applyAutomaticRoute(
           server,
           decision.route,
           serverRepo,
           factory,
+          stillCurrent: stillCurrent,
         );
+        if (!applied) return null;
+        expectedAddress = decision.route.url;
         _logger.i('Sipflix preflight: switched route to ${decision.route.id}');
       }
 
+      if (!stillCurrent()) return null;
+      if (GetIt.instance.isRegistered<SipflixRouteSelector>()) {
+        GetIt.instance<SipflixRouteSelector>().noteMeasurement(
+          item.serverId,
+          decision.route.url,
+          decision.sustainedMbps,
+        );
+      }
       // Keep the adaptive-Auto store coherent with what was just measured.
-      await GetIt.instance<UserPreferences>()
-          .set(UserPreferences.measuredBandwidthMbps, decision.sustainedMbps);
+      await GetIt.instance<UserPreferences>().set(
+        UserPreferences.measuredBandwidthMbps,
+        decision.sustainedMbps,
+      );
       await GetIt.instance<UserPreferences>().set(
         UserPreferences.measuredBandwidthAt,
         DateTime.now().millisecondsSinceEpoch,
@@ -219,7 +314,13 @@ class SipflixPreflightController {
 
       // Let the verdict be readable for a beat before playback takes over.
       await Future<void>.delayed(const Duration(milliseconds: 1400));
-      return PlaybackPreflightResult(capMbps: decision.capMbps);
+      if (!stillCurrent() || progress.aborted) return null;
+      return PlaybackPreflightResult(
+        capMbps: preserveManualCap(
+          GetIt.instance<UserPreferences>().get(UserPreferences.maxBitrate),
+          decision.capMbps,
+        ),
+      );
     } finally {
       page?.close();
     }
@@ -227,7 +328,17 @@ class SipflixPreflightController {
 
   static double _requiredMbpsFor(AggregatedItem item) {
     var bps = 0;
-    for (final source in item.mediaSources) {
+    final getIt = GetIt.instance;
+    final selected = getIt.isRegistered<PlaybackManager>()
+        ? getIt<PlaybackManager>().pendingMediaSourceId
+        : null;
+    final selectedSources = item.mediaSources.where(
+      (source) => source['Id'] == selected,
+    );
+    final sources = selected != null && selectedSources.isNotEmpty
+        ? selectedSources
+        : item.mediaSources;
+    for (final source in sources) {
       final rate = source['Bitrate'];
       if (rate is int && rate > bps) bps = rate;
     }
@@ -427,13 +538,16 @@ class _PreflightViewState extends State<_PreflightView> {
   }
 
   Future<void> _disableFeature() async {
-    await GetIt.instance<UserPreferences>()
-        .set(UserPreferences.preflightEnabled, false);
+    await GetIt.instance<UserPreferences>().set(
+      UserPreferences.preflightEnabled,
+      false,
+    );
     _skip();
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
-    final isSelect = event.logicalKey == LogicalKeyboardKey.select ||
+    final isSelect =
+        event.logicalKey == LogicalKeyboardKey.select ||
         event.logicalKey == LogicalKeyboardKey.enter ||
         event.logicalKey == LogicalKeyboardKey.gameButtonA;
     if (isSelect) {
@@ -484,115 +598,115 @@ class _PreflightViewState extends State<_PreflightView> {
           onKeyEvent: _onKey,
           child: Material(
             color: Colors.black,
-        child: AnimatedBuilder(
-          animation: widget.progress,
-          builder: (context, _) {
-            final verdict = _verdictLine();
-            return Stack(
-              children: [
-                Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Image.asset(
-                        'assets/images/sipflix_badge.png',
-                        width: 96,
-                        height: 96,
-                        errorBuilder: (_, _, _) => const Icon(
-                          Icons.network_check,
-                          size: 72,
-                          color: Colors.white70,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      const Text(
-                        'Optimising your stream…',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 26,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Checking the fastest connection for '
-                        '${widget.progress.itemName}',
-                        style: const TextStyle(
-                          color: Colors.white54,
-                          fontSize: 14,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 28),
-                      for (final step in widget.progress.log)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: Text(
-                            '\u2713  $step',
-                            style: const TextStyle(
+            child: AnimatedBuilder(
+              animation: widget.progress,
+              builder: (context, _) {
+                final verdict = _verdictLine();
+                return Stack(
+                  children: [
+                    Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Image.asset(
+                            'assets/images/sipflix_badge.png',
+                            width: 96,
+                            height: 96,
+                            errorBuilder: (_, _, _) => const Icon(
+                              Icons.network_check,
+                              size: 72,
                               color: Colors.white70,
-                              fontSize: 16,
                             ),
                           ),
-                        ),
-                      if (widget.progress.activeStep != null)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Text(
-                                widget.progress.activeStep!,
+                          const SizedBox(height: 24),
+                          const Text(
+                            'Optimising your stream…',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 26,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Checking the fastest connection for '
+                            '${widget.progress.itemName}',
+                            style: const TextStyle(
+                              color: Colors.white54,
+                              fontSize: 14,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 28),
+                          for (final step in widget.progress.log)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Text(
+                                '\u2713  $step',
                                 style: const TextStyle(
-                                  color: Colors.white,
+                                  color: Colors.white70,
                                   fontSize: 16,
-                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
-                            ],
-                          ),
-                        ),
-                      const SizedBox(height: 20),
-                      if (verdict != null)
-                        Text(
-                          verdict,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.primary,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        )
-                      else
-                        const SizedBox(
-                          width: 160,
-                          child: LinearProgressIndicator(minHeight: 3),
-                        ),
-                    ],
-                  ),
-                ),
-                const Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 28,
-                  child: Text(
-                    'Press OK to skip  •  Hold OK to turn off  •  '
-                    'Settings > Stream Preflight',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white38, fontSize: 13),
-                  ),
-                ),
-              ],
-            );
-          },
+                            ),
+                          if (widget.progress.activeStep != null)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    widget.progress.activeStep!,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          const SizedBox(height: 20),
+                          if (verdict != null)
+                            Text(
+                              verdict,
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.primary,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            )
+                          else
+                            const SizedBox(
+                              width: 160,
+                              child: LinearProgressIndicator(minHeight: 3),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 28,
+                      child: Text(
+                        'Press OK to skip  •  Hold OK to turn off  •  '
+                        'Settings > Stream Preflight',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white38, fontSize: 13),
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ),

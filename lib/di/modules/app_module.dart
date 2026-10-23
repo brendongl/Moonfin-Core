@@ -6,6 +6,7 @@ import 'package:jellyfin_preference/jellyfin_preference.dart';
 import 'package:playback_core/playback_core.dart';
 import 'package:server_core/server_core.dart';
 
+import '../../sipflix/sipflix_route_selector.dart';
 import '../../auth/models/user.dart';
 import '../../auth/repositories/session_repository.dart';
 import '../../auth/repositories/user_repository.dart';
@@ -139,6 +140,7 @@ Future<void> _stopPlaybackForAccessSchedule() async {
 }
 
 void registerAppModule() {
+  _getIt.registerLazySingleton<SipflixRouteSelector>(() => SipflixRouteSelector.live());
   _getIt.registerLazySingleton(() => RetroArtworkActivityGate());
   _getIt.registerLazySingletonAsync<RetroArtworkByteCache>(
     () => openDefaultRetroArtworkDiskCache(),

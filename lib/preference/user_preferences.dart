@@ -2015,6 +2015,13 @@ class UserPreferences extends ChangeNotifier {
     defaultValue: false,
   );
 
+  /// Check only uncertain multi-route connections before playback by default.
+  /// Separate from the explicit "check every play" preference above.
+  static final adaptivePreflightEnabled = Preference(
+    key: 'sipflix_adaptive_preflight_enabled',
+    defaultValue: true,
+  );
+
   /// Epoch ms the enable-offer dialog last showed (never more than once a day).
   static final preflightLastOfferAt = Preference<int>(
     key: 'sipflix_preflight_last_offer_at',

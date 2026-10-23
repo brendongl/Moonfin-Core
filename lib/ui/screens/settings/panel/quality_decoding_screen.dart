@@ -12,6 +12,12 @@ class _QualityDecodingScreen extends StatelessWidget {
       body: ListView(
         children: [
           SwitchPreferenceTile(
+            preference: UserPreferences.adaptivePreflightEnabled,
+            title: 'Check uncertain routes before playback',
+            subtitle: 'Automatically check when there is no recent healthy route measurement',
+            icon: Icons.network_check,
+          ),
+          SwitchPreferenceTile(
             preference: UserPreferences.preflightEnabled,
             title: 'Stream Preflight',
             subtitle: 'Test the connection before playback and select the best route and quality',
