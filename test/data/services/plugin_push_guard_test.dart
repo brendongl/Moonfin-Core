@@ -126,7 +126,7 @@ void main() {
     unawaited(service.syncOnLogin(client, serverId: 'srv1'));
     await Future<void>.delayed(const Duration(milliseconds: 100));
 
-    await prefs.set(UserPreferences.use24HourClock, true);
+    await prefs.set(UserPreferences.use24HourClock, !prefs.get(UserPreferences.use24HourClock));
     await settle();
 
     expect(
@@ -137,7 +137,7 @@ void main() {
   });
 
   test('an ordinary change outside sign in still pushes', () async {
-    await prefs.set(UserPreferences.use24HourClock, true);
+    await prefs.set(UserPreferences.use24HourClock, !prefs.get(UserPreferences.use24HourClock));
     await settle();
 
     expect(profilePosts(), isNotEmpty);
@@ -169,7 +169,7 @@ void main() {
       expect(prefs.get(UserPreferences.pluginSyncProfile), 'global');
       expect(service.syncProfile, 'global');
 
-      await prefs.set(UserPreferences.use24HourClock, true);
+      await prefs.set(UserPreferences.use24HourClock, !prefs.get(UserPreferences.use24HourClock));
       await settle();
 
       expect(profilePosts(), ['POST /Moonfin/Settings/Profile/global']);

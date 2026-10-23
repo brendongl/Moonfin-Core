@@ -1427,38 +1427,30 @@ class _LeftSidebarState extends State<LeftSidebar> with RouteAware {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 16, 8, 8),
-      child: PlatformDetection.isTV
-          ? Focus(
-              focusNode: _profileFocusNode,
-              onKeyEvent: (_, event) {
-                if (event is KeyDownEvent) {
-                  if (isActivateKey(event)) {
-                    _onNavigate();
-                    showUserMenu(context);
-                    return KeyEventResult.handled;
-                  }
-                  if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                    _homeFocusNode.requestFocus();
-                    return KeyEventResult.handled;
-                  }
-                }
-                return KeyEventResult.ignored;
-              },
-              child: GestureDetector(
-                onTap: () {
-                  _onNavigate();
-                  showUserMenu(context);
-                },
-                child: content,
-              ),
-            )
-          : GestureDetector(
-              onTap: () {
-                _onNavigate();
-                showUserMenu(context);
-              },
-              child: content,
-            ),
+      child: Focus(
+        focusNode: _profileFocusNode,
+        onKeyEvent: (_, event) {
+          if (event is KeyDownEvent) {
+            if (isActivateKey(event)) {
+              _onNavigate();
+              showUserMenu(context);
+              return KeyEventResult.handled;
+            }
+            if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+              _homeFocusNode.requestFocus();
+              return KeyEventResult.handled;
+            }
+          }
+          return KeyEventResult.ignored;
+        },
+        child: GestureDetector(
+          onTap: () {
+            _onNavigate();
+            showUserMenu(context);
+          },
+          child: content,
+        ),
+      ),
     );
   }
 }

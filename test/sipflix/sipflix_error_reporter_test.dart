@@ -179,4 +179,34 @@ void main() {
       expect(calls, 1);
     },
   );
+  test('hung metadata does not permanently occupy both report slots', () async {
+    var blocked = true;
+    var posts = 0;
+    final reporter = SipflixErrorReporter(
+      post: (_) async {
+        posts++;
+      },
+      metadata: () =>
+          blocked ? Completer<Map<String, String>>().future : Future.value({}),
+    );
+    await Future.wait([
+      for (var i = 0; i < 2; i++)
+        reporter.report(
+          category: 'test',
+          message: 'metadata $i',
+          code: '500',
+          server: 'Alpha',
+          route: 'Direct',
+        ),
+    ]).timeout(const Duration(seconds: 4));
+    blocked = false;
+    await reporter.report(
+      category: 'test',
+      message: 'metadata recovered',
+      code: '500',
+      server: 'Alpha',
+      route: 'Direct',
+    );
+    expect(posts, 1);
+  });
 }

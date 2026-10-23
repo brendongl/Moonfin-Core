@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:moonfin/l10n/app_localizations_en.dart';
 import 'package:moonfin/playback/playback_info_sections.dart';
+import 'package:moonfin/preference/user_preferences.dart';
 import 'package:playback_core/playback_core.dart';
 
 final _l10n = AppLocalizationsEn();
@@ -643,7 +644,12 @@ void main() {
   });
 
   test('Quality Limit is only a limit the user set', () {
-    expect(userQualityLimitMbps(null, '120'), isNull);
+    expect(
+      userQualityLimitMbps(null, UserPreferences.maxBitrate.defaultValue),
+      isNull,
+    );
+    // Sipflix defaults to Auto; an explicitly chosen 120 Mbps is a real cap.
+    expect(userQualityLimitMbps(null, '120'), 120);
     expect(userQualityLimitMbps(null, 'auto'), isNull);
     expect(userQualityLimitMbps(null, '40'), 40);
     expect(userQualityLimitMbps(8, '120'), 8);
@@ -656,7 +662,10 @@ void main() {
       mediaStreams: _streams,
       mediaSource: _source,
       subtitleStreamIndex: -1,
-      qualityLimitMbps: userQualityLimitMbps(null, '120'),
+      qualityLimitMbps: userQualityLimitMbps(
+        null,
+        UserPreferences.maxBitrate.defaultValue,
+      ),
       player: 'Media3 (ExoPlayer)',
       device: 'NVIDIA SHIELD Android TV, Android 11',
       audioRoute: 'HDMI',

@@ -237,11 +237,15 @@ class LockedFocusRowState<T> extends State<LockedFocusRow<T>> {
   void _scrollToIndex(int index) {
     if (!_scrollController.hasClients) return;
     final drift = _layoutDrift();
-    scrollListToIndex(
-      _scrollController,
-      index,
-      itemExtent: widget.itemExtent + widget.itemSpacing,
-      leadingPadding: widget.leadingPadding + drift,
+    // Keep the row's leading margin, but compensate for animated cards
+    // evicted mid-shrink. The generic helper deliberately ignores leading
+    // padding in this fork, so passing drift as padding lost the correction.
+    final target = (index * (widget.itemExtent + widget.itemSpacing) + drift)
+        .clamp(0.0, _scrollController.position.maxScrollExtent);
+    _scrollController.animateTo(
+      target,
+      duration: navigationAnimationDuration,
+      curve: Curves.easeOut,
     ).whenComplete(() {
       // The glide itself can leave a card behind mid-shrink, so check again
       // once it stops.

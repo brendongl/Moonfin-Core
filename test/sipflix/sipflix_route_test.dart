@@ -135,7 +135,7 @@ void main() {
 
     test('shows real names, emby2 as Delta', () {
       expect(SipflixServers.all.map((d) => d.name),
-          ['AlphaV2', 'Delta', 'iDuck']);
+          ['AlphaV2', 'Delta', 'iDuck', 'Sipflix DUMB']);
       expect(SipflixServers.delta.key, 'emby2');
     });
 
