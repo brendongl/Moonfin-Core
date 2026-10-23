@@ -126,7 +126,7 @@ class _Manager extends PlaybackManager {
   Future<void> pause() async => state.setPlaying(false);
 
   @override
-  Future<void> stop({bool userInitiated = true}) async {}
+  Future<void> stop({bool userInitiated = true, bool notifySessionEnded = true}) async {}
 }
 
 // Issue #1189: a live stream that keeps a window, like an internet channel's

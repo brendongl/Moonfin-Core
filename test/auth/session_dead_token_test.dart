@@ -154,7 +154,7 @@ class _RecordingManager extends PlaybackManager {
   int stops = 0;
 
   @override
-  Future<void> stop({bool userInitiated = true}) async => stops++;
+  Future<void> stop({bool userInitiated = true, bool notifySessionEnded = true}) async => stops++;
 }
 
 void main() {
