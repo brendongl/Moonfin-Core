@@ -25,6 +25,12 @@ subprojects {
     if (name == "file_picker") {
         plugins.withId("com.android.library") {
             pluginManager.apply("org.jetbrains.kotlin.android")
+            // Match file_picker's Java 17 bytecode target even when Gradle
+            // runs on JDK 21; the explicitly applied Kotlin plugin otherwise
+            // inherits the host JDK and fails target compatibility validation.
+            tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile>().configureEach {
+                compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+            }
         }
     }
 }
