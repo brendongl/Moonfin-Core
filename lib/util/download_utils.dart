@@ -8,6 +8,7 @@ import '../auth/repositories/user_repository.dart';
 import '../data/models/aggregated_item.dart';
 import '../data/models/download_quality.dart';
 import '../preference/user_preferences.dart';
+import '../sipflix/sipflix_4k_policy.dart';
 import 'audio_track_logic.dart';
 import 'platform_detection.dart';
 
@@ -104,8 +105,20 @@ AggregatedItem withPreferredMediaSource(
   AggregatedItem item,
   String? mediaSourceId,
 ) {
-  final sources = item.mediaSources;
-  if (mediaSourceId == null || sources.length < 2) return item;
+  var sources = item.mediaSources;
+  final sipflix = Sipflix4kPolicy.prefersSmallest(item.serverId);
+  if (sipflix) {
+    final refusal = Sipflix4kPolicy.sourceRefusal(item, const [], mediaSourceId);
+    if (refusal != null) throw StateError(refusal);
+    sources = Sipflix4kPolicy.selectableSources(sources,
+      serverRef: item.serverId, cannotPlay4k: false);
+    if (Sipflix4kPolicy.isDelta(item.serverId) && sources.isEmpty) {
+      throw StateError(Sipflix4kPolicy.deltaHdOnlyMessage);
+    }
+    mediaSourceId ??= Sipflix4kPolicy.defaultSource(sources,
+      serverRef: item.serverId, cannotPlay4k: false)?['Id']?.toString();
+  }
+  if (mediaSourceId == null || (!sipflix && sources.length < 2)) return item;
   final index = sources.indexWhere(
     (source) => source['Id']?.toString() == mediaSourceId,
   );

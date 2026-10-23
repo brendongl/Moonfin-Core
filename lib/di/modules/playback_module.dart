@@ -1,3 +1,4 @@
+import '../../sipflix/sipflix_error_reporter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get_it/get_it.dart';
 import 'package:playback_core/playback_core.dart';
@@ -392,6 +393,9 @@ void registerPlaybackModule() {
       ?state.playMethod,
       if (state.error != null) 'error ${state.error}',
     ].join(', ');
+    if (state.phase == PlaybackBringupPhase.failed) {
+      SipflixErrorReporter.capture('playback', state.error ?? 'Playback failed');
+    }
     log.log(
       LogCategory.playback,
       'Bringup: ${state.phase.name}${detail.isEmpty ? '' : ' ($detail)'}',

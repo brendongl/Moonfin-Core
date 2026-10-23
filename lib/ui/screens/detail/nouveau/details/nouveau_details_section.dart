@@ -1,3 +1,4 @@
+import '../../../../../sipflix/sipflix_4k_policy.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -917,7 +918,8 @@ class NouveauDetailsSectionState extends State<NouveauDetailsSection> {
         mediaSourceId: requestedMediaSourceId,
         audioStreamIndex: requestedAudioIndex,
         subtitleStreamIndex: requestedSubtitleIndex,
-        hasOtherVersions: item.mediaSources.length > 1,
+        hasOtherVersions: Sipflix4kPolicy.selectableSources(item.mediaSources,
+          serverRef: item.serverId).length > 1,
       );
 
       if (!mounted || requestSerial != _playbackInfoRequestSerial) {

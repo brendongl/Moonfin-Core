@@ -42,6 +42,7 @@ enum SearchState { idle, loading, ready, error }
 class SearchViewModel extends ChangeNotifier {
   final SearchRepository _searchRepository;
   final MediaServerClient _client;
+  String get serverRef => _client.baseUrl;
   final String? _scopedParentId;
   // Only set when search should cover every signed-in server.
   final MultiServerRepository? _multiServerRepository;

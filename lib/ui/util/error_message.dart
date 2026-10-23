@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../sipflix/sipflix_error_message.dart';
 
 const _maxDetailLength = 200;
 
@@ -20,7 +21,15 @@ const _connectionMarkers = [
 
 /// Turns a caught error into text for the screen, preferring the server's
 /// reason and then the HTTP status over the raw exception.
-String describeError(Object error, AppLocalizations l10n) {
+String describeError(Object error, AppLocalizations l10n, {
+  String? serverRef,
+  String operation = 'Request',
+  bool networkError = false,
+}) {
+  final sipflix = SipflixErrorMessage.describe(error,
+      serverRef: serverRef, operation: operation);
+  if (sipflix != null) return sipflix;
+  if (networkError) return l10n.unableToConnectToServer;
   if (error is DioException) return _describeDioError(error, l10n);
   if (error is TimeoutException) return l10n.unableToConnectToServer;
   final text = error.toString();

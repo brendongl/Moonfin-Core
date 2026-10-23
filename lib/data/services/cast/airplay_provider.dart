@@ -1,3 +1,4 @@
+import '../../../sipflix/sipflix_cast_source_policy.dart';
 import 'package:get_it/get_it.dart';
 import 'package:playback_core/playback_core.dart';
 import 'package:playback_emby/playback_emby.dart';
@@ -76,6 +77,9 @@ class AirPlayProvider implements CastProvider, CastTransportControls {
         _clientFactory.getClientIfExists(item.serverId) ?? GetIt.instance<MediaServerClient>();
     // An explicit track pick forces a transcode so the server applies it,
     // since AVPlayer is never told which embedded track to use.
+    final prepared = await prepareSipflixCastSource(client, item, mediaSourceId);
+    item = prepared.item;
+    mediaSourceId = prepared.sourceId;
     final hasExplicitIndices =
         audioStreamIndex != null || subtitleStreamIndex != null;
     final resolution = await _resolverForClient(client).resolve(
@@ -89,6 +93,7 @@ class AirPlayProvider implements CastProvider, CastTransportControls {
       enableDirectStream: !hasExplicitIndices,
     );
 
+    await verifySipflixCastResolution(client, item, resolution);
     var streamUrl = resolution.streamUrl;
     final token = client.accessToken;
     if (token != null &&

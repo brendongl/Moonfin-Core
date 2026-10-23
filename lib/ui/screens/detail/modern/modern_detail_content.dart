@@ -1,3 +1,4 @@
+import '../../../../sipflix/sipflix_4k_policy.dart';
 import 'dart:async';
 import 'dart:math' show Random;
 import 'dart:ui' show ImageFilter;
@@ -379,7 +380,8 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
         mediaSourceId: mediaSource?['Id']?.toString(),
         audioStreamIndex: _vm.selectedAudioIndex ?? effectiveAudio,
         subtitleStreamIndex: _vm.selectedSubtitleIndex ?? effectiveSubtitle,
-        hasOtherVersions: item.mediaSources.length > 1,
+        hasOtherVersions: Sipflix4kPolicy.selectableSources(item.mediaSources,
+          serverRef: item.serverId).length > 1,
       );
       if (mounted) {
         // Drop the result if the track selection changed mid-request.
@@ -4161,7 +4163,8 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
     Map<String, dynamic>? selectedSource,
     TextTheme textTheme,
   ) {
-    if (item.mediaSources.length <= 1 ||
+    if (Sipflix4kPolicy.selectableSources(item.mediaSources,
+          serverRef: item.serverId).length <= 1 ||
         !_sections.shows(DetailSection.versionBadge)) {
       return const [];
     }

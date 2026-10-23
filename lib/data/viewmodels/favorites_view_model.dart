@@ -60,6 +60,7 @@ class FavoritesViewModel extends ChangeNotifier {
   Object? get error => _error;
   bool _isNetworkError = false;
   bool get isNetworkError => _isNetworkError;
+  String get serverRef => _client.baseUrl;
 
   AggregatedItem? _focusedItem;
   AggregatedItem? get focusedItem => _focusedItem;

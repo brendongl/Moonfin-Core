@@ -1,3 +1,5 @@
+import '../../../sipflix/sipflix_4k_policy.dart';
+import '../../../sipflix/sipflix_cast_source_policy.dart';
 import 'package:get_it/get_it.dart';
 import 'package:logger/logger.dart';
 import 'package:playback_core/playback_core.dart';
@@ -54,6 +56,9 @@ class GoogleCastProvider implements CastProvider, CastTransportControls {
     int? audioStreamIndex,
     int? subtitleStreamIndex,
   }) async {
+    final prepared = await prepareSipflixCastSource(client, item, mediaSourceId);
+    item = prepared.item;
+    mediaSourceId = prepared.sourceId;
     // An explicit track pick forces a transcode so the server applies it,
     // since the receiver has no track selection of its own.
     final hasExplicitIndices =
@@ -80,8 +85,12 @@ class GoogleCastProvider implements CastProvider, CastTransportControls {
         'container=${resolution.container ?? '?'}, '
         'explicitTracks=$hasExplicitIndices',
       );
+      await verifySipflixCastResolution(client, item, resolution);
       return resolution;
     } catch (e) {
+      if (e is StateError && Sipflix4kPolicy.isRefusal(e.message.toString())) {
+        rethrow;
+      }
       // A pick is worth less than the cast itself. Whatever refused the
       // constrained request gets one open retry, where the server is free to
       // offer anything, before the failure reaches the user.
@@ -98,6 +107,7 @@ class GoogleCastProvider implements CastProvider, CastTransportControls {
         'open retry for ${item.id}: ${retry.playMethod.name}, '
         'container=${retry.container ?? '?'}',
       );
+      await verifySipflixCastResolution(client, item, retry);
       return retry;
     }
   }

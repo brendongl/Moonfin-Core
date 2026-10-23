@@ -1,3 +1,4 @@
+import '../../../sipflix/sipflix_cast_source_policy.dart';
 import 'package:get_it/get_it.dart';
 import 'package:logger/logger.dart';
 import 'package:playback_core/playback_core.dart';
@@ -61,6 +62,9 @@ class DlnaProvider implements CastProvider, CastTransportControls {
   }) async {
     final client =
         _clientFactory.getClientIfExists(item.serverId) ?? GetIt.instance<MediaServerClient>();
+    final prepared = await prepareSipflixCastSource(client, item, mediaSourceId);
+    item = prepared.item;
+    mediaSourceId = prepared.sourceId;
     final hasExplicitIndices = audioStreamIndex != null || subtitleStreamIndex != null;
     final resolution = await _resolverForClient(client).resolve(
       item,
@@ -71,6 +75,7 @@ class DlnaProvider implements CastProvider, CastTransportControls {
       enableDirectPlay: !hasExplicitIndices,
       enableDirectStream: !hasExplicitIndices,
     );
+    await verifySipflixCastResolution(client, item, resolution);
     final streamUrl = resolution.streamUrl;
 
     await _native.playToDlnaDevice(

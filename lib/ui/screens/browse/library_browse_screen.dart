@@ -1478,9 +1478,9 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      _vm.isNetworkError
-                          ? AppLocalizations.of(context).unableToConnectToServer
-                          : describeError(_vm.error!, AppLocalizations.of(context)),
+                      describeError(_vm.error!, AppLocalizations.of(context),
+                        serverRef: _vm.serverRef, operation: 'Load library',
+                        networkError: _vm.isNetworkError),
                       style: TextStyle(
                         color: _vm.isBookLibrary ? const Color(0xFFF4E6D5) : Colors.white,
                       ),
@@ -2223,7 +2223,10 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  AppLocalizations.of(context).failedToLoadLibrary,
+                  _vm.pageError == null
+                      ? AppLocalizations.of(context).failedToLoadLibrary
+                      : describeError(_vm.pageError!, AppLocalizations.of(context),
+                          serverRef: _vm.serverRef, operation: 'Load more titles'),
                   style: const TextStyle(color: Colors.white70),
                 ),
                 const SizedBox(height: 12),

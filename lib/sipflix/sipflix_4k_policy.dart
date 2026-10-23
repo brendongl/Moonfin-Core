@@ -67,7 +67,8 @@ class Sipflix4kPolicy {
       message == refusalMessage ||
       message == unsupportedDeviceMessage ||
       message == onlyAvailableIn4kMessage ||
-      message == deltaHdOnlyMessage;
+      message == deltaHdOnlyMessage ||
+      message == castQueueUnsupportedMessage;
 
   /// Whether [sources] (a title's full, unfiltered media sources) has at
   /// least one version this fragile-decoder box could actually play.
@@ -157,6 +158,10 @@ class Sipflix4kPolicy {
       streams.whereType<Map>().map((m) => m.cast<String, dynamic>()),
     );
   }
+
+  static const String castQueueUnsupportedMessage =
+      'This remote player cannot keep the selected versions for a queue. '
+      'Cast one title at a time.';
 
   static const String deltaHdOnlyMessage =
       'This version is above 1080p and is not available on Delta. '

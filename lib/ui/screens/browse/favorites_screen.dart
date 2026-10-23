@@ -450,9 +450,9 @@ class _FavoritesScreenState extends State<FavoritesScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              _vm.isNetworkError
-                  ? AppLocalizations.of(context).unableToConnectToServer
-                  : describeError(_vm.error!, AppLocalizations.of(context)),
+              describeError(_vm.error!, AppLocalizations.of(context),
+                serverRef: _vm.serverRef, operation: 'Load favorites',
+                networkError: _vm.isNetworkError),
               style: const TextStyle(color: Colors.white),
             ),
             const SizedBox(height: 16),

@@ -1,3 +1,4 @@
+import '../../sipflix/sipflix_4k_policy.dart';
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
@@ -2148,7 +2149,8 @@ class DownloadService extends ChangeNotifier implements AutoDownloadDownloader {
     final query = _encodeQuery(
       _baseDownloadParams(
         item,
-        includeMediaSourceId: item.mediaSources.length > 1,
+        includeMediaSourceId: item.mediaSources.length > 1 ||
+            Sipflix4kPolicy.prefersSmallest(item.serverId),
       ),
     );
     return '${_client.baseUrl}/Items/${mediaSourceItemId(item)}/Download${query.isEmpty ? '' : '?$query'}';

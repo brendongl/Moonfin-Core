@@ -74,7 +74,7 @@ Future<void> showRemotePlayToSessionDialog(
     if (!context.mounted) return;
     final l10n = AppLocalizations.of(context);
     messenger.showSnackBar(
-      SnackBar(content: Text(l10n.castingFailed(describeError(e, l10n)))),
+      SnackBar(content: Text(l10n.castingFailed(describeError(e, l10n, serverRef: item.serverId, operation: 'Cast')))),
     );
   }
 }

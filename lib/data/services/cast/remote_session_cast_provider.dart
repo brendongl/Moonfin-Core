@@ -1,3 +1,5 @@
+import '../../../sipflix/sipflix_cast_source_policy.dart';
+import '../../../sipflix/sipflix_4k_policy.dart';
 import 'package:get_it/get_it.dart';
 import 'package:server_core/server_core.dart';
 
@@ -101,7 +103,17 @@ class RemoteSessionCastProvider
     _activeSessionId = target.id;
     _activeServerId = item.serverId;
     final client = _clientFor(item);
-    final itemIds = (queueItems == null || queueItems.isEmpty)
+    // Emby's remote queue accepts only one source id for the entire command.
+    // Sending a mixed-version queue would let subsequent titles ignore policy.
+    if (Sipflix4kPolicy.prefersSmallest(item.serverId) &&
+        queueItems != null && queueItems.length > 1) {
+      throw StateError(Sipflix4kPolicy.castQueueUnsupportedMessage);
+    }
+    final prepared = await prepareSipflixCastSource(client, item, mediaSourceId);
+    item = prepared.item;
+    mediaSourceId = prepared.sourceId;
+    final itemIds = (Sipflix4kPolicy.prefersSmallest(item.serverId) ||
+        queueItems == null || queueItems.isEmpty)
         ? <String>[item.id]
         : queueItems.map((entry) => entry.id).toList(growable: false);
     await client.sessionApi.sendPlayCommand(

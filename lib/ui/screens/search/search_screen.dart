@@ -1077,7 +1077,7 @@ class _SearchScreenState extends State<SearchScreen>
         final l10n = AppLocalizations.of(context);
         return Center(
           child: Text(
-            l10n.searchFailedError(describeError(_vm.error!, l10n)),
+            l10n.searchFailedError(describeError(_vm.error!, l10n, serverRef: _vm.serverRef, operation: 'Search')),
             style: const TextStyle(color: Colors.redAccent),
           ),
         );

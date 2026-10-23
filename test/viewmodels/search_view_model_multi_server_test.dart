@@ -154,19 +154,23 @@ void main() {
   test(
     'program search keeps the episode name from the server response',
     () async {
-      when(() => itemsSearch(itemsApis['a']!)).thenAnswer(
-        (_) async => {
+      when(() => itemsSearch(itemsApis['a']!)).thenAnswer((inv) async {
+        // Match the requested bucket, as a real server does. Returning a
+        // Program to every type bucket duplicates it five times.
+        final types = inv.namedArguments[#includeItemTypes] as List<String>?;
+        return {
           'Items': [
-            {
-              'Id': 'p1',
-              'Type': 'Program',
-              'Name': 'College Football',
-              'EpisodeTitle': 'South Alabama at Kentucky',
-              'ChannelId': 'c1',
-            },
+            if (types == null || types.contains('Program'))
+              {
+                'Id': 'p1',
+                'Type': 'Program',
+                'Name': 'College Football',
+                'EpisodeTitle': 'South Alabama at Kentucky',
+                'ChannelId': 'c1',
+              },
           ],
-        },
-      );
+        };
+      });
       final vm = await search(query: 'Kentucky');
       final item = vm.results.single.items.single;
       expect(vm.results.single.itemTypes, ['Program']);

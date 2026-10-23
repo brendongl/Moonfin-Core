@@ -278,7 +278,10 @@ class LibraryBrowseViewModel extends ChangeNotifier {
   Object? get error => _error;
   bool _isNetworkError = false;
   bool get isNetworkError => _isNetworkError;
+  String get serverRef => _client.baseUrl;
 
+  Object? _pageError;
+  Object? get pageError => _pageError;
   String? _pageErrorMessage;
   String? get pageErrorMessage => _pageErrorMessage;
 
@@ -561,6 +564,7 @@ class LibraryBrowseViewModel extends ChangeNotifier {
     _playlistCategoryMap.clear();
     _totalCountKnown = true;
     _hasMoreFromPageSize = false;
+    _pageError = null;
     _pageErrorMessage = null;
     notifyListeners();
 
@@ -700,6 +704,7 @@ class LibraryBrowseViewModel extends ChangeNotifier {
         _loadingMore = false;
         return;
       }
+      _pageError = null;
       _pageErrorMessage = null;
       // Stop on a page the server had nothing left for, not on one that only
       // repeated what is already shown, which a random sort does by chance.
@@ -711,6 +716,7 @@ class LibraryBrowseViewModel extends ChangeNotifier {
       // A page that failed is a page still owed. Leaving hasMore alone keeps
       // it retriable, and the message stops the grid from reading as complete.
       if (generation == _fetchGeneration) {
+        _pageError = e;
         _pageErrorMessage = e.toString();
       }
     }

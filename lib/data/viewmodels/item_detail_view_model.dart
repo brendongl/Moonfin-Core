@@ -228,6 +228,7 @@ class ItemDetailViewModel extends ChangeNotifier {
   static const _episodeOverviewFields = 'Overview,RunTimeTicks,UserData';
 
   final MediaServerClient _client;
+  String get serverRef => _client.baseUrl;
   final ItemMutationRepository _mutations;
   final MdbListRepository _mdbListRepository;
   final TmdbRepository _tmdbRepository;

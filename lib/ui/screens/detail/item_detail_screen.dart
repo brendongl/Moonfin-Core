@@ -803,7 +803,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen>
             ),
             const SizedBox(height: 16),
             Text(
-              describeError(_viewModel.error!, AppLocalizations.of(context)),
+              describeError(_viewModel.error!, AppLocalizations.of(context),
+                serverRef: _viewModel.serverRef, operation: 'Load title'),
               style: const TextStyle(color: Colors.white54),
             ),
             const SizedBox(height: 16),

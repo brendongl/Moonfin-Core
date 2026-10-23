@@ -194,7 +194,9 @@ void main() {
       await vm.loadMore();
       expect(vm.hasMore, isTrue);
       expect(_ids(vm), ['item-1', 'item-2']);
+      expect(vm.pageError, isA<TimeoutException>());
       await vm.loadMore();
+      expect(vm.pageError, isNull);
       expect(_ids(vm), ['item-1', 'item-2', 'item-3', 'item-4']);
     },
   );
