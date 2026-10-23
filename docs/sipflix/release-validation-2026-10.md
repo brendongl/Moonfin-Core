@@ -6,7 +6,9 @@ This candidate is not approved for customer release. Branch `sipflix-2.8-sync` i
 
 The initial integrated source passed 5,433 Flutter tests (one skipped) and 272 non-live server package tests. Subsequent review fixes have targeted regression coverage. Current run evidence and exact commits are recorded in `/home/brendongl/overnight/1563049878060539927/work/`; use the latest checkpoint rather than treating these counts as a device pass.
 
-No APK has been built yet. Before the first build, inspect the installed `com.sipflix.moonfin` certificate on SNPtv1tv2 during its allowed window and compare with the local signing key. Keep the existing application ID. Bump `sipflix_tv_build_number` for every APK. Run the `moonfin-flutter-build-verify` skill, inspect a unique new-code string in both compiled `libapp.so` architectures, and verify APK signing certificate/version. An APK size alone is not proof.
+The first verified candidate APK is **1.2.0 / 2400051**, built from commit `01b49f6b4` on 23 October 2026. Its SHA-256 is `bffa64884aed44aacdd1ee86cd10cf79b41331e5167dc367f6e56f17710cb7f8` (109,612,909 bytes). Both ARM binaries contain the new account-vault, Delta HD, public pairing and DUMB markers. The APK certificate matches the freshly pulled SNPtv1tv2 and SNPBackarea installations: `0fa4ebec8dd3e211dc3cf4bc9f9679e3ca705a88a6f6d37f965daddfd61dc99a`. The first build attempt, 2400050, failed Java/Kotlin target validation in file_picker; explicitly matching that dependency's Java 17 target fixed the clean rebuild.
+
+Keep the existing application ID and signing key. Bump `sipflix_tv_build_number` for every APK. Run the `moonfin-flutter-build-verify` skill, inspect unique new-code strings in both compiled `libapp.so` architectures, and verify APK signing certificate/version. An APK size alone is not proof. Build and device evidence is in `work/apk-gate/` under the mission directory; a successful build is not a completed hardware matrix.
 
 Tester builds require:
 
@@ -30,6 +32,10 @@ Use the approved build toolchain and Android TV flavor in the mission brief. The
 | SNPBackarea | Discover current tunnel; verify model | 01:00–07:00 ICT only | New verified candidate, signed in |
 
 Never use customer devices or the bedroom Onn. Record original APK/version/signature and package inventory before installing, so restoration is concrete. Use only SipflixTester and the configured non-admin DUMB tester. Do not restart or configure Emby or DUMB. Do not publish OTA or merge production branches.
+
+On 23 October Brendon explicitly requested the signing check, push and tests immediately. SNPtv1tv2's certificate was inspected without interrupting its playback. Backarea was confirmed idle before its in-place upgrade. Its prior 1.0.0 APK is preserved. Max's prior 2.4.0-sipflix.17 APK is preserved with its published hash and matching certificate. Onn and Pro had no `com.sipflix.moonfin`; their installs are pending an end-state decision because the broker does not permit removing that built-in package afterward. Do not bypass the broker to restore them.
+
+The original overnight controller closed at its configured 70% weekly usage ceiling. This direct build/test request does not rearm it; the old scheduled overnight wake must not be reported as active.
 
 For each device record evidence, not just a checkbox:
 
