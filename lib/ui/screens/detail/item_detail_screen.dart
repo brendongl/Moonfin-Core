@@ -502,6 +502,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen>
           // Sipflix fork: default to the smallest version this box can play.
           _selectedMediaSourceId = Sipflix4kPolicy.defaultSource(
             item.mediaSources,
+            serverRef: item.serverId,
           )?['Id']?.toString();
         } else {
           _selectedMediaSourceId = null;
@@ -7047,14 +7048,18 @@ class DetailActionButtonsState extends State<DetailActionButtons> {
         ),
       if (isPlayableMedia &&
           // Sipflix fork: only the versions this box can play count.
-          Sipflix4kPolicy.selectableSources(item.mediaSources).length > 1 &&
+          Sipflix4kPolicy.selectableSources(
+            item.mediaSources, serverRef: item.serverId,
+          ).length > 1 &&
           shows(DetailButton.version))
         DetailButton.version: _DetailActionButton(
           label: l10n.version,
           icon: Icons.video_file,
           onPressed: () => _showVersionSelector(
             context,
-            Sipflix4kPolicy.selectableSources(item.mediaSources),
+            Sipflix4kPolicy.selectableSources(
+            item.mediaSources, serverRef: item.serverId,
+          ),
           ),
           isActive: widget.selectedMediaSourceId != null,
           activeColor: AppColorScheme.accent,
@@ -10437,11 +10442,15 @@ Map<String, dynamic>? selectedMediaSourceForItem(
   // Sipflix fork: match against the already-filtered list, not the raw
   // mediaSources — a selectedMediaSourceId that names a 4K source (a stale
   // selection, a deep link, a server-remembered source) must never bypass
-  // Sipflix4kPolicy on a fragile-decoder box. This is the single choke point
+  // Sipflix4kPolicy for this server/device. This is the single choke point
   // everything funnels through, so it enforces the policy itself.
-  final selectable = Sipflix4kPolicy.selectableSources(item.mediaSources);
+  final selectable = Sipflix4kPolicy.selectableSources(
+            item.mediaSources, serverRef: item.serverId,
+          );
   if (selectedMediaSourceId == null || selectedMediaSourceId.isEmpty) {
-    return Sipflix4kPolicy.defaultSource(item.mediaSources);
+    return Sipflix4kPolicy.defaultSource(
+      item.mediaSources, serverRef: item.serverId,
+    );
   }
   for (final source in selectable) {
     final id = source['Id']?.toString();
@@ -10449,7 +10458,9 @@ Map<String, dynamic>? selectedMediaSourceForItem(
       return source;
     }
   }
-  return Sipflix4kPolicy.defaultSource(item.mediaSources);
+  return Sipflix4kPolicy.defaultSource(
+      item.mediaSources, serverRef: item.serverId,
+    );
 }
 
 List<Map<String, dynamic>> mediaStreamsForItem(

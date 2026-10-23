@@ -1,3 +1,4 @@
+import '../../../../sipflix/sipflix_4k_policy.dart';
 import 'dart:async' show unawaited;
 import 'dart:math' as math;
 
@@ -726,7 +727,9 @@ class _SpotlightDetailContentState extends State<SpotlightDetailContent> {
     }
 
     final hasMultipleVersions =
-        showVersionBadge && item.mediaSources.length > 1;
+        showVersionBadge && Sipflix4kPolicy.selectableSources(
+          item.mediaSources, serverRef: item.serverId,
+        ).length > 1;
 
     if (isEpisode) {
       final seriesLogoHeight = (_landscape ? 90.0 : 64.0) * logoScaleFactor;

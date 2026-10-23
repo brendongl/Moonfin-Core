@@ -1,4 +1,5 @@
 import '../util/platform_detection.dart';
+import 'sipflix_servers.dart';
 
 /// Sipflix: which boxes may be handed HEVC/4K, and which sources may only
 /// ever direct play.
@@ -31,11 +32,13 @@ class Sipflix4kPolicy {
     required String soc,
   }) {
     final ids = [hardware, board, soc].map((s) => s.toLowerCase());
-    return ids.any((id) =>
-        id.startsWith('sun') ||
-        id.contains('allwinner') ||
-        id == 'apollo' ||
-        _allwinnerSocs.contains(id));
+    return ids.any(
+      (id) =>
+          id.startsWith('sun') ||
+          id.contains('allwinner') ||
+          id == 'apollo' ||
+          _allwinnerSocs.contains(id),
+    );
   }
 
   /// Width at or above which a video counts as 4K. Scope-cropped UHD
@@ -63,7 +66,8 @@ class Sipflix4kPolicy {
   static bool isRefusal(String? message) =>
       message == refusalMessage ||
       message == unsupportedDeviceMessage ||
-      message == onlyAvailableIn4kMessage;
+      message == onlyAvailableIn4kMessage ||
+      message == deltaHdOnlyMessage;
 
   /// Whether [sources] (a title's full, unfiltered media sources) has at
   /// least one version this fragile-decoder box could actually play.
@@ -154,33 +158,112 @@ class Sipflix4kPolicy {
     );
   }
 
-  /// The versions this device should be offered. A box that can't play 4K
-  /// never sees the 4K versions of a title, unless 4K is all there is, so the
-  /// refusal message still explains why nothing plays.
+  static const String deltaHdOnlyMessage =
+      'This version is above 1080p and is not available on Delta. '
+      'Choose an HD version or another title.';
+
+  static bool isDelta(String? serverRef) =>
+      serverRef != null && SipflixServers.defForRef(serverRef)?.key == 'emby2';
+
+  static bool prefersSmallest(String? serverRef) {
+    if (serverRef == null) return false;
+    final key = SipflixServers.defForRef(serverRef)?.key;
+    return key == 'AlphaV2' || key == 'emby2';
+  }
+
+  static bool exceedsDeltaHd(Iterable<Map<String, dynamic>> streams) =>
+      streams.any((stream) {
+        if (stream['Type'] != 'Video') return false;
+        final height = stream['Height'];
+        final width = stream['Width'];
+        return (height is num && height > 1080) ||
+            (width is num && width >= uhdMinWidth);
+      });
+
+  static bool isAboveDeltaHdSource(Map source) {
+    final height = source['Height'];
+    final width = source['Width'];
+    if ((height is num && height > 1080) ||
+        (width is num && width >= uhdMinWidth)) {
+      return true;
+    }
+    final streams = source['MediaStreams'];
+    return streams is List &&
+        exceedsDeltaHd(
+          streams.whereType<Map>().map((m) => m.cast<String, dynamic>()),
+        );
+  }
+
+  /// Strict server restriction, independent of device codec capabilities or
+  /// whether a source could direct play. Resolved streams recheck thin items.
+  static String? sourceRefusal(
+    dynamic item,
+    List<Map<String, dynamic>> streams,
+    String? mediaSourceId,
+  ) {
+    String? serverRef;
+    List<Map<String, dynamic>> sources = const [];
+    try {
+      serverRef = item.serverId as String?;
+      sources = (item.mediaSources as List)
+          .whereType<Map>()
+          .map((m) => m.cast<String, dynamic>())
+          .toList();
+    } catch (_) {}
+    if (!isDelta(serverRef)) return null;
+    if (exceedsDeltaHd(streams)) return deltaHdOnlyMessage;
+    if (sources.isEmpty) return null; // The resolver supplies the final check.
+    if (selectableSources(sources, serverRef: serverRef).isEmpty) {
+      return deltaHdOnlyMessage;
+    }
+    if (mediaSourceId != null) {
+      final matches = sources.where(
+        (s) => s['Id']?.toString() == mediaSourceId,
+      );
+      if (matches.isEmpty || isAboveDeltaHdSource(matches.first)) {
+        return deltaHdOnlyMessage;
+      }
+    }
+    return null;
+  }
+
+  /// Delta never offers a forbidden-only fallback. Other servers retain the
+  /// fragile-device fallback so the existing explanatory refusal can show.
   static List<Map<String, dynamic>> selectableSources(
     List<Map<String, dynamic>> sources, {
     bool? cannotPlay4k,
+    String? serverRef,
   }) {
+    if (isDelta(serverRef)) {
+      return sources.where((s) => !isAboveDeltaHdSource(s)).toList();
+    }
     if (!(cannotPlay4k ?? isFragileHevcDecoder)) return sources;
     final hd = sources.where((s) => !isUhdSource(s)).toList();
     return hd.isEmpty ? sources : hd;
   }
 
-  /// The version to start on when the viewer hasn't picked one: the smallest
-  /// non-4K file on a box that can't play 4K (lightest on a weak box and link),
-  /// else the server's first. Versions with no known size lose to any sized one.
+  /// Alpha and Delta default to the smallest eligible file on every device.
+  /// A manual eligible choice is retained by callers. Missing/nonfinite sizes
+  /// lose to known positive sizes; ties retain server order.
   static Map<String, dynamic>? defaultSource(
     List<Map<String, dynamic>> sources, {
     bool? cannotPlay4k,
+    String? serverRef,
   }) {
-    if (sources.isEmpty) return null;
-    final options = selectableSources(sources, cannotPlay4k: cannotPlay4k);
-    if (identical(options, sources)) return sources.first;
+    final options = selectableSources(
+      sources,
+      cannotPlay4k: cannotPlay4k,
+      serverRef: serverRef,
+    );
+    if (options.isEmpty) return null;
+    if (!prefersSmallest(serverRef) && identical(options, sources)) {
+      return options.first;
+    }
     Map<String, dynamic>? best;
     num bestSize = 0;
     for (final s in options) {
       final size = s['Size'];
-      if (size is! num || size <= 0) continue;
+      if (size is! num || !size.isFinite || size <= 0) continue;
       if (best == null || size < bestSize) {
         best = s;
         bestSize = size;

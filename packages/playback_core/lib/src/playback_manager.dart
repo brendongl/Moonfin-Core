@@ -272,6 +272,17 @@ class PlaybackManager implements AudioOwnable {
   )?
   directPlayOnlyPolicy;
 
+  /// Host can hydrate thin queue items and choose a default before resolving.
+  /// Explicit selections are passed through for the host to preserve or reject.
+  Future<({dynamic item, String? mediaSourceId})> Function(
+    dynamic item, String? mediaSourceId,
+  )? sourceSelectionPolicy;
+
+  /// Strict refusal checked before resolving and again against resolved streams.
+  String? Function(
+    dynamic item, List<Map<String, dynamic>> streams, String? mediaSourceId,
+  )? sourceRefusalPolicy;
+
   /// Whether the current source may only direct play, so no bitrate step-down
   /// applies to it.
   bool get currentIsDirectPlayOnly =>
@@ -2704,7 +2715,7 @@ class PlaybackManager implements AudioOwnable {
     }
     enableDirectPlay = enableDirectPlay && _directPlayAllowedForQueue;
 
-    final item = queueService.currentItem;
+    var item = queueService.currentItem;
     if (item == null || _backend == null) {
       _setBringupState(const PlaybackBringupState.idle());
       return;
@@ -2793,6 +2804,31 @@ class PlaybackManager implements AudioOwnable {
       ),
     );
     _externalSubsLoaded = null;
+
+    try {
+      final selectSource = sourceSelectionPolicy;
+      if (selectSource != null) {
+        final selected = await selectSource(item, _mediaSourceId)
+            .timeout(resolveDeadline);
+        if (sessionToken != _playbackSessionToken) return;
+        item = selected.item;
+        _mediaSourceId = selected.mediaSourceId;
+      }
+      final refused = sourceRefusalPolicy?.call(
+        item, _knownMediaStreamsForItem(item, _mediaSourceId), _mediaSourceId,
+      );
+      if (refused != null) {
+        _emitDirectPlayOnlyFailure(refused, item, null);
+        return;
+      }
+    } catch (error) {
+      if (sessionToken == _playbackSessionToken) {
+        _emitFailedBringupState(_bringupFailureEvent(error),
+          'Could not choose a playable version. Try again.',
+          queueItem: item, resolution: null);
+      }
+      rethrow;
+    }
 
     // Sipflix fork: a direct-play-only source (4K the provider refuses to
     // transcode) never goes through the transcoder, whatever asked for it (a
@@ -2963,6 +2999,20 @@ class PlaybackManager implements AudioOwnable {
         );
       }
       rethrow;
+    }
+
+    final sourceRefusal = sourceRefusalPolicy?.call(
+      item, resolution.mediaStreams, resolution.mediaSourceId,
+    );
+    if (sourceRefusal != null) {
+      try {
+        await _service?.stopTranscoding(resolution)
+            .timeout(const Duration(seconds: 5));
+      } catch (_) {}
+      if (sessionToken != _playbackSessionToken) return;
+      _cleanupPreemptedSession(item, resolution, startPosition);
+      _emitDirectPlayOnlyFailure(sourceRefusal, item, resolution);
+      return;
     }
 
     // Sipflix fork: the item payload can be too thin to recognise a

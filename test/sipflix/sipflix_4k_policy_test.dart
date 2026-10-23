@@ -1,21 +1,142 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:moonfin/sipflix/sipflix_4k_policy.dart';
+import 'package:moonfin/sipflix/sipflix_servers.dart';
 
 class _Item {
-  _Item(this.mediaSources);
+  _Item(this.mediaSources, [this.serverId = '']);
+  final String serverId;
   final List<Map<String, dynamic>> mediaSources;
 }
 
 Map<String, dynamic> _source(String id, int width, [int? size]) => {
-      'Id': id,
-      if (size != null) 'Size': size,
-      'MediaStreams': [
-        {'Type': 'Video', 'Width': width, 'Height': width * 9 ~/ 16},
-        {'Type': 'Audio'},
-      ],
-    };
+  'Id': id,
+  if (size != null) 'Size': size,
+  'MediaStreams': [
+    {'Type': 'Video', 'Width': width, 'Height': width * 9 ~/ 16},
+    {'Type': 'Audio'},
+  ],
+};
 
 void main() {
+  group('server version policy', () {
+    final alpha = SipflixServers.alphaV2.recordId;
+    final delta = SipflixServers.delta.recordId;
+    test('Alpha chooses smallest even on capable hardware and every route', () {
+      for (final ref in [
+        alpha,
+        ...SipflixServers.alphaV2.routes.map((r) => r.url),
+      ]) {
+        expect(
+          Sipflix4kPolicy.defaultSource(
+            [_source('large', 1920, 9000), _source('small', 3840, 1000)],
+            cannotPlay4k: false,
+            serverRef: ref,
+          )?['Id'],
+          'small',
+        );
+      }
+    });
+    test('Delta strips >1080p and cropped UHD on every route', () {
+      for (final ref in [
+        delta,
+        ...SipflixServers.delta.routes.map((r) => r.url),
+      ]) {
+        final cropped = _source('cropped', 3840, 100)
+          ..['MediaStreams'][0]['Height'] = 1000;
+        expect(
+          Sipflix4kPolicy.selectableSources(
+            [_source('1440p', 2560, 200), cropped, _source('hd', 1920, 900)],
+            cannotPlay4k: false,
+            serverRef: ref,
+          ).map((s) => s['Id']),
+          ['hd'],
+        );
+      }
+    });
+    test('Delta UHD-only never falls back to forbidden source', () {
+      final sources = [_source('uhd', 3840, 100)];
+      expect(
+        Sipflix4kPolicy.selectableSources(sources, serverRef: delta),
+        isEmpty,
+      );
+      expect(Sipflix4kPolicy.defaultSource(sources, serverRef: delta), isNull);
+      expect(
+        Sipflix4kPolicy.sourceRefusal(_Item(sources, delta), [], null),
+        Sipflix4kPolicy.deltaHdOnlyMessage,
+      );
+    });
+    test('unknown and invalid sizes lose, equal sizes preserve order', () {
+      final sources = [
+        _source('missing', 1920),
+        _source('zero', 1920, 0),
+        _source('nan', 1920)..['Size'] = double.nan,
+        _source('infinite', 1920)..['Size'] = double.infinity,
+        _source('a', 1920, 100),
+        _source('b', 1280, 100),
+      ];
+      expect(
+        Sipflix4kPolicy.defaultSource(sources, serverRef: alpha)?['Id'],
+        'a',
+      );
+    });
+    test('manual allowed ID stays allowed, forbidden or stale ID refuses', () {
+      final item = _Item([_source('uhd', 3840), _source('hd', 1920)], delta);
+      expect(Sipflix4kPolicy.sourceRefusal(item, [], 'hd'), isNull);
+      for (final id in ['uhd', 'stale']) {
+        expect(
+          Sipflix4kPolicy.sourceRefusal(item, [], id),
+          Sipflix4kPolicy.deltaHdOnlyMessage,
+        );
+      }
+    });
+    test('thin Delta item checked against resolved streams', () {
+      final item = _Item([], delta);
+      expect(Sipflix4kPolicy.sourceRefusal(item, [], null), isNull);
+      expect(
+        Sipflix4kPolicy.sourceRefusal(item, [
+          {'Type': 'Video', 'Height': 1440, 'Width': 2560},
+        ], 'resolved'),
+        Sipflix4kPolicy.deltaHdOnlyMessage,
+      );
+      expect(
+        Sipflix4kPolicy.sourceRefusal(item, [
+          {'Type': 'Video', 'Height': 1080, 'Width': 1920},
+        ], 'resolved'),
+        isNull,
+      );
+    });
+    test('other servers retain capable-device ordering', () {
+      final sources = [
+        _source('first', 3840, 900),
+        _source('small', 1920, 100),
+      ];
+      for (final ref in [
+        SipflixServers.iDuck.recordId,
+        'https://s.sipflix.net',
+        'unknown',
+      ]) {
+        expect(
+          Sipflix4kPolicy.defaultSource(
+            sources,
+            serverRef: ref,
+            cannotPlay4k: false,
+          )?['Id'],
+          'first',
+        );
+      }
+    });
+    test('Alpha fragile decoder protection survives smallest preference', () {
+      expect(
+        Sipflix4kPolicy.defaultSource(
+          [_source('uhd', 3840, 10), _source('hd', 1920, 900)],
+          serverRef: alpha,
+          cannotPlay4k: true,
+        )?['Id'],
+        'hd',
+      );
+    });
+  });
+
   group('isFragileHevcHardware', () {
     bool fragile(String hardware, String board, String soc) =>
         Sipflix4kPolicy.isFragileHevcHardware(
@@ -43,7 +164,9 @@ void main() {
     });
 
     test('scope-cropped UHD still counts as 4K', () {
-      final item = _Item([_source('a', 3840)..['MediaStreams'][0]['Height'] = 1600]);
+      final item = _Item([
+        _source('a', 3840)..['MediaStreams'][0]['Height'] = 1600,
+      ]);
       expect(Sipflix4kPolicy.directPlayOnly(item, const [], 'a'), isNotNull);
     });
 
@@ -63,7 +186,10 @@ void main() {
       final streams = [
         {'Type': 'Video', 'Width': 3840},
       ];
-      expect(Sipflix4kPolicy.directPlayOnly(Object(), streams, null), isNotNull);
+      expect(
+        Sipflix4kPolicy.directPlayOnly(Object(), streams, null),
+        isNotNull,
+      );
     });
 
     test('an item without sources is not refused', () {
@@ -88,7 +214,11 @@ void main() {
     final sd = _source('sd', 1280);
 
     test('4K versions are hidden when an HD one exists', () {
-      final out = Sipflix4kPolicy.selectableSources([uhd, hd, sd], cannotPlay4k: true);
+      final out = Sipflix4kPolicy.selectableSources([
+        uhd,
+        hd,
+        sd,
+      ], cannotPlay4k: true);
       expect(out.map((s) => s['Id']), ['hd', 'sd']);
     });
 
@@ -98,7 +228,10 @@ void main() {
     });
 
     test('capable boxes see everything', () {
-      final out = Sipflix4kPolicy.selectableSources([uhd, hd], cannotPlay4k: false);
+      final out = Sipflix4kPolicy.selectableSources([
+        uhd,
+        hd,
+      ], cannotPlay4k: false);
       expect(out.length, 2);
     });
 
@@ -108,28 +241,50 @@ void main() {
       final mid = _source('mid', 1920, 4000);
       final huge = _source('uhd', 3840, 1000);
       expect(
-        Sipflix4kPolicy.defaultSource([huge, big, small, mid], cannotPlay4k: true)?['Id'],
+        Sipflix4kPolicy.defaultSource([
+          huge,
+          big,
+          small,
+          mid,
+        ], cannotPlay4k: true)?['Id'],
         'small',
       );
     });
 
-    test('missing Size falls back to the first HD version, sized beats unsized', () {
-      expect(Sipflix4kPolicy.defaultSource([uhd, sd, hd], cannotPlay4k: true)?['Id'], 'sd');
+    test(
+      'missing Size falls back to the first HD version, sized beats unsized',
+      () {
+        expect(
+          Sipflix4kPolicy.defaultSource([
+            uhd,
+            sd,
+            hd,
+          ], cannotPlay4k: true)?['Id'],
+          'sd',
+        );
+        expect(
+          Sipflix4kPolicy.defaultSource([
+            uhd,
+            _source('a', 1920),
+            _source('b', 1920, 500),
+          ], cannotPlay4k: true)?['Id'],
+          'b',
+        );
+      },
+    );
+
+    test('4K-only stays 4K', () {
       expect(
-        Sipflix4kPolicy.defaultSource(
-          [uhd, _source('a', 1920), _source('b', 1920, 500)],
-          cannotPlay4k: true,
-        )?['Id'],
-        'b',
+        Sipflix4kPolicy.defaultSource([uhd], cannotPlay4k: true)?['Id'],
+        'uhd',
       );
     });
 
-    test('4K-only stays 4K', () {
-      expect(Sipflix4kPolicy.defaultSource([uhd], cannotPlay4k: true)?['Id'], 'uhd');
-    });
-
     test('capable boxes keep the server order', () {
-      expect(Sipflix4kPolicy.defaultSource([uhd, hd], cannotPlay4k: false)?['Id'], 'uhd');
+      expect(
+        Sipflix4kPolicy.defaultSource([uhd, hd], cannotPlay4k: false)?['Id'],
+        'uhd',
+      );
       expect(Sipflix4kPolicy.defaultSource([], cannotPlay4k: true), isNull);
     });
   });
@@ -191,9 +346,10 @@ void main() {
 
     test('true when an HD source exists alongside 4K', () {
       expect(
-        Sipflix4kPolicy.hasPlayableAlternative(
-          [_source('uhd', 3840), _source('hd', 1920)],
-        ),
+        Sipflix4kPolicy.hasPlayableAlternative([
+          _source('uhd', 3840),
+          _source('hd', 1920),
+        ]),
         isTrue,
       );
     });

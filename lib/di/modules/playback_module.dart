@@ -405,6 +405,25 @@ void registerPlaybackModule() {
   ).measuredBpsForActiveServer;
   manager.directPlayOnlyPolicy = Sipflix4kPolicy.directPlayOnly;
   manager.directPlayOnlyUnavailable = Sipflix4kPolicy.unavailableOnThisDevice;
+  manager.sourceRefusalPolicy = Sipflix4kPolicy.sourceRefusal;
+  manager.sourceSelectionPolicy = (item, selectedId) async {
+    if (item is! AggregatedItem) return (item: item, mediaSourceId: selectedId);
+    var prepared = item;
+    // Home rows and auto-next often contain no version metadata. Fetch it
+    // before choosing, so server ordering cannot bypass the smallest policy.
+    if (Sipflix4kPolicy.prefersSmallest(item.serverId) &&
+        item.mediaSources.isEmpty && !item.isAudioLike &&
+        item.type != 'TvChannel' && item.type != 'LiveTvChannel') {
+      final client = _resolveClientForServerId(item.serverId);
+      if (client == null) throw StateError('Cannot load versions for this server');
+      final raw = await client.itemsApi.getItem(item.id);
+      prepared = AggregatedItem(id: item.id, serverId: item.serverId, rawData: raw);
+    }
+    final preferredId = selectedId ?? Sipflix4kPolicy.defaultSource(
+      prepared.mediaSources, serverRef: prepared.serverId,
+    )?['Id']?.toString();
+    return (item: prepared, mediaSourceId: preferredId);
+  };
 
   // The streams of one kind belonging to whatever is playing, or null when
   // that isn't an episode and so has no series to remember a choice for.
