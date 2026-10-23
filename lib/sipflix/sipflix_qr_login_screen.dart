@@ -160,7 +160,7 @@ class _SipflixQrLoginScreenState extends State<SipflixQrLoginScreen> {
   /// The old server refused this box's token. Sign in again with the stored
   /// credentials wherever the account is now.
   Future<void> _reprobe(Server server) async {
-    final creds = await SipflixCredentialVault().read();
+    final creds = await SipflixCredentialVault().read(serverId: server.id);
     if (creds == null || !mounted) return;
     setState(() {
       _busy = true;

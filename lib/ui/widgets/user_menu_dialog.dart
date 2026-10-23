@@ -201,7 +201,7 @@ class _AccountDialogState extends State<_AccountDialog> {
     setState(() => _busy = true);
 
     await _sessionRepo.destroyCurrentSession();
-    await SipflixCredentialVault().clear();
+    await SipflixCredentialVault().clearAll();
     await _serverRepo.loadStoredServers();
     final serverIds = _serverRepo.servers.map((s) => s.id).toList();
     for (final id in serverIds) {

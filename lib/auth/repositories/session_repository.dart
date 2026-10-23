@@ -314,7 +314,7 @@ class SessionRepository {
           // silently, and if that fails asks every Sipflix server where the
           // account went (an admin move 401s the old token) instead of
           // dropping the customer at a login page.
-          final vaultCredentials = await SipflixCredentialVault().read();
+          final vaultCredentials = await SipflixCredentialVault().read(serverId: serverId);
           if (vaultCredentials != null &&
               SipflixServers.isSipflixServerRecord(server) &&
               await _trySilentReauth(
@@ -382,6 +382,11 @@ class SessionRepository {
 
     _activeServerId = serverId;
     _activeUserId = userId;
+    if (SipflixServers.isSipflixServerRecord(server)) {
+      final vault = SipflixCredentialVault();
+      await vault.read(serverId: serverId); // Bind a legacy single-account install.
+      await vault.activate(serverId);
+    }
 
     _userRepository.setCurrentUser(user);
     await _authPrefs.setLastServerId(serverId);
@@ -708,16 +713,18 @@ class SessionRepository {
       return false;
     }
     try {
-      final vaultCredentials = await SipflixCredentialVault().read();
+      final vaultCredentials = await SipflixCredentialVault().read(serverId: serverId);
       final server = _serverRepository.getServer(serverId);
 
       if (vaultCredentials != null &&
           server != null &&
           SipflixServers.isSipflixServerRecord(server) &&
-          await _trySilentReauth(client, serverId, vaultCredentials)) {
+          await _trySilentReauth(client, serverId, vaultCredentials,
+            expectedUserId: _activeUserId)) {
         return true;
       }
 
+      if (_activeServerId != serverId || !_isActiveServerClient(client, serverId)) return false;
       await _signOutAfterUnauthorized(
         serverId,
         hadStoredCredentials: vaultCredentials != null,
@@ -737,11 +744,14 @@ class SessionRepository {
     ({String username, String password}) credentials, {
     String? expectedUserId,
   }) async {
+    final activeServerAtEntry = _activeServerId;
+    final activeUserAtEntry = _activeUserId;
     try {
       final result = await client.authApi.authenticateByName(
         credentials.username,
         credentials.password,
       );
+      if (_activeServerId != activeServerAtEntry || _activeUserId != activeUserAtEntry) return false;
       final accessToken = result['AccessToken'] as String?;
       final userJson = result['User'] as Map<String, dynamic>?;
       final userId =

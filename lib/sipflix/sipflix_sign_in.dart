@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
 import 'package:server_core/server_core.dart';
@@ -5,11 +7,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../auth/models/login_state.dart';
 import '../auth/models/server.dart';
+import '../auth/models/user.dart';
 import '../auth/repositories/auth_repository.dart';
 import '../auth/repositories/server_repository.dart';
 import '../auth/repositories/session_repository.dart';
 import '../auth/store/authentication_store.dart';
-import '../auth/store/credential_store.dart';
 import '../data/services/media_server_client_factory.dart';
 import '../ui/navigation/app_router.dart';
 import '../ui/navigation/destinations.dart';
@@ -18,14 +20,21 @@ import '../ui/widgets/overlay_sheet.dart';
 import 'sipflix_account_probe.dart';
 import 'sipflix_credential_vault.dart';
 import 'sipflix_servers.dart';
+import 'sipflix_route_selector.dart';
+import 'sipflix_error_reporter.dart';
 
 /// Sipflix: signs the box in to whichever server holds the account.
 ///
 /// The customer types a username and password once; every server is asked in
 /// parallel ([SipflixAccountProbe]) and the box connects to the one that says
-/// yes, or lets the customer choose when several do. A box holds one server at
-/// a time — favourites and watch history live on the server — so connecting
-/// drops every other Sipflix server record.
+/// yes, or lets the customer choose when several do. One session is active,
+/// while the other servers retain their own saved identities and credentials.
+class SipflixSavedAccount {
+  const SipflixSavedAccount(this.server, this.user);
+  final Server server;
+  final PrivateUser user;
+}
+
 class SipflixSignIn {
   final SipflixAccountProbe _probe;
   final ServerRepository _serverRepo;
@@ -33,7 +42,6 @@ class SipflixSignIn {
   final AuthRepository _authRepo;
   final SessionRepository _sessionRepo;
   final MediaServerClientFactory _clientFactory;
-  final CredentialStore _credentialStore;
   final SipflixCredentialVault vault;
 
   SipflixSignIn({
@@ -43,15 +51,13 @@ class SipflixSignIn {
     required AuthRepository authRepo,
     required SessionRepository sessionRepo,
     required MediaServerClientFactory clientFactory,
-    required CredentialStore credentialStore,
     required this.vault,
-  })  : _probe = probe,
-        _serverRepo = serverRepo,
-        _authStore = authStore,
-        _authRepo = authRepo,
-        _sessionRepo = sessionRepo,
-        _clientFactory = clientFactory,
-        _credentialStore = credentialStore;
+  }) : _probe = probe,
+       _serverRepo = serverRepo,
+       _authStore = authStore,
+       _authRepo = authRepo,
+       _sessionRepo = sessionRepo,
+       _clientFactory = clientFactory;
 
   factory SipflixSignIn.fromGetIt() {
     final getIt = GetIt.instance;
@@ -62,16 +68,15 @@ class SipflixSignIn {
       authRepo: getIt<AuthRepository>(),
       sessionRepo: getIt<SessionRepository>(),
       clientFactory: getIt<MediaServerClientFactory>(),
-      credentialStore: getIt<CredentialStore>(),
       vault: SipflixCredentialVault(),
     );
   }
 
   /// The Sipflix server record this box holds now, if any.
   Server? get currentRecord => SipflixServers.findServer(
-        _serverRepo.servers,
-        preferId: _sessionRepo.activeServerId,
-      );
+    _serverRepo.servers,
+    preferId: _sessionRepo.activeServerId,
+  );
 
   /// Ask [servers] whether they hold the account, trying each server's saved
   /// route first so a customer's route choice survives.
@@ -98,6 +103,78 @@ class SipflixSignIn {
   Future<void> release(Iterable<SipflixProbeResult> unused) =>
       _probe.release(unused);
 
+  /// Save another accepted account without changing the active session.
+  Future<bool> remember(
+    SipflixProbeResult accepted, {
+    required String username,
+    required String password,
+  }) async {
+    final active = _sessionRepo.activeServerId;
+    if (active != null)
+      await vault.read(serverId: active); // Bind legacy credentials first.
+    final def = accepted.server;
+    final route = accepted.routeUrl;
+    final result = accepted.authResult;
+    if (route == null || result == null) return false;
+    final existing = _authStore.getServer(def.recordId);
+    await _authStore.putServer(
+      existing?.copyWith(name: def.name, address: route) ??
+          def.toRecord(address: route),
+    );
+    final client = _clientFactory.getClient(
+      serverId: def.recordId,
+      serverType: def.serverType,
+      baseUrl: route,
+    );
+    client.baseUrl = route;
+    final state = await _authRepo.adoptAuthResult(
+      result: result,
+      client: client,
+      serverId: def.recordId,
+      fallbackName: username,
+      activate: false,
+    );
+    if (state is! Authenticated) return false;
+    await vault.save(
+      username,
+      password,
+      serverId: def.recordId,
+      makeActive: false,
+    );
+    return true;
+  }
+
+  List<SipflixSavedAccount> get savedAccounts => [
+    for (final server in _authStore.getServers())
+      if (SipflixServers.isSipflixServerRecord(server))
+        for (final user in _authStore.getUsers(server.id))
+          if (user.accessToken.isNotEmpty) SipflixSavedAccount(server, user),
+  ];
+
+  /// Reuse the selected server's own token, validating it before session setup.
+  /// No password is sent to other servers and no saved account is deleted.
+  Future<bool> connectSaved(SipflixSavedAccount account) async {
+    await _serverRepo.loadStoredServers();
+    final credentials = await vault.read(serverId: account.server.id);
+    final matching = credentials?.username == account.user.name;
+    final ok = await _sessionRepo.switchCurrentSession(
+      serverId: account.server.id,
+      userId: account.user.id,
+      username: matching ? credentials!.username : null,
+      password: matching ? credentials!.password : null,
+      validateToken: true,
+    );
+    if (ok) {
+      await vault.activate(account.server.id);
+      if (GetIt.instance.isRegistered<SipflixRouteSelector>()) {
+        unawaited(
+          GetIt.instance<SipflixRouteSelector>().refreshIfStale(force: true),
+        );
+      }
+    }
+    return ok;
+  }
+
   /// Make [chosen] this box's server and sign in with its probe token.
   /// Returns false when the session could not be started.
   Future<bool> connect(
@@ -105,28 +182,16 @@ class SipflixSignIn {
     required String username,
     required String password,
   }) async {
+    final active = _sessionRepo.activeServerId;
+    if (active != null)
+      await vault.read(serverId: active); // Preserve a legacy active account.
     final def = chosen.server;
     final result = chosen.authResult;
     final route = chosen.routeUrl;
     if (result == null || route == null) return false;
 
-    // Leaving a live session on another server: end it properly so that
-    // server stops listing this box as signed in.
-    final active = _sessionRepo.activeServerId;
-    if (active != null && active != def.recordId) {
-      await _sessionRepo.destroyCurrentSession();
-    }
-
-    // One server per box. Drop every other Sipflix record with its users and
-    // token, so nothing can restore a session on the server the account left.
-    await _serverRepo.loadStoredServers();
-    for (final s in List.of(_serverRepo.servers)) {
-      if (s.id == def.recordId) continue;
-      if (!SipflixServers.isSipflixServerRecord(s)) continue;
-      await _credentialStore.deleteToken(s.id);
-      await _serverRepo.deleteServer(s.id);
-    }
-
+    // Switching keeps saved identities. SessionRepository stops playback and
+    // disconnects the old socket without deleting the other server's login.
     final existing = _authStore.getServer(def.recordId);
     await _authStore.putServer(
       existing?.copyWith(name: def.name, address: route) ??
@@ -136,7 +201,7 @@ class SipflixSignIn {
 
     final client = _clientFactory.getClient(
       serverId: def.recordId,
-      serverType: ServerType.emby,
+      serverType: def.serverType,
       baseUrl: route,
     );
     // A cached client may still point at another route of this server.
@@ -156,7 +221,14 @@ class SipflixSignIn {
       username: username,
       password: password,
     );
-    if (ok) await vault.save(username, password);
+    if (ok) {
+      await vault.save(username, password, serverId: def.recordId);
+      if (GetIt.instance.isRegistered<SipflixRouteSelector>()) {
+        unawaited(
+          GetIt.instance<SipflixRouteSelector>().refreshIfStale(force: true),
+        );
+      }
+    }
     return ok;
   }
 }
@@ -256,6 +328,11 @@ Future<String?> runSipflixSignIn(
 
   switch (verdict) {
     case SipflixSignInFailed():
+      SipflixErrorReporter.capture(
+        'sign-in',
+        verdict.message,
+        code: verdict.reason.name,
+      );
       return verdict.message;
     case SipflixSignInAccepted(:final accepted):
       SipflixProbeResult? chosen;
@@ -264,7 +341,7 @@ Future<String?> runSipflixSignIn(
       } else {
         if (!context.mounted) {
           await flow.release(accepted);
-          return null;
+          return 'The TV sign-in screen has closed. Scan the new QR code.';
         }
         chosen = await showSipflixServerPicker(context, accepted);
       }
@@ -272,7 +349,19 @@ Future<String?> runSipflixSignIn(
         await flow.release(accepted);
         return 'Choose a server to continue.';
       }
-      await flow.release(accepted.where((r) => r != chosen));
+      if (!context.mounted) {
+        await flow.release(accepted);
+        return 'The TV sign-in screen has closed. Scan the new QR code.';
+      }
+      for (final other in accepted.where((r) => r != chosen)) {
+        if (!await flow.remember(
+          other,
+          username: username,
+          password: password,
+        )) {
+          await flow.release([other]);
+        }
+      }
       final ok = await flow.connect(
         chosen,
         username: username,
@@ -292,8 +381,9 @@ Future<String?> runSipflixSignIn(
 Future<void> runSipflixSwitchServer(BuildContext context) async {
   final flow = SipflixSignIn.fromGetIt();
   final current = flow.currentRecord;
-  final currentDef =
-      current == null ? null : SipflixServers.defForServer(current);
+  final currentDef = current == null
+      ? null
+      : SipflixServers.defForServer(current);
 
   final confirmed = await showFocusRestoringDialog<bool>(
     context: context,
@@ -323,11 +413,59 @@ Future<void> runSipflixSwitchServer(BuildContext context) async {
   final root = appRouter.routerDelegate.navigatorKey.currentContext;
   if (root == null || !root.mounted) return;
 
-  final creds = await flow.vault.read();
+  final saved = flow.savedAccounts;
+  if (saved.isNotEmpty) {
+    var addAccount = false;
+    final picked = await showFocusRestoringDialog<SipflixSavedAccount>(
+      context: root,
+      builder: (ctx) => AlertDialog.adaptive(
+        title: const Text('Choose an account'),
+        content: const Text(
+          'Each server keeps its own favourites and watch history.',
+        ),
+        actions: [
+          for (final account in saved)
+            adaptiveDialogAction(
+              onPressed: () => Navigator.of(ctx).pop(account),
+              child: Text('${account.server.name} — ${account.user.name}'),
+            ),
+          adaptiveDialogAction(
+            onPressed: () {
+              addAccount = true;
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('Sign in to another account'),
+          ),
+          adaptiveDialogAction(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+    if (addAccount) {
+      appRouter.go(
+        '${Destinations.qrLogin}?serverId=${current?.id ?? SipflixServers.serverId}',
+      );
+      return;
+    }
+    if (picked == null) return;
+    if (await flow.connectSaved(picked)) {
+      appRouter.go(Destinations.home);
+    } else if (root.mounted) {
+      ScaffoldMessenger.maybeOf(root)?.showSnackBar(
+        const SnackBar(
+          content: Text('Could not switch accounts. Please sign in again.'),
+        ),
+      );
+    }
+    return;
+  }
+
+  final creds = await flow.vault.read(serverId: current?.id);
   if (creds == null || currentDef == null) {
     // Nothing stored to ask the other servers with: sign in again, which asks
     // every server and offers the choice.
-    await GetIt.instance<SessionRepository>().destroyCurrentSession();
     appRouter.go(
       '${Destinations.qrLogin}?serverId=${current?.id ?? SipflixServers.serverId}',
     );
@@ -360,32 +498,41 @@ Future<void> runSipflixSwitchServer(BuildContext context) async {
   }
 
   if (accepted.isEmpty) {
-    final anyDown =
-        results.any((r) => r.outcome == SipflixProbeOutcome.unreachable);
-    messenger?.showSnackBar(SnackBar(
-      content: Text(anyDown
-          ? SipflixSignInFailure.unreachable.message
-          : 'Your account is only on ${currentDef.name}.'),
-    ));
+    final anyDown = results.any(
+      (r) => r.outcome == SipflixProbeOutcome.unreachable,
+    );
+    messenger?.showSnackBar(
+      SnackBar(
+        content: Text(
+          anyDown
+              ? SipflixSignInFailure.unreachable.message
+              : 'Your account is only on ${currentDef.name}.',
+        ),
+      ),
+    );
     return;
   }
 
-  final chosen = await showSipflixServerPicker(
-    root,
-    [
-      SipflixProbeResult(
-        server: currentDef,
-        outcome: SipflixProbeOutcome.accepted,
-      ),
-      ...accepted,
-    ],
-    currentKey: currentDef.key,
-  );
+  final chosen = await showSipflixServerPicker(root, [
+    SipflixProbeResult(
+      server: currentDef,
+      outcome: SipflixProbeOutcome.accepted,
+    ),
+    ...accepted,
+  ], currentKey: currentDef.key);
   if (chosen == null || chosen.server.key == currentDef.key) {
     await flow.release(accepted);
     return;
   }
-  await flow.release(accepted.where((r) => r != chosen));
+  for (final other in accepted.where((r) => r != chosen)) {
+    if (!await flow.remember(
+      other,
+      username: creds.username,
+      password: creds.password,
+    )) {
+      await flow.release([other]);
+    }
+  }
   final ok = await flow.connect(
     chosen,
     username: creds.username,
