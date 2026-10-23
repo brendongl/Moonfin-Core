@@ -41,6 +41,9 @@ class SipflixErrorMessage {
     const operations = {
       'Request',
       'Load library',
+      'Load libraries',
+      'Save library visibility',
+      'Save library order',
       'Load more titles',
       'Load favorites',
       'Search',

@@ -16,7 +16,7 @@ WorkingDirectory=%h/.local/share/sipflix-companion
 ExecStart=/usr/bin/node --max-old-space-size=96 %h/.local/share/sipflix-companion/pairing.mjs
 Environment=NODE_ENV=production
 Environment=HOST=127.0.0.1
-Environment=PORT=8787
+Environment=PORT=8789
 # Create separately with mode 0600; server-only Airtable configuration.
 EnvironmentFile=%h/.config/sipflix-companion.env
 Restart=on-failure

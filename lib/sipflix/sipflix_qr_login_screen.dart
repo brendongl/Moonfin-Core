@@ -185,6 +185,7 @@ class _SipflixQrLoginScreenState extends State<SipflixQrLoginScreen> {
         username: username,
         password: password,
         movedFromKey: movedFromKey,
+        isCancelled: () => !mounted || (_pairing?.isExpired ?? false),
       );
     } catch (_) {
       error = 'Sign-in failed. Please try again.';

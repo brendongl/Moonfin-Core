@@ -153,6 +153,11 @@ part 'panel/advanced_options_screen.dart';
 part 'panel/syncplay_settings_screen.dart';
 part 'panel/settings_panel_tiles.dart';
 
+/// Configuration remains reachable when the user switches requests off locally.
+@visibleForTesting
+bool sipflixSeerrSettingsAvailable(PluginSyncService service) =>
+    service.pluginAvailable && service.seerrEnabled;
+
 bool get _showThemeEditorEntry =>
     PlatformDetection.isWeb && webRuntimeConfig.pluginMode;
 
@@ -382,7 +387,9 @@ class _SettingsSidePanelState extends ConsumerState<SettingsSidePanel> {
                     context.pushSettingsScreen(const DownloadSettingsScreen()),
               ),
             if (SipflixSettingsMode.advanced &&
-                GetIt.instance<PluginSyncService>().seerrAvailable)
+                sipflixSeerrSettingsAvailable(
+                  GetIt.instance<PluginSyncService>(),
+                ))
               _PanelEntry(
                 icon: Icons.hub,
                 title: l10n.integrations,

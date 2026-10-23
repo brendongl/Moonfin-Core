@@ -6,6 +6,7 @@ import 'package:server_core/server_core.dart' hide ImageType;
 import '../../../data/models/aggregated_library.dart';
 import '../../../data/repositories/user_views_repository.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../sipflix/sipflix_error_message.dart';
 import '../../navigation/home_refresh_bus.dart';
 import '../../widgets/adaptive/adaptive_list_section.dart';
 import '../../widgets/settings/clean_settings_typography.dart';
@@ -29,6 +30,7 @@ class _LibraryVisibilityScreenState extends State<LibraryVisibilityScreen> {
   UserConfiguration? _config;
   bool _isLoading = true;
   bool _loadFailed = false;
+  Object? _loadError;
   Future<void> _saveQueue = Future.value();
   int _lastQueuedOpId = 0;
 
@@ -50,6 +52,7 @@ class _LibraryVisibilityScreenState extends State<LibraryVisibilityScreen> {
     setState(() {
       _isLoading = true;
       _loadFailed = false;
+      _loadError = null;
     });
     _load();
   }
@@ -71,13 +74,14 @@ class _LibraryVisibilityScreenState extends State<LibraryVisibilityScreen> {
           _firstLibraryFocusNode = FocusNode(debugLabel: 'first_library_tile');
         }
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       // Saying nothing here reads as a server with no libraries, which is the
       // one thing it never means.
       setState(() {
         _isLoading = false;
         _loadFailed = true;
+        _loadError = error;
       });
     }
   }
@@ -112,9 +116,17 @@ class _LibraryVisibilityScreenState extends State<LibraryVisibilityScreen> {
       try {
         await _viewsRepo.updateUserConfiguration(updated);
         homeRefreshBus.requestAfterNavigation();
-      } catch (_) {
+      } catch (error) {
         if (!mounted || opId != _lastQueuedOpId) return;
         setState(() => _config = config);
+        final message = SipflixErrorMessage.describe(
+          error,
+          operation: 'Save library visibility',
+        );
+        if (message != null) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(message)));
+        }
       }
     });
     return _saveQueue;
@@ -144,7 +156,14 @@ class _LibraryVisibilityScreenState extends State<LibraryVisibilityScreen> {
                 child: Center(child: CircularProgressIndicator()),
               )
             else if (_loadFailed)
-              _buildMessage(l10n.failedToLoadLibraries, onRetry: _retry)
+              _buildMessage(
+                SipflixErrorMessage.describe(
+                      _loadError!,
+                      operation: 'Load libraries',
+                    ) ??
+                    l10n.failedToLoadLibraries,
+                onRetry: _retry,
+              )
             else if (_libraries != null && _config != null) ...[
               if (_libraries!.isEmpty) _buildMessage(l10n.noLibrariesFound),
               ..._buildLibraryVisibilityTiles(),

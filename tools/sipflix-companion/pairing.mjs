@@ -16,9 +16,6 @@ export function createPairingServer({ now = Date.now, ttlMs = 300000, maxSession
     const time = now();
     for (const [id, s] of sessions) {
       if (s.expires <= time) sessions.delete(id);
-      else if (s.state === 'processing' && time - s.processingAt > 60000) {
-        s.state = 'failed'; s.message = 'The TV did not finish signing in. Try again on the TV.'; s.credentials = null;
-      }
     }
     for (const [key, value] of rates) if (value.until <= time) rates.delete(key);
   }
@@ -41,7 +38,8 @@ export function createPairingServer({ now = Date.now, ttlMs = 300000, maxSession
     catch { throw Object.assign(new Error('Invalid request'), { status: 400 }); }
   }
   const server = http.createServer(async (req, res) => {
-    res.setHeader('Cache-Control', 'no-store');
+    // Keep credentials uncached and prevent proxy analytics injection.
+    res.setHeader('Cache-Control', 'no-store, no-transform');
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'");
@@ -80,7 +78,7 @@ export function createPairingServer({ now = Date.now, ttlMs = 300000, maxSession
       }
       if (role === 'tv' && action === 'poll') {
         if (s.state === 'submitted') {
-          const credentials = s.credentials; s.credentials=null; s.state='processing'; s.processingAt=now();
+          const credentials = s.credentials; s.credentials=null; s.state='processing';
           reply(200,{state:s.state,attempt:s.attempt,credentials}); return;
         }
         reply(200,{state:s.state}); return;

@@ -2000,7 +2000,7 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
 bool _sipflixSearchVisible(String id, {required bool advanced}) {
   final slug = id.split('.').first;
   if ((slug == 'seerr' || slug == 'services' || slug == 'settings-sync') &&
-      !GetIt.instance<PluginSyncService>().seerrAvailable) {
+      !sipflixSeerrSettingsAvailable(GetIt.instance<PluginSyncService>())) {
     return false;
   }
   if (!SipflixSettingsMode.showRetired &&

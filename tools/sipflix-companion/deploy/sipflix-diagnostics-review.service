@@ -1,0 +1,19 @@
+# Install only after live read/model validation and explicit weekly-post authorization.
+# Loop boundaries/retry/independent-judge gates are in weekly-review.py.
+[Unit]
+Description=Weekly bounded Sipflix diagnostic review
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/.local/share/sipflix-companion/deploy
+ExecStart=/usr/bin/python3 %h/.local/share/sipflix-companion/deploy/weekly-review.py --output %h/.local/state/sipflix-companion/weekly-review.txt --post
+TimeoutStartSec=6min
+KillMode=control-group
+Restart=no
+UMask=0077
+NoNewPrivileges=yes
+# No env-file import here: Python re-reads the private config each invocation,
+# and deliberately excludes Airtable/Discord tokens from Claude subprocess env.
+StandardOutput=null
+StandardError=journal

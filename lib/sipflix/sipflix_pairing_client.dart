@@ -25,6 +25,8 @@ class SipflixPairingClient {
     required this.onStatus,
   });
 
+  bool get isExpired => _expires != null && !DateTime.now().isBefore(_expires!);
+
   Future<Map<String, dynamic>> _post(
     String path, [
     Map<String, dynamic> data = const {},

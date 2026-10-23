@@ -299,8 +299,14 @@ Future<String?> runSipflixSignIn(
   required String password,
   String? movedFromKey,
   SipflixSignIn? signIn,
+  bool Function()? isCancelled,
+  Future<SipflixProbeResult?> Function(BuildContext, List<SipflixProbeResult>)?
+  pickServer,
 }) async {
   final flow = signIn ?? SipflixSignIn.fromGetIt();
+  bool cancelled() => !context.mounted || (isCancelled?.call() ?? false);
+  const closed = 'The TV sign-in attempt ended. Open a new QR code.';
+  if (cancelled()) return closed;
   final results = await flow.probe(username, password);
   final verdict = SipflixAccountProbe.classify(results);
 
@@ -313,6 +319,11 @@ Future<String?> runSipflixSignIn(
       );
       return verdict.message;
     case SipflixSignInAccepted(:final accepted):
+      final pending = accepted.toSet();
+      if (cancelled()) {
+        await flow.release(pending);
+        return closed;
+      }
       SipflixProbeResult? chosen;
       if (accepted.length == 1) {
         chosen = accepted.single;
@@ -321,15 +332,18 @@ Future<String?> runSipflixSignIn(
           await flow.release(accepted);
           return 'The TV sign-in screen has closed. Scan the new QR code.';
         }
-        chosen = await showSipflixServerPicker(context, accepted);
+        chosen = await (pickServer ?? showSipflixServerPicker)(
+          context,
+          accepted,
+        );
       }
       if (chosen == null) {
         await flow.release(accepted);
         return 'Choose a server to continue.';
       }
-      if (!context.mounted) {
-        await flow.release(accepted);
-        return 'The TV sign-in screen has closed. Scan the new QR code.';
+      if (cancelled()) {
+        await flow.release(pending);
+        return closed;
       }
       for (final other in accepted.where((r) => r != chosen)) {
         if (!await flow.remember(
@@ -339,6 +353,15 @@ Future<String?> runSipflixSignIn(
         )) {
           await flow.release([other]);
         }
+        pending.remove(other);
+        if (cancelled()) {
+          await flow.release(pending);
+          return closed;
+        }
+      }
+      if (cancelled()) {
+        await flow.release(pending);
+        return closed;
       }
       final ok = await flow.connect(
         chosen,
@@ -346,9 +369,14 @@ Future<String?> runSipflixSignIn(
         password: password,
       );
       if (!ok) return 'Sign-in failed. Please try again.';
+      // Connect may have completed while the screen/attempt was cancelled.
+      // Do not navigate or acknowledge that obsolete attempt. The established
+      // session owns its token now, so do not log it out here.
+      if (cancelled()) return closed;
       if (movedFromKey != null && chosen.server.key != movedFromKey) {
         await SipflixMigrationNotice.setPending(chosen.server.name);
       }
+      if (cancelled()) return closed;
       appRouter.go(Destinations.home);
       return null;
   }

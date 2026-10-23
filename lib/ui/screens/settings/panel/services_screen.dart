@@ -63,7 +63,9 @@ class _ServicesScreenState extends State<_ServicesScreen> {
       children: [
         adaptiveListSection(
           children: [
-            if (GetIt.instance<PluginSyncService>().seerrAvailable)
+            if (sipflixSeerrSettingsAvailable(
+              GetIt.instance<PluginSyncService>(),
+            ))
               _TvSettingsListTile(
                 autofocus: true,
                 leading: Image.asset(

@@ -10,6 +10,7 @@ import 'package:server_core/server_core.dart' show UserConfiguration;
 import '../../../data/models/aggregated_library.dart';
 import '../../../data/repositories/user_views_repository.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../sipflix/sipflix_error_message.dart';
 import '../../../util/focus/scroll_utils.dart';
 import '../../../util/game_library.dart';
 import '../../../util/platform_detection.dart';
@@ -41,6 +42,7 @@ class _LibraryOrderScreenState extends State<LibraryOrderScreen> {
   Set<String> _hidden = const {};
   bool _isLoading = true;
   bool _loadFailed = false;
+  Object? _loadError;
 
   /// Where a remote lands when the list first shows, kept even as rows move.
   String? _initialFocusId;
@@ -84,6 +86,7 @@ class _LibraryOrderScreenState extends State<LibraryOrderScreen> {
     setState(() {
       _isLoading = true;
       _loadFailed = false;
+      _loadError = null;
     });
     _load();
   }
@@ -103,11 +106,12 @@ class _LibraryOrderScreenState extends State<LibraryOrderScreen> {
         _isLoading = false;
         _initialFocusId = libraries.isEmpty ? null : libraries.first.id;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
         _loadFailed = true;
+        _loadError = error;
       });
     }
   }
@@ -154,13 +158,19 @@ class _LibraryOrderScreenState extends State<LibraryOrderScreen> {
         );
         _savedOrder = libraries;
         homeRefreshBus.requestNowOrAfterNavigation();
-      } catch (_) {
+      } catch (error) {
         if (!mounted || saveId != _lastQueuedSaveId) return;
         _saveTimer?.cancel();
         setState(() => _libraries = _savedOrder);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(AppLocalizations.of(context).libraryOrderSaveFailed),
+            content: Text(
+              SipflixErrorMessage.describe(
+                    error,
+                    operation: 'Save library order',
+                  ) ??
+                  AppLocalizations.of(context).libraryOrderSaveFailed,
+            ),
           ),
         );
       }
@@ -190,7 +200,14 @@ class _LibraryOrderScreenState extends State<LibraryOrderScreen> {
                         child: Center(child: CircularProgressIndicator()),
                       )
                     else if (_loadFailed)
-                      _buildMessage(l10n.failedToLoadLibraries, onRetry: _retry)
+                      _buildMessage(
+                        SipflixErrorMessage.describe(
+                              _loadError!,
+                              operation: 'Load libraries',
+                            ) ??
+                            l10n.failedToLoadLibraries,
+                        onRetry: _retry,
+                      )
                     else
                       _buildMessage(l10n.noLibrariesFound),
                   ],
