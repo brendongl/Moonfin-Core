@@ -447,6 +447,11 @@ class MainActivity : AudioServiceActivity(), GamepadsCompatibleActivity {
             when (call.method) {
                 // Reading a crash record can mean parsing its tombstone, so it
                 // stays off the main thread.
+                "sipflixAndroidId" -> result.success(
+                    android.provider.Settings.Secure.getString(
+                        contentResolver, android.provider.Settings.Secure.ANDROID_ID,
+                    ),
+                )
                 "previousExits" -> thread(name = "moonfin-exit-history") {
                     val exits = exitHistory.takeUnreportedExits()
                     handler.post { result.success(exits) }

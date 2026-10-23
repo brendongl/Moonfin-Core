@@ -1,0 +1,47 @@
+# User service template only; not installed by this change.
+# Healthy: independent GET /health is 200 and public /pair/assets resolve.
+# Boundaries: only pairing memory and Airtable AppErrors writes; no other services.
+# Retries: at most 3 starts/5min, then failed; operator inspects journal.
+# Judge: public HTTPS canary + tester flow, never just systemctl active.
+# Release/public rollout remains the owner's decision after those gates.
+[Unit]
+Description=Sipflix phone pairing and bounded diagnostic relay
+After=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/sipflix-companion
+ExecStart=/usr/bin/node --max-old-space-size=96 %h/.local/share/sipflix-companion/pairing.mjs
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=8787
+# Create separately with mode 0600; server-only Airtable configuration.
+EnvironmentFile=%h/.config/sipflix-companion.env
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=15
+KillSignal=SIGTERM
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=
+MemoryMax=192M
+TasksMax=32
+LimitNOFILE=256
+StandardOutput=null
+StandardError=journal
+
+[Install]
+WantedBy=default.target

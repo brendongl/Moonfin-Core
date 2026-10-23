@@ -5,6 +5,7 @@ import 'package:server_emby/server_emby.dart';
 import 'package:server_jellyfin/server_jellyfin.dart';
 
 import '../../util/server_url.dart';
+import '../../sipflix/sipflix_error_reporter.dart';
 import '../offline/connectivity_aware_media_server_client.dart';
 import '../offline/offline_catalog.dart';
 import '../repositories/offline_repository.dart';
@@ -113,12 +114,23 @@ class MediaServerClientFactory {
     required ServerType serverType,
     required String baseUrl,
   }) {
+    final reportErrors = InterceptorsWrapper(onError: (error, handler) {
+      // Plugin discovery's 404 is an expected absence, not a user-facing fault.
+      final expectedMissingPlugin = error.response?.statusCode == 404 &&
+          error.requestOptions.uri.path.contains('/Moonfin/');
+      if (!expectedMissingPlugin && error.type != DioExceptionType.cancel) {
+        SipflixErrorReporter.capture('network', error,
+            baseUrl: error.requestOptions.baseUrl);
+      }
+      handler.next(error);
+    });
     switch (serverType) {
       case ServerType.jellyfin:
         return JellyfinMediaServerClient(
           baseUrl: baseUrl,
           deviceInfo: deviceInfo,
           interceptors: [
+            reportErrors,
             if (onForbidden != null)
               InterceptorsWrapper(
                 onError: (error, handler) {
@@ -132,6 +144,7 @@ class MediaServerClientFactory {
         return EmbyMediaServerClient(
           baseUrl: baseUrl,
           deviceInfo: deviceInfo,
+          interceptors: [reportErrors],
         );
     }
   }

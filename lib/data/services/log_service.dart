@@ -7,6 +7,7 @@ import 'package:get_it/get_it.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../preference/user_preferences.dart';
+import '../../sipflix/sipflix_error_reporter.dart';
 import '../../util/platform_detection.dart';
 import 'media_server_client_factory.dart';
 import 'plugin_sync_service.dart';
@@ -175,6 +176,9 @@ class LogService extends ChangeNotifier {
     LogLevel level = LogLevel.debug,
     Object? error,
   }) {
+    if (level == LogLevel.error) {
+      SipflixErrorReporter.capture(category.name, error ?? message);
+    }
     assert(() {
       developer.log(
         message,
@@ -225,6 +229,7 @@ class LogService extends ChangeNotifier {
   /// logging toggle, which is off by default and too late to turn on once
   /// the crash it would have explained has already happened.
   void logCrash(String message, Object error) {
+    SipflixErrorReporter.capture('crash', error);
     _append(
       LogEntry(
         time: DateTime.now(),

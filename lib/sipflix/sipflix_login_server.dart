@@ -12,24 +12,36 @@ class SipflixLoginServer {
 
   final String serverName;
   final Future<String?> Function(String username, String password)
-      onCredentials;
+  onCredentials;
 
   /// How long the phone waits for an answer. A server choice waiting on the
   /// TV outlasts it; the phone is then pointed at the TV instead.
   static const Duration answerWait = Duration(seconds: 30);
   HttpServer? _server;
+  bool _accepting = true;
+  final Duration responseTimeout;
+  int? get listeningPort => _server?.port;
 
-  SipflixLoginServer({required this.serverName, required this.onCredentials});
+  SipflixLoginServer({
+    required this.serverName,
+    required this.onCredentials,
+    this.responseTimeout = answerWait,
+  });
 
   bool get isRunning => _server != null;
 
-  Future<void> start() async {
+  Future<void> start({int bindPort = port}) async {
     if (_server != null) return;
-    _server = await HttpServer.bind(InternetAddress.anyIPv4, port);
+    _server = await HttpServer.bind(InternetAddress.anyIPv4, bindPort);
     _server!.listen(_handle, onError: (_) {});
   }
 
+  void stopAccepting() {
+    _accepting = false;
+  }
+
   Future<void> stop() async {
+    stopAccepting();
     final s = _server;
     _server = null;
     await s?.close(force: true);
@@ -42,7 +54,21 @@ class SipflixLoginServer {
         res.headers.contentType = ContentType.html;
         res.write(_loginHtml(serverName));
       } else if (req.method == 'POST' && req.uri.path == '/login') {
-        final body = await utf8.decoder.bind(req).join();
+        if (!_accepting) {
+          res.statusCode = HttpStatus.gone;
+          res.write('The TV sign-in screen is closed. Open a new QR code.');
+          return;
+        }
+        final bytes = <int>[];
+        await for (final chunk in req.timeout(const Duration(seconds: 10))) {
+          bytes.addAll(chunk);
+          if (bytes.length > 4096) {
+            res.statusCode = HttpStatus.requestEntityTooLarge;
+            res.write('Request too large');
+            return;
+          }
+        }
+        final body = utf8.decode(bytes);
         final params = Uri.splitQueryString(body);
         final username = (params['username'] ?? '').trim();
         final password = params['password'] ?? '';
@@ -52,7 +78,10 @@ class SipflixLoginServer {
           return;
         }
         final error = await onCredentials(username, password)
-            .timeout(answerWait, onTimeout: () => null)
+            .timeout(
+              responseTimeout,
+              onTimeout: () => 'The TV has not finished signing in. Check the TV screen; this is not a confirmed sign-in.',
+            )
             .catchError((Object _) => 'Sign-in failed. Please try again.');
         if (error == null) {
           res.statusCode = HttpStatus.ok;
@@ -102,7 +131,8 @@ class SipflixLoginServer {
     return null;
   }
 
-  static String _loginHtml(String serverName) => '''
+  static String _loginHtml(String serverName) =>
+      '''
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -135,6 +165,7 @@ button:disabled { opacity:0.6; }
 <div class="container">
 <h1>Login to $serverName</h1>
 <p class="subtitle">Enter your credentials to sign in on your TV</p>
+<p class="subtitle">Don't know your details? <a href="https://wa.me/84387592427" rel="noreferrer">Message FlixBot</a></p>
 <form id="loginForm">
 <div class="form-group"><label for="username">Username</label>
 <input type="text" id="username" name="username" required autocomplete="username" autofocus></div>

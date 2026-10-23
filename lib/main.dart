@@ -9,6 +9,7 @@ import 'package:jellyfin_preference/jellyfin_preference.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:server_emby/server_emby.dart' show EmbyMediaServerClient;
 import 'sipflix/sipflix_4k_policy.dart';
+import 'sipflix/sipflix_error_reporter.dart';
 import 'package:moonfin_design/moonfin_design.dart' show LiquidGlassWidgets;
 import 'package:path_provider/path_provider.dart';
 import 'package:playback_core/playback_core.dart';
@@ -175,6 +176,7 @@ void _installCrashHandlers() {
 }
 
 void _captureCrash(Object error, StackTrace? stack) {
+  SipflixErrorReporter.capture('crash', error);
   try {
     final errorLine = error.toString().split('\n').first;
     final frameLine = stack?.toString().split('\n').first.trim() ?? '';

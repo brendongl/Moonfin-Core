@@ -11,6 +11,7 @@ import '../auth/repositories/server_repository.dart';
 import '../ui/navigation/destinations.dart';
 import 'sipflix_credential_vault.dart';
 import 'sipflix_login_server.dart';
+import 'sipflix_pairing_client.dart';
 import 'sipflix_servers.dart';
 import 'sipflix_sign_in.dart';
 
@@ -38,6 +39,8 @@ class _SipflixQrLoginScreenState extends State<SipflixQrLoginScreen> {
   final _serverRepo = GetIt.instance<ServerRepository>();
 
   SipflixLoginServer? _httpServer;
+  SipflixPairingClient? _pairing;
+  bool _remotePairing = false;
   Server? _server;
   String? _url;
   String _status = '';
@@ -53,8 +56,10 @@ class _SipflixQrLoginScreenState extends State<SipflixQrLoginScreen> {
   void dispose() {
     // A successful sign-in navigates away while the phone's request is still
     // waiting for its answer; give that answer time to go out first.
+    _pairing?.closeAfterCurrent();
     final srv = _httpServer;
     if (srv != null) {
+      srv.stopAccepting();
       unawaited(Future<void>.delayed(const Duration(seconds: 2), srv.stop));
     }
     super.dispose();
@@ -67,6 +72,38 @@ class _SipflixQrLoginScreenState extends State<SipflixQrLoginScreen> {
       if (mounted) context.go(Destinations.serverSelect);
       return;
     }
+    if (!mounted) return;
+    if (widget.reprobe) unawaited(_reprobe(server));
+    if (SipflixPairingClient.configuredUrl.isNotEmpty) {
+      final pairing = SipflixPairingClient(
+        base: Uri.tryParse(SipflixPairingClient.configuredUrl) ?? Uri(),
+        onCredentials: (u, p) => _onCredentials(server, u, p),
+        onStatus: (status) {
+          if (mounted) {
+            setState(() {
+              _status = status;
+              _busy = false;
+            });
+          }
+        },
+      );
+      try {
+        final url = await pairing.start();
+        if (!mounted) {
+          pairing.closeAfterCurrent();
+          return;
+        }
+        setState(() {
+          _server = server;
+          _pairing = pairing;
+          _url = url;
+          _remotePairing = true;
+        });
+        return;
+      } catch (_) {
+        pairing.closeAfterCurrent();
+      }
+    }
     final ip = await SipflixLoginServer.localIp();
     if (ip == null) {
       if (mounted) {
@@ -77,7 +114,6 @@ class _SipflixQrLoginScreenState extends State<SipflixQrLoginScreen> {
       }
       return;
     }
-    if (widget.reprobe) unawaited(_reprobe(server));
     final srv = SipflixLoginServer(
       serverName: 'Sipflix',
       onCredentials: (u, p) => _onCredentials(server, u, p),
@@ -108,8 +144,11 @@ class _SipflixQrLoginScreenState extends State<SipflixQrLoginScreen> {
   /// is asked, so the customer never has to know which one they are on.
   /// Returns the message for the phone, null when sign-in went through.
   Future<String?> _onCredentials(
-      Server server, String username, String password) async {
-    if (!mounted) return null;
+    Server server,
+    String username,
+    String password,
+  ) async {
+    if (!mounted) return 'The TV sign-in screen is closed. Open a new QR code.';
     if (_busy) return 'The TV is already signing in. Please wait.';
     setState(() {
       _busy = true;
@@ -186,15 +225,13 @@ class _SipflixQrLoginScreenState extends State<SipflixQrLoginScreen> {
                 Text(
                   'Sign in with your phone',
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  _server == null
-                      ? ''
-                      : 'No more typing on the remote — scan to sign in to Sipflix',
+                  _server == null ? '' : 'No more typing on the remote — scan to sign in to Sipflix',
                   style: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
                   textAlign: TextAlign.center,
                 ),
@@ -242,7 +279,9 @@ class _SipflixQrLoginScreenState extends State<SipflixQrLoginScreen> {
                   const SizedBox(height: 20),
                   Text(
                     '1. Scan with your phone camera, or open this address in its browser:',
-                    style: TextStyle(color: Colors.white.withValues(alpha: 0.8)),
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.8),
+                    ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 6),
@@ -256,8 +295,12 @@ class _SipflixQrLoginScreenState extends State<SipflixQrLoginScreen> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    '2. Type your username and password on your phone.',
-                    style: TextStyle(color: Colors.white.withValues(alpha: 0.8)),
+                    _remotePairing
+                        ? '2. Enter your details. Mobile data or Wi-Fi both work.'
+                        : '2. Use the same Wi-Fi as the TV and enter your details.',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.8),
+                    ),
                     textAlign: TextAlign.center,
                   ),
                 ] else if (_status.isEmpty) ...[
@@ -267,7 +310,8 @@ class _SipflixQrLoginScreenState extends State<SipflixQrLoginScreen> {
                 OutlinedButton.icon(
                   autofocus: true,
                   onPressed: () => context.go(
-                      '${Destinations.login}?serverId=${widget.serverId}'),
+                    '${Destinations.login}?serverId=${widget.serverId}',
+                  ),
                   icon: const Icon(Icons.keyboard),
                   label: const Text('Type on the remote instead'),
                 ),
