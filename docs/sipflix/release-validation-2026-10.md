@@ -37,6 +37,14 @@ On 23 October Brendon explicitly requested the signing check, push and tests imm
 
 The original overnight controller closed at its configured 70% weekly usage ceiling. This direct build/test request does not rearm it; the old scheduled overnight wake must not be reported as active.
 
+### Hardware evidence from candidate 2400051
+
+- Samplay Max: in-place upgrade, real public QR sign-in to DUMB, and five advancing H264 1080p samples over 6m54s passed. Original 2400017 APK restored and launched; broker cleanup verified. Test account data remains. Alpha/Delta and the rest of its matrix remain untested.
+- SNPBackarea: in-place upgrade, Basic/Advanced settings, real public QR sign-in to DUMB and Emby, and detection of Alpha/Delta/iDuck passed. DUMB advanced across five samples over 6m05s. Alpha H264 1080p Direct Play advanced across five samples over 6m17s, independently confirmed by Alpha's session API. All three Alpha routes were measured; the selected route still needs explicit confirmation.
+- Backarea's saved Delta account started Direct Play after a fresh app launch, confirmed by Delta's session API. This was a short smoke check, not a six-minute pass. The preceding warm deep-link handoff did not establish Delta playback and needs follow-up before claiming seamless switching.
+- Actual candidate errors from both devices reached Airtable with sanitized metadata. A controlled invalid DUMB title displayed server, route, HTTP 404, retry/back and FlixBot guidance. Its identical network event was within the relay deduplication window. Nonfatal image-fetch exceptions were labelled `crash`; that category is not evidence of an app process crash.
+- Onn, Pro and SNPtv1tv2 candidate tests remain missing. New-request-to-play, smallest-version/Delta 4K behavior on hardware, sustained route behavior, and the human checks below remain open. Sparse playback samples cannot exclude brief stalls or establish audio/video quality. This is **not release completion**.
+
 For each device record evidence, not just a checkbox:
 
 1. In-place upgrade; app identity, version and compiled markers match intended artifact.
